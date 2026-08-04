@@ -1,8 +1,8 @@
 {
-  "name": "el-bingo-de-la-gorda-v10-3-online",
-  "version": "10.3.0",
+  "name": "el-bingo-de-la-gorda-v10-4-online",
+  "version": "10.4.0",
   "private": true,
-  "description": "Sala de bingo online con accesos directos, selección segura de cartones y control de participantes activos.",
+  "description": "Sala online para hasta 100 cartones, 4 por jugador, automarcado, avisos públicos y mensajes de la presentadora.",
   "engines": {
     "node": ">=18"
   },

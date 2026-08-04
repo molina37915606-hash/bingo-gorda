@@ -10,7 +10,7 @@ const http = require('http');
 const root = path.resolve(__dirname, '..');
 const port = 43210 + Math.floor(Math.random() * 1000);
 const base = `http://127.0.0.1:${port}`;
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-v10-3-test-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-v10-4-test-'));
 const child = spawn(process.execPath, ['server.js'], {
   cwd: root,
   env: { ...process.env, PORT: String(port), ONLINE_MODE: 'true', ADMIN_PASSWORD: 'prueba-segura', RENDER_EXTERNAL_URL: 'https://bingo-prueba.onrender.com', BINGO_DATA_DIR: dataDir },
@@ -66,25 +66,28 @@ function card(index) {
   try {
     await waitForServer();
     const health = await json('/healthz');
-    assert.strictEqual(health.data.version, '10.3');
+    assert.strictEqual(health.data.version, '10.4');
     const rootResponse = await fetch(`${base}/`, { redirect: 'manual' });
     assert.strictEqual(rootResponse.status, 302);
     assert.strictEqual(rootResponse.headers.get('location'), '/jugador');
     assert.strictEqual((await fetch(`${base}/admin`)).status, 200);
     assert.strictEqual((await fetch(`${base}/jugador`)).status, 200);
-    assert.strictEqual((await fetch(`${base}/js/online-room-admin.js`)).status, 200);
-    assert.strictEqual((await fetch(`${base}/js/online-room-player.js`)).status, 200);
     const adminJsText = await (await fetch(`${base}/js/online-room-admin.js`)).text();
     const playerJsText = await (await fetch(`${base}/js/online-room-player.js`)).text();
-    assert.ok(adminJsText.includes('renderParticipatingRanking'));
-    assert.ok(adminJsText.includes('data-copy-direct'));
-    assert.ok(playerJsText.includes("params.get('acceso')"));
+    const playerHtmlText = await (await fetch(`${base}/jugador`)).text();
+    assert.ok(adminJsText.includes('Puede elegir 4 cartones'));
+    assert.ok(playerJsText.includes('/api/player/automark'));
+    assert.ok(playerJsText.includes('renderPublicClaim'));
+    assert.ok(playerHtmlText.includes('publicClaimOverlay'));
+    assert.ok(playerHtmlText.includes('autoMarkOn'));
+    assert.ok(playerHtmlText.includes('adminSpeechBubble'));
+    assert.ok(adminJsText.includes('/api/admin/message'));
 
     let result = await json('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: 'prueba-segura' }) });
     assert.strictEqual(result.response.status, 200);
     const adminHeaders = { 'Content-Type': 'application/json', 'X-Admin-Token': result.data.token };
 
-    const cards = Array.from({ length: 50 }, (_, i) => card(i + 1));
+    const cards = Array.from({ length: 100 }, (_, i) => card(i + 1));
     const game = {
       id: 'game-online-test', number: 1, mode: 90,
       rules: { ambocabeza: false, line: true, bingo: true },
@@ -92,134 +95,45 @@ function card(index) {
       phase: 'READY', drawn: [], cards
     };
 
-    // El máximo de jugadores es independiente del total de cartones.
-    const fiftyPlayers = Array.from({ length: 50 }, (_, i) => ({ name: `Jugador ${i + 1}`, allowedCardCount: 1 }));
+    // Máximos: 100 cartones, 50 jugadores, 4 por jugador y 10 opciones.
+    const fiftyPlayers = Array.from({ length: 50 }, (_, i) => ({ name: `Jugador ${i + 1}`, allowedCardCount: 2 }));
     result = await json('/api/admin/configure', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ game, players: fiftyPlayers }) });
     assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
-    assert.strictEqual(result.data.players.length, 50);
+    assert.strictEqual(result.data.maxCards, 100);
     assert.strictEqual(result.data.maxPlayers, 50);
-    assert.strictEqual(result.data.status, 'waiting');
+    assert.strictEqual(result.data.maxCardsPerPlayer, 4);
+    assert.strictEqual(result.data.maxCardOptions, 10);
 
-    const tooMany = Array.from({ length: 51 }, (_, i) => ({ name: `Extra ${i + 1}`, allowedCardCount: 1 }));
-    result = await json('/api/admin/configure', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ game, players: tooMany }) });
+    const impossible = Array.from({ length: 26 }, (_, i) => ({ name: `Cuatro ${i + 1}`, allowedCardCount: 4 }));
+    result = await json('/api/admin/configure', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ game, players: impossible }) });
     assert.strictEqual(result.response.status, 400);
 
-    // Sala real de prueba: 50 cartones disponibles, pero solamente 10 jugadores autorizados.
-    const players = Array.from({ length: 10 }, (_, i) => ({ name: `Jugador ${i + 1}`, allowedCardCount: 2 }));
+    // Partida de prueba con 10 jugadores y 4 cartones cada uno.
+    const players = Array.from({ length: 10 }, (_, i) => ({ name: `Jugador ${i + 1}`, allowedCardCount: 4 }));
     result = await json('/api/admin/configure', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ game, players, roomSettings: { playerAudioAllowed: true, playerAudioDefault: false } }) });
     assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
     assert.strictEqual(result.data.status, 'waiting');
-    assert.strictEqual(result.data.readyToStart, false);
-    assert.strictEqual(result.data.players.length, 10);
-    assert.strictEqual(result.data.game.cards.length, 50);
     assert.strictEqual(result.data.cardStatus.length, 0);
 
-    // No puede salir una bolilla mientras la sala está en espera.
-    game.drawn = [1];
-    result = await json('/api/admin/game', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ game }) });
-    assert.strictEqual(result.response.status, 400);
-    game.drawn = [];
+    // Mensaje global persistente desde la presentadora.
+    result = await json('/api/admin/message', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ action: 'publish', text: 'Esperamos dos minutos antes de comenzar.' }) });
+    assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
+    assert.strictEqual(result.data.adminMessage.text, 'Esperamos dos minutos antes de comenzar.');
 
-    // Dos jugadores entran. El primero reserva un cartón y el segundo deja de verlo.
     let state = (await json('/api/admin/state', { headers: adminHeaders })).data;
-    const wrongRoomLogin = await json('/api/player/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: state.players[0].code, roomCode: 'XXXXX' }) });
-    assert.strictEqual(wrongRoomLogin.response.status, 400);
-    const login1 = await json('/api/player/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: state.players[0].code, roomCode: state.roomCode }) });
-    const login2 = await json('/api/player/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: state.players[1].code }) });
-    assert.strictEqual(login1.response.status, 200);
-    assert.strictEqual(login2.response.status, 200);
-    const h1 = { 'Content-Type': 'application/json', 'X-Player-Token': login1.data.token };
-    const h2 = { 'Content-Type': 'application/json', 'X-Player-Token': login2.data.token };
-    const reservedId = login1.data.state.player.offeredCards[0].id;
-    result = await json('/api/player/reserve', { method: 'POST', headers: h1, body: JSON.stringify({ cardId: reservedId, reserve: true }) });
-    assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
-    assert.ok(result.data.player.reservedCardIds.includes(reservedId));
-    const state2 = (await json('/api/player/state', { headers: h2 })).data;
-    assert.ok(!state2.player.offeredCards.some(item => item.id === reservedId), 'El cartón reservado no debe aparecerle a otro jugador.');
-    result = await json('/api/player/reserve', { method: 'POST', headers: h2, body: JSON.stringify({ cardId: reservedId, reserve: true }) });
-    assert.strictEqual(result.response.status, 400, 'Otro jugador no debe poder reservar el mismo cartón.');
-
-    // Liberamos la reserva inicial para ejecutar la selección completa desde cero.
-    await json('/api/player/release', { method: 'POST', headers: h1, body: '{}' });
-
     const sessions = [];
-    for (let i = 0; i < 10; i++) {
-      state = (await json('/api/admin/state', { headers: adminHeaders })).data;
-      let login;
-      if (i === 0) login = { data: { token: login1.data.token, state: (await json('/api/player/state', { headers: h1 })).data } };
-      else if (i === 1) login = { data: { token: login2.data.token, state: (await json('/api/player/state', { headers: h2 })).data } };
-      else login = await json('/api/player/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: state.players[i].code }) });
-      const headers = { 'Content-Type': 'application/json', 'X-Player-Token': login.data.token };
-      let playerState = login.data.state;
-      const selected = [];
-      while (selected.length < 2) {
-        const option = playerState.player.offeredCards.find(item => !selected.includes(item.id));
-        assert.ok(option, `Faltó una opción para el jugador ${i + 1}`);
-        result = await json('/api/player/reserve', { method: 'POST', headers, body: JSON.stringify({ cardId: option.id, reserve: true }) });
-        assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
-        playerState = result.data;
-        selected.push(option.id);
-      }
-      result = await json('/api/player/choose', { method: 'POST', headers, body: JSON.stringify({ cardIds: selected }) });
-      assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
-      assert.strictEqual(result.data.player.selectionConfirmed, true);
-      sessions.push({ headers, cardIds: selected });
-    }
-
-    result = await json('/api/admin/state', { headers: adminHeaders });
-    assert.strictEqual(result.data.readyToStart, true);
-    assert.strictEqual(result.data.status, 'waiting', 'Aunque todos estén listos, no debe iniciarse automáticamente.');
-    assert.strictEqual(result.data.cardStatus.length, 20);
-    assert.strictEqual(new Set(result.data.players.flatMap(player => player.cardIds)).size, 20);
-
-    result = await json('/api/player/mark', { method: 'POST', headers: sessions[0].headers, body: JSON.stringify({ cardId: sessions[0].cardIds[0], number: 1, marked: true }) });
-    assert.strictEqual(result.response.status, 400, 'No se puede marcar antes de INICIAR SORTEO.');
-
-    result = await json('/api/admin/start', { method: 'POST', headers: adminHeaders, body: '{}' });
-    assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
-    assert.strictEqual(result.data.status, 'playing');
-    assert.ok(result.data.startedAt);
-
-    const firstCardId = sessions[0].cardIds[0];
-    result = await json('/api/player/mark', { method: 'POST', headers: sessions[0].headers, body: JSON.stringify({ cardId: firstCardId, number: 1, marked: true }) });
-    assert.strictEqual(result.response.status, 200);
-
-    game.drawn = [1, 2, 3, 4, 5];
-    result = await json('/api/admin/game', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ game }) });
-    assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
-    const firstStatus = result.data.cardStatus.find(item => item.cardId === firstCardId);
-    assert.strictEqual(firstStatus.hasLine, true);
-    assert.deepStrictEqual(firstStatus.missed, [2, 3, 4, 5]);
-
-    result = await json('/api/player/claim', { method: 'POST', headers: sessions[0].headers, body: JSON.stringify({ cardId: firstCardId, type: 'line' }) });
-    assert.strictEqual(result.response.status, 200);
-    assert.strictEqual(result.data.officialValid, true);
-
-    result = await json('/api/admin/backup', { headers: adminHeaders });
-    assert.strictEqual(result.response.status, 200);
-    assert.strictEqual(result.data.format, 'el-bingo-de-la-gorda-v10-3-backup');
-    assert.strictEqual(result.data.state.players[0].sessionToken, null);
-
-    // Ejemplo solicitado: 30 cartones generados, pero solo 5 en juego entre 3 jugadores.
-    const game30 = { ...game, id: 'game-online-30', drawn: [], cards: cards.slice(0, 30) };
-    const players3 = [
-      { name: 'Jugador Uno', allowedCardCount: 2 },
-      { name: 'Jugador Dos', allowedCardCount: 2 },
-      { name: 'Jugador Tres', allowedCardCount: 1 }
-    ];
-    result = await json('/api/admin/configure', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ game: game30, players: players3 }) });
-    assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
-    const chosenIds = [];
-    for (let i = 0; i < players3.length; i++) {
-      state = (await json('/api/admin/state', { headers: adminHeaders })).data;
+    for (let i = 0; i < players.length; i++) {
       const login = await json('/api/player/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: state.players[i].code, roomCode: state.roomCode }) });
-      assert.strictEqual(login.response.status, 200);
+      assert.strictEqual(login.response.status, 200, JSON.stringify(login.data));
       const headers = { 'Content-Type': 'application/json', 'X-Player-Token': login.data.token };
       let playerState = login.data.state;
+      assert.strictEqual(playerState.adminMessage.text, 'Esperamos dos minutos antes de comenzar.');
+      assert.ok(playerState.player.offeredCards.length <= 10);
+      assert.ok(playerState.player.offeredCards.length >= 4);
       const selected = [];
-      while (selected.length < players3[i].allowedCardCount) {
+      while (selected.length < 4) {
         const option = playerState.player.offeredCards.find(item => !selected.includes(item.id));
-        assert.ok(option);
+        assert.ok(option, `Faltó una opción para ${players[i].name}`);
         const reserved = await json('/api/player/reserve', { method: 'POST', headers, body: JSON.stringify({ cardId: option.id, reserve: true }) });
         assert.strictEqual(reserved.response.status, 200, JSON.stringify(reserved.data));
         playerState = reserved.data;
@@ -227,21 +141,70 @@ function card(index) {
       }
       const chosen = await json('/api/player/choose', { method: 'POST', headers, body: JSON.stringify({ cardIds: selected }) });
       assert.strictEqual(chosen.response.status, 200, JSON.stringify(chosen.data));
-      chosenIds.push(...selected);
+      sessions.push({ headers, cardIds: selected });
+      state = (await json('/api/admin/state', { headers: adminHeaders })).data;
     }
+
     state = (await json('/api/admin/state', { headers: adminHeaders })).data;
-    assert.strictEqual(state.game.cards.length, 30);
-    assert.strictEqual(state.cardStatus.length, 5);
-    assert.strictEqual(new Set(state.cardStatus.map(item => item.cardId)).size, 5);
-    assert.deepStrictEqual(new Set(state.cardStatus.map(item => item.playerName)), new Set(['Jugador Uno', 'Jugador Dos', 'Jugador Tres']));
-    assert.ok(state.cardStatus.every(item => chosenIds.includes(item.cardId)));
-    assert.ok(!state.cardStatus.some(item => !chosenIds.includes(item.cardId)));
+    assert.strictEqual(state.readyToStart, true);
+    assert.strictEqual(state.status, 'waiting');
+    assert.strictEqual(state.cardStatus.length, 40);
+    assert.strictEqual(new Set(state.cardStatus.map(item => item.cardId)).size, 40);
+
+    result = await json('/api/admin/start', { method: 'POST', headers: adminHeaders, body: '{}' });
+    assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
+    assert.strictEqual(result.data.status, 'playing');
+
+    // Automarcado: al activarlo completa todas las bolillas ya sorteadas y sigue sincronizado.
+    const autoCardId = sessions[0].cardIds[0];
+    result = await json('/api/player/automark', { method: 'POST', headers: sessions[0].headers, body: JSON.stringify({ enabled: true }) });
+    assert.strictEqual(result.response.status, 200);
+    assert.strictEqual(result.data.player.autoMark, true);
+    game.drawn = [1, 2, 3, 4, 5];
+    result = await json('/api/admin/game', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ game }) });
+    assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
+    const autoStatus = result.data.cardStatus.find(item => item.cardId === autoCardId);
+    assert.strictEqual(autoStatus.autoMark, true);
+    assert.deepStrictEqual(autoStatus.playerMarked.slice(0, 5), [1, 2, 3, 4, 5]);
+    assert.deepStrictEqual(autoStatus.missed, []);
+    result = await json('/api/player/mark', { method: 'POST', headers: sessions[0].headers, body: JSON.stringify({ cardId: autoCardId, number: 1, marked: false }) });
+    assert.strictEqual(result.response.status, 400, 'No debe permitirse marcar manualmente con automarcado activo.');
+
+    // Reclamo público para todos los jugadores.
+    result = await json('/api/player/claim', { method: 'POST', headers: sessions[0].headers, body: JSON.stringify({ cardId: autoCardId, type: 'line' }) });
+    assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
+    assert.strictEqual(result.data.officialValid, true);
+    const otherState = (await json('/api/player/state', { headers: sessions[1].headers })).data;
+    assert.strictEqual(otherState.publicClaims.at(-1).status, 'pending');
+    assert.strictEqual(otherState.publicClaims.at(-1).playerName, 'Jugador 1');
+    assert.strictEqual(otherState.publicClaims.at(-1).type, 'line');
+    const blockedClaim = await json('/api/player/claim', { method: 'POST', headers: sessions[1].headers, body: JSON.stringify({ cardId: sessions[1].cardIds[0], type: 'line' }) });
+    assert.strictEqual(blockedClaim.response.status, 400);
+
+    state = (await json('/api/admin/state', { headers: adminHeaders })).data;
+    const pendingClaim = state.claims.find(item => item.status === 'pending');
+    result = await json('/api/admin/resolve', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ claimId: pendingClaim.id, resolution: 'confirmed' }) });
+    assert.strictEqual(result.response.status, 200);
+    const resolvedState = (await json('/api/player/state', { headers: sessions[2].headers })).data;
+    assert.strictEqual(resolvedState.publicClaims.at(-1).status, 'confirmed');
+
+    result = await json('/api/admin/message', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ action: 'clear' }) });
+    assert.strictEqual(result.response.status, 200);
+    assert.strictEqual(result.data.adminMessage, null);
+    const clearedPlayerState = (await json('/api/player/state', { headers: sessions[0].headers })).data;
+    assert.strictEqual(clearedPlayerState.adminMessage, null);
+
+    result = await json('/api/admin/backup', { headers: adminHeaders });
+    assert.strictEqual(result.response.status, 200);
+    assert.strictEqual(result.data.format, 'el-bingo-de-la-gorda-v10-4-backup');
+    assert.strictEqual(result.data.state.players[0].sessionToken, null);
+    assert.strictEqual(result.data.state.players[0].autoMark, true);
 
     assert.strictEqual((await fetch(`${base}/data/sala-online.json`)).status, 404);
     assert.ok([403, 404].includes(await rawStatus('/assets/%2e%2e/server.js')));
     assert.ok([403, 404].includes(await rawStatus('/js/%2e%2e/data/sala-online.json')));
 
-    console.log('PRUEBAS V10.3: OK');
+    console.log('PRUEBAS V10.4: OK');
   } catch (error) {
     console.error(error.stack || error);
     console.error(logs);

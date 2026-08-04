@@ -23,6 +23,10 @@ class PlayerApp {
     this.audioPreferenceLoaded = localStorage.getItem('bingoPlayerNumberVoice') !== null;
     this.audioEnabled = localStorage.getItem('bingoPlayerNumberVoice') === 'true';
     this.audioVolume = Number(localStorage.getItem('bingoPlayerNumberVolume') || .9);
+    this.alertSoundEnabled = localStorage.getItem('bingoPlayerAlertSound') !== 'false';
+    this.lastPublicClaimKey = '';
+    this.lastAdminMessageId = '';
+    this.claimOverlayTimer = null;
   }
 
   async init() {
@@ -38,6 +42,13 @@ class PlayerApp {
       localStorage.setItem('bingoPlayerNumberVolume', String(this.audioVolume));
     };
     $('testNumberVoice').onclick = () => this.testVoice();
+    $('autoMarkOn').onchange = event => this.setAutoMark(event.target.checked);
+    $('alertSoundOn').checked = this.alertSoundEnabled;
+    $('alertSoundOn').onchange = event => {
+      this.alertSoundEnabled = Boolean(event.target.checked);
+      localStorage.setItem('bingoPlayerAlertSound', String(this.alertSoundEnabled));
+      if (this.alertSoundEnabled) this.playAlertSound('line');
+    };
     this.refreshVoices();
     if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => this.refreshVoices();
     const params = new URLSearchParams(location.search);
@@ -142,6 +153,7 @@ class PlayerApp {
     $('loginView').classList.add('hidden');
     $('gameView').classList.remove('hidden');
     this.render();
+    this.renderPublicClaim();
     const currentCount = data.game.drawn.length;
     if (previousCount !== undefined && data.status === 'playing' && currentCount > previousCount && data.game.lastBall != null) {
       this.speakBall(data.game.lastBall);
@@ -171,6 +183,33 @@ class PlayerApp {
     $('numberVoiceOn').disabled = !allowed;
     $('numberVoiceVolume').disabled = !allowed || !this.audioEnabled;
     $('testNumberVoice').disabled = !allowed;
+    $('autoMarkOn').checked = Boolean(this.state.player.autoMark);
+    $('autoMarkOn').disabled = false;
+    $('alertSoundOn').checked = this.alertSoundEnabled;
+    this.renderAdminMessage();
+  }
+
+  renderAdminMessage() {
+    const bubble = $('adminSpeechBubble');
+    const message = this.state?.adminMessage;
+    if (!bubble) return;
+    if (!message?.text) {
+      bubble.classList.add('hidden');
+      bubble.classList.remove('show');
+      this.lastAdminMessageId = '';
+      return;
+    }
+    $('adminSpeechAuthor').textContent = `${(PRESENTERS[this.state.game.presenter] || PRESENTERS.vero).name} dice:`;
+    $('adminSpeechText').textContent = message.text;
+    bubble.classList.remove('hidden');
+    if (message.id !== this.lastAdminMessageId) {
+      bubble.classList.remove('show');
+      void bubble.offsetWidth;
+      bubble.classList.add('show');
+      this.lastAdminMessageId = message.id;
+    } else {
+      bubble.classList.add('show');
+    }
   }
 
   renderWaiting() {
@@ -187,7 +226,7 @@ class PlayerApp {
     const offers = player.offeredCards || [];
     const valid = new Set(offers.map(card => card.id));
     this.selectedOffers = new Set([...this.selectedOffers].filter(id => valid.has(id)));
-    $('waitingPanel').innerHTML = `<h2>Elegí ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}</h2><div class="waitingLead">Estas son tus opciones disponibles (hasta cinco). Al tocar una, queda reservada para vos durante ${this.state.player.reservationTtlSeconds || 120} segundos y desaparece de las opciones de los demás.</div><div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="confirmChoice" class="btn primary" style="margin:0" ${this.selectedOffers.size === player.allowedCardCount ? '' : 'disabled'}>CONFIRMAR ELECCIÓN</button></div>`;
+    $('waitingPanel').innerHTML = `<h2>Elegí ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}</h2><div class="waitingLead">Estas son tus opciones disponibles (hasta diez). Al tocar una, queda reservada para vos durante ${this.state.player.reservationTtlSeconds || 120} segundos y desaparece de las opciones de los demás.</div><div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="confirmChoice" class="btn primary" style="margin:0" ${this.selectedOffers.size === player.allowedCardCount ? '' : 'disabled'}>CONFIRMAR ELECCIÓN</button></div>`;
     $('offerGrid').querySelectorAll('[data-offer]').forEach(button => button.onclick = () => this.toggleOffer(button.dataset.offer));
     $('clearChoice').onclick = () => this.clearReservations();
     $('confirmChoice').onclick = () => this.confirmChoice();
@@ -284,18 +323,23 @@ class PlayerApp {
       return;
     }
     const marks = new Set((this.state.player.marks?.[card.id] || []).map(Number));
+    const autoMark = Boolean(this.state.player.autoMark);
     const cells = card.grid.flat().map(value => {
       if (value === null) return '<div class="cell blank">·</div>';
       if (value === 'LIBRE') return '<div class="cell free">LIBRE</div>';
-      return `<button class="cell number ${marks.has(value) ? 'marked' : ''}" data-number="${value}" aria-label="Número ${value}">${value}</button>`;
+      return `<button class="cell number ${marks.has(value) ? 'marked' : ''}" data-number="${value}" aria-label="Número ${value}" ${autoMark ? 'disabled' : ''}>${value}</button>`;
     }).join('');
-    $('ticketPanel').innerHTML = `<div class="ticketHead"><div><b>Cartón ${esc(card.number)}</b><br><small>${esc(this.state.player.name)}</small></div><small>${marks.size} marcados</small></div><div class="grid mode${card.mode}">${cells}</div><p class="manualHint">Tocá un número para marcarlo. Las bolillas sorteadas no se marcan automáticamente.</p>`;
-    $('ticketPanel').querySelectorAll('[data-number]').forEach(button => button.onclick = () => this.toggleMark(card.id, Number(button.dataset.number), !button.classList.contains('marked')));
+    const hint = autoMark
+      ? 'Marcado automático activado: todos tus cartones se actualizan con las bolillas oficiales.'
+      : 'Marcado manual: tocá cada número cuando salga. Podés activar el automarcado arriba.';
+    $('ticketPanel').innerHTML = `<div class="ticketHead"><div><b>Cartón ${esc(card.number)}</b><br><small>${esc(this.state.player.name)}</small></div><small>${marks.size} marcados · ${autoMark ? 'AUTO' : 'MANUAL'}</small></div><div class="grid mode${card.mode}">${cells}</div><p class="manualHint">${hint}</p>`;
+    if (!autoMark) $('ticketPanel').querySelectorAll('[data-number]').forEach(button => button.onclick = () => this.toggleMark(card.id, Number(button.dataset.number), !button.classList.contains('marked')));
     $('claimLine').disabled = card.bets?.line === false;
     $('claimBingo').disabled = card.bets?.bingo === false;
   }
 
   async toggleMark(cardId, number, marked) {
+    if (this.state?.player.autoMark) return;
     const key = `${cardId}:${number}`;
     if (this.pendingMark.has(key)) return;
     this.pendingMark.add(key);
@@ -305,6 +349,21 @@ class PlayerApp {
       this.showMessage(error.message, 'error');
     } finally {
       this.pendingMark.delete(key);
+    }
+  }
+
+  async setAutoMark(enabled) {
+    if (!this.state?.active) return;
+    $('autoMarkOn').disabled = true;
+    try {
+      const data = await this.request('/api/player/automark', { method: 'POST', body: JSON.stringify({ enabled }) });
+      this.applyState(data);
+      this.showMessage(enabled ? 'Automarcado activado en todos tus cartones.' : 'Automarcado desactivado. Ahora podés marcar manualmente.', 'notice');
+    } catch (error) {
+      $('autoMarkOn').checked = Boolean(this.state?.player.autoMark);
+      this.showMessage(error.message, 'error');
+    } finally {
+      $('autoMarkOn').disabled = false;
     }
   }
 
@@ -366,6 +425,86 @@ class PlayerApp {
   testVoice() {
     const id = this.state?.game?.presenter || 'vero';
     this.speak((PRESENTERS[id] || PRESENTERS.vero).preview);
+  }
+
+  renderPublicClaim() {
+    const claims = this.state?.publicClaims || [];
+    const claim = claims.at(-1);
+    if (!claim) return;
+    const key = `${claim.id}:${claim.status}`;
+    if (key === this.lastPublicClaimKey) return;
+    this.lastPublicClaimKey = key;
+    const label = claim.type === 'bingo' ? 'BINGO' : 'LÍNEA';
+    if (claim.status === 'pending') {
+      this.showClaimOverlay({
+        kind: claim.type,
+        icon: claim.type === 'bingo' ? '🎉' : '🔔',
+        title: `${claim.playerName} cantó ${label}`,
+        text: `Cartón ${claim.cardNumber}. El sorteo está en pausa mientras el administrador verifica.`,
+        duration: 6500
+      });
+      this.playAlertSound(claim.type);
+      return;
+    }
+    if (claim.status === 'confirmed') {
+      this.showClaimOverlay({
+        kind: 'confirmed',
+        icon: '🏆',
+        title: `${label} VÁLIDO`,
+        text: `Ganador: ${claim.playerName} · Cartón ${claim.cardNumber}.`,
+        duration: 6500
+      });
+      this.playAlertSound('confirmed');
+      return;
+    }
+    this.showClaimOverlay({
+      kind: 'rejected',
+      icon: '✖',
+      title: 'RECLAMO INVÁLIDO',
+      text: `${claim.playerName} · Cartón ${claim.cardNumber}. La partida puede continuar.`,
+      duration: 4500
+    });
+    this.playAlertSound('rejected');
+  }
+
+  showClaimOverlay({ kind, icon, title, text, duration }) {
+    const overlay = $('publicClaimOverlay');
+    const popup = $('publicClaimPopup');
+    popup.className = `claimPopup ${kind}`;
+    $('publicClaimIcon').textContent = icon;
+    $('publicClaimTitle').textContent = title;
+    $('publicClaimText').textContent = text;
+    $('publicClaimConfetti').classList.toggle('hidden', kind === 'rejected');
+    overlay.classList.add('show');
+    clearTimeout(this.claimOverlayTimer);
+    this.claimOverlayTimer = setTimeout(() => overlay.classList.remove('show'), duration || 5000);
+    overlay.onclick = () => overlay.classList.remove('show');
+  }
+
+  playAlertSound(kind) {
+    if (!this.alertSoundEnabled) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const sequence = kind === 'bingo' || kind === 'confirmed'
+        ? [523, 659, 784, 1047]
+        : kind === 'rejected' ? [330, 247] : [660, 880];
+      sequence.forEach((frequency, index) => {
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        oscillator.type = kind === 'rejected' ? 'square' : 'sine';
+        oscillator.frequency.value = frequency;
+        const start = ctx.currentTime + index * .13;
+        gain.gain.setValueAtTime(.0001, start);
+        gain.gain.exponentialRampToValueAtTime(.16, start + .025);
+        gain.gain.exponentialRampToValueAtTime(.0001, start + .18);
+        oscillator.connect(gain).connect(ctx.destination);
+        oscillator.start(start);
+        oscillator.stop(start + .2);
+      });
+      setTimeout(() => ctx.close().catch(() => {}), 1300);
+    } catch {}
   }
 
   renderNotice() {

@@ -473,7 +473,7 @@ class BingoApp {
   }
 
   /* Wizard */
-  populateQuantities() { $('qty').innerHTML = Array.from({ length: 50 }, (_, i) => `<option value="${i + 1}" ${i + 1 === 8 ? 'selected' : ''}>${i + 1}</option>`).join(''); }
+  populateQuantities() { $('qty').innerHTML = Array.from({ length: 100 }, (_, i) => `<option value="${i + 1}" ${i + 1 === 8 ? 'selected' : ''}>${i + 1}</option>`).join(''); }
   openWizard() {
     this.wizard = this.freshWizard(); $('pdfFile').value = ''; $('pdfStatus').textContent = 'Todavía no se cargó ningún PDF.'; $('gameModeError').textContent = '';
     document.querySelectorAll('.presenterCard').forEach(card => card.classList.remove('selected', 'dimmed'));
@@ -505,7 +505,7 @@ class BingoApp {
     });
   }
   addManualCard(copyBets = null) {
-    if (this.wizard.manualCards.length >= 50) { alert('El máximo es de 50 cartones.'); return; }
+    if (this.wizard.manualCards.length >= 100) { alert('El máximo es de 100 cartones.'); return; }
     const i = this.wizard.manualCards.length, rules = this.wizard.rules;
     this.wizard.manualCards.push(CardService.normalizeCard({ id: uid('manual'), number: String(i + 1).padStart(3, '0'), name: `Jugador ${i + 1}`, source: 'manual', grid: CardService.emptyGrid(this.wizard.mode), bets: copyBets || { ambocabeza: rules.ambocabeza, line: rules.line, bingo: rules.bingo } }, this.wizard.mode, rules, i));
     this.renderManualCards();
@@ -580,7 +580,7 @@ class BingoApp {
       this.wizard.previewCards = clone(this.wizard.manualCards);
     } else {
       const selected = this.wizard.pdfCards.filter(card => card.selected); if (!selected.length) { alert('Seleccioná al menos un cartón del PDF.'); return false; }
-      if (selected.length > 50) { alert('El máximo es de 50 cartones por partida.'); return false; }
+      if (selected.length > 100) { alert('El máximo es de 100 cartones por partida.'); return false; }
       const invalid = selected.find(card => !CardService.validate(card).valid); if (invalid) { alert(`El cartón ${invalid.number} necesita revisión.`); return false; }
       this.wizard.previewCards = selected.map((card, i) => ({ ...clone(card), name: card.name.trim() || `Jugador ${i + 1}` }));
     }

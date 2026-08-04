@@ -6,6 +6,6 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo Abriendo prueba local de V10.3...
+echo Abriendo prueba local de V10.4...
 node server.js
 pause

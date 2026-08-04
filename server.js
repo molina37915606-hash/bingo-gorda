@@ -17,11 +17,11 @@ const ONLINE_MODE = process.env.RENDER === 'true' || process.env.ONLINE_MODE ===
 const PUBLIC_URL = String(process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '').replace(/\/+$/, '');
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
 const MIN_CARDS = 2;
-const MAX_CARDS = 50;
+const MAX_CARDS = 100;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 50;
-const MAX_CARDS_PER_PLAYER = 2;
-const MAX_CARD_OPTIONS = 5;
+const MAX_CARDS_PER_PLAYER = 4;
+const MAX_CARD_OPTIONS = 10;
 const CARD_RESERVATION_TTL_MS = 2 * 60 * 1000;
 const ADMIN_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -87,7 +87,7 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
 
 function blankState() {
   return {
-    version: 5,
+    version: 6,
     active: false,
     status: 'closed',
     roomCode: null,
@@ -99,6 +99,7 @@ function blankState() {
       playerAudioAllowed: true,
       playerAudioDefault: false
     },
+    adminMessage: null,
     game: null,
     players: [],
     cardReservations: {},
@@ -121,6 +122,13 @@ function loadState() {
       eventLog: parsed.eventLog || []
     };
     if (merged.active && !parsed.status) merged.status = merged.game?.drawn?.length ? 'playing' : 'waiting';
+    merged.adminMessage = parsed.adminMessage && typeof parsed.adminMessage === 'object' && String(parsed.adminMessage.text || '').trim()
+      ? {
+          id: String(parsed.adminMessage.id || randomId('msg')),
+          text: String(parsed.adminMessage.text || '').trim().slice(0, 300),
+          updatedAt: parsed.adminMessage.updatedAt || nowIso()
+        }
+      : null;
     merged.players = merged.players.map(player => {
       const cardIds = [...new Set((player.cardIds || []).map(String))].slice(0, MAX_CARDS_PER_PLAYER);
       const allowedCardCount = Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(player.allowedCardCount) || cardIds.length || 1));
@@ -132,6 +140,7 @@ function loadState() {
         offeredCardIds: Array.isArray(player.offeredCardIds) ? player.offeredCardIds.map(String) : [],
         reservedCardIds: Array.isArray(player.reservedCardIds) ? player.reservedCardIds.map(String) : [],
         marks: player.marks || {},
+        autoMark: Boolean(player.autoMark),
         notices: player.notices || []
       };
     });
@@ -315,6 +324,33 @@ function allPlayersReady() {
   );
 }
 
+function syncAutoMarksForPlayer(player) {
+  if (!state.game || !player?.autoMark) return;
+  const drawn = new Set(state.game.drawn || []);
+  player.marks ||= {};
+  for (const cardId of player.cardIds || []) {
+    const card = state.game.cards.find(item => item.id === cardId);
+    if (!card) continue;
+    player.marks[cardId] = cardNumbers(card).filter(number => drawn.has(number)).sort((a, b) => a - b);
+  }
+}
+
+function syncAllAutoMarks() {
+  for (const player of state.players) syncAutoMarksForPlayer(player);
+}
+
+function publicClaimsPayload() {
+  return state.claims.slice(-10).map(claim => ({
+    id: claim.id,
+    type: claim.type,
+    playerName: claim.playerName,
+    cardNumber: claim.cardNumber,
+    createdAt: claim.createdAt,
+    status: claim.status,
+    resolvedAt: claim.resolvedAt || null
+  }));
+}
+
 function claimStateForCard(cardId, type) {
   const matching = state.claims.filter(claim => claim.cardId === cardId && claim.type === type);
   if (matching.some(claim => claim.status === 'confirmed')) return 'confirmed';
@@ -360,6 +396,7 @@ function adminPayload() {
         playerName: player.name,
         playerCode: player.code,
         connected: connected.has(player.id),
+        autoMark: Boolean(player.autoMark),
         cardId,
         cardNumber: card.number,
         cardName: card.name,
@@ -380,6 +417,7 @@ function adminPayload() {
     updatedAt: state.updatedAt,
     round: state.round,
     roomSettings: state.roomSettings,
+    adminMessage: state.adminMessage,
     lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`),
     localUrl: `http://localhost:${PORT}`,
     game: state.game,
@@ -392,6 +430,7 @@ function adminPayload() {
       selectionConfirmed: player.selectionConfirmed,
       offeredCardIds: player.offeredCardIds,
       reservedCardIds: player.reservedCardIds || [],
+      autoMark: Boolean(player.autoMark),
       connected: connected.has(player.id)
     })),
     cardStatus,
@@ -412,6 +451,8 @@ function playerPayload(player) {
     round: state.round,
     startedAt: state.startedAt,
     roomSettings: state.roomSettings,
+    adminMessage: state.adminMessage,
+    publicClaims: publicClaimsPayload(),
     game: {
       id: state.game.id,
       number: state.game.number,
@@ -432,6 +473,7 @@ function playerPayload(player) {
       offeredCards: offers,
       cards,
       marks: player.marks || {},
+      autoMark: Boolean(player.autoMark),
       notices: (player.notices || []).slice(-10)
     }
   };
@@ -441,7 +483,7 @@ function backupPayload() {
   const cleanState = deepCopy(state);
   cleanState.players = cleanState.players.map(player => ({ ...player, sessionToken: null }));
   return {
-    format: 'el-bingo-de-la-gorda-v10-3-backup',
+    format: 'el-bingo-de-la-gorda-v10-4-backup',
     exportedAt: nowIso(),
     state: cleanState
   };
@@ -587,6 +629,7 @@ function configureRoom(payload) {
       reservedCardIds: [],
       sessionToken: null,
       marks: Object.fromEntries(cardIds.map(cardId => [cardId, []])),
+      autoMark: false,
       notices: []
     };
   });
@@ -594,7 +637,7 @@ function configureRoom(payload) {
   sanitizedGame.drawn = [];
   sanitizedGame.phase = 'READY';
   state = {
-    version: 5,
+    version: 6,
     active: true,
     status: 'waiting',
     roomCode: randomCode(5),
@@ -606,6 +649,7 @@ function configureRoom(payload) {
       playerAudioAllowed: payload.roomSettings?.playerAudioAllowed !== false,
       playerAudioDefault: Boolean(payload.roomSettings?.playerAudioDefault)
     },
+    adminMessage: null,
     game: sanitizedGame,
     players,
     cardReservations: {},
@@ -653,6 +697,7 @@ function updateGame(game) {
     const removed = previousDrawn.filter(number => !sanitized.drawn.includes(number));
     for (const number of removed) logEvent('ball_undone', { number });
   }
+  syncAllAutoMarks();
   updateCardDisplayNames();
   saveState();
   broadcast();
@@ -680,6 +725,27 @@ function updateRoomSettings(payload) {
   state.roomSettings.playerAudioAllowed = payload.playerAudioAllowed !== false;
   state.roomSettings.playerAudioDefault = Boolean(payload.playerAudioDefault);
   logEvent('room_settings_updated', { ...state.roomSettings });
+  saveState();
+  broadcast();
+  return adminPayload();
+}
+
+function updateAdminMessage(payload) {
+  if (!state.active) throw new Error('No hay una sala abierta.');
+  const action = String(payload?.action || 'publish').toLowerCase();
+  const text = String(payload?.text || '').trim().slice(0, 300);
+  if (action === 'clear' || !text) {
+    const previousId = state.adminMessage?.id || null;
+    state.adminMessage = null;
+    logEvent('admin_message_cleared', { previousId });
+  } else {
+    state.adminMessage = {
+      id: randomId('msg'),
+      text,
+      updatedAt: nowIso()
+    };
+    logEvent('admin_message_published', { messageId: state.adminMessage.id, length: text.length });
+  }
   saveState();
   broadcast();
   return adminPayload();
@@ -746,11 +812,12 @@ function restoreBackup(payload) {
       reservedCardIds: [],
       sessionToken: null,
       marks,
+      autoMark: Boolean(rawPlayer.autoMark),
       notices: Array.isArray(rawPlayer.notices) ? rawPlayer.notices.slice(-20) : []
     };
   });
   state = {
-    version: 5,
+    version: 6,
     active: true,
     status: ['waiting', 'playing'].includes(raw.status) ? raw.status : (raw.game.drawn?.length ? 'playing' : 'waiting'),
     roomCode: String(raw.roomCode || randomCode(5)).slice(0, 12),
@@ -759,6 +826,13 @@ function restoreBackup(payload) {
     updatedAt: nowIso(),
     round: Math.max(1, Number(raw.round) || 1),
     roomSettings: { ...blankState().roomSettings, ...(raw.roomSettings || {}) },
+    adminMessage: raw.adminMessage && String(raw.adminMessage.text || '').trim()
+      ? {
+          id: String(raw.adminMessage.id || randomId('msg')),
+          text: String(raw.adminMessage.text || '').trim().slice(0, 300),
+          updatedAt: raw.adminMessage.updatedAt || nowIso()
+        }
+      : null,
     game: sanitizeGame(raw.game),
     players,
     cardReservations: {},
@@ -842,7 +916,7 @@ function chooseCards(player, payload) {
   const selected = [...new Set((payload.cardIds || []).map(String))];
   if (selected.length !== player.allowedCardCount) throw new Error(`Debés elegir exactamente ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}.`);
   const offers = new Set(player.offeredCardIds || []);
-  if (!selected.every(cardId => offers.has(cardId) || (player.reservedCardIds || []).includes(cardId))) throw new Error('Una de las opciones ya no está disponible. Actualizamos tus cinco cartones.');
+  if (!selected.every(cardId => offers.has(cardId) || (player.reservedCardIds || []).includes(cardId))) throw new Error('Una de las opciones ya no está disponible. Actualizamos tus opciones de cartones.');
   for (const cardId of selected) {
     if (selectedCardOwner(cardId, player.id)) {
       refreshAllOffers();
@@ -866,6 +940,7 @@ function chooseCards(player, payload) {
   player.reservedCardIds = [];
   for (const cardId of selected) delete state.cardReservations[cardId];
   player.marks = Object.fromEntries(selected.map(cardId => [cardId, []]));
+  syncAutoMarksForPlayer(player);
   updateCardDisplayNames();
   refreshAllOffers();
   logEvent('cards_selected', { playerId: player.id, playerName: player.name, cardIds: selected });
@@ -893,6 +968,7 @@ function releaseOwnSelection(player) {
 function markNumber(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
   if (state.status !== 'playing') throw new Error('La partida todavía no comenzó.');
+  if (player.autoMark) throw new Error('El marcado automático está activado. Desactivalo para marcar manualmente.');
   const cardId = String(payload.cardId || '');
   const card = state.game.cards.find(item => item.id === cardId);
   if (!card || !player.cardIds.includes(cardId)) throw new Error('Ese cartón no pertenece al jugador.');
@@ -908,6 +984,16 @@ function markNumber(player, payload) {
   return playerPayload(player);
 }
 
+function setAutoMark(player, payload) {
+  if (!state.active || !state.game) throw new Error('La sala no está activa.');
+  player.autoMark = Boolean(payload.enabled);
+  if (player.autoMark) syncAutoMarksForPlayer(player);
+  logEvent('player_automark_changed', { playerId: player.id, playerName: player.name, enabled: player.autoMark });
+  saveState();
+  broadcast();
+  return playerPayload(player);
+}
+
 function createClaim(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
   if (state.status !== 'playing') throw new Error('La partida todavía no comenzó.');
@@ -917,8 +1003,8 @@ function createClaim(player, payload) {
   if (!card || !player.cardIds.includes(cardId)) throw new Error('Ese cartón no pertenece al jugador.');
   if (type === 'line' && card.bets?.line === false) throw new Error('Este cartón no participa por línea.');
   if (type === 'bingo' && card.bets?.bingo === false) throw new Error('Este cartón no participa por bingo.');
-  if (state.claims.some(claim => claim.status === 'pending' && claim.playerId === player.id && claim.cardId === cardId && claim.type === type)) {
-    throw new Error('Ese reclamo ya fue enviado y está siendo revisado.');
+  if (state.claims.some(claim => claim.status === 'pending')) {
+    throw new Error('Ya hay un reclamo siendo revisado. Esperá la decisión del administrador.');
   }
   const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
   const valid = type === 'line' ? analysis.hasLine : analysis.hasBingo;
@@ -1037,6 +1123,7 @@ async function handleApi(req, res, url) {
       if (url.pathname === '/api/admin/game' && req.method === 'POST') return sendJson(res, 200, updateGame((await readJson(req)).game));
       if (url.pathname === '/api/admin/start' && req.method === 'POST') return sendJson(res, 200, startRoom());
       if (url.pathname === '/api/admin/settings' && req.method === 'POST') return sendJson(res, 200, updateRoomSettings(await readJson(req)));
+      if (url.pathname === '/api/admin/message' && req.method === 'POST') return sendJson(res, 200, updateAdminMessage(await readJson(req)));
       if (url.pathname === '/api/admin/release-selection' && req.method === 'POST') return sendJson(res, 200, releasePlayerSelection(await readJson(req)));
       if (url.pathname === '/api/admin/resolve' && req.method === 'POST') return sendJson(res, 200, resolveClaim(await readJson(req)));
       if (url.pathname === '/api/admin/backup' && req.method === 'GET') return sendJson(res, 200, backupPayload());
@@ -1063,6 +1150,7 @@ async function handleApi(req, res, url) {
       if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
       if (url.pathname === '/api/player/release' && req.method === 'POST') return sendJson(res, 200, releaseOwnSelection(player));
       if (url.pathname === '/api/player/mark' && req.method === 'POST') return sendJson(res, 200, markNumber(player, await readJson(req)));
+      if (url.pathname === '/api/player/automark' && req.method === 'POST') return sendJson(res, 200, setAutoMark(player, await readJson(req)));
       if (url.pathname === '/api/player/claim' && req.method === 'POST') return sendJson(res, 200, createClaim(player, await readJson(req)));
       return sendJson(res, 404, { error: 'Acción de jugador no encontrada.' });
     }
@@ -1103,7 +1191,7 @@ function handleEvents(req, res, url) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || `localhost:${PORT}`}`);
-  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '10.3', active: state.active, status: state.status });
+  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '10.4', active: state.active, status: state.status });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('User-agent: *\nDisallow: /admin\n');
@@ -1137,7 +1225,7 @@ setInterval(() => {
 }, 20_000).unref();
 
 server.listen(PORT, HOST, () => {
-  console.log('\nEL BINGO DE LA GORDA - V10.3 ONLINE');
+  console.log('\nEL BINGO DE LA GORDA - V10.4 ONLINE');
   if (ONLINE_MODE) {
     console.log(`Jugadores: ${PUBLIC_URL || 'URL pública de Render'}/jugador`);
     console.log(`Administrador: ${PUBLIC_URL || 'URL pública de Render'}/admin`);

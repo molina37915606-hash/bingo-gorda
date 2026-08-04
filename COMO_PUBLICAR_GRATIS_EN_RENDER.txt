@@ -22,7 +22,7 @@ DIRECCIONES
 USO
 1. Creá una partida sin sortear bolillas.
 2. Abrí SALA ONLINE.
-3. Cargá nombres y autorizá 1 o 2 cartones por jugador.
+3. Cargá nombres y autorizá 1 o 4 cartones por jugador.
 4. Abrí la sala de espera y compartí enlace y códigos.
 5. Esperá que todos confirmen.
 6. Presioná INICIAR SORTEO.

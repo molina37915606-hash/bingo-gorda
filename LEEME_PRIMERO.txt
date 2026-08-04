@@ -1,0 +1,26 @@
+EL BINGO DE LA GORDA V10 ONLINE
+================================
+
+CAPACIDAD
+- Hasta 25 jugadores conectados.
+- Hasta 50 cartones por partida.
+- Cada jugador puede recibir 1 o 2 cartones.
+
+DIRECCIONES CUANDO ESTE PUBLICADO
+- Jugadores: https://TU-SERVICIO.onrender.com/jugador
+- Administrador: https://TU-SERVICIO.onrender.com/admin
+
+SEGURIDAD
+- El administrador entra con la contraseña configurada como ADMIN_PASSWORD en Render.
+- Cada jugador recibe un código privado de 7 caracteres.
+- Un jugador solamente puede ver, marcar y reclamar con sus propios cartones.
+
+COPIAS DE SEGURIDAD
+El plan gratuito de Render puede borrar el estado del servidor cuando se reinicia o se duerme.
+La V10 guarda automáticamente una copia en el navegador del administrador.
+También tiene el botón DESCARGAR COPIA para guardar un archivo JSON.
+Al restaurar, los jugadores conservan sus códigos, pero deben volver a ingresar.
+
+IMPORTANTE
+Durante una partida mantené abierta la pestaña del administrador.
+El programa envía actividad periódica para evitar que el servidor gratuito se duerma mientras se está jugando.

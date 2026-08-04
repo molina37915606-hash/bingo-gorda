@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: el-bingo-de-la-gorda-v10
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: ONLINE_MODE
+        value: "true"
+      - key: ADMIN_PASSWORD
+        sync: false

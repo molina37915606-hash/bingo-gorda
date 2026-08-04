@@ -1,0 +1,13 @@
+{
+  "name": "el-bingo-de-la-gorda-v10-online",
+  "version": "10.0.0",
+  "private": true,
+  "description": "Sala de bingo online con administrador, hasta 25 jugadores y 50 cartones.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/v10-smoke.js"
+  }
+}

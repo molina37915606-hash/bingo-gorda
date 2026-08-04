@@ -1,0 +1,29 @@
+PRUEBAS REALIZADAS - V10 ONLINE
+================================
+
+Resultado: APROBADO
+
+Se verificó automáticamente:
+- Inicio del servidor Node.js.
+- Acceso protegido del administrador.
+- Rechazo de contraseña incorrecta.
+- Apertura de sala con 25 jugadores.
+- Carga y control de 50 cartones.
+- Asignación de 2 cartones por jugador.
+- Generación de 25 códigos privados únicos.
+- Ingreso de un jugador con su código.
+- Conexión en tiempo real del administrador y jugador.
+- Marcado manual desde el jugador.
+- Actualización del sorteo desde el administrador.
+- Detección de línea oficial no marcada completamente.
+- Comparación de números olvidados.
+- Envío de reclamo de línea.
+- Copia de seguridad de la sala.
+- Cierre y restauración de la sala conservando códigos.
+- Bloqueo de acceso público a los archivos privados del servidor.
+- Generación de 50 cartones únicos en Bingo 90.
+- Generación de 50 cartones únicos en Bingo 75.
+- Validación de render.yaml.
+
+Comando de prueba incluido:
+npm test

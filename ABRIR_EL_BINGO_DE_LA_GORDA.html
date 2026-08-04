@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<title>El Bingo de la Gorda V10 Online V8</title>
+<style>
+:root{
+ --bg:#040712;--panel:#0b1430;--line:#2b4174;--txt:#fff;--muted:#9eb0d8;
+ --purple:#8338eb;--blue:#168ce8;--yellow:#ffc62f;--green:#28c857;--red:#ef3e48;
+ --panelTop:#101a3b;--panelBottom:#060b1c;--boardCell:#060c1b;--boardBorder:#344b7c;--drawA:#cf9fff;--drawB:#7429d2;--drawC:#3a076b;--machineA:#153c96;--machineB:#091630;--ticketMark:#7e33d5;
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#03050c;color:var(--txt);font-family:Segoe UI,Arial,sans-serif}
+button,input,select,textarea{font:inherit}
+body{background:radial-gradient(circle at 50% -20%,#192962 0,#071020 46%,#02040b 100%)}
+.screen{display:none;width:100vw;height:100vh}.screen.active{display:flex}
+.card{background:linear-gradient(180deg,color-mix(in srgb,var(--panelTop) 93%,transparent),color-mix(in srgb,var(--panelBottom) 93%,transparent));border:1px solid var(--line);border-radius:20px;box-shadow:0 16px 50px #0008}
+.primary{border:0;border-radius:16px;background:linear-gradient(#ffd94a,#efa600);color:#171000;font-weight:1000;cursor:pointer;box-shadow:0 6px 0 #955f00}
+.secondary{border:1px solid #425a91;border-radius:14px;background:#14234b;color:white;font-weight:900;cursor:pointer}
+.close{border:0;border-radius:10px;background:#a42333;color:#fff;font-weight:900;padding:9px 14px;cursor:pointer}
+
+/* INICIO */
+#home{align-items:center;justify-content:center;padding:clamp(10px,2.5vh,28px);overflow:auto}
+.homeBox{width:min(760px,94vw);max-height:calc(100vh - 20px);padding:clamp(14px,3vh,34px);text-align:center;overflow:visible}
+.homeLogo{display:block;width:auto;max-width:min(520px,82vw);height:auto;max-height:calc(100vh - 270px);min-height:180px;margin:0 auto;object-fit:contain;object-position:center;filter:drop-shadow(0 16px 28px #0008)}
+.homeBtns{display:grid;gap:14px;max-width:430px;margin:25px auto 0}
+.homeBtns button{padding:18px;font-size:24px}
+.homeSub{color:var(--muted);margin-top:14px}
+
+/* ASISTENTE */
+#wizard{align-items:center;justify-content:center;padding:20px}
+.wizardBox{width:min(980px,96vw);height:min(860px,94vh);padding:20px;display:grid;grid-template-rows:auto minmax(0,1fr) auto}
+.wizardHead{display:flex;justify-content:space-between;align-items:center}
+.step{display:none;overflow:auto;padding:18px}.step.active{display:block}
+.modeChoice{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:40px}
+.modeChoice button{padding:40px 20px;border-radius:20px;border:2px solid #3c5489;background:#0b1735;color:#fff;font-size:34px;font-weight:1000;cursor:pointer}
+.modeChoice button:hover{border-color:#cf76ff;background:#28144f}.modeChoice button.active{border-color:#ffd84d;background:#3b246c;box-shadow:0 0 0 3px #ffd84d33}
+.setupGrid{display:grid;grid-template-columns:220px 1fr;gap:16px;margin-top:16px}
+.setupGrid label{font-weight:900}.setupGrid select,.setupGrid textarea{width:100%;border:1px solid #40598e;border-radius:11px;background:#0c1736;color:white;padding:11px}
+.namesList{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:14px}
+.nameRow{display:grid;grid-template-columns:90px 1fr;gap:8px;align-items:center;background:#0d1837;border:1px solid #314878;border-radius:10px;padding:8px}
+.nameRow label{color:var(--yellow);font-weight:900}.nameRow input{width:100%;border:1px solid #40598e;border-radius:9px;background:#081126;color:#fff;padding:9px}
+.previewGrid{display:grid;grid-template-columns:repeat(2,minmax(430px,1fr));gap:10px}
+.wizardFoot{display:flex;justify-content:space-between;gap:10px}.wizardFoot button{padding:13px 22px}
+
+/* JUEGO */
+#game{display:none;padding:8px;grid-template-rows:56px minmax(0,1fr) 84px;gap:8px}
+#game.active{display:grid}
+.gameTop{display:grid;grid-template-columns:1fr auto auto;align-items:center;padding:0 14px}
+.gameTitle{font-size:18px;font-weight:900}.gameNo{font-size:12px;color:var(--muted);margin-right:12px}
+.statusLine{font-size:13px;color:var(--yellow);font-weight:900}
+.main{min-height:0;display:grid;grid-template-columns:340px 370px minmax(560px,1fr);gap:8px}
+.left{display:grid;grid-template-rows:48% minmax(0,1fr);gap:8px;min-height:0}
+.presenter{position:relative;overflow:hidden}
+.presenter{background:radial-gradient(circle at 50% 35%,color-mix(in srgb,var(--machineA) 70%,#fff 5%) 0,var(--panelTop) 42%,var(--panelBottom) 100%)}
+.presenter img{width:100%;height:100%;object-fit:contain;object-position:center bottom;padding:4px}
+.ranking{padding:10px;display:flex;flex-direction:column;min-height:0}
+.rankHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}.rankHead b{color:var(--yellow)}.rankHead small{color:var(--muted)}
+.rankList{display:grid;grid-template-columns:1fr 1fr;gap:6px;overflow:auto}
+.rankCard{border:1px solid #3a5186;border-radius:10px;background:#091227;padding:7px;cursor:pointer}
+.rankTitle{display:flex;justify-content:space-between;font-weight:900;font-size:13px;margin-bottom:5px}
+.rankMeta{font-size:11px;color:var(--muted);margin-top:5px}
+.mini90{display:grid;grid-template-columns:repeat(9,1fr);gap:1px}.mini75{display:grid;grid-template-columns:repeat(5,1fr);gap:1px}
+.miniCell{min-height:13px;background:#f5f5f5;color:#111;display:grid;place-items:center;font-size:7px;font-weight:900}.miniCell.blank{background:#cbd8ef}.miniCell.marked{background:var(--ticketMark);color:white}.miniCell.free{background:#ffd846}
+.center{padding:10px;display:flex;flex-direction:column;align-items:center;min-height:0}
+.centerTitle{color:var(--yellow);font-weight:900}
+.machine{width:min(295px,55vh);aspect-ratio:1;border-radius:50%;margin:auto;display:grid;place-items:center;background:radial-gradient(circle,var(--machineA),var(--machineB) 58%,var(--panelBottom) 74%);border:10px solid var(--blue);box-shadow:0 0 0 3px #3fc0ff,0 0 36px #1b94ff88}
+.ball{width:67%;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;font-size:clamp(65px,8vh,108px);font-weight:1000;color:#111;background:radial-gradient(circle at 37% 28%,#fff 0 29%,#ececf2 30% 38%,#b16af7 39% 68%,#3b116c 69%);border:7px solid #fff7;box-shadow:0 0 30px #c77cff99}
+.ball.spin{animation:spin .65s ease}@keyframes spin{0%{transform:scale(.72) rotate(-80deg)}60%{transform:scale(1.12) rotate(16deg)}100%{transform:scale(1)}}
+.counter{margin:7px 0;color:var(--muted);font-weight:800}.counter b{color:var(--yellow);font-size:22px}
+.recent{display:flex;gap:5px;min-height:38px;margin-bottom:7px}.recent i{font-style:normal;width:37px;height:37px;border-radius:50%;display:grid;place-items:center;background:var(--purple);border:2px solid #d9c1ff;font-weight:900}
+.draw{width:100%;padding:14px;font-size:24px}.two{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}.two button{padding:10px}
+.boardPanel{padding:10px;display:flex;flex-direction:column;min-height:0}
+.boardHead{display:flex;justify-content:space-between;margin-bottom:6px}.boardHead span{color:var(--muted)}
+.board{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;flex:1;min-height:0}
+.n{border:1px solid var(--boardBorder);border-radius:7px;background:var(--boardCell);display:grid;place-items:center;font-size:clamp(14px,1.45vw,25px);font-weight:900}.n.drawn{background:radial-gradient(circle at 35% 25%,var(--drawA),var(--drawB) 60%,var(--drawC))}.n.latest{outline:3px solid var(--yellow);box-shadow:0 0 15px #ffc62faa}
+.bottom{display:grid;grid-template-columns:1fr 1fr 1fr repeat(4,150px);gap:8px}
+.big{border:0;border-radius:15px;color:#fff;font-size:clamp(25px,2.5vw,43px);font-weight:1000;cursor:pointer}
+.line{background:linear-gradient(#42dc68,#13872e);box-shadow:inset 0 0 0 3px #79ff94}.bingo{background:linear-gradient(#ff5750,#ba1111);box-shadow:inset 0 0 0 3px #ff8d84}
+.tool{border:1px solid #425a91;border-radius:14px;background:#14234b;color:#fff;font-weight:900;cursor:pointer;padding:6px}.purple{background:linear-gradient(#8238ec,#4d159d)}.blue{background:linear-gradient(#1977df,#0c3f90)}
+
+/* CARTONES Y VISOR */
+.modal{position:fixed;inset:2vh 2vw;background:#071027;border:1px solid #3a538d;border-radius:20px;z-index:30;display:none;grid-template-rows:auto auto minmax(0,1fr);padding:13px;box-shadow:0 20px 80px #000}.modal.show{display:grid}
+.modalHead{display:flex;justify-content:space-between;align-items:center}.modalHead h2{margin:0}
+.pager{display:flex;gap:7px;align-items:center;justify-content:center;margin:8px 0}.pager button,.pager select{border:1px solid #40598e;border-radius:9px;background:#12234a;color:#fff;padding:8px 11px;font-weight:900}.pager button{cursor:pointer}
+.cardsGrid{overflow:auto;display:grid;grid-template-columns:repeat(2,minmax(430px,1fr));gap:9px}
+.ticket{background:#fff;color:#111;border:4px solid #245dbd;border-radius:11px;padding:9px;cursor:pointer}.ticket.winLine{border-color:#25b94d}.ticket.winBingo{border-color:#e43232}
+.ticketHead{display:flex;justify-content:space-between;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:6px}.ticketHead b{color:#17468f;font-size:19px}.ticketHead span{font-weight:900}
+.t90{display:grid;grid-template-columns:repeat(9,1fr)}.t75{display:grid;grid-template-columns:repeat(5,1fr)}.t90 div,.t75 div{border:1px solid #8ba9db;min-height:37px;display:grid;place-items:center;font-size:19px;font-weight:900}.blank{background:#dce8fb}.marked{background:var(--ticketMark)!important;color:white}.free{background:#ffd846}.head75{background:#245dbd;color:white}
+.cardStats{display:flex;gap:12px;margin-top:7px;font-size:12px;font-weight:800;color:#344}.cardStats b{color:#6b25c4}
+.large{position:fixed;inset:2vh 3vw;background:#071027;border:1px solid #3e5a99;border-radius:22px;z-index:40;display:none;grid-template-rows:auto minmax(0,1fr) auto;padding:14px}.large.show{display:grid}
+.largeHead{display:flex;justify-content:space-between;align-items:center}.largeBody{overflow:auto;display:flex;align-items:center;justify-content:center;padding:15px}.zoomWrap{transform-origin:center center;transition:transform .15s}.large .ticket{width:min(1000px,92vw)}.large .t90 div,.large .t75 div{min-height:63px;font-size:31px}
+.largeFoot{display:grid;grid-template-columns:130px 130px 1fr 130px 130px 170px;gap:7px}.largeFoot button{border:0;border-radius:9px;padding:10px;color:#fff;font-weight:900;cursor:pointer}.nav{background:#176acf}.zoom{background:#5e33bd}.print{background:#1b75d8}.zoomLabel{display:grid;place-items:center;color:var(--yellow);font-weight:900}
+
+/* GANADORES */
+.winnerOverlay{position:fixed;inset:0;background:rgba(1,3,10,.72);z-index:60;display:none;align-items:center;justify-content:center;pointer-events:none}
+.winnerOverlay.show{display:flex}
+.winnerBox{width:min(900px,88vw);padding:28px 36px;border-radius:26px;text-align:center;pointer-events:auto;background:rgba(10,18,43,.95);border:3px solid var(--yellow);box-shadow:0 0 80px #ffc62f77}
+.winnerBox.lineWinner{border-color:#41da6b;box-shadow:0 0 80px #41da6b66}
+.winnerBox.bingoWinner{border-color:#ff4d4d;box-shadow:0 0 90px #ff4d4d77}
+.winnerKicker{font-size:28px;font-weight:1000;color:var(--yellow)}
+.winnerMain{font-size:clamp(42px,7vw,92px);font-weight:1000;margin:10px 0}
+.winnerNames{font-size:clamp(25px,3.3vw,48px);font-weight:900}
+.winnerActions{display:flex;gap:12px;justify-content:center;margin-top:22px}.winnerActions button{padding:13px 20px}
+.lineHistory{position:fixed;right:15px;top:68px;z-index:15;background:#0b1430e8;border:1px solid #3a5186;border-radius:12px;padding:8px 12px;font-size:12px;color:var(--yellow);display:none}
+.lineHistory.show{display:block}
+
+/* CARGAR */
+.gamesList{overflow:auto;display:grid;gap:7px}.gameRow{display:grid;grid-template-columns:110px 1fr 100px 100px;gap:7px;align-items:center;padding:9px;background:#0d1837;border:1px solid #314878;border-radius:10px}.gameRow button{border:0;border-radius:8px;padding:7px;color:#fff;font-weight:900}.load{background:#1972d8}.delete{background:#a22936}
+
+
+#settings select,#settings button{border:1px solid #40598e;border-radius:8px;background:#12234a;color:#fff;padding:7px;font-size:12px;font-weight:800}
+#settings select{min-width:0;width:100%}
+#settings button{cursor:pointer}
+#settings button:hover{filter:brightness(1.18)}
+@media(max-width:1200px){.main{grid-template-columns:290px 330px 1fr}.bottom{grid-template-columns:1fr 1fr 1fr repeat(4,110px)}}
+@media(max-height:700px){#game{grid-template-rows:48px minmax(0,1fr) 72px}.machine{width:min(250px,49vh)}}
+
+.line.hasWinner{
+ background:linear-gradient(#ffc94a,#d88b00);
+ color:#161000;
+ box-shadow:inset 0 0 0 3px #ffe78d,0 5px 0 #8e5700;
+ padding:8px;
+}
+.line.hasWinner .lineWinnerName{
+ display:block;
+ font-size:clamp(18px,1.9vw,30px);
+ line-height:1.05;
+}
+.line.hasWinner .lineWinnerCard{
+ display:block;
+ font-size:13px;
+ margin-top:4px;
+ font-weight:900;
+ opacity:.82;
+}
+.line .lineWinnerName,.line .lineWinnerCard{display:none}
+
+
+.presenterChoiceGrid{
+ display:grid;
+ grid-template-columns:repeat(4,minmax(160px,1fr));
+ gap:16px;
+ margin-top:22px;
+}
+.presenterCard{
+ position:relative;
+ border:2px solid #334a7c;
+ border-radius:18px;
+ background:#0a1430;
+ padding:10px;
+ cursor:pointer;
+ transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease,filter .2s ease;
+ overflow:hidden;
+}
+.presenterCard img{
+ width:100%;
+ aspect-ratio:1;
+ object-fit:cover;
+ border-radius:13px;
+ display:block;
+}
+.presenterCard b{
+ display:block;
+ text-align:center;
+ font-size:22px;
+ margin-top:9px;
+}
+.presenterCard small{
+ display:block;
+ text-align:center;
+ color:var(--muted);
+}
+.voicePreview{
+ width:100%;
+ margin-top:8px;
+ border:1px solid #4c6398;
+ border-radius:10px;
+ background:#14234b;
+ color:#fff;
+ padding:8px;
+ font-weight:900;
+ cursor:pointer;
+}
+.voicePreview:hover{filter:brightness(1.2)}
+.presenterCard:hover{
+ transform:scale(1.045);
+ filter:brightness(1.1);
+ z-index:2;
+}
+.presenterCard[data-color="black"]:hover,.presenterCard[data-color="black"].selected{
+ border-color:#e8e8e8;
+ box-shadow:0 0 30px #ffffff66;
+}
+.presenterCard[data-color="red"]:hover,.presenterCard[data-color="red"].selected{
+ border-color:#ff4f57;
+ box-shadow:0 0 30px #ff334477;
+}
+.presenterCard[data-color="white"]:hover,.presenterCard[data-color="white"].selected{
+ border-color:#ffffff;
+ box-shadow:0 0 30px #ffffff88;
+}
+.presenterCard[data-color="green"]:hover,.presenterCard[data-color="green"].selected{
+ border-color:#31dd67;
+ box-shadow:0 0 30px #24d85f77;
+}
+.presenterCard.selected:after{
+ content:"ELEGIDO";
+ position:absolute;
+ top:16px;
+ right:16px;
+ background:var(--yellow);
+ color:#181000;
+ font-weight:1000;
+ padding:6px 10px;
+ border-radius:999px;
+}
+.presenterCard.dimmed{opacity:.45;transform:scale(.96)}
+.previewPager{
+ display:flex;
+ gap:8px;
+ align-items:center;
+ justify-content:center;
+ margin-bottom:10px;
+}
+.previewPager button,.previewPager select{
+ border:1px solid #40598e;
+ border-radius:9px;
+ background:#12234a;
+ color:#fff;
+ padding:8px 11px;
+ font-weight:900;
+}
+.previewPager button{cursor:pointer}
+.previewTabs{
+ display:flex;
+ gap:6px;
+ justify-content:center;
+ flex-wrap:wrap;
+ margin-bottom:10px;
+}
+.previewTabs button{
+ border:1px solid #40598e;
+ border-radius:9px;
+ background:#0c1736;
+ color:white;
+ padding:7px 11px;
+ font-weight:900;
+ cursor:pointer;
+}
+.previewTabs button.active{
+ background:#6b35d4;
+ border-color:#c99cff;
+}
+@media(max-width:900px){
+ .presenterChoiceGrid{grid-template-columns:repeat(2,1fr)}
+}
+
+
+.sourceChoice{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:12px 0 18px}.sourceChoice button{padding:18px;font-size:18px}.sourceChoice button.active{background:#6b35d4;border-color:#d6b6ff}.manualTools{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.manualCards{display:grid;gap:16px}.manualCard{padding:14px;border:1px solid #ffffff24;border-radius:16px;background:#0d1730}.manualCardHead{display:grid;grid-template-columns:130px 1fr auto;gap:10px;align-items:center}.manualBets{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0}.manualBets label{display:flex;gap:6px;align-items:center;background:#ffffff0b;padding:7px 10px;border-radius:10px}.manualGrid90,.manualGrid75{display:grid;gap:4px;margin-top:10px}.manualGrid90{grid-template-columns:repeat(9,minmax(42px,1fr))}.manualGrid75{grid-template-columns:repeat(5,minmax(50px,1fr))}.manualCell{width:100%;min-width:0;text-align:center;padding:9px 4px;border-radius:8px;border:1px solid #ffffff2b;background:#081126;color:#fff;font-weight:800}.manualCell.invalid{border-color:#ff5964;background:#3c1118}.manualError{color:#ff9aa2;font-size:13px;margin-top:8px;white-space:pre-line}.betTag{font-size:11px;color:#d8c8ff}.big.ambo{background:linear-gradient(135deg,#7a3be0,#b45cff)}
+.gameConfig{display:grid;gap:14px;max-width:760px;margin:0 auto}.configBlock{background:#0d1837;border:1px solid #314878;border-radius:14px;padding:14px}.configBlock h4{margin:0 0 10px;color:var(--yellow)}.checkRow{display:flex;flex-wrap:wrap;gap:10px}.checkRow label,.radioRow label{display:flex;align-items:center;gap:7px;background:#ffffff0b;border:1px solid #ffffff18;border-radius:10px;padding:10px 12px;font-weight:900}.radioRow{display:flex;flex-wrap:wrap;gap:10px}.autoControls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.autoState{font-size:12px;color:var(--yellow);font-weight:900;text-align:center;margin-top:6px}.draw.secondaryDraw{background:linear-gradient(#247fd8,#124d9e)}
+@media(max-width:700px){.sourceChoice{grid-template-columns:1fr}.manualCardHead{grid-template-columns:1fr}.manualGrid90{grid-template-columns:repeat(9,minmax(30px,1fr))}.manualCell{padding:7px 1px;font-size:12px}}
+
+/* V7.2: ajuste de pantalla, temas, confirmación y edición */
+#game{grid-template-rows:52px minmax(0,1fr) 74px}
+.main{grid-template-columns:minmax(270px,320px) minmax(300px,350px) minmax(500px,1fr)}
+.bottom{grid-template-columns:repeat(3,minmax(0,1fr)) repeat(5,minmax(92px,140px));gap:7px}
+.big{font-size:clamp(21px,2vw,34px);line-height:1.05;padding:5px}
+.tool{font-size:13px;line-height:1.1}.draw{font-size:21px;padding:11px}.two button{font-size:14px;padding:8px}
+.winnerBox{max-height:92vh;overflow:auto}.winnerNames small{font-size:.55em;color:var(--muted)}
+.themeModal{inset:12vh 13vw;grid-template-rows:auto auto 1fr}.themeGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;padding:12px;overflow:auto}
+.themeChoice{min-height:110px;border:2px solid #ffffff22;border-radius:16px;color:white;font-weight:1000;cursor:pointer;display:flex;flex-direction:column;justify-content:flex-end;padding:12px;box-shadow:inset 0 0 30px #0007}.themeChoice.active{outline:4px solid var(--yellow)}
+.editCardModal{inset:4vh 8vw;grid-template-rows:auto 1fr}.editCardForm{overflow:auto;padding:12px;display:grid;gap:12px}.editCardForm>label{display:grid;grid-template-columns:180px 1fr;gap:10px;align-items:center;font-weight:900}.editCardForm input[type=text],.editCardForm>label input{background:#081126;color:#fff;border:1px solid #40598e;border-radius:9px;padding:10px}.editBets{display:flex;gap:18px;align-items:center;flex-wrap:wrap}.editActions{display:flex;justify-content:flex-end;gap:10px}.editActions button{padding:12px 20px}.editCardModal .manualGrid{max-width:900px;margin:auto;width:100%}
+#confettiLayer{position:fixed;inset:0;pointer-events:none;z-index:100;overflow:hidden}.confettiPiece{position:absolute;top:-30px;width:12px;height:18px;animation:confettiFall 2.8s linear forwards}@keyframes confettiFall{to{transform:translate(var(--x),110vh) rotate(900deg);opacity:.8}}
+body[data-theme="azul"]{--purple:#1379e8;--blue:#00a6ff;--yellow:#70d8ff;--line:#245b9a}body[data-theme="rojo"]{--purple:#e63345;--blue:#ff6b3d;--yellow:#ffd34d;--line:#843447}body[data-theme="esmeralda"]{--purple:#13a879;--blue:#15c9a3;--yellow:#b7ff5a;--line:#256e62}body[data-theme="dorado"]{--purple:#b8790a;--blue:#d39a22;--yellow:#ffe07a;--line:#80652e}body[data-theme="rosa"]{--purple:#e334bd;--blue:#ff62d6;--yellow:#ffd1f4;--line:#7f3477}body[data-theme="turquesa"]{--purple:#09a6b6;--blue:#1bd6c4;--yellow:#bafff6;--line:#246f78}body[data-theme="naranja"]{--purple:#ef6d19;--blue:#ff9c2f;--yellow:#ffe25a;--line:#8a4b28}body[data-theme="hielo"]{--purple:#5a83d8;--blue:#67c8ff;--yellow:#e7f7ff;--line:#5979a8}body[data-theme="premium"]{--purple:#6d52a9;--blue:#303a62;--yellow:#d9bd75;--line:#4c4a5d}
+body[data-theme="azul"]{background:radial-gradient(circle at 50% -20%,#123d75,#041325 50%,#01040a)}body[data-theme="rojo"]{background:radial-gradient(circle at 50% -20%,#661b29,#17070d 50%,#050104)}body[data-theme="esmeralda"]{background:radial-gradient(circle at 50% -20%,#155c4b,#061a17 50%,#010706)}body[data-theme="dorado"]{background:radial-gradient(circle at 50% -20%,#5b4317,#171106 50%,#050401)}body[data-theme="rosa"]{background:radial-gradient(circle at 50% -20%,#68155c,#1d071b 50%,#060105)}body[data-theme="turquesa"]{background:radial-gradient(circle at 50% -20%,#115b68,#04191d 50%,#010607)}body[data-theme="naranja"]{background:radial-gradient(circle at 50% -20%,#71351a,#1b0c05 50%,#060201)}body[data-theme="hielo"]{background:radial-gradient(circle at 50% -20%,#40577d,#101827 50%,#030509)}body[data-theme="premium"]{background:radial-gradient(circle at 50% -20%,#282436,#09090c 50%,#010102)}
+@media(max-width:1400px){.main{grid-template-columns:285px 315px minmax(430px,1fr)}.bottom{grid-template-columns:repeat(3,minmax(0,1fr)) repeat(5,minmax(78px,115px))}.tool{font-size:11px}.rankList{grid-template-columns:1fr}.presenter{display:none}.left{grid-template-rows:1fr}.machine{width:min(235px,47vh)}.board{gap:3px}.n{font-size:clamp(12px,1.4vw,21px)}}
+@media(max-height:760px){#game{grid-template-rows:46px minmax(0,1fr) 64px}.gameTop{font-size:12px}.center{padding:6px}.machine{width:min(205px,39vh)}.recent{min-height:30px}.recent i{width:30px;height:30px}.rankMeta{display:none}.bottom{gap:5px}.big{font-size:20px}.winnerBox{padding:18px 25px}}
+
+
+/* V8.1: editor de cartones con formato real */
+.editCardModal{inset:2.5vh 4vw}
+.editCardForm{padding:16px 20px 20px;gap:14px}
+.editCardModal .manualGrid{max-width:1180px}
+.editTicketShell{width:min(1120px,100%);margin:4px auto 0;background:#fff;color:#101010;border:5px solid #245dbd;border-radius:16px;padding:12px;box-shadow:0 15px 35px #0008}
+.editTicketCaption{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px;color:#17468f;font-weight:1000}
+.editTicketCaption strong{font-size:20px}.editTicketCaption span{font-size:14px;color:#33496f}
+.editCardBoard{display:grid;gap:0;border:2px solid #6f8fc7;background:#6f8fc7}
+.editGrid90 .editCardBoard{grid-template-columns:repeat(9,minmax(62px,1fr))}
+.editGrid75 .editCardBoard{grid-template-columns:repeat(5,minmax(88px,1fr))}
+.editGridHeader{min-height:34px;background:#245dbd;color:#fff;display:grid;place-items:center;font-weight:1000;border:1px solid #7795cb;font-size:13px;line-height:1.05;padding:3px;text-align:center}
+.editGrid75 .editGridHeader{font-size:24px;letter-spacing:1px}
+.editNumberCell{width:100%;height:64px;min-width:0;border:1px solid #8ba9db!important;border-radius:0!important;background:#fff!important;color:#111!important;text-align:center;font-size:25px;font-weight:1000;padding:0!important;outline:none;appearance:textfield;-moz-appearance:textfield;box-sizing:border-box}
+.editNumberCell::-webkit-inner-spin-button,.editNumberCell::-webkit-outer-spin-button{appearance:none;margin:0}
+.editNumberCell.empty{background:#dce8fb!important;color:#50627e!important}
+.editNumberCell:focus{position:relative;z-index:2;border:3px solid #ffbf19!important;box-shadow:inset 0 0 0 2px #fff,0 0 0 2px #ffbf19}
+.editNumberCell.invalid{background:#ffe0e3!important;border:3px solid #e32f43!important;color:#a30d20!important}
+.editNumberCell.duplicate{background:#fff1be!important;border:3px solid #db9300!important}
+.editFreeLogo{height:64px;background:#fff;display:grid;place-items:center;border:1px solid #8ba9db;overflow:hidden;position:relative}
+.editFreeLogo img{height:58px;width:auto;max-width:95%;object-fit:contain;display:block}
+.editFreeLogo:after{content:'LIBRE';position:absolute;right:3px;bottom:2px;font-size:8px;font-weight:1000;color:#17468f;background:#ffffffd9;padding:1px 3px;border-radius:3px}
+.editCardCounters{width:min(1120px,100%);margin:0 auto;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.editCounter{background:#17264a;border:1px solid #3d5b93;border-radius:10px;padding:7px 11px;font-weight:900;color:#dbe7ff}
+.editCounter.ok{border-color:#35c966;color:#8dffad}.editCounter.bad{border-color:#ff5964;color:#ff9aa2}
+.editCardHint{width:min(1120px,100%);margin:0 auto;color:#9db8ef;font-size:12px;text-align:center}
+.t75 .freeLogoCell{background:#fff!important;padding:2px;overflow:hidden}.t75 .freeLogoCell img{height:32px;width:auto;max-width:100%;object-fit:contain;display:block}.large .t75 .freeLogoCell img{height:58px}
+.miniFreeLogo{background:#fff!important;padding:1px;overflow:hidden}.miniFreeLogo img{height:11px;width:auto;max-width:100%;object-fit:contain;display:block}
+@media(max-width:900px){.editCardModal{inset:1.5vh 1.5vw}.editCardForm{padding:10px}.editGrid90 .editCardBoard{grid-template-columns:repeat(9,minmax(38px,1fr))}.editGrid75 .editCardBoard{grid-template-columns:repeat(5,minmax(54px,1fr))}.editNumberCell,.editFreeLogo{height:52px}.editFreeLogo img{height:46px}.editNumberCell{font-size:20px}.editGridHeader{font-size:10px}.editGrid75 .editGridHeader{font-size:19px}}
+
+
+/* V7.4 */
+.big.ambo{font-size:clamp(17px,1.55vw,27px);letter-spacing:-.4px}.big.bingo{position:relative;overflow:hidden;background:linear-gradient(180deg,#5a2604,#b66a0c 42%,#5b2302);border:2px solid #ffd97b;color:#fff4bd;text-shadow:0 2px 0 #4c1e00,0 0 12px #ffd34d;box-shadow:inset 0 0 18px #ffbd3a88,0 0 14px #ffbd3a44}.big.bingo:before{content:"";position:absolute;inset:-60% -20%;background:linear-gradient(110deg,transparent 40%,#fff9 50%,transparent 60%);transform:translateX(-80%);animation:bingoShine 4.5s ease-in-out infinite}@keyframes bingoShine{0%,70%{transform:translateX(-80%)}90%,100%{transform:translateX(80%)}}
+.prizeDefault,.prizeWinnerName,.prizeWinnerCard{position:relative;z-index:1}.prizeWinnerName,.prizeWinnerCard{display:none}.big.hasWinner{padding:6px}.big.hasWinner .prizeDefault{font-size:13px;display:block;opacity:.85}.big.hasWinner .prizeWinnerName{display:block;font-size:clamp(15px,1.45vw,24px);line-height:1}.big.hasWinner .prizeWinnerCard{display:block;font-size:11px;margin-top:3px}.big.possible{outline:4px solid #fff;animation:possiblePulse .7s alternate infinite}.big.amboExpired{background:linear-gradient(135deg,#343a49,#171c27)!important;border-color:#697386!important;box-shadow:none!important;filter:saturate(.15);cursor:default}.big.amboExpired .prizeDefault{font-size:clamp(16px,1.5vw,23px)}.big.amboExpired .prizeWinnerName{display:block;color:#d5d9e2;font-size:clamp(13px,1.15vw,18px)}.big.amboExpired .prizeWinnerCard{display:block;color:#9da6b6}@keyframes possiblePulse{to{filter:brightness(1.35)}}
+.pdfSetup{display:none;background:#0d1837;border:1px solid #314878;border-radius:14px;padding:14px}.pdfDrop{border:2px dashed var(--blue);border-radius:14px;padding:18px;text-align:center}.pdfDrop input{display:block;margin:12px auto}.pdfStatus{margin:10px 0;color:var(--muted);white-space:pre-line}.pdfToolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.pdfToolbar button{padding:8px 12px}.pdfToolbar input{padding:9px;border-radius:8px;border:1px solid #40598e;background:#081126;color:#fff}.pdfCards{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:8px;max-height:390px;overflow:auto}.pdfCard{border:2px solid #344b7c;background:#091227;border-radius:10px;padding:8px;cursor:pointer}.pdfCard.selected{border-color:var(--yellow);box-shadow:0 0 0 2px color-mix(in srgb,var(--yellow) 30%,transparent)}.pdfCard.invalid{border-color:var(--red)}.pdfCardHead{display:flex;justify-content:space-between;font-weight:900}.pdfMini{display:grid;grid-template-columns:repeat(9,1fr);gap:1px;margin-top:5px}.pdfMini span{background:#f4f4f4;color:#111;text-align:center;font-size:7px;min-height:13px}.pdfMini span.blank{background:#ccd6e8}.pdfHelp{font-size:12px;color:var(--muted)}.pdfCardActions{display:flex;gap:6px;margin-top:7px}.pdfCardActions button{flex:1;padding:7px 5px;font-size:11px}.pdfPlayerName{display:grid;grid-template-columns:auto 1fr;gap:6px;align-items:center;margin-top:7px;font-size:11px;font-weight:900;color:var(--muted)}.pdfPlayerName input{width:100%;min-width:0;padding:7px 8px;border-radius:7px;border:1px solid #40598e;background:#081126;color:#fff;font-weight:800}.pdfReviewModal{inset:5vh 10vw;grid-template-rows:auto 1fr}.pdfReviewBody{padding:14px;overflow:auto}.pdfReviewGrid{display:grid;grid-template-columns:repeat(9,minmax(44px,1fr));gap:5px;max-width:900px;margin:14px auto}.pdfReviewGrid input{width:100%;min-width:0;text-align:center;padding:10px 2px;background:#081126;color:#fff;border:1px solid #48639c;border-radius:8px;font-weight:900}.pdfReviewGrid input.bad{border-color:#ff5c67;background:#3a1118}.pdfReviewActions{display:flex;justify-content:flex-end;gap:10px;margin-top:12px}.pdfReviewMeta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.pdfReviewMeta input{background:#081126;color:#fff;border:1px solid #40598e;border-radius:8px;padding:9px}
+@media(max-width:900px){.sourceChoice{grid-template-columns:1fr}.pdfCards{grid-template-columns:repeat(2,1fr)}}
+body[data-theme="azul"]{--panelTop:#102d54;--panelBottom:#04101f;--boardCell:#05172d;--boardBorder:#277ac4;--drawA:#a6edff;--drawB:#168ce8;--drawC:#064b9d;--machineA:#168ce8;--machineB:#062f69;--ticketMark:#168ce8}
+body[data-theme="rojo"]{--panelTop:#42121a;--panelBottom:#140509;--boardCell:#21080d;--boardBorder:#8f3040;--drawA:#ffd0a5;--drawB:#ef3e48;--drawC:#780c21;--machineA:#e63345;--machineB:#64101e;--ticketMark:#e63345}
+body[data-theme="esmeralda"]{--panelTop:#0d3a31;--panelBottom:#03130f;--boardCell:#061f1a;--boardBorder:#287865;--drawA:#c3ffe5;--drawB:#13a879;--drawC:#075b42;--machineA:#13a879;--machineB:#07513f;--ticketMark:#13a879}
+body[data-theme="dorado"]{--panelTop:#3b2d12;--panelBottom:#110c03;--boardCell:#211805;--boardBorder:#8a6928;--drawA:#fff1b0;--drawB:#d39a22;--drawC:#704600;--machineA:#c58b16;--machineB:#5a3c04;--ticketMark:#c58b16}
+body[data-theme="rosa"]{--panelTop:#42113c;--panelBottom:#150412;--boardCell:#250720;--boardBorder:#8c347f;--drawA:#ffd3f6;--drawB:#e334bd;--drawC:#780b62;--machineA:#e334bd;--machineB:#690853;--ticketMark:#e334bd}
+body[data-theme="turquesa"]{--panelTop:#0b3940;--panelBottom:#031316;--boardCell:#062126;--boardBorder:#277c85;--drawA:#c6fff9;--drawB:#09a6b6;--drawC:#075963;--machineA:#09a6b6;--machineB:#07515a;--ticketMark:#09a6b6}
+body[data-theme="naranja"]{--panelTop:#45200d;--panelBottom:#160803;--boardCell:#281006;--boardBorder:#98532b;--drawA:#ffe1ae;--drawB:#ef6d19;--drawC:#813006;--machineA:#ef6d19;--machineB:#6b2705;--ticketMark:#ef6d19}
+body[data-theme="hielo"]{--panelTop:#eaf5ff;--panelBottom:#a9c2db;--boardCell:#f5fbff;--boardBorder:#6f91b5;--txt:#07172b;--muted:#314e70;--drawA:#fff;--drawB:#67c8ff;--drawC:#2872bd;--machineA:#78caff;--machineB:#265b94;--ticketMark:#327fd0}.screen.active body[data-theme="hielo"]{color:#07172b}
+body[data-theme="premium"]{--panelTop:#24232b;--panelBottom:#070709;--boardCell:#111115;--boardBorder:#6b6250;--drawA:#fff2bd;--drawB:#b99b53;--drawC:#4b3d20;--machineA:#8e7540;--machineB:#322915;--ticketMark:#a98b49}
+
+</style>
+<style>
+/* V8: ajustes de estabilidad y legibilidad */
+.homeLogo{max-width:min(600px,86vw);max-height:calc(100vh - 245px);min-height:0;object-fit:contain;overflow:visible;border-radius:24px}
+.big{display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.02;min-width:0;overflow:hidden;padding:6px 8px}
+.big.ambo .prizeDefault{font-size:clamp(18px,1.65vw,31px);white-space:nowrap}
+.prizeWinnerName{display:block;font-size:clamp(13px,1.1vw,19px);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.prizeWinnerCard{display:block;font-size:clamp(10px,.85vw,14px);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.big.pendingPrize{outline:4px solid #ffd84d;animation:v8Pulse .7s ease-in-out infinite alternate}
+@keyframes v8Pulse{from{filter:brightness(1)}to{filter:brightness(1.4);transform:translateY(-2px)}}
+.big.amboExpired{background:linear-gradient(#4b5262,#252a35)!important;color:#bac1cf!important;box-shadow:inset 0 0 0 2px #777!important;cursor:default!important;filter:saturate(.2)}
+button:disabled{opacity:.55;cursor:not-allowed!important}
+.pdfCard input.pdfName{width:100%;margin-top:7px;padding:7px;border-radius:8px;border:1px solid #40598e;background:#081126;color:#fff}
+.pdfCard.invalid{border-color:#ff5964}.pdfCard.selected{box-shadow:0 0 0 3px #ffd84d}
+.reviewLock{pointer-events:none;opacity:.65}
+#game[data-phase="REVIEWING_WINNER"] #drawBtn,#game[data-phase="REVIEWING_WINNER"] #autoBtn,#game[data-phase="REVIEWING_WINNER"] #pauseBtn,#game[data-phase="REVIEWING_WINNER"] #undoBtn{opacity:.45;pointer-events:none}
+@media(max-width:1280px){.main{grid-template-columns:280px 330px minmax(460px,1fr)}.bottom{grid-template-columns:1fr 1fr 1fr repeat(4,120px)}.tool{font-size:12px}.gameTitle{font-size:15px}}
+</style></head>
+<body>
+<section class="screen active" id="home">
+<div class="homeBox card">
+<img alt="El Bingo de la Gorda" class="homeLogo" src="assets/logo.png"/>
+<div class="homeBtns">
+<button class="primary" id="newGameBtn">NUEVO JUEGO</button>
+<button class="secondary" id="loadGameBtn">CARGAR JUEGO</button>
+</div>
+<div class="homeSub">V10 Online · Bingo de 75 o 90 bolas · Hasta 50 cartones</div>
+</div>
+</section>
+<section class="screen" id="wizard">
+<div class="wizardBox card">
+<div class="wizardHead"><h2 id="wizardTitle">Nuevo juego</h2><button class="close" id="cancelWizard">CERRAR</button></div>
+<div class="step active" data-step="1">
+<h3>Configurá el modo de juego</h3>
+<div class="gameConfig">
+<div class="configBlock"><h4>1. Cantidad de bolillas</h4><div class="modeChoice"><button data-mode="75" type="button">75 BOLAS</button><button class="active" data-mode="90" type="button">90 BOLAS</button></div></div>
+<div class="configBlock"><h4>2. Premios que se jugarán</h4><div class="checkRow"><label><input checked="" id="globalAmbo" type="checkbox"/> AmboCabeza</label><label><input checked="" id="globalLine" type="checkbox"/> Línea</label><label><input checked="" id="globalBingo" type="checkbox"/> Bingo</label></div><small id="gameModeError" style="display:block;color:#ff9aa2;margin-top:8px"></small></div>
+<div class="configBlock"><h4>3. Forma de sorteo</h4><div class="radioRow"><label><input name="drawMode" type="radio" value="manual"/> Manual</label><label><input checked="" name="drawMode" type="radio" value="automatic"/> Automático</label></div><label style="display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center;margin-top:12px">Segundos entre bolillas <select id="autoSeconds"><option value="4">4 segundos</option><option selected="" value="6">6 segundos</option><option value="8">8 segundos</option><option value="10">10 segundos</option><option value="15">15 segundos</option></select></label><small style="display:block;color:var(--muted);margin-top:8px">En automático se detendrá cuando aparezca un premio para poder verificarlo.</small></div>
+</div>
+</div>
+<div class="step" data-step="2">
+<h3 style="text-align:center;font-size:30px">ELEGÍ AL DE LA SUERTE</h3>
+<div class="presenterChoiceGrid" id="presenterChoiceGrid">
+<article class="presenterCard" data-color="black" data-id="vero" data-name="VERO">
+<img alt="VERO" src="assets/vero.png"/><b>VERO</b><small>Color negro</small><button class="voicePreview" data-voice="vero" type="button">🎤 PROBAR VOZ</button>
+</article>
+<article class="presenterCard" data-color="red" data-id="vivi" data-name="VIVI">
+<img alt="VIVI" src="assets/vivi.png"/><b>VIVI</b><small>Color rojo</small><button class="voicePreview" data-voice="vivi" type="button">🎤 PROBAR VOZ</button>
+</article>
+<article class="presenterCard" data-color="white" data-id="josu" data-name="JOSU">
+<img alt="JOSU" src="assets/josu.png"/><b>JOSU</b><small>Color blanco</small><button class="voicePreview" data-voice="josu" type="button">🎤 PROBAR VOZ</button>
+</article>
+<article class="presenterCard" data-color="green" data-id="daia" data-name="DAIA">
+<img alt="DAIA" src="assets/daia.png"/><b>DAIA</b><small>Color verde</small><button class="voicePreview" data-voice="daia" type="button">🎤 PROBAR VOZ</button>
+</article>
+</div>
+</div>
+<div class="step" data-step="3">
+<h3>Elegí cómo cargar los cartones</h3>
+<div class="sourceChoice"><button class="active" id="sourceGenerated" type="button">GENERAR CARTONES</button><button id="sourceManual" type="button">CARGA MANUAL</button><button id="sourcePdf" type="button">IMPORTAR PDF</button></div>
+<div id="generatedSetup">
+<div class="setupGrid">
+<label>Cantidad de cartones</label><select id="qty"></select>
+<label>Pegar lista de nombres</label><textarea id="bulkNames" placeholder="Uno por línea o separados por coma"></textarea>
+</div>
+<div style="margin-top:10px"><button class="secondary" id="applyNames">APLICAR LISTA</button></div>
+<div class="namesList" id="namesList"></div>
+</div>
+<div class="pdfSetup" id="pdfSetup">
+<div class="pdfDrop"><b>IMPORTAR CARTONES DESDE PDF</b><input accept="application/pdf" id="pdfFile" type="file"/><div class="pdfHelp">Pensado para PDF de cartones con texto, como los generados por bingo.es. La primera importación necesita conexión para cargar el lector PDF.</div></div>
+<div class="pdfStatus" id="pdfStatus">Todavía no se cargó ningún PDF.</div>
+<div class="pdfToolbar"><button class="secondary" id="pdfSelectAll" type="button">SELECCIONAR TODOS</button><button class="secondary" id="pdfSelectNone" type="button">NINGUNO</button><input id="pdfSearch" placeholder="Buscar N.º de cartón"/><b id="pdfSelectedCount">0 seleccionados</b></div>
+<div class="pdfCards" id="pdfCards"></div>
+</div>
+<div id="manualSetup" style="display:none">
+<div class="manualTools"><button class="primary" id="addManualCard" type="button">+ AGREGAR CARTÓN</button><button class="secondary" id="copyLastBets" type="button">COPIAR APUESTAS DEL ÚLTIMO</button></div>
+<div class="manualCards" id="manualCards"></div>
+</div>
+</div>
+<div class="step" data-step="4">
+<h3>Vista previa de cartones</h3>
+<div class="previewPager">
+<button id="previewPrev">← ANTERIOR</button>
+<span id="previewPageInfo">Página 1 de 1</span>
+<button id="previewNext">SIGUIENTE →</button>
+<label>Por página
+     <select id="previewPerPage">
+<option value="2">2</option>
+<option value="4">4</option>
+<option selected="" value="8">8</option>
+</select>
+</label>
+</div>
+<div class="previewTabs" id="previewTabs"></div>
+<div class="previewGrid" id="previewGrid"></div>
+</div>
+<div class="wizardFoot">
+<button class="secondary" id="wizardBack">ATRÁS</button>
+<button class="primary" id="wizardNext">CONTINUAR</button>
+</div>
+</div>
+</section>
+<section class="screen" id="game">
+<header class="gameTop card">
+<div class="gameTitle">EL BINGO DE LA GORDA<span id="versionBadge" style="font-size:11px;color:var(--muted);font-weight:800;margin-left:8px">V10 ONLINE</span></div>
+<div class="statusLine" id="lineStatus">Línea: pendiente</div>
+<div class="gameNo" id="gameNo">Juego 0001</div>
+</header>
+<main class="main">
+<div class="left">
+<section class="presenter card"><img alt="Presentador elegido" id="gamePresenterImage" src="assets/vero.png"/></section>
+<section class="ranking card"><div class="rankHead"><b>CARTONES DESTACADOS</b><small>Más avanzados</small></div><div class="rankList" id="rankList"></div></section>
+</div>
+<section class="center card">
+<div class="centerTitle">ÚLTIMA BOLILLA</div><div class="machine"><div class="ball" id="lastBall">—</div></div>
+<div class="counter">SORTEADAS: <b id="counter">0 / 90</b></div><div class="recent" id="recent"></div>
+<button class="primary draw secondaryDraw" id="drawBtn">🎱 SIGUIENTE BOLILLA</button>
+<div class="autoControls"><button class="primary" id="autoBtn">▶ INICIAR AUTOMÁTICO</button><button class="secondary" id="undoBtn">↶ DESHACER</button></div>
+<div class="autoState" id="autoState">Sorteo manual</div>
+<div class="two"><button class="secondary" id="resetBtn">⟳ NUEVA RONDA</button><button class="secondary" id="pauseBtn">⏸ DETENER</button></div>
+</section>
+<section class="boardPanel card"><div class="boardHead"><b>TABLERO DE NÚMEROS</b><span id="modeLabel">Bingo de 90</span></div><div class="board" id="board"></div></section>
+</main>
+<footer class="bottom">
+<button class="big ambo" id="amboBtn"><span class="prizeDefault">AMBOCABEZA</span><span class="prizeWinnerName"></span><span class="prizeWinnerCard"></span></button>
+<button class="big line" id="lineBtn"><span class="prizeDefault">★ LÍNEA</span><span class="prizeWinnerName"></span><span class="prizeWinnerCard"></span></button>
+<button class="big bingo" id="bingoBtn"><span class="prizeDefault">BINGO</span><span class="prizeWinnerName"></span><span class="prizeWinnerCard"></span></button>
+<button class="tool purple" id="cardsBtn">🧾 CARTONES</button>
+<button class="tool purple" id="themeBtn">🎨 TEMA</button>
+<button class="tool blue" id="soundBtn">🔊 SONIDO</button>
+<button class="tool" id="exitGameBtn">↩ SALIR</button>
+<button class="tool" id="fullBtn">⛶ PANTALLA COMPLETA</button>
+</footer>
+</section>
+<section class="modal" id="cardsModal">
+<div class="modalHead"><h2>Cartones del juego</h2><button class="close" id="closeCards">CERRAR</button></div>
+<div class="pager"><button id="prevPage">←</button><span id="pageInfo"></span><button id="nextPage">→</button><label>Por página <select id="perPage"><option>1</option><option>2</option><option>4</option><option selected="">8</option></select></label><button id="printVisible">IMPRIMIR</button></div>
+<div class="cardsGrid" id="cardsGrid"></div>
+</section>
+<section class="modal" id="gamesModal">
+<div class="modalHead"><h2>Juegos guardados</h2><button class="close" id="closeGames">CERRAR</button></div><div></div><div class="gamesList" id="gamesList"></div>
+</section>
+<section class="large" id="large">
+<div class="largeHead"><h2 id="largeTitle"></h2><button class="close" id="closeLarge">CERRAR</button></div>
+<div class="largeBody"><div class="zoomWrap" id="zoomWrap"></div></div>
+<div class="largeFoot"><button class="nav" id="prevCard">← ANTERIOR</button><button class="zoom" id="zoomOut">− ZOOM</button><div class="zoomLabel" id="zoomLabel">100%</div><button class="zoom" id="zoomIn">+ ZOOM</button><button class="nav" id="nextCard">SIGUIENTE →</button><button class="print" id="printOne">IMPRIMIR</button></div>
+</section>
+<section class="modal themeModal" id="themeModal">
+<div class="modalHead"><h2>Temas de color</h2><button class="close" id="closeTheme">CERRAR</button></div>
+<p style="color:var(--muted);margin:8px 0">Elegí un tema. El cambio se aplica al instante y queda guardado.</p>
+<div class="themeGrid" id="themeGrid"></div>
+</section>
+<section class="modal pdfReviewModal" id="pdfReviewModal">
+<div class="modalHead"><b>REVISAR CARTÓN IMPORTADO</b><button id="closePdfReview">✕</button></div>
+<div class="pdfReviewBody">
+<div class="pdfReviewMeta"><label>N.º de cartón <input id="pdfReviewNumber" maxlength="12"/></label><label>Jugador <input id="pdfReviewName" maxlength="40" placeholder="Nombre del jugador"/></label><b id="pdfReviewPage"></b></div>
+<p class="muted">Corregí los números o las posiciones vacías para que coincidan exactamente con el cartón del PDF.</p>
+<div class="pdfReviewGrid" id="pdfReviewGrid"></div>
+<div class="manualError" id="pdfReviewError"></div>
+<div class="pdfReviewActions"><button class="secondary" id="clearPdfReview">LIMPIAR</button><button class="primary" id="savePdfReview">GUARDAR Y VALIDAR</button></div>
+</div>
+</section>
+<section class="modal editCardModal" id="editCardModal">
+<div class="modalHead"><h2>Editar cartón</h2><button class="close" id="closeEditCard">CERRAR</button></div>
+<div class="editCardForm">
+<label>Jugador<input id="editCardName" maxlength="40"/></label>
+<label>N.º de cartón<input id="editCardNumber" maxlength="12"/></label>
+<div class="editBets"><b>Participa en:</b><label><input id="editBetAmbo" type="checkbox"/> AmboCabeza</label><label><input id="editBetLine" type="checkbox"/> Línea</label><label><input id="editBetBingo" type="checkbox"/> Bingo</label></div>
+<div class="manualGrid" id="editCardGrid"></div>
+<div class="editCardCounters" id="editCardCounters"></div>
+<div class="editCardHint">Escribí cada número en la misma posición que ocupa en el cartón impreso. Podés moverte con Tab o con las flechas.</div>
+<div class="manualError" id="editCardError"></div>
+<div class="editActions"><button class="secondary" id="clearEditCard">LIMPIAR NÚMEROS</button><button class="primary" id="saveEditCard">GUARDAR CAMBIOS</button></div>
+</div>
+</section>
+<div aria-hidden="true" id="confettiLayer"></div>
+<div class="winnerOverlay" id="winnerOverlay">
+<div class="winnerBox" id="winnerBox">
+<div class="winnerKicker" id="winnerKicker">¡LÍNEA!</div>
+<div class="winnerMain" id="winnerMain">GANADOR</div>
+<div class="winnerNames" id="winnerNames"></div>
+<div class="winnerActions">
+<button class="secondary" id="viewWinnerCard">VER CARTÓN GANADOR</button>
+<button class="primary" id="continueGame">✅ CONFIRMAR GANADOR</button>
+<button class="secondary" id="finishGame">❌ NO ES VÁLIDO</button>
+</div>
+</div>
+</div>
+<div class="lineHistory" id="lineHistory"></div>
+<div class="settings card" id="settings" style="position:fixed;right:16px;top:70px;width:min(390px,calc(100vw - 32px));max-height:calc(100vh - 90px);overflow:auto;padding:12px;z-index:20;display:none">
+<b>SONIDO</b>
+<label style="display:grid;grid-template-columns:110px 1fr;gap:7px;margin:8px 0"><span>Voz</span><input checked="" id="voiceOn" type="checkbox"/></label>
+<label style="display:grid;grid-template-columns:110px 1fr;gap:7px;margin:8px 0"><span>Vol. voz</span><input id="voiceVol" max="1" min="0" step=".1" type="range" value="1"/></label>
+<div style="border-top:1px solid #ffffff24;margin:12px 0 8px;padding-top:10px">
+<b>VOCES DE CANTADORES</b>
+<div id="voiceStatus" style="font-size:12px;opacity:.78;line-height:1.35;margin:6px 0 10px">Buscando voces del equipo…</div>
+<label style="display:grid;grid-template-columns:58px 1fr 58px;gap:6px;align-items:center;margin:7px 0"><span>VERO</span><select id="voiceSelectVero"></select><button id="testVoiceVero" type="button">PROBAR</button></label>
+<label style="display:grid;grid-template-columns:58px 1fr 58px;gap:6px;align-items:center;margin:7px 0"><span>VIVI</span><select id="voiceSelectVivi"></select><button id="testVoiceVivi" type="button">PROBAR</button></label>
+<label style="display:grid;grid-template-columns:58px 1fr 58px;gap:6px;align-items:center;margin:7px 0"><span>JOSU</span><select id="voiceSelectJosu"></select><button id="testVoiceJosu" type="button">PROBAR</button></label>
+<label style="display:grid;grid-template-columns:58px 1fr 58px;gap:6px;align-items:center;margin:7px 0"><span>DAIA</span><select id="voiceSelectDaia"></select><button id="testVoiceDaia" type="button">PROBAR</button></label>
+<button id="autoAssignVoices" style="width:100%;margin-top:6px" type="button">REASIGNAR AUTOMÁTICAMENTE</button>
+</div>
+<label style="display:grid;grid-template-columns:110px 1fr;gap:7px;margin:8px 0"><span>Música</span><input checked="" id="musicOn" type="checkbox"/></label>
+<label style="display:grid;grid-template-columns:110px 1fr;gap:7px;margin:8px 0"><span>Vol. música</span><input id="musicVol" max=".15" min="0" step=".005" type="range" value=".04"/></label>
+<label style="display:grid;grid-template-columns:110px 1fr;gap:7px;margin:8px 0"><span>Efectos</span><input checked="" id="fxOn" type="checkbox"/></label>
+<label style="display:grid;grid-template-columns:110px 1fr;gap:7px;margin:8px 0"><span>Vol. efectos</span><input id="fxVol" max=".5" min="0" step=".01" type="range" value=".18"/></label>
+</div>
+
+<div id="fatalError" style="display:none;position:fixed;inset:18px;z-index:999;background:#2a0710;color:#fff;border:2px solid #ff5964;border-radius:18px;padding:20px;overflow:auto;white-space:pre-wrap;font:16px/1.45 Segoe UI,Arial"></div><script defer="defer" src="js/app-v8.js"></script><script defer="defer" src="js/online-room-admin.js"></script></body>
+</html>

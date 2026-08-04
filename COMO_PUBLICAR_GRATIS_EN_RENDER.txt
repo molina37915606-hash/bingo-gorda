@@ -25,7 +25,7 @@ USO
 3. Cargá nombres y autorizá 1 o 2 cartones por jugador.
 4. Abrí la sala de espera y compartí enlace y códigos.
 5. Esperá que todos confirmen.
-6. Presioná INICIAR PARTIDA.
+6. Presioná INICIAR SORTEO.
 
 LIMITACIONES DEL PLAN GRATUITO
 - Puede tardar cerca de un minuto en despertar.

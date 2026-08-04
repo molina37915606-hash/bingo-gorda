@@ -18,13 +18,14 @@ class PlayerApp {
     this.events = null;
     this.pendingMark = new Set();
     this.selectedOffers = new Set();
+    this.pendingReservation = new Set();
     this.voices = [];
     this.audioPreferenceLoaded = localStorage.getItem('bingoPlayerNumberVoice') !== null;
     this.audioEnabled = localStorage.getItem('bingoPlayerNumberVoice') === 'true';
     this.audioVolume = Number(localStorage.getItem('bingoPlayerNumberVolume') || .9);
   }
 
-  init() {
+  async init() {
     $('loginBtn').onclick = () => this.login();
     $('accessCode').addEventListener('keydown', event => { if (event.key === 'Enter') this.login(); });
     $('claimLine').onclick = () => this.claim('line');
@@ -39,7 +40,19 @@ class PlayerApp {
     $('testNumberVoice').onclick = () => this.testVoice();
     this.refreshVoices();
     if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => this.refreshVoices();
-    if (this.token) this.resume();
+    const params = new URLSearchParams(location.search);
+    const directCode = String(params.get('acceso') || params.get('codigo') || params.get('code') || '').trim().toUpperCase();
+    const roomCode = String(params.get('sala') || '').trim().toUpperCase();
+    if (directCode) {
+      this.token = '';
+      sessionStorage.removeItem('bingoOnlineToken');
+      sessionStorage.removeItem('bingoOnlineCard');
+      $('accessCode').value = directCode;
+      $('loginBtn').textContent = 'INGRESANDO…';
+      await this.login(directCode, roomCode, true);
+    } else if (this.token) {
+      await this.resume();
+    }
     this.keepAliveTimer = setInterval(() => { if (this.state?.active) fetch('/api/ping', { cache: 'no-store' }).catch(() => {}); }, 5 * 60 * 1000);
   }
 
@@ -53,8 +66,10 @@ class PlayerApp {
     return data;
   }
 
-  async login() {
-    const code = $('accessCode').value.trim().toUpperCase();
+  async login(codeOverride = '', roomOverride = '', direct = false) {
+    const code = String(codeOverride || $('accessCode').value).trim().toUpperCase();
+    const queryRoom = String(new URLSearchParams(location.search).get('sala') || '').trim().toUpperCase();
+    const roomCode = String(roomOverride || queryRoom).trim().toUpperCase();
     $('loginError').innerHTML = '';
     if (code.length < 4) {
       $('loginError').innerHTML = '<div class="error">Escribí el código completo.</div>';
@@ -62,15 +77,21 @@ class PlayerApp {
     }
     try {
       $('loginBtn').disabled = true;
-      const data = await this.request('/api/player/login', { method: 'POST', body: JSON.stringify({ code }) });
+      const data = await this.request('/api/player/login', { method: 'POST', body: JSON.stringify({ code, roomCode }) });
       this.token = data.token;
       sessionStorage.setItem('bingoOnlineToken', this.token);
       this.applyState(data.state);
       this.connectEvents();
+      const cleanUrl = new URL(location.href);
+      cleanUrl.searchParams.delete('acceso');
+      cleanUrl.searchParams.delete('codigo');
+      cleanUrl.searchParams.delete('code');
+      history.replaceState({}, '', `${cleanUrl.pathname}${cleanUrl.search}`);
     } catch (error) {
       $('loginError').innerHTML = `<div class="error">${esc(error.message)}</div>`;
     } finally {
       $('loginBtn').disabled = false;
+      $('loginBtn').textContent = 'ENTRAR A LA SALA';
     }
   }
 
@@ -108,6 +129,8 @@ class PlayerApp {
     }
     const previousCount = this.state?.game?.drawn?.length;
     this.state = data;
+    if (data.status === 'waiting' && !data.player.selectionConfirmed) this.selectedOffers = new Set(data.player.reservedCardIds || []);
+    else this.selectedOffers.clear();
     const cards = data.player.cards || [];
     if (!cards.some(card => card.id === this.activeCardId)) this.activeCardId = cards[0]?.id || '';
     sessionStorage.setItem('bingoOnlineCard', this.activeCardId);
@@ -164,9 +187,9 @@ class PlayerApp {
     const offers = player.offeredCards || [];
     const valid = new Set(offers.map(card => card.id));
     this.selectedOffers = new Set([...this.selectedOffers].filter(id => valid.has(id)));
-    $('waitingPanel').innerHTML = `<h2>Elegí ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}</h2><div class="waitingLead">Estas son tus opciones disponibles (hasta cinco). Una vez confirmadas, nadie más podrá usarlas.</div><div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="confirmChoice" class="btn primary" style="margin:0" ${this.selectedOffers.size === player.allowedCardCount ? '' : 'disabled'}>CONFIRMAR ELECCIÓN</button></div>`;
+    $('waitingPanel').innerHTML = `<h2>Elegí ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}</h2><div class="waitingLead">Estas son tus opciones disponibles (hasta cinco). Al tocar una, queda reservada para vos durante ${this.state.player.reservationTtlSeconds || 120} segundos y desaparece de las opciones de los demás.</div><div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="confirmChoice" class="btn primary" style="margin:0" ${this.selectedOffers.size === player.allowedCardCount ? '' : 'disabled'}>CONFIRMAR ELECCIÓN</button></div>`;
     $('offerGrid').querySelectorAll('[data-offer]').forEach(button => button.onclick = () => this.toggleOffer(button.dataset.offer));
-    $('clearChoice').onclick = () => { this.selectedOffers.clear(); this.renderWaiting(); };
+    $('clearChoice').onclick = () => this.clearReservations();
     $('confirmChoice').onclick = () => this.confirmChoice();
   }
 
@@ -184,24 +207,39 @@ class PlayerApp {
     return `<div class="miniGrid mode${card.mode}">${cells}</div>`;
   }
 
-  toggleOffer(cardId) {
-    const allowed = this.state.player.allowedCardCount;
-    if (this.selectedOffers.has(cardId)) this.selectedOffers.delete(cardId);
-    else {
-      if (this.selectedOffers.size >= allowed) this.selectedOffers.delete([...this.selectedOffers][0]);
-      this.selectedOffers.add(cardId);
+  async toggleOffer(cardId) {
+    if (this.pendingReservation.has(cardId)) return;
+    const reserve = !this.selectedOffers.has(cardId);
+    if (reserve && this.selectedOffers.size >= this.state.player.allowedCardCount) {
+      this.showMessage(`Solo podés elegir ${this.state.player.allowedCardCount} cartón${this.state.player.allowedCardCount === 1 ? '' : 'es'}. Desmarcá uno primero.`, 'error');
+      return;
     }
-    this.renderWaiting();
+    this.pendingReservation.add(cardId);
+    try {
+      const data = await this.request('/api/player/reserve', { method: 'POST', body: JSON.stringify({ cardId, reserve }) });
+      this.applyState(data);
+      if (reserve) this.showMessage('Cartón reservado para vos. Confirmá la elección antes de que venza la reserva.', 'notice');
+    } catch (error) {
+      this.showMessage(error.message, 'error');
+      try { this.applyState(await this.request('/api/player/state')); } catch {}
+    } finally {
+      this.pendingReservation.delete(cardId);
+    }
+  }
+
+  async clearReservations() {
+    try {
+      this.applyState(await this.request('/api/player/release', { method: 'POST', body: '{}' }));
+      this.showMessage('Reservas liberadas.', 'notice');
+    } catch (error) { this.showMessage(error.message, 'error'); }
   }
 
   async confirmChoice() {
     try {
       const data = await this.request('/api/player/choose', { method: 'POST', body: JSON.stringify({ cardIds: [...this.selectedOffers] }) });
-      this.selectedOffers.clear();
       this.applyState(data);
       this.showMessage('Cartones confirmados. Ahora esperá que el administrador inicie la partida.', 'notice');
     } catch (error) {
-      this.selectedOffers.clear();
       this.showMessage(error.message, 'error');
       try { this.applyState(await this.request('/api/player/state')); } catch {}
     }

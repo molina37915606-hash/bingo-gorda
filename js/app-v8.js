@@ -617,7 +617,8 @@ class BingoApp {
     clearTimeout(this.autoTimer); this.autoTimer = null; this.setPhase(this.autoRunning ? PHASE.DRAWING : PHASE.PAUSED);
     this.game.drawn.push(number); this.voice.tone(530, .1, 'square', .8); this.voice.tone(760, .18, 'sine', .7, .1);
     this.animateLastBall();
-    let groups = PrizeEngine.candidateGroups(this.game);
+    const candidateGame = this.localRoom?.active && this.localRoom.participatingGame ? this.localRoom.participatingGame() : this.game;
+    let groups = PrizeEngine.candidateGroups(candidateGame);
     if (this.localRoom?.active) groups = groups.filter(group => group.type === 'ambo');
     if (groups.length) {
       this.stopAutomatic(false); this.reviewQueue = groups; this.setPhase(PHASE.REVIEW);
@@ -710,10 +711,10 @@ class BingoApp {
     if (lineWinners.length) { $('lineHistory').textContent = `Ganó Línea: ${lineWinners.map(w => `${w.name} (Cartón ${w.number})`).join(' · ')}`; $('lineHistory').classList.add('show'); } else $('lineHistory').classList.remove('show');
   }
   renderAutoControls() {
-    if (!this.game) return; const automatic = this.game.drawMode === 'automatic', roomWaiting = Boolean(this.localRoom?.active && this.localRoom?.serverState?.status === 'waiting'), locked = this.phase === PHASE.REVIEW || Boolean(this.localRoom?.claimOpen) || roomWaiting;
+    if (!this.game) return; const automatic = this.game.drawMode === 'automatic', roomWaiting = Boolean(this.localRoom?.active && this.localRoom?.serverState?.status !== 'playing'), locked = this.phase === PHASE.REVIEW || Boolean(this.localRoom?.claimOpen) || roomWaiting;
     $('autoBtn').style.display = automatic ? '' : 'none'; $('pauseBtn').style.display = automatic ? '' : 'none';
     $('autoBtn').textContent = this.autoRunning ? '⏸ PAUSAR AUTOMÁTICO' : '▶ REANUDAR AUTOMÁTICO'; $('pauseBtn').textContent = this.autoRunning ? '⏸ DETENER' : '▶ REANUDAR';
-    $('autoState').textContent = roomWaiting ? 'Sala de espera · iniciá la partida desde SALA ONLINE' : locked ? 'Detenido por posible ganador' : automatic ? (this.autoRunning ? `Automático activo · cada ${this.game.autoSeconds} segundos` : 'Automático detenido') : 'Sorteo manual';
+    $('autoState').textContent = roomWaiting ? 'Sala de espera · presioná INICIAR SORTEO desde SALA ONLINE' : locked ? 'Detenido por posible ganador' : automatic ? (this.autoRunning ? `Automático activo · cada ${this.game.autoSeconds} segundos` : 'Automático detenido') : 'Sorteo manual';
     $('drawBtn').textContent = automatic ? '🎱 CANTAR SIGUIENTE AHORA' : '🎱 SIGUIENTE BOLILLA';
     ['drawBtn','autoBtn','pauseBtn','undoBtn'].forEach(id => { $(id).disabled = locked; });
   }

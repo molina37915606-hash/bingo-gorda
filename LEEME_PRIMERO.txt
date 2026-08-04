@@ -1,35 +1,35 @@
-EL BINGO DE LA GORDA V10.1 ONLINE
+EL BINGO DE LA GORDA V10.3 ONLINE
 =================================
 
-NOVEDADES
-- La sala abre en modo ESPERA: el sorteo no empieza solo.
-- El administrador inicia la partida cuando todos estén listos.
-- Cada jugador puede elegir 1 o 2 cartones, según lo autorizado.
-- El jugador recibe hasta 5 opciones disponibles.
-- Los cartones confirmados quedan bloqueados para los demás.
-- La presentadora elegida aparece también en los celulares.
-- Cada jugador puede activar o desactivar el canto de números y ajustar el volumen.
-- El administrador puede permitir o bloquear el canto en celulares.
+CAMBIOS PRINCIPALES
+- CARTONES DESTACADOS muestra únicamente cartones confirmados por jugadores.
+- Cada cartón destacado aparece con el nombre o alias del jugador que lo eligió.
+- Los cartones generados pero no elegidos no aparecen como destacados ni en el control online.
+- Cada jugador conserva su código privado visible en el panel.
+- COPIAR INGRESO DIRECTO genera un enlace que abre la sala y entra automáticamente con ese código.
+- COPIAR PÁGINA DE ACCESO copia la página general; el jugador escribe su código.
+- El enlace largo no queda expuesto en el panel del administrador.
+- Se mantiene la sala de espera, el botón INICIAR SORTEO y la reserva exclusiva de cartones.
 
-CAPACIDAD
-- Hasta 25 jugadores.
-- Hasta 50 cartones cargados.
-- Máximo 2 cartones por jugador.
+EJEMPLO
+Podés generar 30 cartones y habilitar 3 jugadores:
+- Jugador 1: 2 cartones.
+- Jugador 2: 2 cartones.
+- Jugador 3: 1 cartón.
+Solo esos 5 cartones confirmados aparecerán en CARTONES DESTACADOS y en el control online.
 
 FLUJO
-1. El administrador crea la partida y elige la presentadora.
-2. Abre SALA ONLINE.
-3. Registra los jugadores y autoriza 1 o 2 cartones a cada uno.
-4. Comparte el enlace y los códigos privados.
-5. Cada jugador elige y confirma sus cartones.
-6. El administrador espera a que todos figuren CONFIRMADOS.
-7. Presiona INICIAR PARTIDA.
-8. Recién entonces se habilitan el sorteo, las marcas y los reclamos.
+1. Creá la partida con entre 2 y 50 cartones.
+2. Configurá entre 2 y 50 jugadores.
+3. Abrí la sala de espera.
+4. Copiá el ingreso directo de cada jugador o la página general.
+5. Los jugadores eligen y confirman sus cartones.
+6. Cuando todos estén listos, presioná INICIAR SORTEO.
 
 DIRECCIONES
 - Jugadores: https://TU-SERVICIO.onrender.com/jugador
 - Administrador: https://TU-SERVICIO.onrender.com/admin
 
-COPIAS DE SEGURIDAD
-Render gratuito usa almacenamiento temporal. La aplicación guarda una copia automática
-en el navegador del administrador y permite descargar una copia JSON manual.
+IMPORTANTE
+Render gratuito usa almacenamiento temporal. Descargá una copia de seguridad antes
+de una partida importante y conservá también la copia automática del navegador.

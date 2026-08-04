@@ -1,0 +1,16 @@
+COMO ACTUALIZAR LA VERSION QUE YA ESTA PUBLICADA
+================================================
+
+1. Descomprimí este ZIP.
+2. Entrá en tu repositorio bingo-gorda de GitHub.
+3. Elegí Add file > Upload files.
+4. Arrastrá TODO el contenido de esta carpeta a la raíz del repositorio.
+5. Cuando GitHub avise que algunos archivos ya existen, confirmá el reemplazo.
+6. Escribí como mensaje: Actualizacion V10.1
+7. Presioná Commit changes.
+8. Render detectará el cambio y hará un nuevo deploy automáticamente.
+9. Esperá que Render muestre Live.
+10. Actualizá /admin con Ctrl+F5.
+
+Los archivos package.json, server.js y render.yaml deben seguir en la raíz.
+No subas la carpeta contenedora ni el ZIP cerrado.

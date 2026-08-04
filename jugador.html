@@ -3,46 +3,63 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>El Bingo de la Gorda · Cartón</title>
+<title>El Bingo de la Gorda · Jugador</title>
 <style>
 :root{--bg:#070914;--panel:#11182b;--panel2:#18213a;--text:#f7f8fc;--muted:#aab5cc;--gold:#ffca2f;--purple:#8a43e8;--green:#1fad70;--red:#d3425b;--blue:#2f8fe8}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#25204d 0,#0a0d1a 42%,#050711 100%);color:var(--text);font-family:Segoe UI,Arial,sans-serif;min-height:100vh}.hidden{display:none!important}
-.wrap{width:min(760px,100%);margin:auto;padding:14px 12px 32px}.brand{display:flex;align-items:center;gap:12px;padding:9px 5px 16px}.brand img{width:64px;height:64px;object-fit:contain}.brand h1{font-size:22px;margin:0}.brand small{color:var(--muted)}
-.card{background:#11182be8;border:1px solid #ffffff20;border-radius:19px;box-shadow:0 18px 50px #0007;padding:16px}.login{margin-top:8vh}.login label{display:block;color:var(--muted);font-weight:700;margin:15px 0 6px}.login input{width:100%;border:1px solid #ffffff2d;border-radius:13px;background:#090d18;color:#fff;padding:16px;font-size:22px;font-weight:900;text-align:center;letter-spacing:2px;text-transform:uppercase}.btn{border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:1000;cursor:pointer}.btn.primary{background:linear-gradient(135deg,#ffb51e,#ffe36b);color:#241600;width:100%;margin-top:14px}.error{margin-top:12px;padding:12px;border-radius:12px;background:#541723;border:1px solid #b83b50;color:#ffe1e6}.notice{margin-top:12px;padding:12px;border-radius:12px;background:#123d2d;border:1px solid #23825e;color:#dfffee}
-.top{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}.playerName{font-size:20px;font-weight:1000}.status{border-radius:999px;padding:6px 9px;background:#3a4355;color:#e8ebf2;font-size:12px;font-weight:900}.status.on{background:#0f543b;color:#c9ffe8}.status.off{background:#6a2130;color:#ffdce2}
+.wrap{width:min(820px,100%);margin:auto;padding:14px 12px 32px}.brand{display:flex;align-items:center;gap:12px;padding:9px 5px 16px}.brand img{width:64px;height:64px;object-fit:contain}.brand h1{font-size:22px;margin:0}.brand small{color:var(--muted)}
+.card{background:#11182be8;border:1px solid #ffffff20;border-radius:19px;box-shadow:0 18px 50px #0007;padding:16px}.login{margin-top:8vh}.login label{display:block;color:var(--muted);font-weight:700;margin:15px 0 6px}.login input{width:100%;border:1px solid #ffffff2d;border-radius:13px;background:#090d18;color:#fff;padding:16px;font-size:22px;font-weight:900;text-align:center;letter-spacing:2px;text-transform:uppercase}.btn{border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:1000;cursor:pointer}.btn.primary{background:linear-gradient(135deg,#ffb51e,#ffe36b);color:#241600;width:100%;margin-top:14px}.btn.secondary{background:#283651;color:#fff}.btn:disabled{opacity:.45;cursor:not-allowed}.error{margin-top:12px;padding:12px;border-radius:12px;background:#541723;border:1px solid #b83b50;color:#ffe1e6}.notice{margin-top:12px;padding:12px;border-radius:12px;background:#123d2d;border:1px solid #23825e;color:#dfffee}
+.top{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}.playerName{font-size:20px;font-weight:1000}.status{border-radius:999px;padding:6px 9px;background:#3a4355;color:#e8ebf2;font-size:12px;font-weight:900}.status.on{background:#0f543b;color:#c9ffe8}.status.off{background:#6a2130;color:#ffdce2}.status.wait{background:#6a4d12;color:#ffe6a3}
+.presenter{display:grid;grid-template-columns:105px 1fr;gap:14px;align-items:center;margin-top:12px;background:linear-gradient(135deg,#2d1558,#132343);border:1px solid #9d74ff66}.presenter img{width:105px;height:105px;border-radius:16px;object-fit:cover;border:2px solid #ffffff40}.presenter h2{margin:0 0 4px;font-size:23px}.presenter p{margin:0;color:#d2daf0}.audioBox{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:11px}.audioToggle{display:inline-flex;align-items:center;gap:7px;background:#0b1020aa;padding:8px 10px;border-radius:10px;font-weight:900}.audioToggle input{width:20px;height:20px}.audioBox input[type=range]{width:130px}.audioTest{border:0;border-radius:9px;background:#48577b;color:#fff;padding:8px 10px;font-weight:900}
+.waiting{margin-top:12px}.waiting h2{margin:0 0 7px}.waitingLead{color:var(--muted);line-height:1.45}.choiceCounter{padding:10px 12px;border-radius:11px;background:#0b3550;border:1px solid #1c6f9f;margin:12px 0;font-weight:900}.offers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.offer{display:block;border:2px solid #ffffff20;background:#0a1020;color:#fff;border-radius:15px;padding:9px;cursor:pointer;text-align:left}.offer.selected{border-color:var(--gold);box-shadow:0 0 0 2px #ffca2f55;background:#28200b}.offerHead{display:flex;justify-content:space-between;gap:8px;margin-bottom:7px}.offerHead b{font-size:16px}.offerHead span{color:var(--muted);font-size:12px}.miniGrid{display:grid;gap:2px}.miniGrid.mode90{grid-template-columns:repeat(9,1fr)}.miniGrid.mode75{grid-template-columns:repeat(5,1fr)}.miniCell{aspect-ratio:1.05;border-radius:3px;background:#28334a;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900}.miniCell.blank{background:#060913;color:transparent}.miniCell.free{background:#7043a3;font-size:7px}.choiceActions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}.waitingConfirmed{padding:15px;border-radius:14px;background:#113b2d;border:1px solid #2b8765}.chosenList{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.chosenBadge{padding:9px 12px;border-radius:10px;background:#0a1020;border:1px solid #ffffff25;font-weight:900}
 .ballArea{display:grid;grid-template-columns:130px 1fr;gap:14px;margin-top:12px}.lastBall{height:130px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 38% 30%,#fff,#e8d2ff 22%,#9747e8 48%,#4d138c 74%,#21073d);border:7px solid #ffffff28;box-shadow:0 0 35px #a54eff88;font-size:56px;font-weight:1000;color:#140720}.lastMeta{display:flex;flex-direction:column;justify-content:center;gap:8px}.lastMeta b{font-size:18px}.recent{display:flex;flex-wrap:wrap;gap:7px}.recent i{font-style:normal;width:35px;height:35px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#28334e;font-weight:900}.recent i:first-child{background:var(--gold);color:#241600}
 .tabs{display:flex;gap:8px;margin:14px 0 10px;overflow:auto}.tabs button{flex:1;min-width:130px;border:1px solid #ffffff25;border-radius:12px;background:#171f36;color:#fff;padding:12px;font-weight:900}.tabs button.active{background:linear-gradient(135deg,#7135bb,#a95aff);border-color:#cb9bff}
 .ticketHead{display:flex;justify-content:space-between;gap:8px;align-items:end;margin-bottom:9px}.ticketHead b{font-size:18px}.ticketHead small{color:var(--muted)}.grid{display:grid;gap:5px;user-select:none}.grid.mode90{grid-template-columns:repeat(9,1fr)}.grid.mode75{grid-template-columns:repeat(5,1fr)}.cell{aspect-ratio:1.06;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#273149;border:1px solid #ffffff20;font-size:clamp(15px,4vw,22px);font-weight:1000;touch-action:manipulation;transition:.12s}.cell.number:active{transform:scale(.92)}.cell.marked{background:linear-gradient(135deg,#ffb91f,#ffe36c);color:#281900;border-color:#fff0a6;box-shadow:inset 0 0 0 2px #6f4500}.cell.blank{background:#060913;color:transparent}.cell.free{background:#7546a7;color:#fff;font-size:12px}.manualHint{margin:10px 0 0;color:var(--muted);font-size:13px;line-height:1.4}.claimBar{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:14px}.claimBar button{border:0;border-radius:14px;padding:16px 8px;color:#fff;font-weight:1000;font-size:16px}.claimLine{background:linear-gradient(135deg,#a36a00,#d99713)}.claimBingo{background:linear-gradient(135deg,#9b1c3a,#d43a5c)}.claimBar button:disabled{opacity:.45}.footerNote{color:var(--muted);font-size:12px;text-align:center;margin-top:14px}.connectionMask{position:fixed;inset:0;background:#080b14e8;display:none;align-items:center;justify-content:center;z-index:20;padding:20px;text-align:center}.connectionMask.show{display:flex}.connectionMask div{padding:20px;border-radius:17px;background:#172039;border:1px solid #ffffff27}.logout{background:none;border:0;color:#c9d1e4;text-decoration:underline;margin-top:13px}
-@media(max-width:480px){.wrap{padding:8px 7px 24px}.card{padding:12px}.brand{padding-bottom:8px}.brand img{width:50px;height:50px}.ballArea{grid-template-columns:100px 1fr}.lastBall{height:100px;font-size:44px}.grid{gap:3px}.cell{border-radius:6px}.grid.mode90 .cell{font-size:14px}.claimBar button{font-size:14px;padding:14px 5px}}
+@media(max-width:560px){.wrap{padding:8px 7px 24px}.card{padding:12px}.brand{padding-bottom:8px}.brand img{width:50px;height:50px}.presenter{grid-template-columns:78px 1fr}.presenter img{width:78px;height:78px}.presenter h2{font-size:19px}.offers{grid-template-columns:1fr}.ballArea{grid-template-columns:100px 1fr}.lastBall{height:100px;font-size:44px}.grid{gap:3px}.cell{border-radius:6px}.grid.mode90 .cell{font-size:14px}.claimBar button{font-size:14px;padding:14px 5px}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="brand"><img src="assets/logo.png" alt="Logo"><div><h1>El Bingo de la Gorda</h1><small>Cartón conectado en línea</small></div></div>
+  <div class="brand"><img src="assets/logo.png" alt="Logo"><div><h1>El Bingo de la Gorda</h1><small>Sala online para jugadores</small></div></div>
 
   <section id="loginView" class="card login">
     <h2 style="margin:0">Ingresar a la partida</h2>
-    <p style="color:var(--muted);line-height:1.45">Pedile al administrador tu código privado. Solo podrás ver los cartones que te asignaron.</p>
+    <p style="color:var(--muted);line-height:1.45">Pedile al administrador tu código privado. Nadie más podrá ingresar a tus cartones.</p>
     <label for="accessCode">CÓDIGO DEL JUGADOR</label>
     <input id="accessCode" maxlength="7" autocomplete="off" inputmode="text" placeholder="ABC2345">
-    <button id="loginBtn" class="btn primary">ENTRAR A MIS CARTONES</button>
+    <button id="loginBtn" class="btn primary">ENTRAR A LA SALA</button>
     <div id="loginError"></div>
   </section>
 
   <main id="gameView" class="hidden">
     <section class="card">
       <div class="top"><div><div id="playerName" class="playerName">Jugador</div><small id="roomInfo"></small></div><span id="connectionStatus" class="status off">CONECTANDO</span></div>
-      <div class="ballArea"><div id="lastBall" class="lastBall">—</div><div class="lastMeta"><b>ÚLTIMA BOLILLA</b><span id="ballCount" style="color:var(--muted)">0 sorteadas</span><div id="recent" class="recent"></div></div></div>
     </section>
-    <div id="cardTabs" class="tabs"></div>
-    <section id="ticketPanel" class="card"></section>
-    <div class="claimBar"><button id="claimLine" class="claimLine">CANTAR LÍNEA</button><button id="claimBingo" class="claimBingo">CANTAR BINGO</button></div>
+
+    <section class="card presenter">
+      <img id="presenterImage" src="assets/vero.png" alt="Presentadora">
+      <div><h2 id="presenterName">Vero</h2><p id="presenterPhrase">Mucha suerte.</p>
+        <div id="audioControls" class="audioBox"><label class="audioToggle"><input id="numberVoiceOn" type="checkbox"> 🔊 Canto de números</label><input id="numberVoiceVolume" type="range" min="0.2" max="1" step="0.1" value="0.9"><button id="testNumberVoice" class="audioTest">PROBAR</button></div>
+      </div>
+    </section>
+
+    <section id="waitingPanel" class="card waiting"></section>
+
+    <section id="playPanel" class="hidden">
+      <section class="card">
+        <div class="ballArea"><div id="lastBall" class="lastBall">—</div><div class="lastMeta"><b>ÚLTIMA BOLILLA</b><span id="ballCount" style="color:var(--muted)">0 sorteadas</span><div id="recent" class="recent"></div></div></div>
+      </section>
+      <div id="cardTabs" class="tabs"></div>
+      <section id="ticketPanel" class="card"></section>
+      <div class="claimBar"><button id="claimLine" class="claimLine">CANTAR LÍNEA</button><button id="claimBingo" class="claimBingo">CANTAR BINGO</button></div>
+    </section>
+
     <div id="playerNotice"></div>
-    <button id="logoutBtn" class="logout">Salir de estos cartones</button>
-    <div class="footerNote">Las marcas son manuales. El sistema mantiene un control oficial separado para verificar los premios.</div>
+    <button id="logoutBtn" class="logout">Salir de esta sala</button>
+    <div class="footerNote">El jugador marca manualmente. El sistema mantiene un control oficial separado para verificar los premios.</div>
   </main>
 </div>
-<div id="connectionMask" class="connectionMask"><div><b>Se perdió la conexión con la sala online.</b><br><span style="color:#aab5cc">No cierres esta página. Se reconectará automáticamente cuando vuelva internet o el servidor.</span></div></div>
+<div id="connectionMask" class="connectionMask"><div><b>Se perdió la conexión con la sala.</b><br><span style="color:#aab5cc">No cierres esta página. Se reconectará automáticamente.</span></div></div>
 <script src="js/online-room-player.js"></script>
 </body>
 </html>

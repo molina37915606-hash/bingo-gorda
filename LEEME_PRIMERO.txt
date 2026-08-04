@@ -1,26 +1,35 @@
-EL BINGO DE LA GORDA V10 ONLINE
-================================
+EL BINGO DE LA GORDA V10.1 ONLINE
+=================================
+
+NOVEDADES
+- La sala abre en modo ESPERA: el sorteo no empieza solo.
+- El administrador inicia la partida cuando todos estén listos.
+- Cada jugador puede elegir 1 o 2 cartones, según lo autorizado.
+- El jugador recibe hasta 5 opciones disponibles.
+- Los cartones confirmados quedan bloqueados para los demás.
+- La presentadora elegida aparece también en los celulares.
+- Cada jugador puede activar o desactivar el canto de números y ajustar el volumen.
+- El administrador puede permitir o bloquear el canto en celulares.
 
 CAPACIDAD
-- Hasta 25 jugadores conectados.
-- Hasta 50 cartones por partida.
-- Cada jugador puede recibir 1 o 2 cartones.
+- Hasta 25 jugadores.
+- Hasta 50 cartones cargados.
+- Máximo 2 cartones por jugador.
 
-DIRECCIONES CUANDO ESTE PUBLICADO
+FLUJO
+1. El administrador crea la partida y elige la presentadora.
+2. Abre SALA ONLINE.
+3. Registra los jugadores y autoriza 1 o 2 cartones a cada uno.
+4. Comparte el enlace y los códigos privados.
+5. Cada jugador elige y confirma sus cartones.
+6. El administrador espera a que todos figuren CONFIRMADOS.
+7. Presiona INICIAR PARTIDA.
+8. Recién entonces se habilitan el sorteo, las marcas y los reclamos.
+
+DIRECCIONES
 - Jugadores: https://TU-SERVICIO.onrender.com/jugador
 - Administrador: https://TU-SERVICIO.onrender.com/admin
 
-SEGURIDAD
-- El administrador entra con la contraseña configurada como ADMIN_PASSWORD en Render.
-- Cada jugador recibe un código privado de 7 caracteres.
-- Un jugador solamente puede ver, marcar y reclamar con sus propios cartones.
-
 COPIAS DE SEGURIDAD
-El plan gratuito de Render puede borrar el estado del servidor cuando se reinicia o se duerme.
-La V10 guarda automáticamente una copia en el navegador del administrador.
-También tiene el botón DESCARGAR COPIA para guardar un archivo JSON.
-Al restaurar, los jugadores conservan sus códigos, pero deben volver a ingresar.
-
-IMPORTANTE
-Durante una partida mantené abierta la pestaña del administrador.
-El programa envía actividad periódica para evitar que el servidor gratuito se duerma mientras se está jugando.
+Render gratuito usa almacenamiento temporal. La aplicación guarda una copia automática
+en el navegador del administrador y permite descargar una copia JSON manual.

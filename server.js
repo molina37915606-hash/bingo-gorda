@@ -19,6 +19,7 @@ const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
 const MAX_CARDS = 50;
 const MAX_PLAYERS = 25;
 const MAX_CARDS_PER_PLAYER = 2;
+const MAX_CARD_OPTIONS = 5;
 const ADMIN_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -83,12 +84,18 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
 
 function blankState() {
   return {
-    version: 2,
+    version: 3,
     active: false,
+    status: 'closed',
     roomCode: null,
     createdAt: null,
+    startedAt: null,
     updatedAt: nowIso(),
     round: 1,
+    roomSettings: {
+      playerAudioAllowed: true,
+      playerAudioDefault: false
+    },
     game: null,
     players: [],
     claims: [],
@@ -99,7 +106,30 @@ function blankState() {
 function loadState() {
   try {
     const parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-    return { ...blankState(), ...parsed, players: parsed.players || [], claims: parsed.claims || [], eventLog: parsed.eventLog || [] };
+    const defaults = blankState();
+    const merged = {
+      ...defaults,
+      ...parsed,
+      roomSettings: { ...defaults.roomSettings, ...(parsed.roomSettings || {}) },
+      players: parsed.players || [],
+      claims: parsed.claims || [],
+      eventLog: parsed.eventLog || []
+    };
+    if (merged.active && !parsed.status) merged.status = merged.game?.drawn?.length ? 'playing' : 'waiting';
+    merged.players = merged.players.map(player => {
+      const cardIds = [...new Set((player.cardIds || []).map(String))].slice(0, MAX_CARDS_PER_PLAYER);
+      const allowedCardCount = Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(player.allowedCardCount) || cardIds.length || 1));
+      return {
+        ...player,
+        cardIds,
+        allowedCardCount,
+        selectionConfirmed: player.selectionConfirmed === undefined ? cardIds.length === allowedCardCount : Boolean(player.selectionConfirmed),
+        offeredCardIds: Array.isArray(player.offeredCardIds) ? player.offeredCardIds.map(String) : [],
+        marks: player.marks || {},
+        notices: player.notices || []
+      };
+    });
+    return merged;
   } catch {
     return blankState();
   }
@@ -183,6 +213,59 @@ function connectedPlayerIds() {
   return new Set([...sseClients].filter(client => client.role === 'player' && client.playerId).map(client => client.playerId));
 }
 
+function shuffle(values) {
+  const copy = [...values];
+  for (let index = copy.length - 1; index > 0; index--) {
+    const swap = crypto.randomInt(0, index + 1);
+    [copy[index], copy[swap]] = [copy[swap], copy[index]];
+  }
+  return copy;
+}
+
+function selectedCardOwner(cardId, exceptPlayerId = null) {
+  return state.players.find(player => player.id !== exceptPlayerId && player.cardIds.includes(cardId)) || null;
+}
+
+function availableCardIdsFor(player) {
+  if (!state.game) return [];
+  return state.game.cards
+    .map(card => card.id)
+    .filter(cardId => !selectedCardOwner(cardId, player?.id || null));
+}
+
+function refreshOffersForPlayer(player) {
+  if (!state.game || !player || state.status !== 'waiting' || player.selectionConfirmed) {
+    if (player) player.offeredCardIds = [];
+    return;
+  }
+  const available = availableCardIdsFor(player);
+  const allowedSet = new Set(available);
+  const kept = (player.offeredCardIds || []).filter(cardId => allowedSet.has(cardId));
+  const pool = shuffle(available.filter(cardId => !kept.includes(cardId)));
+  const target = Math.min(MAX_CARD_OPTIONS, available.length);
+  player.offeredCardIds = [...kept, ...pool].slice(0, target);
+}
+
+function refreshAllOffers() {
+  for (const player of state.players) refreshOffersForPlayer(player);
+}
+
+function updateCardDisplayNames() {
+  if (!state.game) return;
+  const ownerByCard = new Map(state.players.flatMap(player => player.cardIds.map(cardId => [cardId, player.name])));
+  for (const card of state.game.cards) {
+    card.originalName ||= card.name || `Cartón ${card.number}`;
+    card.name = ownerByCard.get(card.id) || card.originalName;
+  }
+}
+
+function allPlayersReady() {
+  return state.players.length > 0 && state.players.every(player =>
+    player.selectionConfirmed &&
+    player.cardIds.length === player.allowedCardCount
+  );
+}
+
 function claimStateForCard(cardId, type) {
   const matching = state.claims.filter(claim => claim.cardId === cardId && claim.type === type);
   if (matching.some(claim => claim.status === 'confirmed')) return 'confirmed';
@@ -197,6 +280,7 @@ function baseInfo() {
     maxCards: MAX_CARDS,
     maxPlayers: MAX_PLAYERS,
     maxCardsPerPlayer: MAX_CARDS_PER_PLAYER,
+    maxCardOptions: MAX_CARD_OPTIONS,
     publicUrl: PUBLIC_URL || null,
     playerUrl: PUBLIC_URL ? `${PUBLIC_URL}/jugador` : null
   };
@@ -207,6 +291,7 @@ function adminPayload() {
     return {
       ...baseInfo(),
       active: false,
+      status: 'closed',
       lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`)
     };
   }
@@ -235,14 +320,27 @@ function adminPayload() {
   return {
     ...baseInfo(),
     active: true,
+    status: state.status,
+    readyToStart: allPlayersReady(),
     roomCode: state.roomCode,
     createdAt: state.createdAt,
+    startedAt: state.startedAt,
     updatedAt: state.updatedAt,
     round: state.round,
+    roomSettings: state.roomSettings,
     lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`),
     localUrl: `http://localhost:${PORT}`,
     game: state.game,
-    players: state.players.map(player => ({ id: player.id, name: player.name, code: player.code, cardIds: player.cardIds, connected: connected.has(player.id) })),
+    players: state.players.map(player => ({
+      id: player.id,
+      name: player.name,
+      code: player.code,
+      allowedCardCount: player.allowedCardCount,
+      cardIds: player.cardIds,
+      selectionConfirmed: player.selectionConfirmed,
+      offeredCardIds: player.offeredCardIds,
+      connected: connected.has(player.id)
+    })),
     cardStatus,
     claims: state.claims.slice(-100),
     eventLog: state.eventLog.slice(-200)
@@ -251,11 +349,16 @@ function adminPayload() {
 
 function playerPayload(player) {
   if (!state.active || !state.game || !player) return { active: false };
+  if (state.status === 'waiting') refreshOffersForPlayer(player);
   const cards = state.game.cards.filter(card => player.cardIds.includes(card.id));
+  const offers = state.game.cards.filter(card => (player.offeredCardIds || []).includes(card.id));
   return {
     active: true,
+    status: state.status,
     roomCode: state.roomCode,
     round: state.round,
+    startedAt: state.startedAt,
+    roomSettings: state.roomSettings,
     game: {
       id: state.game.id,
       number: state.game.number,
@@ -269,6 +372,9 @@ function playerPayload(player) {
       id: player.id,
       name: player.name,
       code: player.code,
+      allowedCardCount: player.allowedCardCount,
+      selectionConfirmed: player.selectionConfirmed,
+      offeredCards: offers,
       cards,
       marks: player.marks || {},
       notices: (player.notices || []).slice(-10)
@@ -280,7 +386,7 @@ function backupPayload() {
   const cleanState = deepCopy(state);
   cleanState.players = cleanState.players.map(player => ({ ...player, sessionToken: null }));
   return {
-    format: 'el-bingo-de-la-gorda-v10-backup',
+    format: 'el-bingo-de-la-gorda-v10-1-backup',
     exportedAt: nowIso(),
     state: cleanState
   };
@@ -368,6 +474,7 @@ function sanitizeGame(game) {
       id: String(card.id),
       number: String(card.number),
       name: String(card.name || 'Jugador'),
+      originalName: String(card.originalName || card.name || `Cartón ${card.number}`),
       mode: Number(card.mode) === 75 ? 75 : 90,
       source: card.source || 'generated',
       grid: deepCopy(card.grid),
@@ -379,26 +486,30 @@ function sanitizeGame(game) {
 function validateAssignments(game, assignments) {
   if (!assignments.length) throw new Error('Agregá al menos un jugador.');
   if (assignments.length > MAX_PLAYERS) throw new Error(`La sala online admite hasta ${MAX_PLAYERS} jugadores.`);
-  const validCardIds = new Set(game.cards.map(card => card.id));
+  const validCardIds = new Set(game.cards.map(card => String(card.id)));
   const used = new Set();
+  let authorizedCards = 0;
   for (const [index, raw] of assignments.entries()) {
     const name = String(raw.name || `Jugador ${index + 1}`).trim();
-    const cardIds = [...new Set((raw.cardIds || []).filter(id => validCardIds.has(id)))];
+    const cardIds = [...new Set((raw.cardIds || []).map(String).filter(id => validCardIds.has(id)))];
+    const allowedCardCount = Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(raw.allowedCardCount) || cardIds.length || 1));
     if (!name) throw new Error(`Falta el nombre del jugador ${index + 1}.`);
-    if (cardIds.length < 1 || cardIds.length > MAX_CARDS_PER_PLAYER) throw new Error(`${name} debe tener uno o dos cartones.`);
+    if (cardIds.length > allowedCardCount) throw new Error(`${name} tiene más cartones elegidos que los autorizados.`);
     for (const cardId of cardIds) {
-      if (used.has(cardId)) throw new Error('Un cartón fue asignado a más de un jugador.');
+      if (used.has(cardId)) throw new Error('Un cartón fue elegido por más de un jugador.');
       used.add(cardId);
     }
+    authorizedCards += allowedCardCount;
   }
-  if (used.size !== validCardIds.size) throw new Error('Todos los cartones deben quedar asignados antes de abrir la sala.');
+  if (authorizedCards > game.cards.length) throw new Error(`Autorizaste ${authorizedCards} cartones, pero la partida tiene ${game.cards.length}.`);
 }
 
 function configureRoom(payload) {
   validateGame(payload.game);
+  if (uniqueNumbers(payload.game.drawn).length) throw new Error('La sala debe abrirse antes de cantar la primera bolilla. Reiniciá la ronda.');
   const assignments = Array.isArray(payload.players) ? payload.players : [];
   validateAssignments(payload.game, assignments);
-  const validCardIds = new Set(payload.game.cards.map(card => card.id));
+  const validCardIds = new Set(payload.game.cards.map(card => String(card.id)));
   const assignedCodes = new Set();
   const nextPlayerCode = () => {
     let code;
@@ -408,33 +519,45 @@ function configureRoom(payload) {
   };
   const players = assignments.map((raw, index) => {
     const name = String(raw.name || `Jugador ${index + 1}`).trim();
-    const cardIds = [...new Set((raw.cardIds || []).filter(id => validCardIds.has(id)))];
+    const allowedCardCount = Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(raw.allowedCardCount) || (raw.cardIds || []).length || 1));
+    const cardIds = [...new Set((raw.cardIds || []).map(String).filter(id => validCardIds.has(id)))].slice(0, allowedCardCount);
     return {
       id: randomId('player'),
       name,
       code: nextPlayerCode(),
+      allowedCardCount,
       cardIds,
+      selectionConfirmed: cardIds.length === allowedCardCount,
+      offeredCardIds: [],
       sessionToken: null,
       marks: Object.fromEntries(cardIds.map(cardId => [cardId, []])),
       notices: []
     };
   });
   const sanitizedGame = sanitizeGame(payload.game);
-  const playerNameByCard = new Map(players.flatMap(player => player.cardIds.map(cardId => [cardId, player.name])));
-  sanitizedGame.cards.forEach(card => { if (playerNameByCard.has(card.id)) card.name = playerNameByCard.get(card.id); });
+  sanitizedGame.drawn = [];
+  sanitizedGame.phase = 'READY';
   state = {
-    version: 2,
+    version: 3,
     active: true,
+    status: 'waiting',
     roomCode: randomCode(5),
     createdAt: nowIso(),
+    startedAt: null,
     updatedAt: nowIso(),
     round: 1,
+    roomSettings: {
+      playerAudioAllowed: payload.roomSettings?.playerAudioAllowed !== false,
+      playerAudioDefault: Boolean(payload.roomSettings?.playerAudioDefault)
+    },
     game: sanitizedGame,
     players,
     claims: [],
     eventLog: []
   };
-  logEvent('room_opened', { roomCode: state.roomCode, players: players.length, cards: payload.game.cards.length });
+  updateCardDisplayNames();
+  refreshAllOffers();
+  logEvent('room_opened', { roomCode: state.roomCode, players: players.length, cards: payload.game.cards.length, status: 'waiting' });
   saveState();
   broadcast();
   return adminPayload();
@@ -447,16 +570,23 @@ function updateGame(game) {
   const previousGameId = state.game?.id;
   const sanitized = sanitizeGame(game);
   if (previousGameId !== sanitized.id) throw new Error('La sala pertenece a otra partida. Cerrala y volvé a abrirla.');
+  sanitized.presenter = state.game.presenter;
+  if (state.status === 'waiting' && sanitized.drawn.length > previousDrawn.length) {
+    throw new Error('La partida está en sala de espera. Presioná INICIAR PARTIDA antes de sortear.');
+  }
   const isNewRound = sanitized.drawn.length === 0 && previousDrawn.length > 0;
   state.game = sanitized;
+  if (state.status === 'waiting') state.game.phase = 'READY';
   if (isNewRound) {
     state.round += 1;
+    state.status = 'waiting';
+    state.startedAt = null;
     state.claims = [];
     for (const player of state.players) {
       player.marks = Object.fromEntries(player.cardIds.map(cardId => [cardId, []]));
       player.notices = [];
     }
-    logEvent('new_round', { round: state.round });
+    logEvent('new_round', { round: state.round, status: 'waiting' });
   } else if (sanitized.drawn.length > previousDrawn.length) {
     const added = sanitized.drawn.filter(number => !previousDrawn.includes(number));
     for (const number of added) logEvent('ball_drawn', { number, position: sanitized.drawn.indexOf(number) + 1 });
@@ -464,6 +594,47 @@ function updateGame(game) {
     const removed = previousDrawn.filter(number => !sanitized.drawn.includes(number));
     for (const number of removed) logEvent('ball_undone', { number });
   }
+  updateCardDisplayNames();
+  saveState();
+  broadcast();
+  return adminPayload();
+}
+
+function startRoom() {
+  if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
+  if (state.status !== 'waiting') return adminPayload();
+  if (!allPlayersReady()) throw new Error('Todos los jugadores deben elegir y confirmar sus cartones antes de iniciar.');
+  if (state.game.drawn.length) throw new Error('La ronda ya contiene bolillas. Reiniciala antes de empezar.');
+  state.status = 'playing';
+  state.startedAt = nowIso();
+  state.game.phase = state.game.drawMode === 'automatic' ? 'DRAWING' : 'READY';
+  logEvent('game_started', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0) });
+  saveState();
+  broadcast();
+  return adminPayload();
+}
+
+function updateRoomSettings(payload) {
+  if (!state.active) throw new Error('No hay una sala abierta.');
+  state.roomSettings.playerAudioAllowed = payload.playerAudioAllowed !== false;
+  state.roomSettings.playerAudioDefault = Boolean(payload.playerAudioDefault);
+  logEvent('room_settings_updated', { ...state.roomSettings });
+  saveState();
+  broadcast();
+  return adminPayload();
+}
+
+function releasePlayerSelection(payload) {
+  if (!state.active || state.status !== 'waiting') throw new Error('Las elecciones solo pueden cambiarse antes de iniciar.');
+  const player = state.players.find(item => item.id === String(payload.playerId || ''));
+  if (!player) throw new Error('No se encontró el jugador.');
+  player.cardIds = [];
+  player.selectionConfirmed = false;
+  player.marks = {};
+  player.offeredCardIds = [];
+  updateCardDisplayNames();
+  refreshAllOffers();
+  logEvent('player_selection_released', { playerId: player.id, playerName: player.name });
   saveState();
   broadcast();
   return adminPayload();
@@ -472,6 +643,7 @@ function updateGame(game) {
 function closeRoom() {
   logEvent('room_closed');
   state.active = false;
+  state.status = 'closed';
   state.updatedAt = nowIso();
   saveState();
   broadcast();
@@ -486,8 +658,11 @@ function restoreBackup(payload) {
   validateAssignments(raw.game, rawPlayers);
   const validCardIds = new Set(raw.game.cards.map(card => String(card.id)));
   const codes = new Set();
+  const used = new Set();
   const players = rawPlayers.map((rawPlayer, index) => {
-    const cardIds = [...new Set((rawPlayer.cardIds || []).map(String).filter(id => validCardIds.has(id)))];
+    const allowedCardCount = Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(rawPlayer.allowedCardCount) || (rawPlayer.cardIds || []).length || 1));
+    const cardIds = [...new Set((rawPlayer.cardIds || []).map(String).filter(id => validCardIds.has(id) && !used.has(id)))].slice(0, allowedCardCount);
+    cardIds.forEach(id => used.add(id));
     let code = String(rawPlayer.code || '').trim().toUpperCase();
     if (!code || codes.has(code)) code = randomCode(7);
     codes.add(code);
@@ -501,25 +676,33 @@ function restoreBackup(payload) {
       id: String(rawPlayer.id || randomId('player')),
       name: String(rawPlayer.name || `Jugador ${index + 1}`).slice(0, 80),
       code,
+      allowedCardCount,
       cardIds,
+      selectionConfirmed: rawPlayer.selectionConfirmed === undefined ? cardIds.length === allowedCardCount : Boolean(rawPlayer.selectionConfirmed),
+      offeredCardIds: Array.isArray(rawPlayer.offeredCardIds) ? rawPlayer.offeredCardIds.map(String).filter(id => validCardIds.has(id)) : [],
       sessionToken: null,
       marks,
       notices: Array.isArray(rawPlayer.notices) ? rawPlayer.notices.slice(-20) : []
     };
   });
   state = {
-    version: 2,
+    version: 3,
     active: true,
+    status: ['waiting', 'playing'].includes(raw.status) ? raw.status : (raw.game.drawn?.length ? 'playing' : 'waiting'),
     roomCode: String(raw.roomCode || randomCode(5)).slice(0, 12),
     createdAt: raw.createdAt || nowIso(),
+    startedAt: raw.startedAt || null,
     updatedAt: nowIso(),
     round: Math.max(1, Number(raw.round) || 1),
+    roomSettings: { ...blankState().roomSettings, ...(raw.roomSettings || {}) },
     game: sanitizeGame(raw.game),
     players,
     claims: Array.isArray(raw.claims) ? raw.claims.slice(-100) : [],
     eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.slice(-500) : []
   };
-  logEvent('backup_restored', { players: players.length, cards: state.game.cards.length });
+  updateCardDisplayNames();
+  refreshAllOffers();
+  logEvent('backup_restored', { players: players.length, cards: state.game.cards.length, status: state.status });
   saveState();
   broadcast();
   return adminPayload();
@@ -534,14 +717,57 @@ function loginPlayer(payload) {
   if (!player) throw new Error('Código incorrecto. Revisalo con el administrador.');
   player.sessionToken = randomId('session');
   player.lastLoginAt = nowIso();
+  if (state.status === 'waiting') refreshOffersForPlayer(player);
   logEvent('player_login', { playerId: player.id, playerName: player.name });
   saveState();
   broadcast();
   return { token: player.sessionToken, state: playerPayload(player) };
 }
 
+function chooseCards(player, payload) {
+  if (!state.active || !state.game) throw new Error('La sala no está activa.');
+  if (state.status !== 'waiting') throw new Error('La elección de cartones ya está cerrada.');
+  const selected = [...new Set((payload.cardIds || []).map(String))];
+  if (selected.length !== player.allowedCardCount) throw new Error(`Debés elegir exactamente ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}.`);
+  const offers = new Set(player.offeredCardIds || []);
+  if (!selected.every(cardId => offers.has(cardId))) throw new Error('Una de las opciones ya no está disponible. Actualizamos tus cinco cartones.');
+  for (const cardId of selected) {
+    if (selectedCardOwner(cardId, player.id)) {
+      refreshAllOffers();
+      saveState();
+      broadcast();
+      throw new Error('Otro jugador eligió uno de esos cartones primero. Elegí nuevamente entre las opciones actualizadas.');
+    }
+  }
+  player.cardIds = selected;
+  player.selectionConfirmed = true;
+  player.offeredCardIds = [];
+  player.marks = Object.fromEntries(selected.map(cardId => [cardId, []]));
+  updateCardDisplayNames();
+  refreshAllOffers();
+  logEvent('cards_selected', { playerId: player.id, playerName: player.name, cardIds: selected });
+  saveState();
+  broadcast();
+  return playerPayload(player);
+}
+
+function releaseOwnSelection(player) {
+  if (!state.active || state.status !== 'waiting') throw new Error('La elección ya está cerrada.');
+  player.cardIds = [];
+  player.selectionConfirmed = false;
+  player.marks = {};
+  player.offeredCardIds = [];
+  updateCardDisplayNames();
+  refreshAllOffers();
+  logEvent('cards_selection_changed', { playerId: player.id, playerName: player.name });
+  saveState();
+  broadcast();
+  return playerPayload(player);
+}
+
 function markNumber(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
+  if (state.status !== 'playing') throw new Error('La partida todavía no comenzó.');
   const cardId = String(payload.cardId || '');
   const card = state.game.cards.find(item => item.id === cardId);
   if (!card || !player.cardIds.includes(cardId)) throw new Error('Ese cartón no pertenece al jugador.');
@@ -559,6 +785,7 @@ function markNumber(player, payload) {
 
 function createClaim(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
+  if (state.status !== 'playing') throw new Error('La partida todavía no comenzó.');
   const type = payload.type === 'bingo' ? 'bingo' : 'line';
   const cardId = String(payload.cardId || '');
   const card = state.game.cards.find(item => item.id === cardId);
@@ -661,7 +888,7 @@ function serveFile(res, filePath) {
 async function handleApi(req, res, url) {
   try {
     if (url.pathname === '/api/info' && req.method === 'GET') {
-      return sendJson(res, 200, { ...baseInfo(), port: PORT, lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`), active: state.active, roomCode: state.roomCode });
+      return sendJson(res, 200, { ...baseInfo(), port: PORT, lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`), active: state.active, status: state.status, roomCode: state.roomCode });
     }
 
     if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso() });
@@ -683,6 +910,9 @@ async function handleApi(req, res, url) {
       if (url.pathname === '/api/admin/state' && req.method === 'GET') return sendJson(res, 200, adminPayload());
       if (url.pathname === '/api/admin/configure' && req.method === 'POST') return sendJson(res, 200, configureRoom(await readJson(req)));
       if (url.pathname === '/api/admin/game' && req.method === 'POST') return sendJson(res, 200, updateGame((await readJson(req)).game));
+      if (url.pathname === '/api/admin/start' && req.method === 'POST') return sendJson(res, 200, startRoom());
+      if (url.pathname === '/api/admin/settings' && req.method === 'POST') return sendJson(res, 200, updateRoomSettings(await readJson(req)));
+      if (url.pathname === '/api/admin/release-selection' && req.method === 'POST') return sendJson(res, 200, releasePlayerSelection(await readJson(req)));
       if (url.pathname === '/api/admin/resolve' && req.method === 'POST') return sendJson(res, 200, resolveClaim(await readJson(req)));
       if (url.pathname === '/api/admin/backup' && req.method === 'GET') return sendJson(res, 200, backupPayload());
       if (url.pathname === '/api/admin/restore' && req.method === 'POST') return sendJson(res, 200, restoreBackup(await readJson(req)));
@@ -704,6 +934,8 @@ async function handleApi(req, res, url) {
       const player = playerByToken(token);
       if (!player) return sendJson(res, 401, { error: 'La sesión no es válida. Volvé a ingresar con tu código.' });
       if (url.pathname === '/api/player/state' && req.method === 'GET') return sendJson(res, 200, playerPayload(player));
+      if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
+      if (url.pathname === '/api/player/release' && req.method === 'POST') return sendJson(res, 200, releaseOwnSelection(player));
       if (url.pathname === '/api/player/mark' && req.method === 'POST') return sendJson(res, 200, markNumber(player, await readJson(req)));
       if (url.pathname === '/api/player/claim' && req.method === 'POST') return sendJson(res, 200, createClaim(player, await readJson(req)));
       return sendJson(res, 404, { error: 'Acción de jugador no encontrada.' });
@@ -745,7 +977,7 @@ function handleEvents(req, res, url) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || `localhost:${PORT}`}`);
-  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: 10, active: state.active });
+  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '10.1', active: state.active, status: state.status });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('User-agent: *\nDisallow: /admin\n');
@@ -774,7 +1006,7 @@ setInterval(() => {
 }, 20_000).unref();
 
 server.listen(PORT, HOST, () => {
-  console.log('\nEL BINGO DE LA GORDA - V10 ONLINE');
+  console.log('\nEL BINGO DE LA GORDA - V10.1 ONLINE');
   if (ONLINE_MODE) {
     console.log(`Jugadores: ${PUBLIC_URL || 'URL pública de Render'}/jugador`);
     console.log(`Administrador: ${PUBLIC_URL || 'URL pública de Render'}/admin`);

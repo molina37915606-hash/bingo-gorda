@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: el-bingo-de-la-gorda-v10
+    name: el-bingo-de-la-gorda-v10-1
     runtime: node
     plan: free
     buildCommand: npm install

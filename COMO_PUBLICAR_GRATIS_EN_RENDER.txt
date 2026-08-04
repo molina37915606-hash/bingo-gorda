@@ -1,42 +1,33 @@
 COMO PUBLICAR GRATIS EN RENDER
 ==============================
 
-Esta carpeta ya está preparada para Render. No necesitás modificar el código.
+PRIMERA PUBLICACION
+1. Subí todo el contenido de esta carpeta a la raíz de un repositorio de GitHub.
+2. En Render creá un Web Service conectado al repositorio.
+3. Configurá:
+   Build Command: npm install
+   Start Command: npm start
+   Plan: Free
+4. Variables:
+   NODE_VERSION = 22
+   ONLINE_MODE = true
+   ADMIN_PASSWORD = una contraseña privada
+5. Health Check Path: /healthz
+6. Publicá y esperá que diga Live.
 
-PASO 1 - CREAR UN REPOSITORIO EN GITHUB
-1. Entrá a github.com y creá una cuenta, si todavía no tenés.
-2. Creá un repositorio nuevo, por ejemplo: bingo-gorda-online.
-3. Subí TODO el contenido de esta carpeta. package.json, server.js y render.yaml deben quedar en la raíz del repositorio.
+DIRECCIONES
+- Administrador: https://TU-SERVICIO.onrender.com/admin
+- Jugadores: https://TU-SERVICIO.onrender.com/jugador
 
-PASO 2 - CREAR EL SERVICIO EN RENDER
-1. Entrá a render.com y vinculá tu cuenta de GitHub.
-2. Elegí New + y luego Blueprint.
-3. Seleccioná el repositorio que acabás de crear.
-4. Render detectará render.yaml y propondrá el servicio gratuito.
-5. Cuando solicite ADMIN_PASSWORD, escribí una contraseña privada y guardala. No se la des a los jugadores.
-6. Confirmá la creación y esperá a que el estado diga Live.
-
-PASO 3 - ABRIR EL BINGO
-Render entregará una dirección parecida a:
-https://el-bingo-de-la-gorda-v10.onrender.com
-
-Administrador:
-https://el-bingo-de-la-gorda-v10.onrender.com/admin
-
-Jugadores:
-https://el-bingo-de-la-gorda-v10.onrender.com/jugador
-
-PASO 4 - CREAR LA SALA
-1. Entrá a /admin y escribí ADMIN_PASSWORD.
-2. Creá una partida de hasta 50 cartones o cargá una partida guardada.
-3. Entrá en SALA ONLINE.
-4. Asigná todos los cartones a un máximo de 25 jugadores.
-5. Cada jugador puede tener uno o dos cartones.
-6. Presioná ABRIR SALA ONLINE.
-7. Compartí el enlace de jugadores y el código privado correspondiente.
+USO
+1. Creá una partida sin sortear bolillas.
+2. Abrí SALA ONLINE.
+3. Cargá nombres y autorizá 1 o 2 cartones por jugador.
+4. Abrí la sala de espera y compartí enlace y códigos.
+5. Esperá que todos confirmen.
+6. Presioná INICIAR PARTIDA.
 
 LIMITACIONES DEL PLAN GRATUITO
-- Render puede tardar cerca de un minuto en encender el servicio después de un periodo sin uso.
+- Puede tardar cerca de un minuto en despertar.
 - El almacenamiento del servidor es temporal.
-- Descargá una copia de seguridad antes de comenzar y durante partidas importantes.
-- Para una prueba está bien. No debe tratarse como infraestructura definitiva para premios de alto valor.
+- Descargá copias de seguridad durante partidas importantes.

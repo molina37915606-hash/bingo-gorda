@@ -19,9 +19,11 @@ const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
 const MIN_CARDS = 2;
 const MAX_CARDS = 100;
 const MIN_PLAYERS = 2;
-const MAX_PLAYERS = 50;
+const MAX_PLAYERS = 60;
 const MAX_CARDS_PER_PLAYER = 4;
 const MAX_CARD_OPTIONS = 10;
+const MIN_ASSIGNMENT_MINUTES = 1;
+const MAX_ASSIGNMENT_MINUTES = 30;
 const CARD_RESERVATION_TTL_MS = 2 * 60 * 1000;
 const ADMIN_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -87,17 +89,30 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
 
 function blankState() {
   return {
-    version: 6,
+    version: 7,
     active: false,
     status: 'closed',
     roomCode: null,
     createdAt: null,
     startedAt: null,
+    endedAt: null,
     updatedAt: nowIso(),
     round: 1,
     roomSettings: {
       playerAudioAllowed: true,
-      playerAudioDefault: false
+      playerAudioDefault: false,
+      linePrizeCount: 1,
+      bingoPrizeCount: 1,
+      allowSamePlayerSecondLine: false
+    },
+    assignmentTimer: {
+      enabled: false,
+      durationMinutes: 10,
+      status: 'idle',
+      startedAt: null,
+      endsAt: null,
+      remainingMs: null,
+      completedAt: null
     },
     adminMessage: null,
     game: null,
@@ -116,12 +131,19 @@ function loadState() {
       ...defaults,
       ...parsed,
       roomSettings: { ...defaults.roomSettings, ...(parsed.roomSettings || {}) },
+      assignmentTimer: { ...defaults.assignmentTimer, ...(parsed.assignmentTimer || {}) },
       players: parsed.players || [],
       cardReservations: parsed.cardReservations || {},
       claims: parsed.claims || [],
       eventLog: parsed.eventLog || []
     };
     if (merged.active && !parsed.status) merged.status = merged.game?.drawn?.length ? 'playing' : 'waiting';
+    if (!['closed', 'waiting', 'playing', 'finished'].includes(merged.status)) merged.status = 'closed';
+    merged.roomSettings.linePrizeCount = Math.max(1, Math.min(2, Number(merged.roomSettings.linePrizeCount) || 1));
+    merged.roomSettings.bingoPrizeCount = 1;
+    merged.roomSettings.allowSamePlayerSecondLine = Boolean(merged.roomSettings.allowSamePlayerSecondLine);
+    merged.assignmentTimer.durationMinutes = Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(merged.assignmentTimer.durationMinutes) || 10));
+    if (!['idle', 'running', 'paused', 'completed'].includes(merged.assignmentTimer.status)) merged.assignmentTimer.status = 'idle';
     merged.adminMessage = parsed.adminMessage && typeof parsed.adminMessage === 'object' && String(parsed.adminMessage.text || '').trim()
       ? {
           id: String(parsed.adminMessage.id || randomId('msg')),
@@ -339,6 +361,128 @@ function syncAllAutoMarks() {
   for (const player of state.players) syncAutoMarksForPlayer(player);
 }
 
+function selectionIsOpen() {
+  return state.status === 'waiting' && state.assignmentTimer?.status !== 'completed';
+}
+
+function confirmedClaims(type) {
+  return state.claims.filter(claim => claim.type === type && claim.status === 'confirmed');
+}
+
+function prizeStatusPayload() {
+  const lineTotal = Math.max(1, Math.min(2, Number(state.roomSettings?.linePrizeCount) || 1));
+  const bingoTotal = 1;
+  const lineAwarded = confirmedClaims('line').length;
+  const bingoAwarded = confirmedClaims('bingo').length;
+  return {
+    line: {
+      total: lineTotal,
+      awarded: lineAwarded,
+      remaining: Math.max(0, lineTotal - lineAwarded),
+      closed: lineAwarded >= lineTotal,
+      nextNumber: Math.min(lineTotal, lineAwarded + 1),
+      nextLabel: lineAwarded === 0 ? 'Primera línea' : 'Segunda línea',
+      winners: confirmedClaims('line').map(claim => ({ playerId: claim.playerId, playerName: claim.playerName, cardId: claim.cardId, cardNumber: claim.cardNumber, prizeNumber: claim.prizeNumber || 1 }))
+    },
+    bingo: {
+      total: bingoTotal,
+      awarded: bingoAwarded,
+      remaining: Math.max(0, bingoTotal - bingoAwarded),
+      closed: bingoAwarded >= bingoTotal,
+      nextNumber: 1,
+      nextLabel: 'Bingo',
+      winners: confirmedClaims('bingo').map(claim => ({ playerId: claim.playerId, playerName: claim.playerName, cardId: claim.cardId, cardNumber: claim.cardNumber, prizeNumber: 1 }))
+    },
+    allowSamePlayerSecondLine: Boolean(state.roomSettings?.allowSamePlayerSecondLine)
+  };
+}
+
+function assignmentTimerPayload() {
+  const timer = state.assignmentTimer || blankState().assignmentTimer;
+  let remainingMs = Number(timer.remainingMs);
+  if (timer.status === 'running' && timer.endsAt) remainingMs = Math.max(0, new Date(timer.endsAt).getTime() - Date.now());
+  if (!Number.isFinite(remainingMs)) remainingMs = null;
+  return {
+    enabled: Boolean(timer.enabled),
+    durationMinutes: Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(timer.durationMinutes) || 10)),
+    status: timer.status || 'idle',
+    startedAt: timer.startedAt || null,
+    endsAt: timer.endsAt || null,
+    remainingMs,
+    remainingSeconds: remainingMs == null ? null : Math.max(0, Math.ceil(remainingMs / 1000)),
+    completedAt: timer.completedAt || null,
+    selectionClosed: timer.status === 'completed'
+  };
+}
+
+function autoAssignPendingPlayers(reason = 'timer') {
+  if (!state.active || !state.game || state.status !== 'waiting') throw new Error('La asignación automática solo está disponible en la sala de espera.');
+  purgeExpiredReservations();
+
+  const confirmedIds = new Set(state.players.filter(player => player.selectionConfirmed).flatMap(player => player.cardIds || []));
+  const pendingPlayers = state.players.filter(player => !(player.selectionConfirmed && player.cardIds.length === player.allowedCardCount));
+  const validUnassigned = new Set(state.game.cards.map(card => card.id).filter(cardId => !confirmedIds.has(cardId)));
+  const preferredByPlayer = new Map();
+  const preferredIds = new Set();
+  for (const player of pendingPlayers) {
+    const preferred = (player.reservedCardIds || [])
+      .filter(cardId => validUnassigned.has(cardId) && state.cardReservations?.[cardId]?.playerId === player.id && !preferredIds.has(cardId))
+      .slice(0, player.allowedCardCount);
+    preferred.forEach(cardId => preferredIds.add(cardId));
+    preferredByPlayer.set(player.id, preferred);
+  }
+  let available = shuffle([...validUnassigned].filter(cardId => !preferredIds.has(cardId)));
+  const assigned = [];
+
+  for (const player of pendingPlayers) {
+    const chosen = [...(preferredByPlayer.get(player.id) || [])];
+    while (chosen.length < player.allowedCardCount) {
+      const cardId = available.shift();
+      if (!cardId) throw new Error('No quedan cartones suficientes para completar la asignación automática.');
+      chosen.push(cardId);
+    }
+    player.cardIds = chosen;
+    player.selectionConfirmed = true;
+    player.offeredCardIds = [];
+    player.reservedCardIds = [];
+    player.marks = Object.fromEntries(chosen.map(cardId => [cardId, []]));
+    syncAutoMarksForPlayer(player);
+    player.notices ||= [];
+    player.notices.push({
+      id: randomId('notice'),
+      at: nowIso(),
+      type: 'auto_assignment',
+      result: 'confirmed',
+      text: `El sistema te asignó automáticamente ${chosen.length === 1 ? 'el cartón' : 'los cartones'} ${chosen.map(cardId => state.game.cards.find(card => card.id === cardId)?.number || '?').join(', ')}.`
+    });
+    assigned.push({ playerId: player.id, playerName: player.name, cardIds: chosen });
+  }
+
+  state.cardReservations = {};
+  state.assignmentTimer = {
+    ...(state.assignmentTimer || blankState().assignmentTimer),
+    enabled: true,
+    status: 'completed',
+    endsAt: null,
+    remainingMs: 0,
+    completedAt: nowIso()
+  };
+  updateCardDisplayNames();
+  refreshAllOffers();
+  logEvent('automatic_assignment_completed', { reason, assignedPlayers: assigned.length, assigned });
+  saveState();
+  broadcast();
+  return adminPayload();
+}
+
+function processAssignmentDeadline() {
+  const timer = state.assignmentTimer;
+  if (!state.active || state.status !== 'waiting' || timer?.status !== 'running' || !timer.endsAt) return false;
+  if (new Date(timer.endsAt).getTime() > Date.now()) return false;
+  autoAssignPendingPlayers('timer');
+  return true;
+}
+
 function publicClaimsPayload() {
   return state.claims.slice(-10).map(claim => {
     const payload = {
@@ -348,7 +492,9 @@ function publicClaimsPayload() {
       cardNumber: claim.cardNumber,
       createdAt: claim.createdAt,
       status: claim.status,
-      resolvedAt: claim.resolvedAt || null
+      resolvedAt: claim.resolvedAt || null,
+      prizeNumber: claim.prizeNumber || 1,
+      prizeLabel: claim.prizeLabel || (claim.type === 'line' ? 'Primera línea' : 'Bingo')
     };
     if (claim.status === 'confirmed') {
       const card = state.game?.cards?.find(item => item.id === claim.cardId);
@@ -437,9 +583,12 @@ function adminPayload() {
     roomCode: state.roomCode,
     createdAt: state.createdAt,
     startedAt: state.startedAt,
+    endedAt: state.endedAt || null,
     updatedAt: state.updatedAt,
     round: state.round,
     roomSettings: state.roomSettings,
+    assignmentTimer: assignmentTimerPayload(),
+    prizeStatus: prizeStatusPayload(),
     adminMessage: state.adminMessage,
     lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`),
     localUrl: `http://localhost:${PORT}`,
@@ -458,7 +607,7 @@ function adminPayload() {
     })),
     cardStatus,
     claims: state.claims.slice(-100),
-    eventLog: state.eventLog.slice(-200)
+    eventLog: state.eventLog.slice(-1000)
   };
 }
 
@@ -473,7 +622,10 @@ function playerPayload(player) {
     roomCode: state.roomCode,
     round: state.round,
     startedAt: state.startedAt,
+    endedAt: state.endedAt || null,
     roomSettings: state.roomSettings,
+    assignmentTimer: assignmentTimerPayload(),
+    prizeStatus: prizeStatusPayload(),
     adminMessage: state.adminMessage,
     publicClaims: publicClaimsPayload(),
     game: {
@@ -506,7 +658,7 @@ function backupPayload() {
   const cleanState = deepCopy(state);
   cleanState.players = cleanState.players.map(player => ({ ...player, sessionToken: null }));
   return {
-    format: 'el-bingo-de-la-gorda-v10-5-backup',
+    format: 'el-bingo-de-la-gorda-v10-6-backup',
     exportedAt: nowIso(),
     state: cleanState
   };
@@ -659,18 +811,32 @@ function configureRoom(payload) {
   const sanitizedGame = sanitizeGame(payload.game);
   sanitizedGame.drawn = [];
   sanitizedGame.phase = 'READY';
+  const requestedTimerMinutes = Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(payload.assignmentTimer?.durationMinutes) || 10));
   state = {
-    version: 6,
+    version: 7,
     active: true,
     status: 'waiting',
     roomCode: randomCode(5),
     createdAt: nowIso(),
     startedAt: null,
+    endedAt: null,
     updatedAt: nowIso(),
     round: 1,
     roomSettings: {
       playerAudioAllowed: payload.roomSettings?.playerAudioAllowed !== false,
-      playerAudioDefault: Boolean(payload.roomSettings?.playerAudioDefault)
+      playerAudioDefault: Boolean(payload.roomSettings?.playerAudioDefault),
+      linePrizeCount: Math.max(1, Math.min(2, Number(payload.roomSettings?.linePrizeCount) || 1)),
+      bingoPrizeCount: 1,
+      allowSamePlayerSecondLine: Boolean(payload.roomSettings?.allowSamePlayerSecondLine)
+    },
+    assignmentTimer: {
+      enabled: Boolean(payload.assignmentTimer?.enabled),
+      durationMinutes: requestedTimerMinutes,
+      status: 'idle',
+      startedAt: null,
+      endsAt: null,
+      remainingMs: requestedTimerMinutes * 60 * 1000,
+      completedAt: null
     },
     adminMessage: null,
     game: sanitizedGame,
@@ -698,6 +864,9 @@ function updateGame(game) {
   if (state.status === 'waiting' && sanitized.drawn.length > previousDrawn.length) {
     throw new Error('La partida está en sala de espera. Presioná INICIAR SORTEO antes de sortear.');
   }
+  if (state.status === 'finished' && JSON.stringify(sanitized.drawn) !== JSON.stringify(previousDrawn)) {
+    throw new Error('El sorteo ya fue finalizado. No se pueden modificar las bolillas.');
+  }
   const isNewRound = sanitized.drawn.length === 0 && previousDrawn.length > 0;
   state.game = sanitized;
   if (state.status === 'waiting') state.game.phase = 'READY';
@@ -705,7 +874,16 @@ function updateGame(game) {
     state.round += 1;
     state.status = 'waiting';
     state.startedAt = null;
+    state.endedAt = null;
     state.claims = [];
+    state.assignmentTimer = {
+      ...(state.assignmentTimer || blankState().assignmentTimer),
+      status: 'idle',
+      startedAt: null,
+      endsAt: null,
+      remainingMs: (Number(state.assignmentTimer?.durationMinutes) || 10) * 60 * 1000,
+      completedAt: null
+    };
     state.cardReservations = {};
     for (const player of state.players) {
       player.reservedCardIds = [];
@@ -734,8 +912,16 @@ function startRoom() {
   if (state.game.drawn.length) throw new Error('La ronda ya contiene bolillas. Reiniciala antes de empezar.');
   state.cardReservations = {};
   for (const player of state.players) player.reservedCardIds = [];
+  state.assignmentTimer = {
+    ...(state.assignmentTimer || blankState().assignmentTimer),
+    status: 'completed',
+    endsAt: null,
+    remainingMs: 0,
+    completedAt: state.assignmentTimer?.completedAt || nowIso()
+  };
   state.status = 'playing';
   state.startedAt = nowIso();
+  state.endedAt = null;
   state.game.phase = state.game.drawMode === 'automatic' ? 'DRAWING' : 'READY';
   logEvent('game_started', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0) });
   saveState();
@@ -747,7 +933,90 @@ function updateRoomSettings(payload) {
   if (!state.active) throw new Error('No hay una sala abierta.');
   state.roomSettings.playerAudioAllowed = payload.playerAudioAllowed !== false;
   state.roomSettings.playerAudioDefault = Boolean(payload.playerAudioDefault);
+  if (state.status === 'waiting') {
+    state.roomSettings.linePrizeCount = Math.max(1, Math.min(2, Number(payload.linePrizeCount ?? state.roomSettings.linePrizeCount) || 1));
+    state.roomSettings.allowSamePlayerSecondLine = Boolean(payload.allowSamePlayerSecondLine ?? state.roomSettings.allowSamePlayerSecondLine);
+  }
+  state.roomSettings.bingoPrizeCount = 1;
   logEvent('room_settings_updated', { ...state.roomSettings });
+  saveState();
+  broadcast();
+  return adminPayload();
+}
+
+function controlAssignmentTimer(payload) {
+  if (!state.active || !state.game || state.status !== 'waiting') throw new Error('El temporizador solo funciona en la sala de espera.');
+  const action = String(payload?.action || '').toLowerCase();
+  const current = state.assignmentTimer || blankState().assignmentTimer;
+  const durationMinutes = Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(payload?.durationMinutes ?? current.durationMinutes) || 10));
+  const now = Date.now();
+
+  if (action === 'start') {
+    if (current.status === 'completed') throw new Error('La selección ya fue cerrada y asignada.');
+    state.assignmentTimer = {
+      ...current,
+      enabled: true,
+      durationMinutes,
+      status: 'running',
+      startedAt: nowIso(),
+      endsAt: new Date(now + durationMinutes * 60 * 1000).toISOString(),
+      remainingMs: durationMinutes * 60 * 1000,
+      completedAt: null
+    };
+    logEvent('assignment_timer_started', { durationMinutes });
+  } else if (action === 'pause') {
+    if (current.status !== 'running') throw new Error('El conteo no está en marcha.');
+    const remainingMs = Math.max(0, new Date(current.endsAt).getTime() - now);
+    state.assignmentTimer = { ...current, status: 'paused', endsAt: null, remainingMs };
+    logEvent('assignment_timer_paused', { remainingMs });
+  } else if (action === 'resume') {
+    if (current.status !== 'paused') throw new Error('El conteo no está pausado.');
+    const remainingMs = Math.max(1000, Number(current.remainingMs) || durationMinutes * 60 * 1000);
+    state.assignmentTimer = { ...current, status: 'running', endsAt: new Date(now + remainingMs).toISOString(), remainingMs };
+    logEvent('assignment_timer_resumed', { remainingMs });
+  } else if (action === 'extend') {
+    const extraMinutes = Math.max(1, Math.min(30, Number(payload?.extraMinutes) || 5));
+    if (current.status === 'running') {
+      state.assignmentTimer = { ...current, endsAt: new Date(new Date(current.endsAt).getTime() + extraMinutes * 60 * 1000).toISOString() };
+    } else if (current.status === 'paused' || current.status === 'idle') {
+      const remainingMs = Math.max(0, Number(current.remainingMs) || durationMinutes * 60 * 1000) + extraMinutes * 60 * 1000;
+      state.assignmentTimer = { ...current, enabled: true, durationMinutes, remainingMs };
+    } else {
+      throw new Error('La selección ya fue cerrada.');
+    }
+    logEvent('assignment_timer_extended', { extraMinutes });
+  } else if (action === 'assign-now' || action === 'finish') {
+    return autoAssignPendingPlayers('manual');
+  } else if (action === 'cancel') {
+    state.assignmentTimer = {
+      ...current,
+      enabled: false,
+      durationMinutes,
+      status: 'idle',
+      startedAt: null,
+      endsAt: null,
+      remainingMs: durationMinutes * 60 * 1000,
+      completedAt: null
+    };
+    logEvent('assignment_timer_cancelled');
+  } else {
+    throw new Error('Acción de temporizador no válida.');
+  }
+
+  saveState();
+  broadcast();
+  return adminPayload();
+}
+
+function finishRoom() {
+  if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
+  if (state.status === 'finished') return adminPayload();
+  if (state.status !== 'playing') throw new Error('El sorteo todavía no comenzó.');
+  if (state.claims.some(claim => claim.status === 'pending')) throw new Error('Primero resolvé el reclamo pendiente.');
+  state.status = 'finished';
+  state.endedAt = nowIso();
+  state.game.phase = 'ROUND_END';
+  logEvent('game_finished', { round: state.round, balls: state.game.drawn.length });
   saveState();
   broadcast();
   return adminPayload();
@@ -775,7 +1044,7 @@ function updateAdminMessage(payload) {
 }
 
 function releasePlayerSelection(payload) {
-  if (!state.active || state.status !== 'waiting') throw new Error('Las elecciones solo pueden cambiarse antes de iniciar.');
+  if (!state.active || !selectionIsOpen()) throw new Error('Las elecciones ya están cerradas.');
   const player = state.players.find(item => item.id === String(payload.playerId || ''));
   if (!player) throw new Error('No se encontró el jugador.');
   releaseReservationsForPlayer(player);
@@ -796,6 +1065,7 @@ function closeRoom() {
   logEvent('room_closed');
   state.active = false;
   state.status = 'closed';
+  state.endedAt ||= nowIso();
   state.updatedAt = nowIso();
   saveState();
   broadcast();
@@ -840,15 +1110,17 @@ function restoreBackup(payload) {
     };
   });
   state = {
-    version: 6,
+    version: 7,
     active: true,
-    status: ['waiting', 'playing'].includes(raw.status) ? raw.status : (raw.game.drawn?.length ? 'playing' : 'waiting'),
+    status: ['waiting', 'playing', 'finished'].includes(raw.status) ? raw.status : (raw.game.drawn?.length ? 'playing' : 'waiting'),
     roomCode: String(raw.roomCode || randomCode(5)).slice(0, 12),
     createdAt: raw.createdAt || nowIso(),
     startedAt: raw.startedAt || null,
+    endedAt: raw.endedAt || null,
     updatedAt: nowIso(),
     round: Math.max(1, Number(raw.round) || 1),
     roomSettings: { ...blankState().roomSettings, ...(raw.roomSettings || {}) },
+    assignmentTimer: { ...blankState().assignmentTimer, ...(raw.assignmentTimer || {}) },
     adminMessage: raw.adminMessage && String(raw.adminMessage.text || '').trim()
       ? {
           id: String(raw.adminMessage.id || randomId('msg')),
@@ -860,7 +1132,7 @@ function restoreBackup(payload) {
     players,
     cardReservations: {},
     claims: Array.isArray(raw.claims) ? raw.claims.slice(-100) : [],
-    eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.slice(-500) : []
+    eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.slice(-2000) : []
   };
   updateCardDisplayNames();
   refreshAllOffers();
@@ -888,7 +1160,7 @@ function loginPlayer(payload) {
 
 function reserveCard(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
-  if (state.status !== 'waiting') throw new Error('La elección de cartones ya está cerrada.');
+  if (!selectionIsOpen()) throw new Error('La elección de cartones ya está cerrada.');
   if (player.selectionConfirmed) throw new Error('Tus cartones ya están confirmados.');
   purgeExpiredReservations();
   const cardId = String(payload.cardId || '');
@@ -934,7 +1206,7 @@ function reserveCard(player, payload) {
 
 function chooseCards(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
-  if (state.status !== 'waiting') throw new Error('La elección de cartones ya está cerrada.');
+  if (!selectionIsOpen()) throw new Error('La elección de cartones ya está cerrada.');
   purgeExpiredReservations();
   const selected = [...new Set((payload.cardIds || []).map(String))];
   if (selected.length !== player.allowedCardCount) throw new Error(`Debés elegir exactamente ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}.`);
@@ -973,7 +1245,7 @@ function chooseCards(player, payload) {
 }
 
 function releaseOwnSelection(player) {
-  if (!state.active || state.status !== 'waiting') throw new Error('La elección ya está cerrada.');
+  if (!state.active || !selectionIsOpen()) throw new Error('La elección ya está cerrada.');
   releaseReservationsForPlayer(player);
   player.cardIds = [];
   player.selectionConfirmed = false;
@@ -1019,21 +1291,36 @@ function setAutoMark(player, payload) {
 
 function createClaim(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
-  if (state.status !== 'playing') throw new Error('La partida todavía no comenzó.');
+  if (state.status !== 'playing') throw new Error('La partida todavía no comenzó o ya finalizó.');
   const type = payload.type === 'bingo' ? 'bingo' : 'line';
   const cardId = String(payload.cardId || '');
   const card = state.game.cards.find(item => item.id === cardId);
   if (!card || !player.cardIds.includes(cardId)) throw new Error('Ese cartón no pertenece al jugador.');
   if (type === 'line' && card.bets?.line === false) throw new Error('Este cartón no participa por línea.');
   if (type === 'bingo' && card.bets?.bingo === false) throw new Error('Este cartón no participa por bingo.');
+
+  const prizes = prizeStatusPayload();
+  const prize = prizes[type];
+  if (prize.closed) throw new Error(type === 'line' ? 'Los premios de línea ya fueron entregados.' : 'El premio de bingo ya fue entregado.');
   if (state.claims.some(claim => claim.status === 'pending')) {
     throw new Error('Ya hay un reclamo siendo revisado. Esperá la decisión del administrador.');
   }
+  if (state.claims.some(claim => claim.type === type && claim.cardId === cardId && claim.status === 'confirmed')) {
+    throw new Error(`Ese cartón ya ganó ${type === 'line' ? 'línea' : 'bingo'}.`);
+  }
+  if (type === 'line' && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(claim => claim.playerId === player.id)) {
+    throw new Error('Este jugador ya ganó una línea y la sala no permite que gane la segunda.');
+  }
+
   const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
   const valid = type === 'line' ? analysis.hasLine : analysis.hasBingo;
+  const prizeNumber = prize.awarded + 1;
+  const prizeLabel = type === 'line' ? (prizeNumber === 1 ? 'Primera línea' : 'Segunda línea') : 'Bingo';
   const claim = {
     id: randomId('claim'),
     type,
+    prizeNumber,
+    prizeLabel,
     playerId: player.id,
     playerName: player.name,
     cardId,
@@ -1047,7 +1334,7 @@ function createClaim(player, payload) {
   };
   state.claims.push(claim);
   state.game.phase = 'PAUSED';
-  logEvent('claim_created', { claimId: claim.id, type, playerId: player.id, cardId, officialValid: valid });
+  logEvent('claim_created', { claimId: claim.id, type, prizeNumber, playerId: player.id, cardId, officialValid: valid });
   saveState();
   broadcast();
   return claim;
@@ -1058,6 +1345,22 @@ function resolveClaim(payload) {
   if (!claim) throw new Error('No se encontró el reclamo.');
   if (claim.status !== 'pending') return claim;
   const resolution = payload.resolution === 'confirmed' ? 'confirmed' : 'rejected';
+
+  if (resolution === 'confirmed') {
+    if (!claim.officialValid) throw new Error('El sistema determinó que el reclamo no es válido.');
+    const prizes = prizeStatusPayload();
+    const current = prizes[claim.type];
+    if (current.closed) throw new Error(claim.type === 'line' ? 'Los premios de línea ya fueron entregados.' : 'El premio de bingo ya fue entregado.');
+    if (claim.type === 'line' && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(item => item.playerId === claim.playerId)) {
+      throw new Error('Este jugador ya ganó una línea y no está habilitado para ganar la segunda.');
+    }
+    if (confirmedClaims(claim.type).some(item => item.cardId === claim.cardId)) {
+      throw new Error('Ese cartón ya recibió este premio.');
+    }
+    claim.prizeNumber = current.awarded + 1;
+    claim.prizeLabel = claim.type === 'line' ? (claim.prizeNumber === 1 ? 'Primera línea' : 'Segunda línea') : 'Bingo';
+  }
+
   claim.status = resolution;
   claim.resolvedAt = nowIso();
   claim.adminNote = String(payload.note || '').slice(0, 240);
@@ -1070,18 +1373,187 @@ function resolveClaim(payload) {
       type: 'claim_result',
       claimId: claim.id,
       claimType: claim.type,
+      prizeNumber: claim.prizeNumber || 1,
       cardNumber: claim.cardNumber,
       result: resolution,
       officialValid: claim.officialValid,
       text: resolution === 'confirmed'
-        ? `${claim.type === 'line' ? 'Línea' : 'Bingo'} confirmado en el cartón ${claim.cardNumber}.`
+        ? `${claim.prizeLabel || (claim.type === 'line' ? 'Línea' : 'Bingo')} confirmada en el cartón ${claim.cardNumber}.`
         : `${claim.type === 'line' ? 'Línea' : 'Bingo'} rechazado en el cartón ${claim.cardNumber}.`
     });
   }
-  logEvent('claim_resolved', { claimId: claim.id, resolution, officialValid: claim.officialValid });
+  logEvent('claim_resolved', { claimId: claim.id, resolution, prizeNumber: claim.prizeNumber || 1, officialValid: claim.officialValid });
   saveState();
   broadcast();
   return claim;
+}
+
+
+function officialBallRows() {
+  const events = (state.eventLog || []).filter(event => event.type === 'ball_drawn');
+  return (state.game?.drawn || []).map((number, index) => {
+    const matching = events.filter(event => Number(event.number) === Number(number));
+    const event = matching.at(-1);
+    return {
+      order: index + 1,
+      number: Number(number),
+      at: event?.at || null
+    };
+  });
+}
+
+function actaPayload() {
+  if (!state.active || !state.game) throw new Error('No hay una sala disponible.');
+  const claims = confirmedClaims('line').concat(confirmedClaims('bingo')).sort((a, b) => new Date(a.resolvedAt || a.createdAt) - new Date(b.resolvedAt || b.createdAt));
+  return {
+    version: '10.6',
+    roomCode: state.roomCode,
+    round: state.round,
+    gameNumber: state.game.number,
+    mode: state.game.mode,
+    status: state.status,
+    presenter: state.game.presenter,
+    createdAt: state.createdAt,
+    startedAt: state.startedAt,
+    endedAt: state.endedAt,
+    totalPlayers: state.players.length,
+    activeCards: state.players.reduce((sum, player) => sum + (player.selectionConfirmed ? player.cardIds.length : 0), 0),
+    balls: officialBallRows(),
+    winners: claims.map(claim => ({
+      type: claim.type,
+      prizeNumber: claim.prizeNumber || 1,
+      prizeLabel: claim.prizeLabel || (claim.type === 'line' ? 'Línea' : 'Bingo'),
+      playerName: claim.playerName,
+      cardNumber: claim.cardNumber,
+      confirmedAt: claim.resolvedAt || null
+    }))
+  };
+}
+
+function formatLocalTimestamp(value) {
+  if (!value) return '';
+  try {
+    return new Intl.DateTimeFormat('es-AR', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false
+    }).format(new Date(value));
+  } catch {
+    return String(value);
+  }
+}
+
+function actaCsv() {
+  const acta = actaPayload();
+  const lines = [
+    ['EL BINGO DE LA GORDA - ACTA FINAL'],
+    ['Sala', acta.roomCode],
+    ['Juego', acta.gameNumber],
+    ['Ronda', acta.round],
+    ['Bingo', acta.mode],
+    ['Inicio', formatLocalTimestamp(acta.startedAt)],
+    ['Finalización', formatLocalTimestamp(acta.endedAt)],
+    ['Jugadores', acta.totalPlayers],
+    ['Cartones activos', acta.activeCards],
+    [],
+    ['ORDEN', 'BOLILLA', 'FECHA Y HORA'],
+    ...acta.balls.map(row => [row.order, row.number, formatLocalTimestamp(row.at)]),
+    [],
+    ['GANADORES'],
+    ['PREMIO', 'JUGADOR', 'CARTÓN', 'CONFIRMADO'],
+    ...acta.winners.map(winner => [winner.prizeLabel, winner.playerName, winner.cardNumber, formatLocalTimestamp(winner.confirmedAt)])
+  ];
+  const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  return '\ufeff' + lines.map(row => row.map(quote).join(';')).join('\r\n');
+}
+
+function asciiText(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '?');
+}
+
+function pdfEscape(value) {
+  return asciiText(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+
+function buildSimplePdf(lines) {
+  const pageLines = [];
+  for (let index = 0; index < lines.length; index += 48) pageLines.push(lines.slice(index, index + 48));
+  if (!pageLines.length) pageLines.push(['Sin datos.']);
+
+  const objects = [];
+  const addObject = body => {
+    objects.push(body);
+    return objects.length;
+  };
+  const catalogId = addObject('');
+  const pagesId = addObject('');
+  const fontId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  const pageIds = [];
+
+  for (const page of pageLines) {
+    const commands = ['BT', '/F1 10 Tf', '40 805 Td'];
+    page.forEach((line, index) => {
+      if (index > 0) commands.push('0 -15 Td');
+      commands.push(`(${pdfEscape(line)}) Tj`);
+    });
+    commands.push('ET');
+    const stream = commands.join('\n');
+    const contentId = addObject(`<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream`);
+    const pageId = addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`);
+    pageIds.push(pageId);
+  }
+
+  objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
+  objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
+
+  let pdf = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+  const offsets = [0];
+  objects.forEach((body, index) => {
+    offsets.push(Buffer.byteLength(pdf, 'latin1'));
+    pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(pdf, 'latin1');
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += '0000000000 65535 f \n';
+  for (let index = 1; index <= objects.length; index++) pdf += `${String(offsets[index]).padStart(10, '0')} 00000 n \n`;
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(pdf, 'latin1');
+}
+
+function actaPdf() {
+  const acta = actaPayload();
+  const lines = [
+    'EL BINGO DE LA GORDA - ACTA FINAL',
+    `Sala: ${acta.roomCode}   Juego: ${acta.gameNumber}   Ronda: ${acta.round}`,
+    `Modalidad: Bingo ${acta.mode}`,
+    `Inicio: ${formatLocalTimestamp(acta.startedAt)}`,
+    `Finalizacion: ${formatLocalTimestamp(acta.endedAt)}`,
+    `Jugadores: ${acta.totalPlayers}   Cartones activos: ${acta.activeCards}`,
+    '',
+    'ORDEN  BOLILLA  FECHA Y HORA',
+    ...acta.balls.map(row => `${String(row.order).padStart(5)}  ${String(row.number).padStart(7)}  ${formatLocalTimestamp(row.at)}`),
+    '',
+    'GANADORES',
+    ...(acta.winners.length
+      ? acta.winners.map(winner => `${winner.prizeLabel}: ${winner.playerName} - Carton ${winner.cardNumber} - ${formatLocalTimestamp(winner.confirmedAt)}`)
+      : ['Sin premios confirmados.'])
+  ];
+  return buildSimplePdf(lines);
+}
+
+function sendBuffer(res, status, buffer, contentType, filename) {
+  res.writeHead(status, {
+    'Content-Type': contentType,
+    'Content-Length': buffer.length,
+    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  res.end(buffer);
 }
 
 const MIME_TYPES = {
@@ -1145,10 +1617,15 @@ async function handleApi(req, res, url) {
       if (url.pathname === '/api/admin/configure' && req.method === 'POST') return sendJson(res, 200, configureRoom(await readJson(req)));
       if (url.pathname === '/api/admin/game' && req.method === 'POST') return sendJson(res, 200, updateGame((await readJson(req)).game));
       if (url.pathname === '/api/admin/start' && req.method === 'POST') return sendJson(res, 200, startRoom());
+      if (url.pathname === '/api/admin/finish' && req.method === 'POST') return sendJson(res, 200, finishRoom());
+      if (url.pathname === '/api/admin/assignment-timer' && req.method === 'POST') return sendJson(res, 200, controlAssignmentTimer(await readJson(req)));
       if (url.pathname === '/api/admin/settings' && req.method === 'POST') return sendJson(res, 200, updateRoomSettings(await readJson(req)));
       if (url.pathname === '/api/admin/message' && req.method === 'POST') return sendJson(res, 200, updateAdminMessage(await readJson(req)));
       if (url.pathname === '/api/admin/release-selection' && req.method === 'POST') return sendJson(res, 200, releasePlayerSelection(await readJson(req)));
       if (url.pathname === '/api/admin/resolve' && req.method === 'POST') return sendJson(res, 200, resolveClaim(await readJson(req)));
+      if (url.pathname === '/api/admin/acta' && req.method === 'GET') return sendJson(res, 200, actaPayload());
+      if (url.pathname === '/api/admin/acta.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(actaCsv(), 'utf8'), 'text/csv; charset=utf-8', `Bingo_Acta_${state.roomCode || 'sala'}.csv`);
+      if (url.pathname === '/api/admin/acta.pdf' && req.method === 'GET') return sendBuffer(res, 200, actaPdf(), 'application/pdf', `Bingo_Acta_${state.roomCode || 'sala'}.pdf`);
       if (url.pathname === '/api/admin/backup' && req.method === 'GET') return sendJson(res, 200, backupPayload());
       if (url.pathname === '/api/admin/restore' && req.method === 'POST') return sendJson(res, 200, restoreBackup(await readJson(req)));
       if (url.pathname === '/api/admin/close' && req.method === 'POST') { closeRoom(); return sendJson(res, 200, { ok: true }); }
@@ -1214,7 +1691,7 @@ function handleEvents(req, res, url) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || `localhost:${PORT}`}`);
-  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '10.5', active: state.active, status: state.status });
+  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '10.6', active: state.active, status: state.status });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('User-agent: *\nDisallow: /admin\n');
@@ -1234,6 +1711,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 setInterval(() => {
+  try { processAssignmentDeadline(); }
+  catch (error) { console.error('No se pudo completar la asignación automática:', error); }
+}, 1000).unref();
+
+setInterval(() => {
   const now = Date.now();
   for (const [token, expiresAt] of adminSessions) if (expiresAt <= now) adminSessions.delete(token);
   if (state.active && state.status === 'waiting' && purgeExpiredReservations()) {
@@ -1248,7 +1730,7 @@ setInterval(() => {
 }, 20_000).unref();
 
 server.listen(PORT, HOST, () => {
-  console.log('\nEL BINGO DE LA GORDA - V10.5 ONLINE');
+  console.log('\nEL BINGO DE LA GORDA - V10.6 ONLINE');
   if (ONLINE_MODE) {
     console.log(`Jugadores: ${PUBLIC_URL || 'URL pública de Render'}/jugador`);
     console.log(`Administrador: ${PUBLIC_URL || 'URL pública de Render'}/admin`);

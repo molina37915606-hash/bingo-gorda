@@ -1,8 +1,8 @@
 {
-  "name": "el-bingo-de-la-gorda-v10-5-online",
-  "version": "10.5.0",
+  "name": "el-bingo-de-la-gorda-v10-6-online",
+  "version": "10.6.0",
   "private": true,
-  "description": "Sala online con accesibilidad móvil, modo día/noche, pantalla completa, tablero de bolillas y cartón ganador público.",
+  "description": "Sala online con asignación automática por tiempo, primera y segunda línea, premios bloqueados y acta final descargable.",
   "engines": {
     "node": ">=18"
   },

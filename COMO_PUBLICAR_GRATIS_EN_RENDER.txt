@@ -19,13 +19,17 @@ DIRECCIONES
 - Administrador: https://TU-SERVICIO.onrender.com/admin
 - Jugadores: https://TU-SERVICIO.onrender.com/jugador
 
-USO
-1. Creá una partida sin sortear bolillas.
+FLUJO RECOMENDADO V10.6
+1. Generá entre 2 y 100 cartones sin sortear bolillas.
 2. Abrí SALA ONLINE.
-3. Cargá nombres y autorizá de 1 a 4 cartones por jugador.
-4. Abrí la sala de espera y compartí enlace y códigos.
-5. Esperá que todos confirmen.
-6. Presioná INICIAR SORTEO.
+3. Configurá de 2 a 60 jugadores y autorizá de 1 a 4 cartones por persona.
+4. Elegí una o dos líneas ganadoras y la regla para el mismo jugador.
+5. Activá, si corresponde, la asignación automática y elegí de 1 a 30 minutos.
+6. Compartí los accesos.
+7. Iniciá manualmente la cuenta regresiva cuando todos hayan recibido el enlace.
+8. Cuando termine la elección, revisá las asignaciones.
+9. Presioná INICIAR SORTEO. El temporizador nunca inicia el sorteo por sí solo.
+10. Al terminar, presioná FINALIZAR SORTEO y descargá el PDF o CSV del acta.
 
 LIMITACIONES DEL PLAN GRATUITO
 - Puede tardar cerca de un minuto en despertar.

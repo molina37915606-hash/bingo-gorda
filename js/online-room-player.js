@@ -92,6 +92,7 @@ class PlayerApp {
       await this.resume();
     }
     this.keepAliveTimer = setInterval(() => { if (this.state?.active) fetch('/api/ping', { cache: 'no-store' }).catch(() => {}); }, 5 * 60 * 1000);
+    this.assignmentClockTimer = setInterval(() => this.updateAssignmentCountdown(), 1000);
   }
 
   async request(url, options = {}) {
@@ -195,7 +196,7 @@ class PlayerApp {
     $('playerName').textContent = data.player.name;
     $('roomInfo').textContent = `Sala ${data.roomCode} · Juego ${String(data.game.number).padStart(4, '0')} · Bingo ${data.game.mode}`;
     this.renderPresenter();
-    document.body.classList.toggle('isPlaying', data.status === 'playing');
+    document.body.classList.toggle('isPlaying', data.status === 'playing' || data.status === 'finished');
     if (data.status === 'waiting') this.renderWaiting();
     else this.renderPlaying();
     this.renderNotice();
@@ -244,25 +245,65 @@ class PlayerApp {
     }
   }
 
+  assignmentRemainingSeconds() {
+    const timer = this.state?.assignmentTimer;
+    if (!timer) return null;
+    if (timer.status === 'running' && timer.endsAt) return Math.max(0, Math.ceil((new Date(timer.endsAt).getTime() - Date.now()) / 1000));
+    if (timer.remainingSeconds != null) return Math.max(0, Number(timer.remainingSeconds) || 0);
+    return null;
+  }
+
+  formatCountdown(seconds) {
+    if (seconds == null) return '—';
+    const safe = Math.max(0, Number(seconds) || 0);
+    return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
+  }
+
+  updateAssignmentCountdown() {
+    const host = $('playerAssignmentCountdown');
+    if (!host) return;
+    host.textContent = this.formatCountdown(this.assignmentRemainingSeconds());
+  }
+
+  assignmentTimerHtml() {
+    const timer = this.state?.assignmentTimer;
+    if (!timer?.enabled) return '';
+    const label = timer.status === 'running'
+      ? 'Tiempo para elegir tus cartones'
+      : timer.status === 'paused' ? 'Cuenta regresiva pausada'
+      : timer.status === 'completed' ? 'Selección finalizada'
+      : 'El administrador todavía no inició el conteo';
+    const value = timer.status === 'completed' ? '00:00' : this.formatCountdown(this.assignmentRemainingSeconds());
+    const note = timer.status === 'completed'
+      ? 'Los cartones pendientes fueron asignados automáticamente.'
+      : 'Si no confirmás a tiempo, el sistema te asignará los cartones que falten.';
+    return `<div class="waitingTimer"><div><b>${label}</b><small>${note}</small></div><strong id="playerAssignmentCountdown">${value}</strong></div>`;
+  }
+
   renderWaiting() {
     $('playPanel').classList.add('hidden');
     $('waitingPanel').classList.remove('hidden');
     $('connectionStatus').className = 'status wait';
     $('connectionStatus').textContent = 'EN ESPERA';
     const player = this.state.player;
+    const selectionClosed = Boolean(this.state.assignmentTimer?.selectionClosed);
+    const timerHtml = this.assignmentTimerHtml();
     if (player.selectionConfirmed) {
-      $('waitingPanel').innerHTML = `<div class="waitingConfirmed"><h2 style="margin:0 0 6px">Cartones confirmados</h2><div>La partida todavía no comenzó. Esperá la orden del administrador.</div><div class="chosenList">${player.cards.map(card => `<span class="chosenBadge">Cartón ${esc(card.number)}</span>`).join('')}</div><button id="changeChoice" class="btn secondary" style="margin-top:13px">CAMBIAR ELECCIÓN</button></div>`;
-      $('changeChoice').onclick = () => this.releaseChoice();
+      $('waitingPanel').innerHTML = `${timerHtml}<div class="waitingConfirmed"><h2 style="margin:0 0 6px">Cartones confirmados</h2><div>La partida todavía no comenzó. Esperá la orden del administrador.</div><div class="chosenList">${player.cards.map(card => `<span class="chosenBadge">Cartón ${esc(card.number)}</span>`).join('')}</div>${selectionClosed ? '' : '<button id="changeChoice" class="btn secondary" style="margin-top:13px">CAMBIAR ELECCIÓN</button>'}</div>`;
+      if ($('changeChoice')) $('changeChoice').onclick = () => this.releaseChoice();
+      this.updateAssignmentCountdown();
       return;
     }
     const offers = player.offeredCards || [];
     const valid = new Set(offers.map(card => card.id));
     this.selectedOffers = new Set([...this.selectedOffers].filter(id => valid.has(id)));
-    $('waitingPanel').innerHTML = `<h2>Elegí ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}</h2><div class="waitingLead">Estas son tus opciones disponibles (hasta diez). Al tocar una, queda reservada para vos durante ${this.state.player.reservationTtlSeconds || 120} segundos y desaparece de las opciones de los demás.</div><div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="confirmChoice" class="btn primary" style="margin:0" ${this.selectedOffers.size === player.allowedCardCount ? '' : 'disabled'}>CONFIRMAR ELECCIÓN</button></div>`;
+    $('waitingPanel').innerHTML = `${timerHtml}<h2>Elegí ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}</h2><div class="waitingLead">Estas son tus opciones disponibles (hasta diez). Al tocar una, queda reservada para vos durante ${this.state.player.reservationTtlSeconds || 120} segundos y desaparece de las opciones de los demás.</div><div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="confirmChoice" class="btn primary" style="margin:0" ${this.selectedOffers.size === player.allowedCardCount ? '' : 'disabled'}>CONFIRMAR ELECCIÓN</button></div>`;
     $('offerGrid').querySelectorAll('[data-offer]').forEach(button => button.onclick = () => this.toggleOffer(button.dataset.offer));
     $('clearChoice').onclick = () => this.clearReservations();
     $('confirmChoice').onclick = () => this.confirmChoice();
+    this.updateAssignmentCountdown();
   }
+
 
   offerHtml(card) {
     const selected = this.selectedOffers.has(card.id);
@@ -326,11 +367,12 @@ class PlayerApp {
   renderPlaying() {
     $('waitingPanel').classList.add('hidden');
     $('playPanel').classList.remove('hidden');
-    $('connectionStatus').className = 'status on';
-    $('connectionStatus').textContent = 'JUGANDO';
+    const finished = this.state.status === 'finished';
+    $('connectionStatus').className = finished ? 'status wait' : 'status on';
+    $('connectionStatus').textContent = finished ? 'FINALIZADO' : 'JUGANDO';
     const data = this.state;
     $('lastBall').textContent = data.game.lastBall ?? '—';
-    $('ballCount').textContent = `${data.game.drawn.length} bolillas sorteadas`;
+    $('ballCount').textContent = `${data.game.drawn.length} bolillas sorteadas${finished ? ' · secuencia cerrada' : ''}`;
     $('recent').innerHTML = [...data.game.drawn].reverse().slice(0, 6).map(number => `<i>${number}</i>`).join('');
     this.renderTabs();
     this.renderTicket();
@@ -413,8 +455,8 @@ class PlayerApp {
       if (winning.has(Number(value))) classes.push('winning');
       return `<div class="${classes.join(' ')}">${value}</div>`;
     }).join('');
-    const label = claim.type === 'bingo' ? 'BINGO' : 'LÍNEA';
-    $('winnerContent').innerHTML = `<div class="winnerSummary"><b>${esc(label)} CONFIRMADO</b><br>${esc(claim.playerName)} · Cartón ${esc(claim.cardNumber)}${claim.winningLineLabel ? `<br><span class="muted">${esc(claim.winningLineLabel)}</span>` : ''}</div><div class="winnerGrid mode${card.mode}">${cells}</div><div class="legend"><span><i class="official"></i>Número sorteado</span><span><i class="winning"></i>Números que forman el premio</span></div>`;
+    const label = claim.prizeLabel || (claim.type === 'bingo' ? 'BINGO' : 'LÍNEA');
+    $('winnerContent').innerHTML = `<div class="winnerSummary"><b>${esc(String(label).toUpperCase())} CONFIRMADO</b><br>${esc(claim.playerName)} · Cartón ${esc(claim.cardNumber)}${claim.winningLineLabel ? `<br><span class="muted">${esc(claim.winningLineLabel)}</span>` : ''}</div><div class="winnerGrid mode${card.mode}">${cells}</div><div class="legend"><span><i class="official"></i>Número sorteado</span><span><i class="winning"></i>Números que forman el premio</span></div>`;
   }
 
   closeModal(id) {
@@ -462,18 +504,40 @@ class PlayerApp {
     }
     const marks = new Set((this.state.player.marks?.[card.id] || []).map(Number));
     const autoMark = Boolean(this.state.player.autoMark);
+    const finished = this.state.status === 'finished';
     const cells = card.grid.flat().map(value => {
       if (value === null) return '<div class="cell blank">·</div>';
       if (value === 'LIBRE') return '<div class="cell free">LIBRE</div>';
-      return `<button class="cell number ${marks.has(value) ? 'marked' : ''}" data-number="${value}" aria-label="Número ${value}" ${autoMark ? 'disabled' : ''}>${value}</button>`;
+      return `<button class="cell number ${marks.has(value) ? 'marked' : ''}" data-number="${value}" aria-label="Número ${value}" ${autoMark || finished ? 'disabled' : ''}>${value}</button>`;
     }).join('');
-    const hint = autoMark
-      ? 'Marcado automático activado: todos tus cartones se actualizan con las bolillas oficiales.'
-      : 'Marcado manual: tocá cada número cuando salga. Podés activar el automarcado arriba.';
+    const hint = finished
+      ? 'El sorteo finalizó. Este cartón queda visible como registro.'
+      : autoMark
+        ? 'Marcado automático activado: todos tus cartones se actualizan con las bolillas oficiales.'
+        : 'Marcado manual: tocá cada número cuando salga. Podés activar el automarcado arriba.';
     $('ticketPanel').innerHTML = `<div class="ticketHead"><div><b>Cartón ${esc(card.number)}</b><br><small>${esc(this.state.player.name)}</small></div><small>${marks.size} marcados · ${autoMark ? 'AUTO' : 'MANUAL'}</small></div><div class="grid mode${card.mode}">${cells}</div><p class="manualHint">${hint}</p>`;
-    if (!autoMark) $('ticketPanel').querySelectorAll('[data-number]').forEach(button => button.onclick = () => this.toggleMark(card.id, Number(button.dataset.number), !button.classList.contains('marked')));
-    $('claimLine').disabled = card.bets?.line === false;
-    $('claimBingo').disabled = card.bets?.bingo === false;
+    if (!autoMark && !finished) $('ticketPanel').querySelectorAll('[data-number]').forEach(button => button.onclick = () => this.toggleMark(card.id, Number(button.dataset.number), !button.classList.contains('marked')));
+
+    const prizes = this.state.prizeStatus || {};
+    const pending = (this.state.publicClaims || []).some(claim => claim.status === 'pending');
+    const line = prizes.line || { closed: false, awarded: 0, total: 1, nextLabel: 'Primera línea', winners: [] };
+    const bingo = prizes.bingo || { closed: false, winners: [] };
+    const playerAlreadyWonLine = (line.winners || []).some(winner => winner.playerId === this.state.player.id);
+    const cardAlreadyWonLine = (line.winners || []).some(winner => winner.cardId === card.id);
+    const cardAlreadyWonBingo = (bingo.winners || []).some(winner => winner.cardId === card.id);
+    const samePlayerBlocked = !prizes.allowSamePlayerSecondLine && playerAlreadyWonLine;
+
+    $('claimLine').textContent = line.awarded > 0 && !line.closed ? 'CANTAR SEGUNDA LÍNEA' : 'CANTAR LÍNEA';
+    $('claimBingo').textContent = 'CANTAR BINGO';
+    $('claimLine').disabled = finished || pending || line.closed || samePlayerBlocked || cardAlreadyWonLine || card.bets?.line === false;
+    $('claimBingo').disabled = finished || pending || bingo.closed || cardAlreadyWonBingo || card.bets?.bingo === false;
+    $('claimLine').title = line.closed ? 'Los premios de línea ya fueron entregados.'
+      : samePlayerBlocked ? 'Este jugador ya ganó una línea.'
+      : pending ? 'Hay un reclamo en revisión.'
+      : '';
+    $('claimBingo').title = bingo.closed ? 'El premio de bingo ya fue entregado.'
+      : pending ? 'Hay un reclamo en revisión.'
+      : '';
   }
 
   async toggleMark(cardId, number, marked) {
@@ -508,7 +572,9 @@ class PlayerApp {
   async claim(type) {
     const card = this.state?.player.cards.find(item => item.id === this.activeCardId);
     if (!card) return;
-    const label = type === 'line' ? 'línea' : 'bingo';
+    const label = type === 'line'
+      ? (this.state?.prizeStatus?.line?.awarded > 0 ? 'segunda línea' : 'línea')
+      : 'bingo';
     if (!confirm(`¿Cantar ${label} con el cartón ${card.number}? El sorteo se pausará para que el administrador lo revise.`)) return;
     try {
       $('claimLine').disabled = $('claimBingo').disabled = true;
@@ -572,7 +638,7 @@ class PlayerApp {
     const key = `${claim.id}:${claim.status}`;
     if (key === this.lastPublicClaimKey) return;
     this.lastPublicClaimKey = key;
-    const label = claim.type === 'bingo' ? 'BINGO' : 'LÍNEA';
+    const label = String(claim.prizeLabel || (claim.type === 'bingo' ? 'BINGO' : 'LÍNEA')).toUpperCase();
     if (claim.status === 'pending') {
       this.showClaimOverlay({
         kind: claim.type,

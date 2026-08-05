@@ -1,26 +1,29 @@
-EL BINGO DE LA GORDA V10.5 ONLINE
+EL BINGO DE LA GORDA V10.6 ONLINE
 
 NOVEDADES DE ESTA VERSIÓN
-- Cartones más grandes, números gruesos y mayor contraste para personas mayores.
-- Los controles de sonido ocupan menos espacio y el cartón queda centrado.
-- Modo día y noche desde un icono de sol o luna en cada celular.
-- Botón VER NÚMEROS para consultar el tablero completo y el orden de salida.
-- Botón PANTALLA COMPLETA para concentrar la vista en el cartón.
-- Botón VER GANADOR después de que el administrador confirma una línea o bingo.
-- El cartón ganador muestra nombre, número de cartón y números que forman el premio.
+- Hasta 60 jugadores y 100 cartones.
+- Cuenta regresiva opcional de 1 a 30 minutos para elegir cartones.
+- El administrador inicia, pausa, reanuda o extiende el conteo y puede finalizarlo cuando quiera.
+- Al vencer el tiempo se conservan los cartones confirmados y las reservas válidas; los pendientes se asignan automáticamente sin duplicados.
+- El sorteo NO comienza cuando termina el conteo: sigue siendo obligatorio presionar INICIAR SORTEO.
+- Se puede configurar una sola línea o primera y segunda línea.
+- La segunda línea puede prohibirse para el mismo jugador, aun cuando tenga otro cartón.
+- Mientras se verifica un reclamo, los botones quedan bloqueados para todos.
+- Después de confirmar el último premio de línea o el bingo, el botón correspondiente queda cerrado definitivamente.
+- Al finalizar el sorteo se muestra la secuencia oficial por orden de extracción.
+- Descarga del acta final en PDF y CSV, con horas y ganadores.
 
 FUNCIONES QUE SE CONSERVAN
-- Hasta 100 cartones y 50 jugadores.
 - Entre 1 y 4 cartones por jugador.
-- Elección exclusiva de cartones, con reserva para impedir duplicados.
-- Sala de espera e inicio manual del sorteo.
+- Elección exclusiva de cartones y reserva contra duplicados.
+- Sala de espera e inicio manual.
 - Marcado manual o automático.
-- Presentadora, canto de números y avisos con sonido.
-- Mensajes del administrador desde la presentadora.
+- Presentadora, canto de números, mensajes y avisos con sonido.
+- Modo día/noche, pantalla completa, tablero de números y cartón ganador público.
 - Comparación entre marcado del jugador y control oficial.
 
 ACTUALIZACIÓN EN GITHUB
-Usá el archivo Actualizacion_V10_5_para_GitHub.zip. Descomprimilo y subí todo su contenido a la raíz del repositorio, reemplazando los archivos anteriores. Render volverá a publicar automáticamente.
+Usá Actualizacion_V10_6_para_GitHub.zip. Descomprimilo y subí todo su contenido a la raíz del repositorio. GitHub reemplazará los archivos anteriores y Render publicará la actualización automáticamente.
 
 IMPORTANTE
-El plan gratuito de Render puede reiniciar el servidor y perder el estado guardado en sus archivos. Descargá copias de seguridad desde el panel del administrador cuando la partida sea importante.
+Actualizá cuando no haya una partida activa. El plan gratuito de Render puede reiniciar el servidor y usa almacenamiento temporal. Descargá una copia de seguridad durante partidas importantes y el acta final cuando termine el sorteo.

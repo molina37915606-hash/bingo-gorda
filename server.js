@@ -106,7 +106,7 @@ function blankState() {
       playerAudioDefault: false,
       linePrizeCount: 1,
       bingoPrizeCount: 1,
-      allowSamePlayerSecondLine: false,
+      allowSamePlayerSecondLine: true,
       tiePolicy: 'first_claim'
     },
     assignmentTimer: {
@@ -730,7 +730,7 @@ function backupPayload() {
   const cleanState = deepCopy(state);
   cleanState.players = cleanState.players.map(player => ({ ...player, sessionToken: null }));
   return {
-    format: 'el-bingo-de-la-gorda-v10-7-backup',
+    format: 'el-bingo-de-la-gorda-beta-backup',
     exportedAt: nowIso(),
     state: cleanState
   };
@@ -1545,8 +1545,8 @@ function resolveClaim(payload) {
 function officialBallRows() {
   const events = (state.eventLog || []).filter(event => event.type === 'ball_drawn');
   return (state.game?.drawn || []).map((number, index) => {
-    const matching = events.filter(event => Number(event.number) === Number(number));
-    const event = matching.at(-1);
+    const event = [...events].reverse().find(item => Number(item.number) === Number(number) && Number(item.position || index + 1) === index + 1)
+      || [...events].reverse().find(item => Number(item.number) === Number(number));
     return {
       order: index + 1,
       number: Number(number),
@@ -1555,11 +1555,34 @@ function officialBallRows() {
   });
 }
 
+function winnerDetails(claim) {
+  const card = state.game?.cards?.find(item => item.id === claim.cardId) || null;
+  const completeLine = claim.comparison?.completeLines?.[0] || null;
+  const drawnAtClaim = Array.isArray(claim.drawnAtClaim) ? claim.drawnAtClaim : [];
+  return {
+    type: claim.type,
+    prizeNumber: Number(claim.prizeNumber) || 1,
+    prizeLabel: claim.prizeLabel || (claim.type === 'line' ? 'Línea' : 'Bingo'),
+    playerName: claim.playerName,
+    cardId: claim.cardId,
+    cardNumber: claim.cardNumber,
+    claimedAt: claim.createdAt || null,
+    confirmedAt: claim.resolvedAt || null,
+    ballOrder: drawnAtClaim.length || null,
+    ballNumber: drawnAtClaim.at(-1) ?? null,
+    mode: Number(card?.mode || state.game?.mode) === 75 ? 75 : 90,
+    grid: card ? deepCopy(card.grid) : [],
+    winningNumbers: claim.type === 'line' ? (completeLine?.values || []) : cardNumbers(card),
+    winningLineLabel: claim.type === 'line' ? (completeLine?.label || 'Línea completa') : null
+  };
+}
+
 function actaPayload() {
   if (!state.active || !state.game) throw new Error('No hay una sala disponible.');
-  const claims = confirmedClaims('line').concat(confirmedClaims('bingo')).sort((a, b) => new Date(a.resolvedAt || a.createdAt) - new Date(b.resolvedAt || b.createdAt));
+  const claims = confirmedClaims('line').concat(confirmedClaims('bingo'))
+    .sort((a, b) => new Date(a.createdAt || a.resolvedAt || 0) - new Date(b.createdAt || b.resolvedAt || 0));
   return {
-    version: '10.7',
+    version: 'Beta',
     roomCode: state.roomCode,
     round: state.round,
     gameNumber: state.game.number,
@@ -1572,15 +1595,14 @@ function actaPayload() {
     totalPlayers: state.players.length,
     activeCards: state.players.reduce((sum, player) => sum + (player.selectionConfirmed ? player.cardIds.length : 0), 0),
     balls: officialBallRows(),
-    participants: state.players.map(player => ({ name: player.name, code: player.code, allowedCardCount: player.allowedCardCount, cardNumbers: (player.cardIds || []).map(cardId => state.game.cards.find(card => card.id === cardId)?.number).filter(Boolean), selectionConfirmed: player.selectionConfirmed })),
-    winners: claims.map(claim => ({
-      type: claim.type,
-      prizeNumber: claim.prizeNumber || 1,
-      prizeLabel: claim.prizeLabel || (claim.type === 'line' ? 'Línea' : 'Bingo'),
-      playerName: claim.playerName,
-      cardNumber: claim.cardNumber,
-      confirmedAt: claim.resolvedAt || null
-    }))
+    participants: state.players.map(player => ({
+      name: player.name,
+      code: player.code,
+      allowedCardCount: player.allowedCardCount,
+      cardNumbers: (player.cardIds || []).map(cardId => state.game.cards.find(card => card.id === cardId)?.number).filter(Boolean),
+      selectionConfirmed: player.selectionConfirmed
+    })),
+    winners: claims.map(winnerDetails)
   };
 }
 
@@ -1598,10 +1620,44 @@ function formatLocalTimestamp(value) {
   }
 }
 
+function formatLocalDate(value) {
+  if (!value) return '—';
+  try {
+    return new Intl.DateTimeFormat('es-AR', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date(value));
+  } catch {
+    return String(value);
+  }
+}
+
+function formatLocalTime(value) {
+  if (!value) return '—';
+  try {
+    return new Intl.DateTimeFormat('es-AR', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false
+    }).format(new Date(value));
+  } catch {
+    return String(value);
+  }
+}
+
+function formatDuration(startedAt, endedAt) {
+  if (!startedAt || !endedAt) return '—';
+  const total = Math.max(0, Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  return `${hours ? `${hours} h ` : ''}${String(minutes).padStart(2, '0')} min ${String(seconds).padStart(2, '0')} s`;
+}
+
 function actaCsv() {
   const acta = actaPayload();
   const lines = [
-    ['EL BINGO DE LA GORDA - ACTA FINAL'],
+    ['EL BINGO DE LA GORDA - RESULTADOS'],
     ['Sala', acta.roomCode],
     ['Juego', acta.gameNumber],
     ['Ronda', acta.round],
@@ -1615,8 +1671,8 @@ function actaCsv() {
     ...acta.balls.map(row => [row.order, row.number, formatLocalTimestamp(row.at)]),
     [],
     ['GANADORES'],
-    ['PREMIO', 'JUGADOR', 'CARTÓN', 'CONFIRMADO'],
-    ...acta.winners.map(winner => [winner.prizeLabel, winner.playerName, winner.cardNumber, formatLocalTimestamp(winner.confirmedAt)]),
+    ['PREMIO', 'JUGADOR', 'CARTÓN', 'CANTADO', 'BOLILLA'],
+    ...acta.winners.map(winner => [winner.prizeLabel, winner.playerName, winner.cardNumber, formatLocalTimestamp(winner.claimedAt), winner.ballNumber]),
     [],
     ['JUGADORES Y CARTONES'],
     ['JUGADOR', 'CÓDIGO', 'CARTONES ASIGNADOS', 'CANTIDAD'],
@@ -1649,84 +1705,314 @@ function participantsCsv() {
   return '\ufeff' + lines.map(row => row.map(quote).join(';')).join('\r\n');
 }
 
-function asciiText(value) {
+function pdfLatin(value) {
   return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\x20-\x7E]/g, '?');
+    .normalize('NFC')
+    .replace(/[–—]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[^\x20-\xFF]/g, '?');
 }
 
 function pdfEscape(value) {
-  return asciiText(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  return pdfLatin(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 }
 
-function buildSimplePdf(lines) {
-  const pageLines = [];
-  for (let index = 0; index < lines.length; index += 48) pageLines.push(lines.slice(index, index + 48));
-  if (!pageLines.length) pageLines.push(['Sin datos.']);
+function pdfTextWidth(value, size) {
+  const text = pdfLatin(value);
+  let units = 0;
+  for (const char of text) {
+    if (' ilI.,:;!|\'`'.includes(char)) units += .27;
+    else if ('mwMW@%#'.includes(char)) units += .86;
+    else if ('0123456789'.includes(char)) units += .56;
+    else units += .53;
+  }
+  return units * size;
+}
 
-  const objects = [];
-  const addObject = body => {
-    objects.push(body);
-    return objects.length;
+function fitPdfText(value, maxWidth, size) {
+  let text = pdfLatin(value);
+  if (pdfTextWidth(text, size) <= maxWidth) return text;
+  while (text.length > 1 && pdfTextWidth(`${text}...`, size) > maxWidth) text = text.slice(0, -1);
+  return `${text}...`;
+}
+
+function hexRgb(hex) {
+  const clean = String(hex).replace('#', '');
+  return [parseInt(clean.slice(0, 2), 16) / 255, parseInt(clean.slice(2, 4), 16) / 255, parseInt(clean.slice(4, 6), 16) / 255];
+}
+
+function buildResultsPdf() {
+  if (state.status !== 'finished') throw new Error('Los resultados estarán disponibles cuando finalice el sorteo.');
+  const acta = actaPayload();
+  const PAGE_W = 842;
+  const PAGE_H = 595;
+  const commands = [];
+  const rgb = hex => hexRgb(hex).map(value => value.toFixed(3)).join(' ');
+  const topY = (y, height = 0) => PAGE_H - y - height;
+  const line = (x1, y1, x2, y2, color = '#000000', width = 1) => commands.push(`${rgb(color)} RG ${width} w ${x1.toFixed(2)} ${topY(y1).toFixed(2)} m ${x2.toFixed(2)} ${topY(y2).toFixed(2)} l S`);
+  const rect = (x, y, width, height, fill = null, stroke = null, lineWidth = 1) => {
+    if (fill) commands.push(`${rgb(fill)} rg`);
+    if (stroke) commands.push(`${rgb(stroke)} RG ${lineWidth} w`);
+    commands.push(`${x.toFixed(2)} ${topY(y, height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);
   };
-  const catalogId = addObject('');
-  const pagesId = addObject('');
-  const fontId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
-  const pageIds = [];
+  const circle = (cx, cy, radius, fill = null, stroke = null, lineWidth = 1) => {
+    const k = .5522847498 * radius;
+    const py = topY(cy);
+    if (fill) commands.push(`${rgb(fill)} rg`);
+    if (stroke) commands.push(`${rgb(stroke)} RG ${lineWidth} w`);
+    commands.push(`${(cx + radius).toFixed(2)} ${py.toFixed(2)} m`);
+    commands.push(`${(cx + radius).toFixed(2)} ${(py + k).toFixed(2)} ${(cx + k).toFixed(2)} ${(py + radius).toFixed(2)} ${cx.toFixed(2)} ${(py + radius).toFixed(2)} c`);
+    commands.push(`${(cx - k).toFixed(2)} ${(py + radius).toFixed(2)} ${(cx - radius).toFixed(2)} ${(py + k).toFixed(2)} ${(cx - radius).toFixed(2)} ${py.toFixed(2)} c`);
+    commands.push(`${(cx - radius).toFixed(2)} ${(py - k).toFixed(2)} ${(cx - k).toFixed(2)} ${(py - radius).toFixed(2)} ${cx.toFixed(2)} ${(py - radius).toFixed(2)} c`);
+    commands.push(`${(cx + k).toFixed(2)} ${(py - radius).toFixed(2)} ${(cx + radius).toFixed(2)} ${(py - k).toFixed(2)} ${(cx + radius).toFixed(2)} ${py.toFixed(2)} c ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);
+  };
+  const text = (value, x, y, size = 10, options = {}) => {
+    const font = options.bold ? 'F2' : 'F1';
+    const color = options.color || '#111827';
+    const maxWidth = options.maxWidth || null;
+    let shown = maxWidth ? fitPdfText(value, maxWidth, size) : pdfLatin(value);
+    let tx = x;
+    const width = pdfTextWidth(shown, size);
+    if (options.align === 'center') tx = x - width / 2;
+    if (options.align === 'right') tx = x - width;
+    commands.push(`BT /${font} ${size.toFixed(2)} Tf ${rgb(color)} rg 1 0 0 1 ${tx.toFixed(2)} ${(PAGE_H - y - size).toFixed(2)} Tm (${pdfEscape(shown)}) Tj ET`);
+  };
+  const image = (x, y, width, height) => commands.push(`q ${width.toFixed(2)} 0 0 ${height.toFixed(2)} ${x.toFixed(2)} ${topY(y, height).toFixed(2)} cm /Logo Do Q`);
 
-  for (const page of pageLines) {
-    const commands = ['BT', '/F1 10 Tf', '40 805 Td'];
-    page.forEach((line, index) => {
-      if (index > 0) commands.push('0 -15 Td');
-      commands.push(`(${pdfEscape(line)}) Tj`);
-    });
-    commands.push('ET');
-    const stream = commands.join('\n');
-    const contentId = addObject(`<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream`);
-    const pageId = addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`);
-    pageIds.push(pageId);
+  const COLORS = {
+    ink: '#1C1531', muted: '#6B6478', purple: '#5A167B', purple2: '#8327A5', pink: '#E83E87', gold: '#F4B51E', pale: '#F7F2FA', border: '#D9CBE2', white: '#FFFFFF', green: '#188C62', red: '#BF315E', blue: '#2C70B7'
+  };
+
+  rect(0, 0, PAGE_W, PAGE_H, '#FBF9FC');
+  rect(0, 0, PAGE_W, 91, COLORS.purple);
+  rect(0, 82, PAGE_W, 9, COLORS.pink);
+  rect(19, 10, 70, 70, COLORS.white, '#F2D3E2', 1);
+  image(24, 15, 60, 60);
+  text('RESULTADOS OFICIALES DEL SORTEO', 101, 18, 20, { bold: true, color: COLORS.white, maxWidth: 390 });
+  text('Bingo de la Gorda - Versión Beta', 101, 47, 11, { bold: true, color: '#F7DDF0' });
+  text(`Sala ${acta.roomCode}  ·  Juego ${acta.gameNumber}  ·  Bingo ${acta.mode}`, 101, 65, 8.5, { color: '#E8D7EE' });
+
+  const metaX = 510;
+  const metaW = 101;
+  const metaGap = 6;
+  const meta = [
+    ['FECHA', formatLocalDate(acta.startedAt)],
+    ['INICIO', formatLocalTime(acta.startedAt)],
+    ['FINALIZACIÓN', formatLocalTime(acta.endedAt)]
+  ];
+  meta.forEach((item, index) => {
+    const x = metaX + index * (metaW + metaGap);
+    rect(x, 14, metaW, 53, '#FFFFFF', '#FFFFFF', .5);
+    text(item[0], x + 8, 22, 6.5, { bold: true, color: COLORS.purple2, maxWidth: metaW - 16 });
+    text(item[1], x + metaW / 2, 39, 11.5, { bold: true, color: COLORS.ink, align: 'center', maxWidth: metaW - 12 });
+    text(index === 0 ? `${acta.totalPlayers} jugadores` : index === 1 ? `${acta.activeCards} cartones` : formatDuration(acta.startedAt, acta.endedAt), x + metaW / 2, 57, 6.2, { color: COLORS.muted, align: 'center', maxWidth: metaW - 10 });
+  });
+
+  text('ORDEN DE SALIDA DE LAS BOLILLAS', 24, 101, 11, { bold: true, color: COLORS.ink });
+  text('Cada casillero indica orden, bolilla y hora exacta de salida.', 818, 102, 7.5, { color: COLORS.muted, align: 'right' });
+
+  const markerMap = new Map();
+  for (const winner of acta.winners) {
+    if (!winner.ballOrder) continue;
+    const label = winner.type === 'bingo' ? 'B' : winner.prizeNumber === 2 ? 'L2' : 'L1';
+    const list = markerMap.get(winner.ballOrder) || [];
+    list.push({ label, time: formatLocalTime(winner.claimedAt), type: winner.type, prizeNumber: winner.prizeNumber });
+    markerMap.set(winner.ballOrder, list);
   }
 
-  objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
-  objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
+  const gridX = 24;
+  const gridY = 121;
+  const cols = 15;
+  const gap = 3;
+  const gridW = 794;
+  const cellW = (gridW - gap * (cols - 1)) / cols;
+  const cellH = 31;
+  const rows = Math.max(1, Math.ceil(Math.max(acta.balls.length, 1) / cols));
+  for (let index = 0; index < Math.max(acta.balls.length, 1); index++) {
+    const row = Math.floor(index / cols);
+    const col = index % cols;
+    const x = gridX + col * (cellW + gap);
+    const y = gridY + row * (cellH + gap);
+    const ball = acta.balls[index];
+    const marks = markerMap.get(index + 1) || [];
+    const marked = marks.length > 0;
+    rect(x, y, cellW, cellH, marked ? '#FFF4C9' : COLORS.white, marked ? COLORS.gold : COLORS.border, marked ? 1.5 : .7);
+    if (!ball) {
+      text('—', x + cellW / 2, y + 9, 9, { color: '#C7BBCD', align: 'center' });
+      continue;
+    }
+    text(String(ball.order).padStart(2, '0'), x + 3, y + 3, 5.5, { bold: true, color: COLORS.muted });
+    circle(x + cellW / 2, y + 13, 9, marked ? COLORS.gold : '#F1E7F5', marked ? '#D98C00' : '#C9AED5', .7);
+    text(ball.number, x + cellW / 2, y + 6.8, 10.5, { bold: true, color: COLORS.ink, align: 'center' });
+    text(formatLocalTime(ball.at), x + cellW / 2, y + 22.5, 5.7, { color: COLORS.muted, align: 'center' });
+    if (marks.length) {
+      const labels = marks.map(mark => mark.label).join('·');
+      rect(x + cellW - 16, y + 2, 14, 8, marks.some(mark => mark.type === 'bingo') ? COLORS.pink : COLORS.purple2);
+      text(labels, x + cellW - 9, y + 2.2, labels.length > 2 ? 4.7 : 5.5, { bold: true, color: COLORS.white, align: 'center', maxWidth: 12 });
+    }
+  }
 
-  let pdf = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
-  const offsets = [0];
-  objects.forEach((body, index) => {
-    offsets.push(Buffer.byteLength(pdf, 'latin1'));
-    pdf += `${index + 1} 0 obj\n${body}\nendobj\n`;
+  const gridBottom = gridY + rows * cellH + Math.max(0, rows - 1) * gap;
+  const legendY = gridBottom + 7;
+  text('MARCAS DE CANTO:', 24, legendY, 7, { bold: true, color: COLORS.ink });
+  const legend = [
+    ['L1', 'Primera línea', COLORS.purple2],
+    ['L2', 'Segunda línea', COLORS.gold],
+    ['B', 'Bingo', COLORS.pink]
+  ];
+  let lx = 111;
+  legend.forEach(([tag, label, color]) => {
+    rect(lx, legendY - 1, 16, 10, color);
+    text(tag, lx + 8, legendY, 5.8, { bold: true, color: COLORS.white, align: 'center' });
+    text(label, lx + 21, legendY, 6.7, { color: COLORS.muted });
+    lx += tag === 'B' ? 65 : 104;
   });
-  const xrefOffset = Buffer.byteLength(pdf, 'latin1');
-  pdf += `xref\n0 ${objects.length + 1}\n`;
-  pdf += '0000000000 65535 f \n';
-  for (let index = 1; index <= objects.length; index++) pdf += `${String(offsets[index]).padStart(10, '0')} 00000 n \n`;
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return Buffer.from(pdf, 'latin1');
+  text('La marca se ubica sobre la última bolilla sorteada al momento del canto.', 818, legendY, 6.7, { color: COLORS.muted, align: 'right' });
+
+  const winnersTitleY = legendY + 20;
+  text('CARTONES GANADORES', 24, winnersTitleY, 11, { bold: true, color: COLORS.ink });
+  line(171, winnersTitleY + 7, 818, winnersTitleY + 7, '#DCCFE2', .8);
+
+  const blocksY = winnersTitleY + 20;
+  const blockGap = 9;
+  const blockW = (794 - blockGap * 2) / 3;
+  const blockH = Math.max(145, 571 - blocksY);
+
+  const categories = [
+    { label: 'PRIMERA LÍNEA', color: COLORS.purple2, winners: acta.winners.filter(w => w.type === 'line' && w.prizeNumber === 1) },
+    { label: 'SEGUNDA LÍNEA', color: '#C58B00', winners: acta.winners.filter(w => w.type === 'line' && w.prizeNumber === 2) },
+    { label: 'BINGO', color: COLORS.pink, winners: acta.winners.filter(w => w.type === 'bingo') }
+  ];
+
+  const drawMiniCard = (winner, x, y, width, height) => {
+    rect(x, y, width, height, '#FFFFFF', '#DDD2E2', .7);
+    const compact = width < 160 || height < 92;
+    const nameSize = compact ? 6 : 7.3;
+    const metaSize = compact ? 4.8 : 5.8;
+    text(winner.playerName || 'Jugador', x + 6, y + 5, nameSize, { bold: true, color: COLORS.ink, maxWidth: width - 12 });
+    text(`Cartón ${winner.cardNumber} · Cantado ${formatLocalTime(winner.claimedAt)}`, x + 6, y + 17, metaSize, { color: COLORS.muted, maxWidth: width - 12 });
+    const ballText = winner.ballOrder ? `Tras bolilla ${winner.ballNumber} (salida ${winner.ballOrder})` : 'Momento de canto no disponible';
+    text(ballText, x + 6, y + 27, metaSize, { color: winner.type === 'bingo' ? COLORS.pink : COLORS.purple2, bold: true, maxWidth: width - 12 });
+    if (winner.winningLineLabel && !compact) text(winner.winningLineLabel, x + width - 6, y + 27, 5.3, { color: COLORS.muted, align: 'right', maxWidth: width * .42 });
+
+    const grid = Array.isArray(winner.grid) ? winner.grid : [];
+    const rowCount = Number(winner.mode) === 75 ? 5 : 3;
+    const colCount = Number(winner.mode) === 75 ? 5 : 9;
+    const gridTop = y + (compact ? 37 : 39);
+    const gridBottomSpace = 5;
+    const maxGridH = Math.max(18, height - (gridTop - y) - gridBottomSpace);
+    const maxGridW = width - 12;
+    const cellW = Math.min(maxGridW / colCount, (Number(winner.mode) === 75 ? maxGridH / rowCount * 1.12 : maxGridH / rowCount * 1.55));
+    const cellH = Math.min(maxGridH / rowCount, Number(winner.mode) === 75 ? cellW : cellW * .64);
+    const actualW = cellW * colCount;
+    const actualH = cellH * rowCount;
+    const gx = x + (width - actualW) / 2;
+    const gy = gridTop + Math.max(0, (maxGridH - actualH) / 2);
+    const winning = new Set((winner.winningNumbers || []).map(Number));
+    const drawn = new Set((state.game?.drawn || []).map(Number));
+    for (let r = 0; r < rowCount; r++) {
+      for (let c = 0; c < colCount; c++) {
+        const value = grid?.[r]?.[c];
+        const cx = gx + c * cellW;
+        const cy = gy + r * cellH;
+        const isBlank = value === null || value === undefined;
+        const isFree = value === 'LIBRE';
+        const isWinner = winner.type === 'bingo' ? (!isBlank && (isFree || drawn.has(Number(value)))) : winning.has(Number(value));
+        const fill = isBlank ? '#E9E5EC' : isWinner ? (winner.type === 'bingo' ? '#FFD2E4' : '#FFE9A4') : '#F8F6F9';
+        const stroke = isWinner ? (winner.type === 'bingo' ? COLORS.pink : '#D19A08') : '#D7CFDB';
+        rect(cx, cy, cellW, cellH, fill, stroke, isWinner ? .8 : .35);
+        if (!isBlank) {
+          const display = isFree ? '★' : value;
+          text(display, cx + cellW / 2, cy + Math.max(.5, cellH * .18), Math.max(3.1, Math.min(compact ? 5.2 : 6.8, cellH * .52)), { bold: isWinner, color: COLORS.ink, align: 'center', maxWidth: cellW - 1 });
+        }
+      }
+    }
+  };
+
+  categories.forEach((category, index) => {
+    const x = 24 + index * (blockW + blockGap);
+    rect(x, blocksY, blockW, blockH, '#F7F2F9', '#D7C8DE', .8);
+    rect(x, blocksY, blockW, 25, category.color);
+    text(category.label, x + blockW / 2, blocksY + 7, 9.2, { bold: true, color: COLORS.white, align: 'center' });
+    const winners = category.winners;
+    if (!winners.length) {
+      text('Sin ganador confirmado', x + blockW / 2, blocksY + 75, 10, { bold: true, color: COLORS.muted, align: 'center' });
+      text('La categoría quedó sin adjudicar.', x + blockW / 2, blocksY + 94, 6.8, { color: COLORS.muted, align: 'center' });
+      return;
+    }
+    const display = winners.slice(0, 4);
+    const cols = display.length <= 2 ? 1 : 2;
+    const rows = Math.ceil(display.length / cols);
+    const innerGap = 5;
+    const innerX = x + 6;
+    const innerY = blocksY + 31;
+    const innerW = blockW - 12;
+    const innerH = blockH - 37;
+    const itemW = (innerW - innerGap * (cols - 1)) / cols;
+    const itemH = (innerH - innerGap * (rows - 1)) / rows;
+    display.forEach((winner, winnerIndex) => {
+      const col = winnerIndex % cols;
+      const row = Math.floor(winnerIndex / cols);
+      drawMiniCard(winner, innerX + col * (itemW + innerGap), innerY + row * (itemH + innerGap), itemW, itemH);
+    });
+    if (winners.length > display.length) text(`+ ${winners.length - display.length} empate(s) adicional(es)`, x + blockW / 2, blocksY + blockH - 10, 5.5, { bold: true, color: COLORS.red, align: 'center' });
+  });
+
+  text(`Documento oficial generado al cerrar el sorteo · Sala ${acta.roomCode} · Ronda ${acta.round}`, 24, 582, 5.8, { color: COLORS.muted });
+  text('Bingo de la Gorda - Versión Beta', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
+
+  const stream = commands.join('\n');
+  const logoPath = path.join(ROOT, 'assets', 'logo-pdf.jpg');
+  const logo = fs.readFileSync(logoPath);
+  const objects = [];
+  const addObject = body => { objects.push(body); return objects.length; };
+  const catalogId = addObject('');
+  const pagesId = addObject('');
+  const fontRegularId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  const fontBoldId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  const imageId = addObject(Buffer.concat([
+    Buffer.from(`<< /Type /XObject /Subtype /Image /Width 360 /Height 360 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logo.length} >>\nstream\n`, 'latin1'),
+    logo,
+    Buffer.from('\nendstream', 'latin1')
+  ]));
+  const contentBuffer = Buffer.from(stream, 'latin1');
+  const contentId = addObject(Buffer.concat([
+    Buffer.from(`<< /Length ${contentBuffer.length} >>\nstream\n`, 'latin1'),
+    contentBuffer,
+    Buffer.from('\nendstream', 'latin1')
+  ]));
+  const pageId = addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> /XObject << /Logo ${imageId} 0 R >> >> /Contents ${contentId} 0 R >>`);
+  objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
+  objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageId} 0 R] /Count 1 >>`;
+
+  const parts = [Buffer.from('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n', 'latin1')];
+  const offsets = [0];
+  let length = parts[0].length;
+  objects.forEach((body, index) => {
+    offsets.push(length);
+    const head = Buffer.from(`${index + 1} 0 obj\n`, 'latin1');
+    const content = Buffer.isBuffer(body) ? body : Buffer.from(body, 'latin1');
+    const tail = Buffer.from('\nendobj\n', 'latin1');
+    parts.push(head, content, tail);
+    length += head.length + content.length + tail.length;
+  });
+  const xrefOffset = length;
+  let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let index = 1; index <= objects.length; index++) xref += `${String(offsets[index]).padStart(10, '0')} 00000 n \n`;
+  xref += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  parts.push(Buffer.from(xref, 'latin1'));
+  return Buffer.concat(parts);
+}
+
+function resultsFilename() {
+  const date = (state.startedAt || nowIso()).slice(0, 10);
+  return `Resultados_Bingo_${date}_Sala_${state.roomCode || 'sala'}.pdf`;
 }
 
 function actaPdf() {
-  const acta = actaPayload();
-  const lines = [
-    'EL BINGO DE LA GORDA - ACTA FINAL',
-    `Sala: ${acta.roomCode}   Juego: ${acta.gameNumber}   Ronda: ${acta.round}`,
-    `Modalidad: Bingo ${acta.mode}`,
-    `Inicio: ${formatLocalTimestamp(acta.startedAt)}`,
-    `Finalizacion: ${formatLocalTimestamp(acta.endedAt)}`,
-    `Jugadores: ${acta.totalPlayers}   Cartones activos: ${acta.activeCards}`,
-    '',
-    'ORDEN  BOLILLA  FECHA Y HORA',
-    ...acta.balls.map(row => `${String(row.order).padStart(5)}  ${String(row.number).padStart(7)}  ${formatLocalTimestamp(row.at)}`),
-    '',
-    'GANADORES',
-    ...(acta.winners.length
-      ? acta.winners.map(winner => `${winner.prizeLabel}: ${winner.playerName} - Carton ${winner.cardNumber} - ${formatLocalTimestamp(winner.confirmedAt)}`)
-      : ['Sin premios confirmados.']),
-    '',
-    'JUGADORES Y CARTONES',
-    ...acta.participants.map(participant => `${participant.name} [${participant.code}]: ${participant.cardNumbers.length ? participant.cardNumbers.join(', ') : 'sin cartones'}`)
-  ];
-  return buildSimplePdf(lines);
+  return buildResultsPdf();
 }
 
 function sendBuffer(res, status, buffer, contentType, filename) {
@@ -1782,6 +2068,13 @@ async function handleApi(req, res, url) {
     }
 
     if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso() });
+
+    if (url.pathname === '/api/results.pdf' && req.method === 'GET') {
+      const requestedRoom = String(url.searchParams.get('sala') || '').trim().toUpperCase();
+      if (!state.active || !state.game) throw new Error('No hay un sorteo disponible.');
+      if (requestedRoom && requestedRoom !== String(state.roomCode || '').toUpperCase()) throw new Error('La sala indicada no coincide con el sorteo actual.');
+      return sendBuffer(res, 200, buildResultsPdf(), 'application/pdf', resultsFilename());
+    }
 
     if (url.pathname === '/api/admin/login' && req.method === 'POST') {
       if (!consumeRate(req, 'admin-login', 15, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
@@ -1879,7 +2172,7 @@ function handleEvents(req, res, url) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || `localhost:${PORT}`}`);
-  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '10.7', active: state.active, status: state.status });
+  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: 'Beta', active: state.active, status: state.status });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('User-agent: *\nDisallow: /admin\n');
@@ -1918,7 +2211,7 @@ setInterval(() => {
 }, 20_000).unref();
 
 server.listen(PORT, HOST, () => {
-  console.log('\nEL BINGO DE LA GORDA - V10.7 ONLINE');
+  console.log('\nBINGO DE LA GORDA - VERSIÓN BETA');
   if (ONLINE_MODE) {
     console.log(`Jugadores: ${PUBLIC_URL || 'URL pública de Render'}/jugador`);
     console.log(`Administrador: ${PUBLIC_URL || 'URL pública de Render'}/admin`);

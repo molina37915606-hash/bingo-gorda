@@ -1,31 +1,31 @@
-EL BINGO DE LA GORDA V10.7 ONLINE
+BINGO DE LA GORDA - VERSIÓN BETA ONLINE
 
-NOVEDADES DE ESTA VERSIÓN
+NOVEDADES PRINCIPALES
+- Botón RESULTADOS disponible para administrador y jugadores al finalizar el sorteo.
+- Descarga de un único PDF oficial en una hoja A4 horizontal.
+- El PDF incluye logo, fecha, hora de inicio, hora de finalización y duración.
+- Muestra las bolillas en el orden exacto de salida y la hora de cada una.
+- Marca sobre la secuencia el momento de primera línea, segunda línea y bingo.
+- Incluye nombre, número y representación completa del cartón ganador de cada categoría.
+- La línea ganadora queda resaltada; en bingo se resaltan todos los números sorteados del cartón.
+- El mismo jugador puede ganar primera y segunda línea con cartones diferentes cuando la opción está habilitada.
+
+FUNCIONES GENERALES
+- Una sala activa por vez.
 - Hasta 60 jugadores.
-- Hasta 250 cartones generados y un máximo de 240 cartones activos.
+- Hasta 250 cartones generados y 240 activos.
 - Entre 1 y 4 cartones por jugador.
-- Los botones de LÍNEA y BINGO titilan cuando el control oficial detecta un premio en el celular.
-- Aviso opcional con sonido y vibración para que el jugador reclame rápido.
-- Revisión previa antes de iniciar: jugadores listos, cartones activos, duplicados, premios y regla de empate.
-- El administrador puede asignar, cambiar o liberar cartones antes del inicio.
-- Buscador por jugador o número de cartón; el panel muestra por defecto solamente los 25 cartones más cercanos.
-- Regla configurable para reclamos simultáneos: primer reclamo o empate con la misma última bolilla.
-- Modo de prueba para línea, bingo y canto de bolilla sin alterar la partida.
-- Nueva sala limpia bolillas, premios, reclamos, jugadores y asignaciones anteriores.
-- Descarga de acta PDF, CSV completo y CSV separado de jugadores/cartones.
-
-FUNCIONES QUE SE CONSERVAN
-- Temporizador opcional de 1 a 30 minutos y asignación automática sin duplicados.
-- Sala de espera e inicio manual obligatorio.
-- Una o dos líneas ganadoras y bloqueo de premios entregados.
+- Una o dos líneas ganadoras y un bingo.
 - Marcado manual o automático.
-- Presentadora, canto de números, mensajes y avisos para todos.
-- Modo día/noche, pantalla completa, tablero de números y cartón ganador público.
-- Comparación entre marcado del jugador y control oficial.
-- Reconexión de celulares y copia de seguridad de la sala.
+- Temporizador opcional para elegir cartones.
+- Asignación manual o automática sin duplicados.
+- Alertas de línea y bingo para los jugadores.
+- Revisión de reclamos desde el panel del administrador.
+- Presentadores, canto de números, mensajes, modo día/noche y pantalla completa.
+- Copia de seguridad de la sala.
 
 ACTUALIZACIÓN EN GITHUB
-Usá Actualizacion_V10_7_para_GitHub.zip. Descomprimilo y subí todo su contenido a la raíz del repositorio. GitHub reemplazará los archivos anteriores y Render publicará la actualización automáticamente.
+Usá Bingo_de_la_Gorda_Version_Beta_para_GitHub.zip. Descomprimilo y subí todo su contenido a la raíz del repositorio.
 
 IMPORTANTE
-Actualizá cuando no haya una partida activa. El plan gratuito de Render puede reiniciar el servidor y usa almacenamiento temporal. Descargá copias de seguridad durante partidas importantes y el acta final cuando termine el sorteo.
+Actualizá cuando no haya una partida activa. Al terminar cada sorteo, presioná FINALIZAR SORTEO antes de descargar RESULTADOS.

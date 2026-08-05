@@ -434,7 +434,7 @@ class LocalRoomAdmin {
             <div class="localCardBox">
               <h3>Premios de línea</h3>
               <label style="display:grid;gap:7px"><b>Cantidad de líneas ganadoras</b><select id="localLinePrizeCount" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"><option value="1">Una línea</option><option value="2">Primera y segunda línea</option></select></label>
-              <label class="localToggleRow"><span><b>Permitir que el mismo jugador gane ambas líneas</b><br><small>Solo con cartones diferentes.</small></span><input id="localSamePlayerSecondLine" type="checkbox"></label><label style="display:grid;gap:7px;margin-top:10px"><b>Reclamos simultáneos</b><select id="localTiePolicy" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"><option value="first_claim">Gana el primer reclamo recibido</option><option value="same_ball">Permitir empate con la misma última bolilla</option></select></label>
+              <label class="localToggleRow"><span><b>Permitir que el mismo jugador gane ambas líneas</b><br><small>Recomendado: cada cartón participa por separado. Solo se permite con cartones diferentes.</small></span><input id="localSamePlayerSecondLine" type="checkbox" checked></label><label style="display:grid;gap:7px;margin-top:10px"><b>Reclamos simultáneos</b><select id="localTiePolicy" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"><option value="first_claim">Gana el primer reclamo recibido</option><option value="same_ball">Permitir empate con la misma última bolilla</option></select></label>
             </div>
             <div class="localCardBox">
               <h3>Asignación automática</h3>
@@ -578,7 +578,7 @@ class LocalRoomAdmin {
   }
 
   async createNewRoom() {
-    if (!confirm('¿Crear una sala nueva? Se eliminará del servidor el estado de la sala actual. Descargá el acta o la copia antes de continuar.')) return;
+    if (!confirm('¿Crear una sala nueva? Se eliminará del servidor el estado de la sala actual. Descargá los resultados o la copia antes de continuar.')) return;
     try {
       await this.request('/api/admin/new-room', { method: 'POST', body: '{}' });
       this.app.stopAutomatic(false);
@@ -670,6 +670,25 @@ class LocalRoomAdmin {
     } catch (error) { alert(error.message); }
   }
 
+  async downloadResults() {
+    try {
+      const room = this.serverState?.roomCode || 'sala';
+      const response = await fetch(`/api/results.pdf?sala=${encodeURIComponent(room)}`, { cache: 'no-store' });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || 'No se pudo descargar el PDF de resultados.');
+      }
+      const blob = await response.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `Resultados_Bingo_${new Date().toISOString().slice(0, 10)}_Sala_${room}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1200);
+    } catch (error) { alert(error.message); }
+  }
+
   async downloadAdminFile(path, filename) {
     const response = await fetch(path, { headers: { 'X-Admin-Token': this.adminToken } });
     if (!response.ok) {
@@ -729,7 +748,7 @@ class LocalRoomAdmin {
     const statusTitle = waiting ? 'SALA DE ESPERA' : playing ? 'SORTEO EN CURSO' : 'SORTEO FINALIZADO';
     const statusDescription = waiting
       ? 'Compartí el enlace y los códigos. El sorteo no comenzará hasta que lo ordenes.'
-      : playing ? presenter.phrase : 'La secuencia oficial quedó cerrada. Ya podés descargar el acta.';
+      : playing ? presenter.phrase : 'La secuencia oficial quedó cerrada. El PDF de resultados ya está disponible para todos.';
     const cardsLabel = player => player.cardIds.length
       ? player.cardIds.map(id => `#${esc(data.game.cards.find(card => card.id === id)?.number || '?')}`).join(' · ')
       : (player.reservedCardIds?.length
@@ -783,7 +802,7 @@ class LocalRoomAdmin {
       ${waiting ? `<div class="localStartBox ${data.readyToStart ? 'ready' : ''}"><b>${data.readyToStart ? 'La revisión previa está completa.' : 'La sala todavía tiene pendientes.'}</b><br><small>El sorteo NO comenzará solo. Debés presionar INICIAR SORTEO.</small><button id="localStartGame" ${data.readyToStart ? '' : 'disabled'}>▶ INICIAR SORTEO</button></div>` : ''}
       ${playing || finished ? `<div class="localCardBox" style="margin-top:14px"><div style="display:flex;gap:10px;justify-content:space-between;align-items:end;flex-wrap:wrap"><div><h3 style="margin:0">Control de cartones activos</h3><small>Se muestran los 25 más cercanos. Buscá por jugador o número para localizar otro.</small></div><input id="localMonitorSearch" placeholder="Buscar jugador o cartón" style="min-width:250px;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#10182b;color:#fff"></div><div id="localMonitorTableHost" class="localMonitorWrap">${this.monitorTable(data.cardStatus || [])}</div></div>` : ''}
       ${playing ? `<div class="localFinishedBox"><b>Cuando termine la partida, cerrá la secuencia oficial.</b><br><small>Después podrás descargar el orden exacto de las bolillas.</small><button class="localDanger" id="localFinishGame" style="margin-top:10px;border:0;border-radius:10px;padding:11px 15px;font-weight:900;cursor:pointer">FINALIZAR SORTEO</button></div>` : ''}
-      ${finished ? `<div class="localFinishedBox"><h3 style="margin-top:0">Acta final del sorteo</h3><div class="localToolbar"><button class="localPrimary" id="localDownloadActaPdf">DESCARGAR PDF</button><button class="localSecondary" id="localDownloadActaCsv">DESCARGAR CSV COMPLETO</button><button class="localSecondary" id="localDownloadParticipants">DESCARGAR JUGADORES</button><button class="localDanger" id="localNewRoom">NUEVA SALA</button></div>${this.actaTable(data)}</div>` : ''}
+      ${finished ? `<div class="localFinishedBox"><h3 style="margin-top:0">Resultados oficiales del sorteo</h3><p style="margin:0 0 12px;color:#c7cee0">El mismo PDF puede ser descargado por el administrador y por todos los jugadores. Incluye orden y hora de las bolillas, momentos de canto y cartones ganadores.</p><div class="localToolbar"><button class="localPrimary" id="localDownloadResults">RESULTADOS · DESCARGAR PDF</button><button class="localDanger" id="localNewRoom">NUEVA SALA</button></div>${this.actaTable(data)}</div>` : ''}
       <div class="localToolbar"><button class="localSecondary" id="localCopyLink">COPIAR PÁGINA PARA JUGADORES</button><button class="localSecondary" id="localDownloadBackup">DESCARGAR COPIA</button><button class="localSecondary" id="localRestoreFile">RESTAURAR ARCHIVO</button><button class="localSecondary" id="localRefresh">ACTUALIZAR</button><button class="localDanger" id="localCloseRoom">CERRAR SALA</button></div>`;
 
     $('localCopyLink').onclick = () => this.copyText(playerPageUrl);
@@ -801,9 +820,7 @@ class LocalRoomAdmin {
     if ($('localTimerResume')) $('localTimerResume').onclick = () => this.controlAssignmentTimer('resume');
     if ($('localTimerExtend')) $('localTimerExtend').onclick = () => this.controlAssignmentTimer('extend', { extraMinutes: 5 });
     if ($('localAssignNow')) $('localAssignNow').onclick = () => this.controlAssignmentTimer('assign-now');
-    if ($('localDownloadActaPdf')) $('localDownloadActaPdf').onclick = () => this.downloadActa('pdf');
-    if ($('localDownloadActaCsv')) $('localDownloadActaCsv').onclick = () => this.downloadActa('csv');
-    if ($('localDownloadParticipants')) $('localDownloadParticipants').onclick = () => this.downloadParticipants();
+    if ($('localDownloadResults')) $('localDownloadResults').onclick = () => this.downloadResults();
     if ($('localNewRoom')) $('localNewRoom').onclick = () => this.createNewRoom();
     if ($('localTestLine')) $('localTestLine').onclick = () => this.sendTestEvent('line');
     if ($('localTestBingo')) $('localTestBingo').onclick = () => this.sendTestEvent('bingo');
@@ -864,7 +881,7 @@ class LocalRoomAdmin {
     this.backupTimer = setTimeout(async () => {
       try {
         const backup = await this.request('/api/admin/backup');
-        localStorage.setItem('bingoV10OnlineLastBackup', JSON.stringify(backup));
+        localStorage.setItem('bingoBetaOnlineLastBackup', JSON.stringify(backup));
       } catch (error) {
         console.warn('No se pudo guardar la copia automática:', error);
       }
@@ -874,18 +891,18 @@ class LocalRoomAdmin {
   async downloadBackup() {
     try {
       const backup = await this.request('/api/admin/backup');
-      localStorage.setItem('bingoV10OnlineLastBackup', JSON.stringify(backup));
+      localStorage.setItem('bingoBetaOnlineLastBackup', JSON.stringify(backup));
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `Bingo_V10_Sala_${backup.state?.roomCode || 'copia'}_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `Bingo_Beta_Sala_${backup.state?.roomCode || 'copia'}_${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     } catch (error) { alert(error.message); }
   }
 
   async restoreBrowserBackup() {
-    const raw = localStorage.getItem('bingoV10OnlineLastBackup');
+    const raw = localStorage.getItem('bingoBetaOnlineLastBackup') || localStorage.getItem('bingoV10OnlineLastBackup');
     if (!raw) { alert('No hay una copia automática guardada en este navegador.'); return; }
     try { await this.restoreBackup(JSON.parse(raw)); }
     catch (error) { alert(error.message); }
@@ -1085,7 +1102,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const app = window.__BINGO_V8__;
     if (!app) return;
     const version = $('versionBadge');
-    if (version) version.textContent = 'V10.7 ONLINE';
+    if (version) version.textContent = 'VERSIÓN BETA';
     new LocalRoomAdmin(app).init().catch(error => console.error('No se inició la sala online:', error));
   }, 0);
 });

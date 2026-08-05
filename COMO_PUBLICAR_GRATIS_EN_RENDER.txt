@@ -19,7 +19,7 @@ DIRECCIONES
 - Administrador: https://TU-SERVICIO.onrender.com/admin
 - Jugadores: https://TU-SERVICIO.onrender.com/jugador
 
-FLUJO RECOMENDADO V10.7
+FLUJO RECOMENDADO - VERSIÓN BETA
 1. Generá entre 2 y 250 cartones sin sortear bolillas.
 2. Abrí SALA ONLINE.
 3. Configurá de 2 a 60 jugadores y autorizá de 1 a 4 cartones por persona.
@@ -29,7 +29,7 @@ FLUJO RECOMENDADO V10.7
 7. Iniciá manualmente la cuenta regresiva cuando todos hayan recibido el enlace.
 8. Cuando termine la elección, revisá las asignaciones.
 9. Presioná INICIAR SORTEO. El temporizador nunca inicia el sorteo por sí solo.
-10. Al terminar, presioná FINALIZAR SORTEO y descargá el PDF o CSV del acta.
+10. Al terminar, presioná FINALIZAR SORTEO y descargá el PDF desde el botón RESULTADOS.
 
 LIMITACIONES DEL PLAN GRATUITO
 - Puede tardar cerca de un minuto en despertar.

@@ -910,7 +910,7 @@ class BingoApp {
 }
 
 function showFatal(error) {
-  console.error(error); const box = $('fatalError'); if (box) { box.style.display = 'block'; box.textContent = `El Bingo de la Gorda V10 encontró un error y detuvo la ejecución para no perder datos.\n\n${error?.stack || error}`; }
+  console.error(error); const box = $('fatalError'); if (box) { box.style.display = 'block'; box.textContent = `Bingo de la Gorda - Versión Beta encontró un error y detuvo la ejecución para no perder datos.\n\n${error?.stack || error}`; }
 }
 
 window.BingoV8Engine = { APP_VERSION, PHASE, GameStore, CardService, PrizeEngine, VoiceService, PdfImporter, BingoApp };

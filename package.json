@@ -1,13 +1,13 @@
 {
-  "name": "el-bingo-de-la-gorda-v10-7-online",
-  "version": "10.7.0",
+  "name": "bingo-de-la-gorda-beta-online",
+  "version": "0.0.0-beta",
   "private": true,
-  "description": "Sala online estable: 60 jugadores, 250 cartones generados, 240 activos, alertas de premio, revisión previa, reasignación y modo prueba.",
+  "description": "Versión Beta online con sala única, resultados oficiales en PDF, cartones ganadores y hasta 250 cartones generados.",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/v10-smoke.js"
+    "test": "node tests/beta-smoke.js"
   }
 }

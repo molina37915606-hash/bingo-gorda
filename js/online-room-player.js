@@ -45,6 +45,7 @@ class PlayerApp {
     $('showDrawnBtn').onclick = () => this.openDrawnNumbers();
     $('closeDrawnBtn').onclick = () => this.closeModal('drawnOverlay');
     $('showWinnerBtn').onclick = () => this.openWinnerCard();
+    $('resultsBtn').onclick = () => this.downloadResults();
     $('closeWinnerBtn').onclick = () => this.closeModal('winnerOverlay');
     $('fullScreenBtn').onclick = () => this.setFocusMode(true);
     $('exitFocusBtn').onclick = () => this.setFocusMode(false);
@@ -385,8 +386,36 @@ class PlayerApp {
 
   renderViewActions() {
     const winner = this.latestConfirmedWinner();
+    const finished = this.state?.status === 'finished';
     $('showWinnerBtn').disabled = !winner;
     $('showWinnerBtn').title = winner ? `${winner.playerName} · Cartón ${winner.cardNumber}` : 'Todavía no hay un premio confirmado.';
+    $('resultsBtn').disabled = !finished;
+    $('resultsBtn').title = finished ? 'Descargar la hoja oficial del sorteo en PDF.' : 'Estará disponible cuando finalice el sorteo.';
+  }
+
+  async downloadResults() {
+    if (this.state?.status !== 'finished') {
+      this.showMessage('Los resultados estarán disponibles cuando finalice el sorteo.', 'error');
+      return;
+    }
+    try {
+      const room = this.state?.roomCode || 'sala';
+      const response = await fetch(`/api/results.pdf?sala=${encodeURIComponent(room)}`, { cache: 'no-store' });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || 'No se pudo descargar el PDF de resultados.');
+      }
+      const blob = await response.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `Resultados_Bingo_${new Date().toISOString().slice(0, 10)}_Sala_${room}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1200);
+    } catch (error) {
+      this.showMessage(error.message, 'error');
+    }
   }
 
   latestConfirmedWinner() {

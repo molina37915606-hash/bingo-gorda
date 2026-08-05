@@ -6,6 +6,6 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo Abriendo prueba local de V10.7...
+echo Abriendo Bingo de la Gorda - Version Beta...
 node server.js
 pause

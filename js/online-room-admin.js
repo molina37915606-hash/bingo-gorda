@@ -858,7 +858,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const app = window.__BINGO_V8__;
     if (!app) return;
     const version = $('versionBadge');
-    if (version) version.textContent = 'V10.4 ONLINE';
+    if (version) version.textContent = 'V10.5 ONLINE';
     new LocalRoomAdmin(app).init().catch(error => console.error('No se inició la sala online:', error));
   }, 0);
 });

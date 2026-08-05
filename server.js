@@ -340,15 +340,38 @@ function syncAllAutoMarks() {
 }
 
 function publicClaimsPayload() {
-  return state.claims.slice(-10).map(claim => ({
-    id: claim.id,
-    type: claim.type,
-    playerName: claim.playerName,
-    cardNumber: claim.cardNumber,
-    createdAt: claim.createdAt,
-    status: claim.status,
-    resolvedAt: claim.resolvedAt || null
-  }));
+  return state.claims.slice(-10).map(claim => {
+    const payload = {
+      id: claim.id,
+      type: claim.type,
+      playerName: claim.playerName,
+      cardNumber: claim.cardNumber,
+      createdAt: claim.createdAt,
+      status: claim.status,
+      resolvedAt: claim.resolvedAt || null
+    };
+    if (claim.status === 'confirmed') {
+      const card = state.game?.cards?.find(item => item.id === claim.cardId);
+      if (card) {
+        const completeLine = claim.comparison?.completeLines?.[0] || null;
+        payload.winningCard = {
+          id: card.id,
+          number: card.number,
+          name: card.name,
+          mode: card.mode,
+          grid: card.grid,
+          bets: card.bets
+        };
+        payload.drawnAtClaim = claim.drawnAtClaim || [];
+        payload.officialMarked = claim.comparison?.officialMarked || cardNumbers(card).filter(number => payload.drawnAtClaim.includes(number));
+        payload.winningNumbers = claim.type === 'line'
+          ? (completeLine?.values || [])
+          : cardNumbers(card);
+        payload.winningLineLabel = claim.type === 'line' ? (completeLine?.label || 'Línea completa') : null;
+      }
+    }
+    return payload;
+  });
 }
 
 function claimStateForCard(cardId, type) {
@@ -483,7 +506,7 @@ function backupPayload() {
   const cleanState = deepCopy(state);
   cleanState.players = cleanState.players.map(player => ({ ...player, sessionToken: null }));
   return {
-    format: 'el-bingo-de-la-gorda-v10-4-backup',
+    format: 'el-bingo-de-la-gorda-v10-5-backup',
     exportedAt: nowIso(),
     state: cleanState
   };
@@ -1191,7 +1214,7 @@ function handleEvents(req, res, url) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || `localhost:${PORT}`}`);
-  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '10.4', active: state.active, status: state.status });
+  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '10.5', active: state.active, status: state.status });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('User-agent: *\nDisallow: /admin\n');
@@ -1225,7 +1248,7 @@ setInterval(() => {
 }, 20_000).unref();
 
 server.listen(PORT, HOST, () => {
-  console.log('\nEL BINGO DE LA GORDA - V10.4 ONLINE');
+  console.log('\nEL BINGO DE LA GORDA - V10.5 ONLINE');
   if (ONLINE_MODE) {
     console.log(`Jugadores: ${PUBLIC_URL || 'URL pública de Render'}/jugador`);
     console.log(`Administrador: ${PUBLIC_URL || 'URL pública de Render'}/admin`);

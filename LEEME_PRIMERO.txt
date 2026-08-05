@@ -1,33 +1,26 @@
-EL BINGO DE LA GORDA V10.4 ONLINE
-=================================
+EL BINGO DE LA GORDA V10.5 ONLINE
 
-NOVEDADES
-- Se pueden generar entre 2 y 100 cartones aleatorios.
-- Se pueden configurar entre 2 y 50 jugadores.
-- Cada jugador puede elegir entre 1 y 4 cartones.
-- Cada jugador recibe hasta 10 opciones para elegir.
-- Los cartones se reservan en el servidor y no pueden ser elegidos por dos personas.
-- Cada jugador puede activar o desactivar AUTOMARCAR CARTONES.
-- Al activarlo, se marcan todas las bolillas anteriores y las nuevas en todos sus cartones.
-- Cuando alguien canta LÍNEA o BINGO, todos reciben una animación y un sonido.
-- Cuando el administrador confirma o rechaza, todos ven el resultado.
-- Los sonidos de reclamos pueden silenciarse en cada celular.
-- CARTONES DESTACADOS sigue mostrando solo cartones confirmados y con nombre de jugador.
-- El administrador puede publicar, actualizar y borrar un mensaje global.
-- El mensaje aparece como un globo desde la presentadora y queda visible hasta borrarlo.
+NOVEDADES DE ESTA VERSIÓN
+- Cartones más grandes, números gruesos y mayor contraste para personas mayores.
+- Los controles de sonido ocupan menos espacio y el cartón queda centrado.
+- Modo día y noche desde un icono de sol o luna en cada celular.
+- Botón VER NÚMEROS para consultar el tablero completo y el orden de salida.
+- Botón PANTALLA COMPLETA para concentrar la vista en el cartón.
+- Botón VER GANADOR después de que el administrador confirma una línea o bingo.
+- El cartón ganador muestra nombre, número de cartón y números que forman el premio.
 
-FLUJO
-1. Creá una partida con hasta 100 cartones.
-2. Abrí SALA ONLINE y configurá de 2 a 50 jugadores.
-3. Autorizá entre 1 y 4 cartones para cada jugador.
-4. Compartí el ingreso directo o la página general con su código.
-5. Los jugadores eligen y confirman sus cartones.
-6. Cuando todos estén listos, presioná INICIAR SORTEO.
-7. Cada jugador decide si usa marcado manual o automático.
+FUNCIONES QUE SE CONSERVAN
+- Hasta 100 cartones y 50 jugadores.
+- Entre 1 y 4 cartones por jugador.
+- Elección exclusiva de cartones, con reserva para impedir duplicados.
+- Sala de espera e inicio manual del sorteo.
+- Marcado manual o automático.
+- Presentadora, canto de números y avisos con sonido.
+- Mensajes del administrador desde la presentadora.
+- Comparación entre marcado del jugador y control oficial.
 
-DIRECCIONES
-- Jugadores: https://TU-SERVICIO.onrender.com/jugador
-- Administrador: https://TU-SERVICIO.onrender.com/admin
+ACTUALIZACIÓN EN GITHUB
+Usá el archivo Actualizacion_V10_5_para_GitHub.zip. Descomprimilo y subí todo su contenido a la raíz del repositorio, reemplazando los archivos anteriores. Render volverá a publicar automáticamente.
 
 IMPORTANTE
-Render gratuito usa almacenamiento temporal. Descargá una copia de seguridad antes de una partida importante.
+El plan gratuito de Render puede reiniciar el servidor y perder el estado guardado en sus archivos. Descargá copias de seguridad desde el panel del administrador cuando la partida sea importante.

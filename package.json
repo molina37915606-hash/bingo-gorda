@@ -1,8 +1,8 @@
 {
-  "name": "el-bingo-de-la-gorda-v10-4-online",
-  "version": "10.4.0",
+  "name": "el-bingo-de-la-gorda-v10-5-online",
+  "version": "10.5.0",
   "private": true,
-  "description": "Sala online para hasta 100 cartones, 4 por jugador, automarcado, avisos públicos y mensajes de la presentadora.",
+  "description": "Sala online con accesibilidad móvil, modo día/noche, pantalla completa, tablero de bolillas y cartón ganador público.",
   "engines": {
     "node": ">=18"
   },

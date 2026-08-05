@@ -27,6 +27,9 @@ class PlayerApp {
     this.lastPublicClaimKey = '';
     this.lastAdminMessageId = '';
     this.claimOverlayTimer = null;
+    this.theme = localStorage.getItem('bingoPlayerTheme') === 'day' ? 'day' : 'night';
+    this.focusMode = false;
+    this.fullscreenApiActive = false;
   }
 
   async init() {
@@ -35,6 +38,30 @@ class PlayerApp {
     $('claimLine').onclick = () => this.claim('line');
     $('claimBingo').onclick = () => this.claim('bingo');
     $('logoutBtn').onclick = () => this.logout();
+    $('themeToggle').onclick = () => this.toggleTheme();
+    $('settingsToggle').onclick = () => $('settingsPanel').classList.toggle('hidden');
+    $('showDrawnBtn').onclick = () => this.openDrawnNumbers();
+    $('closeDrawnBtn').onclick = () => this.closeModal('drawnOverlay');
+    $('showWinnerBtn').onclick = () => this.openWinnerCard();
+    $('closeWinnerBtn').onclick = () => this.closeModal('winnerOverlay');
+    $('fullScreenBtn').onclick = () => this.setFocusMode(true);
+    $('exitFocusBtn').onclick = () => this.setFocusMode(false);
+    $('drawnOverlay').addEventListener('click', event => { if (event.target === $('drawnOverlay')) this.closeModal('drawnOverlay'); });
+    $('winnerOverlay').addEventListener('click', event => { if (event.target === $('winnerOverlay')) this.closeModal('winnerOverlay'); });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      this.closeModal('drawnOverlay');
+      this.closeModal('winnerOverlay');
+      if (this.focusMode) this.setFocusMode(false);
+    });
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement && this.fullscreenApiActive) {
+        this.fullscreenApiActive = false;
+        this.focusMode = false;
+        document.body.classList.remove('focusMode');
+      }
+    });
+    this.applyTheme();
     $('numberVoiceOn').onchange = event => this.setAudioEnabled(event.target.checked);
     $('numberVoiceVolume').value = String(this.audioVolume);
     $('numberVoiceVolume').oninput = event => {
@@ -154,6 +181,8 @@ class PlayerApp {
     $('gameView').classList.remove('hidden');
     this.render();
     this.renderPublicClaim();
+    if ($('drawnOverlay').classList.contains('show')) this.renderDrawnNumbers();
+    if ($('winnerOverlay').classList.contains('show')) this.renderWinnerCard();
     const currentCount = data.game.drawn.length;
     if (previousCount !== undefined && data.status === 'playing' && currentCount > previousCount && data.game.lastBall != null) {
       this.speakBall(data.game.lastBall);
@@ -166,6 +195,7 @@ class PlayerApp {
     $('playerName').textContent = data.player.name;
     $('roomInfo').textContent = `Sala ${data.roomCode} · Juego ${String(data.game.number).padStart(4, '0')} · Bingo ${data.game.mode}`;
     this.renderPresenter();
+    document.body.classList.toggle('isPlaying', data.status === 'playing');
     if (data.status === 'waiting') this.renderWaiting();
     else this.renderPlaying();
     this.renderNotice();
@@ -183,6 +213,8 @@ class PlayerApp {
     $('numberVoiceOn').disabled = !allowed;
     $('numberVoiceVolume').disabled = !allowed || !this.audioEnabled;
     $('testNumberVoice').disabled = !allowed;
+    $('settingsToggle').disabled = !allowed;
+    if (!allowed) $('settingsPanel').classList.add('hidden');
     $('autoMarkOn').checked = Boolean(this.state.player.autoMark);
     $('autoMarkOn').disabled = false;
     $('alertSoundOn').checked = this.alertSoundEnabled;
@@ -302,6 +334,112 @@ class PlayerApp {
     $('recent').innerHTML = [...data.game.drawn].reverse().slice(0, 6).map(number => `<i>${number}</i>`).join('');
     this.renderTabs();
     this.renderTicket();
+    this.renderViewActions();
+  }
+
+  renderViewActions() {
+    const winner = this.latestConfirmedWinner();
+    $('showWinnerBtn').disabled = !winner;
+    $('showWinnerBtn').title = winner ? `${winner.playerName} · Cartón ${winner.cardNumber}` : 'Todavía no hay un premio confirmado.';
+  }
+
+  latestConfirmedWinner() {
+    return [...(this.state?.publicClaims || [])].reverse().find(claim => claim.status === 'confirmed' && claim.winningCard) || null;
+  }
+
+  toggleTheme() {
+    this.theme = this.theme === 'day' ? 'night' : 'day';
+    localStorage.setItem('bingoPlayerTheme', this.theme);
+    this.applyTheme();
+  }
+
+  applyTheme() {
+    document.documentElement.dataset.theme = this.theme;
+    const day = this.theme === 'day';
+    $('themeToggle').textContent = day ? '☀️' : '🌙';
+    $('themeToggle').title = day ? 'Modo día. Tocar para cambiar a noche.' : 'Modo noche. Tocar para cambiar a día.';
+    $('themeToggle').setAttribute('aria-label', $('themeToggle').title);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = day ? '#edf2f8' : '#070914';
+  }
+
+  openDrawnNumbers() {
+    this.renderDrawnNumbers();
+    $('drawnOverlay').classList.add('show');
+  }
+
+  renderDrawnNumbers() {
+    if (!this.state?.game) return;
+    const mode = Number(this.state.game.mode) === 75 ? 75 : 90;
+    const drawn = this.state.game.drawn || [];
+    const drawnSet = new Set(drawn.map(Number));
+    const last = Number(this.state.game.lastBall);
+    $('drawnSummary').textContent = `${drawn.length} de ${mode} bolillas · Última: ${Number.isFinite(last) ? last : '—'}`;
+    $('drawBoard').innerHTML = Array.from({ length: mode }, (_, index) => index + 1).map(number => {
+      const classes = ['drawNumber'];
+      if (drawnSet.has(number)) classes.push('drawn');
+      if (number === last) classes.push('last');
+      return `<div class="${classes.join(' ')}">${number}</div>`;
+    }).join('');
+    $('drawOrder').innerHTML = drawn.length
+      ? drawn.map(number => `<span>${number}</span>`).join('')
+      : '<div class="muted">Todavía no salió ninguna bolilla.</div>';
+  }
+
+  openWinnerCard() {
+    const winner = this.latestConfirmedWinner();
+    if (!winner) {
+      this.showMessage('Todavía no hay un cartón ganador confirmado.', 'error');
+      return;
+    }
+    this.renderWinnerCard();
+    $('winnerOverlay').classList.add('show');
+  }
+
+  renderWinnerCard() {
+    const claim = this.latestConfirmedWinner();
+    if (!claim?.winningCard) {
+      $('winnerContent').innerHTML = '<div class="error">Todavía no hay un cartón ganador confirmado.</div>';
+      return;
+    }
+    const card = claim.winningCard;
+    const official = new Set((claim.officialMarked || []).map(Number));
+    const winning = new Set((claim.winningNumbers || []).map(Number));
+    const cells = (card.grid || []).flat().map(value => {
+      if (value === null) return '<div class="winnerCell blank">·</div>';
+      if (value === 'LIBRE') return `<div class="winnerCell free${claim.type === 'bingo' ? ' winning' : ''}">LIBRE</div>`;
+      const classes = ['winnerCell'];
+      if (official.has(Number(value))) classes.push('drawn');
+      if (winning.has(Number(value))) classes.push('winning');
+      return `<div class="${classes.join(' ')}">${value}</div>`;
+    }).join('');
+    const label = claim.type === 'bingo' ? 'BINGO' : 'LÍNEA';
+    $('winnerContent').innerHTML = `<div class="winnerSummary"><b>${esc(label)} CONFIRMADO</b><br>${esc(claim.playerName)} · Cartón ${esc(claim.cardNumber)}${claim.winningLineLabel ? `<br><span class="muted">${esc(claim.winningLineLabel)}</span>` : ''}</div><div class="winnerGrid mode${card.mode}">${cells}</div><div class="legend"><span><i class="official"></i>Número sorteado</span><span><i class="winning"></i>Números que forman el premio</span></div>`;
+  }
+
+  closeModal(id) {
+    $(id)?.classList.remove('show');
+  }
+
+  async setFocusMode(enabled) {
+    this.focusMode = Boolean(enabled);
+    document.body.classList.toggle('focusMode', this.focusMode);
+    if (this.focusMode) {
+      try {
+        if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+          await document.documentElement.requestFullscreen();
+          this.fullscreenApiActive = true;
+        }
+      } catch {
+        this.fullscreenApiActive = false;
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (document.fullscreenElement && document.exitFullscreen) {
+      try { await document.exitFullscreen(); } catch {}
+    }
+    this.fullscreenApiActive = false;
   }
 
   renderTabs() {
@@ -525,6 +663,9 @@ class PlayerApp {
 
   logout(reload = true) {
     this.events?.close();
+    this.setFocusMode(false);
+    this.closeModal('drawnOverlay');
+    this.closeModal('winnerOverlay');
     this.token = '';
     this.state = null;
     sessionStorage.removeItem('bingoOnlineToken');

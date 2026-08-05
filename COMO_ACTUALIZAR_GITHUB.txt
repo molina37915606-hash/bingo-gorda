@@ -1,14 +1,13 @@
-ACTUALIZAR A V10.4 EN GITHUB
-============================
+ACTUALIZAR A V10.5 EN GITHUB
 
-1. Descomprimí Actualizacion_V10_4_para_GitHub.zip.
-2. Entrá al repositorio bingo-gorda en GitHub.
-3. Elegí Add file > Upload files.
-4. Arrastrá TODO el contenido descomprimido a la raíz del repositorio.
-5. GitHub reemplazará los archivos del mismo nombre.
-6. Escribí como mensaje: Actualizacion V10.4
-7. Presioná Commit changes.
-8. Esperá que Render termine el nuevo despliegue y muestre Live.
-9. Recargá /admin con Ctrl + F5.
+1. Descomprimí Actualizacion_V10_5_para_GitHub.zip.
+2. Entrá a tu repositorio bingo-gorda.
+3. Tocá Add file y después Upload files.
+4. Subí todo lo que está dentro de la carpeta descomprimida.
+5. GitHub reemplazará los archivos con el mismo nombre.
+6. Escribí como mensaje: Actualizacion V10.5
+7. Tocá Commit changes.
+8. Esperá que Render termine el despliegue y muestre Live.
+9. Actualizá /admin y /jugador con Ctrl + F5.
 
-No hagas la actualización durante una partida activa.
+No hagas la actualización mientras haya una partida activa.

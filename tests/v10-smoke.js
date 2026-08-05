@@ -10,7 +10,7 @@ const http = require('http');
 const root = path.resolve(__dirname, '..');
 const port = 43210 + Math.floor(Math.random() * 1000);
 const base = `http://127.0.0.1:${port}`;
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-v10-4-test-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-v10-5-test-'));
 const child = spawn(process.execPath, ['server.js'], {
   cwd: root,
   env: { ...process.env, PORT: String(port), ONLINE_MODE: 'true', ADMIN_PASSWORD: 'prueba-segura', RENDER_EXTERNAL_URL: 'https://bingo-prueba.onrender.com', BINGO_DATA_DIR: dataDir },
@@ -66,7 +66,7 @@ function card(index) {
   try {
     await waitForServer();
     const health = await json('/healthz');
-    assert.strictEqual(health.data.version, '10.4');
+    assert.strictEqual(health.data.version, '10.5');
     const rootResponse = await fetch(`${base}/`, { redirect: 'manual' });
     assert.strictEqual(rootResponse.status, 302);
     assert.strictEqual(rootResponse.headers.get('location'), '/jugador');
@@ -81,6 +81,14 @@ function card(index) {
     assert.ok(playerHtmlText.includes('publicClaimOverlay'));
     assert.ok(playerHtmlText.includes('autoMarkOn'));
     assert.ok(playerHtmlText.includes('adminSpeechBubble'));
+    assert.ok(playerHtmlText.includes('themeToggle'));
+    assert.ok(playerHtmlText.includes('showDrawnBtn'));
+    assert.ok(playerHtmlText.includes('fullScreenBtn'));
+    assert.ok(playerHtmlText.includes('showWinnerBtn'));
+    assert.ok(playerHtmlText.includes('winnerOverlay'));
+    assert.ok(playerJsText.includes('renderDrawnNumbers'));
+    assert.ok(playerJsText.includes('renderWinnerCard'));
+    assert.ok(playerJsText.includes('toggleTheme'));
     assert.ok(adminJsText.includes('/api/admin/message'));
 
     let result = await json('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: 'prueba-segura' }) });
@@ -187,6 +195,10 @@ function card(index) {
     assert.strictEqual(result.response.status, 200);
     const resolvedState = (await json('/api/player/state', { headers: sessions[2].headers })).data;
     assert.strictEqual(resolvedState.publicClaims.at(-1).status, 'confirmed');
+    assert.ok(resolvedState.publicClaims.at(-1).winningCard);
+    assert.strictEqual(resolvedState.publicClaims.at(-1).winningCard.id, autoCardId);
+    assert.deepStrictEqual(resolvedState.publicClaims.at(-1).winningNumbers, [1, 2, 3, 4, 5]);
+    assert.strictEqual(resolvedState.publicClaims.at(-1).winningLineLabel, 'Fila 1');
 
     result = await json('/api/admin/message', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ action: 'clear' }) });
     assert.strictEqual(result.response.status, 200);
@@ -196,7 +208,7 @@ function card(index) {
 
     result = await json('/api/admin/backup', { headers: adminHeaders });
     assert.strictEqual(result.response.status, 200);
-    assert.strictEqual(result.data.format, 'el-bingo-de-la-gorda-v10-4-backup');
+    assert.strictEqual(result.data.format, 'el-bingo-de-la-gorda-v10-5-backup');
     assert.strictEqual(result.data.state.players[0].sessionToken, null);
     assert.strictEqual(result.data.state.players[0].autoMark, true);
 
@@ -204,7 +216,7 @@ function card(index) {
     assert.ok([403, 404].includes(await rawStatus('/assets/%2e%2e/server.js')));
     assert.ok([403, 404].includes(await rawStatus('/js/%2e%2e/data/sala-online.json')));
 
-    console.log('PRUEBAS V10.4: OK');
+    console.log('PRUEBAS V10.5: OK');
   } catch (error) {
     console.error(error.stack || error);
     console.error(logs);

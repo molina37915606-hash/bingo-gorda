@@ -1,20 +1,15 @@
-ACTUALIZAR BINGO DE LA GORDA 2.1 EN GITHUB
-===========================================
+ACTUALIZAR GITHUB CON BINGO DE LA GORDA 2.2
 
-1. Guardá el ZIP anterior como respaldo.
-2. Descomprimí BINGO DE LA GORDA 2.1.zip.
-3. En GitHub, reemplazá los archivos del repositorio por TODO el contenido de esta carpeta.
-4. Conservá las carpetas assets, js, tests, data y .github.
-5. No subas la carpeta node_modules.
-6. No subas .env, claves, tokens ni archivos generados dentro de data.
-7. Usá un mensaje claro, por ejemplo:
-   Bingo de la Gorda 2.1 - operadores temporales y modo TikTok
-8. En Render, agregá la variable MASTER_ADMIN_PASSWORD.
-9. Volvé a desplegar y ejecutá npm test antes de usar una partida real.
+1. Descargá y descomprimí el ZIP.
+2. Guardá una copia de tu versión anterior.
+3. Abrí la carpeta local del repositorio con GitHub Desktop.
+4. Copiá dentro todo el contenido de BINGO DE LA GORDA 2.2.
+5. Aceptá reemplazar archivos.
+6. Verificá que NO se suban .env, contraseñas, tokens ni datos de partidas.
+7. Ejecutá npm test.
+8. Commit sugerido:
+   BINGO DE LA GORDA 2.2 - reclamos, animaciones, resultados y TikTok
+9. Presioná Push origin.
+10. Revisá la publicación automática de Render.
 
-RECOMENDACIÓN DE RAMAS
-- main: versión estable publicada.
-- develop-2.1: cambios y pruebas antes de publicar.
-- feature/admin-temporal: accesos temporales.
-- feature/tiktok: vista vertical.
-- feature/reclamos: control y celebraciones.
+Etiqueta recomendada: v2.2.0

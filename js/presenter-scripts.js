@@ -34,6 +34,7 @@ const profiles = {
       amboConfirmed: 'AmboCabeza confirmado. Felicitaciones.',
       lineConfirmed: 'Línea confirmada. Felicitaciones al ganador.',
       bingoConfirmed: 'Bingo confirmado. Tenemos ganador.',
+      remainingBalls: 'Se retiran las últimas bolas faltantes.',
       rejected: 'El reclamo no fue válido. La partida podrá continuar.',
       waiting: 'Tus cartones están confirmados. Ahora esperamos el inicio del sorteo.'
     }
@@ -70,6 +71,7 @@ const profiles = {
       amboConfirmed: '¡AmboCabeza confirmado! Felicitaciones.',
       lineConfirmed: '¡La línea es correcta! Felicitaciones.',
       bingoConfirmed: '¡Bingo confirmado! Felicitaciones al ganador.',
+      remainingBalls: 'Se retiran las últimas bolas faltantes.',
       rejected: 'El reclamo no fue válido. Enseguida seguimos jugando.',
       waiting: 'Tus cartones ya están listos. Esperamos juntos el inicio.'
     }
@@ -106,6 +108,7 @@ const profiles = {
       amboConfirmed: 'AmboCabeza confirmado. Felicitaciones.',
       lineConfirmed: 'Línea confirmada. Felicitaciones.',
       bingoConfirmed: 'Bingo confirmado. Tenemos ganador.',
+      remainingBalls: 'Se retiran las últimas bolas faltantes.',
       rejected: 'El reclamo fue rechazado. La partida podrá continuar.',
       waiting: 'Los cartones quedaron confirmados. Esperamos el inicio oficial.'
     }
@@ -142,6 +145,7 @@ const profiles = {
       amboConfirmed: 'AmboCabeza confirmado. Felicitaciones.',
       lineConfirmed: 'Línea confirmada. Felicitaciones al ganador.',
       bingoConfirmed: 'Bingo confirmado. Felicitaciones.',
+      remainingBalls: 'Se retiran las últimas bolas faltantes.',
       rejected: 'El reclamo no fue válido. Enseguida retomamos la partida.',
       waiting: 'Tus cartones están confirmados. Ahora esperamos el sorteo.'
     }

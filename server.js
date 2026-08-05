@@ -28,7 +28,7 @@ if (fs.existsSync(LOCAL_ENV_FILE)) {
 const ROOT = __dirname;
 const DATA_DIR = process.env.BINGO_DATA_DIR ? path.resolve(process.env.BINGO_DATA_DIR) : path.join(ROOT, 'data');
 const OWNER_STATE_FILE = path.join(DATA_DIR, 'sala-online.json');
-const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma-2.1.json');
+const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma-2.2.json');
 const WORKSPACES_DIR = path.join(DATA_DIR, 'operadores');
 const PORT = Number(process.env.PORT || 3210);
 const HOST = '0.0.0.0';
@@ -52,6 +52,7 @@ const CLAIM_QUEUE_WINDOW_MS = 3000;
 const TEST_EVENT_TTL_MS = 20 * 1000;
 const START_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_START_SEQUENCE_MS || 11_000));
 const RESUME_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_RESUME_SEQUENCE_MS || 5_000));
+const FINAL_BALLS_SEQUENCE_MS = Math.max(250, Number(process.env.BINGO_FINAL_BALLS_SEQUENCE_MS || 8_000));
 const MAX_TIE_WINNERS_PER_PRIZE = 4;
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
@@ -136,7 +137,7 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
 
 function blankState() {
   return {
-    version: 21,
+    version: 22,
     active: false,
     status: 'closed',
     roomCode: null,
@@ -170,6 +171,7 @@ function blankState() {
     },
     adminMessage: null,
     transition: null,
+    pauseReason: null,
     deviceTransferRequests: [],
     testEvent: null,
     game: null,
@@ -194,10 +196,11 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       claims: parsed.claims || [],
       eventLog: parsed.eventLog || [],
       transition: parsed.transition || null,
+      pauseReason: parsed.pauseReason || null,
       deviceTransferRequests: Array.isArray(parsed.deviceTransferRequests) ? parsed.deviceTransferRequests : []
     };
     if (merged.active && !parsed.status) merged.status = merged.game?.drawn?.length ? 'playing' : 'waiting';
-    if (!['closed', 'waiting', 'starting', 'playing', 'paused', 'resuming', 'finished'].includes(merged.status)) merged.status = 'closed';
+    if (!['closed', 'waiting', 'starting', 'playing', 'verifying', 'paused', 'resuming', 'finalizing', 'finished'].includes(merged.status)) merged.status = 'closed';
     merged.roomSettings.linePrizeCount = Math.max(1, Math.min(2, Number(merged.roomSettings.linePrizeCount) || 1));
     merged.roomSettings.bingoPrizeCount = 1;
     merged.roomSettings.allowSamePlayerSecondLine = Boolean(merged.roomSettings.allowSamePlayerSecondLine);
@@ -247,9 +250,9 @@ function loadState(stateFile = OWNER_STATE_FILE) {
 function loadPlatform() {
   try {
     const parsed = JSON.parse(fs.readFileSync(PLATFORM_FILE, 'utf8'));
-    return { version: 21, operators: Array.isArray(parsed.operators) ? parsed.operators : [] };
+    return { version: 22, operators: Array.isArray(parsed.operators) ? parsed.operators : [] };
   } catch {
-    return { version: 21, operators: [] };
+    return { version: 22, operators: [] };
   }
 }
 
@@ -293,7 +296,7 @@ function ensureWorkspace(id = 'owner', operatorId = null, label = 'Administrador
 }
 
 const ownerWorkspace = ensureWorkspace('owner');
-for (const operator of platform.operators) ensureWorkspace(operator.workspaceId || `operator_${operator.id}`, operator.id, operator.name || 'Operador');
+// Los operadores temporales están deshabilitados en 2.2.
 
 function currentWorkspace() { return workspaceContext.getStore() || ownerWorkspace; }
 function replaceCurrentState(next) { currentWorkspace().state = next; }
@@ -847,30 +850,23 @@ function baseInfo() {
     lastResult: publicLastResult(),
     publicUrl: PUBLIC_URL || null,
     playerUrl: PUBLIC_URL ? `${PUBLIC_URL}/jugador` : null,
-    version: '2.1',
+    version: '2.2',
     workspace: { id: currentWorkspace().id, operatorId: currentWorkspace().operatorId || null, label: currentWorkspace().label }
   };
 }
 
 function currentAccessContext() {
-  const workspace = currentWorkspace();
-  if (!workspace.operatorId) return { role: 'owner', name: 'Administrador principal', expiresAt: null, canCreateNewGames: true };
-  const operator = findOperatorById(workspace.operatorId);
-  return {
-    role: 'operator', name: operator?.name || workspace.label || 'Operador temporal',
-    expiresAt: operator?.expiresAt || null, status: operatorStatus(operator),
-    canCreateNewGames: operatorCanCreate(operator), maxGames: Number(operator?.maxGames) || 0, gamesCreated: Number(operator?.gamesCreated) || 0
-  };
+  return { role: 'owner', name: 'Administrador principal', expiresAt: null, canCreateNewGames: true };
 }
 
 function broadcastPayload() {
-  if (!state.active || !state.game) return { active: false, version: '2.1' };
+  if (!state.active || !state.game) return { active: false, version: '2.2' };
   const pendingClaim = state.claims.find(claim => claim.status === 'pending') || null;
   const latestConfirmedRaw = [...state.claims].reverse().find(claim => claim.status === 'confirmed') || null;
   const latestConfirmed = !pendingClaim && latestConfirmedRaw && Date.now() - new Date(latestConfirmedRaw.resolvedAt || 0).getTime() <= 20_000
     ? latestConfirmedRaw : null;
   return {
-    active: true, version: '2.1', status: state.status, roomCode: state.roomCode, round: state.round,
+    active: true, version: '2.2', status: state.status, pauseReason: state.pauseReason || null, roomCode: state.roomCode, round: state.round,
     playersTotal: state.players.length, playersReady: state.players.filter(player => player.selectionConfirmed).length, playersConnected: connectedPlayerIds().size,
     roomSettings: state.roomSettings, transition: state.transition, publicClaims: publicClaimsPayload(),
     game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: state.game.presenter, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, total: state.game.mode },
@@ -926,6 +922,7 @@ function adminPayload() {
     ...baseInfo(),
     active: true,
     status: state.status,
+    pauseReason: state.pauseReason || null,
     readyToStart: preflightPayload().ok,
     preflight: preflightPayload(),
     roomCode: state.roomCode,
@@ -974,6 +971,7 @@ function playerPayload(player) {
   return {
     active: true,
     status: state.status,
+    pauseReason: state.pauseReason || null,
     roomCode: state.roomCode,
     round: state.round,
     startedAt: state.startedAt,
@@ -1017,7 +1015,7 @@ function backupPayload() {
   const cleanState = deepCopy(state);
   cleanState.players = cleanState.players.map(player => ({ ...player, sessionToken: null }));
   return {
-    format: 'el-bingo-de-la-gorda-2.1-backup',
+    format: 'el-bingo-de-la-gorda-2.2-backup',
     exportedAt: nowIso(),
     state: cleanState
   };
@@ -1176,7 +1174,7 @@ function configureRoom(payload) {
   sanitizedGame.phase = 'READY';
   const requestedTimerMinutes = Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(payload.assignmentTimer?.durationMinutes) || 10));
   replaceCurrentState({
-    version: 21,
+    version: 22,
     active: true,
     status: 'waiting',
     roomCode: randomCode(5),
@@ -1214,6 +1212,7 @@ function configureRoom(payload) {
     },
     adminMessage: null,
     transition: null,
+    pauseReason: null,
     deviceTransferRequests: [],
     testEvent: null,
     game: sanitizedGame,
@@ -1241,8 +1240,8 @@ function updateGame(game) {
   if (state.status === 'waiting' && sanitized.drawn.length > previousDrawn.length) {
     throw new Error('La partida está en sala de espera. Presioná INICIAR SORTEO antes de sortear.');
   }
-  if (['playing','paused','resuming'].includes(state.status) && prizeStatusPayload().bingo.closed && JSON.stringify(sanitized.drawn) !== JSON.stringify(previousDrawn)) {
-    throw new Error('El bingo ya fue confirmado. No se pueden agregar, quitar ni cambiar bolillas; finalizá el sorteo.');
+  if (state.status === 'finalizing' && JSON.stringify(sanitized.drawn) !== JSON.stringify(previousDrawn)) {
+    throw new Error('Se están retirando las últimas bolillas. Esperá el cierre automático.');
   }
   if (state.status === 'finished' && JSON.stringify(sanitized.drawn) !== JSON.stringify(previousDrawn)) {
     throw new Error('El sorteo ya fue finalizado. No se pueden modificar las bolillas.');
@@ -1280,6 +1279,15 @@ function updateGame(game) {
   }
   syncAllAutoMarks();
   updateCardDisplayNames();
+  if (state.game.drawn.length >= state.game.mode && !state.claims.some(claim => claim.status === 'pending') && state.status !== 'finished') {
+    state.status = 'finished';
+    state.pauseReason = null;
+    state.endedAt = nowIso();
+    state.game.phase = 'ROUND_END';
+    state.transition = null;
+    logEvent('game_finished', { round: state.round, balls: state.game.drawn.length, automatic: true });
+    archiveCurrentResults();
+  }
   saveState();
   broadcast();
   return adminPayload();
@@ -1306,10 +1314,31 @@ function completeTransition() {
   clearWorkspaceTransitionTimer();
   if (!state.active || !state.transition) return;
   const type = state.transition.type;
+  if (type === 'final-balls') {
+    const existing = new Set(state.game.drawn || []);
+    const remaining = shuffle(Array.from({ length: state.game.mode }, (_, index) => index + 1).filter(number => !existing.has(number)));
+    for (const number of remaining) {
+      state.game.drawn.push(number);
+      logEvent('ball_drawn', { number, position: state.game.drawn.length, finalVerification: true });
+    }
+    syncAllAutoMarks();
+    state.status = 'finished';
+    state.pauseReason = null;
+    state.game.phase = 'ROUND_END';
+    state.endedAt = nowIso();
+    state.transition = null;
+    logEvent('game_finished', { round: state.round, balls: state.game.drawn.length, automaticFinalExtraction: true });
+    archiveCurrentResults();
+    saveState();
+    broadcast();
+    return;
+  }
   if (type === 'start' || type === 'resume') {
+    if (type === 'resume' && state.transition.resumeMode) state.game.drawMode = state.transition.resumeMode;
     state.status = 'playing';
+    state.pauseReason = null;
     state.game.phase = state.game.drawMode === 'automatic' ? 'DRAWING' : 'READY';
-    logEvent(type === 'start' ? 'game_started' : 'game_resumed', { round: state.round });
+    logEvent(type === 'start' ? 'game_started' : 'game_resumed', { round: state.round, mode: state.game.drawMode });
   }
   state.transition = null;
   saveState();
@@ -1331,6 +1360,7 @@ function startRoom() {
   };
   const startedAt = nowIso();
   state.status = 'starting';
+  state.pauseReason = null;
   state.startedAt = startedAt;
   state.endedAt = null;
   state.game.phase = 'READY';
@@ -1349,6 +1379,7 @@ function pauseRoom() {
   if (state.status !== 'playing') throw new Error('La partida solo se puede pausar mientras está en juego.');
   clearWorkspaceTransitionTimer();
   state.status = 'paused';
+  state.pauseReason = 'manual';
   state.transition = null;
   state.game.phase = 'PAUSED';
   logEvent('game_paused');
@@ -1356,14 +1387,17 @@ function pauseRoom() {
   return adminPayload();
 }
 
-function resumeRoom() {
+function resumeRoom(payload = {}) {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'paused') throw new Error('La partida no está pausada.');
+  const mode = payload.mode === 'manual' ? 'manual' : payload.mode === 'automatic' ? 'automatic' : state.game.drawMode;
+  state.game.drawMode = mode;
   const startedAt = nowIso();
   state.status = 'resuming';
-  state.transition = { id: randomId('transition'), type: 'resume', startedAt, endsAt: new Date(Date.now() + RESUME_SEQUENCE_MS).toISOString() };
+  state.pauseReason = null;
+  state.transition = { id: randomId('transition'), type: 'resume', resumeMode: mode, startedAt, endsAt: new Date(Date.now() + RESUME_SEQUENCE_MS).toISOString() };
   state.game.phase = 'PAUSED';
-  logEvent('game_resume_sequence');
+  logEvent('game_resume_sequence', { mode });
   saveState(); broadcast(); scheduleTransition();
   return adminPayload();
 }
@@ -1466,7 +1500,7 @@ function archiveCurrentResults() {
   const metaTemp = `${metaFile}.tmp`;
   fs.writeFileSync(pdfTemp, pdf);
   const meta = {
-    version: '2.1',
+    version: '2.2',
     roomCode: state.roomCode,
     gameNumber: state.game.number,
     round: state.round,
@@ -1487,9 +1521,11 @@ function archiveCurrentResults() {
 function finishRoom() {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status === 'finished') return adminPayload();
-  if (!['playing', 'paused'].includes(state.status)) throw new Error('El sorteo todavía no comenzó.');
+  if (!['playing', 'paused', 'finalizing'].includes(state.status)) throw new Error('El sorteo todavía no comenzó.');
   if (state.claims.some(claim => claim.status === 'pending')) throw new Error('Primero resolvé el reclamo pendiente.');
+  if (state.game.drawn.length < state.game.mode) throw new Error(`Todavía faltan ${state.game.mode - state.game.drawn.length} bolillas. El sorteo finaliza al retirarlas todas.`);
   state.status = 'finished';
+  state.pauseReason = null;
   state.endedAt = nowIso();
   state.game.phase = 'ROUND_END';
   logEvent('game_finished', { round: state.round, balls: state.game.drawn.length });
@@ -1653,9 +1689,9 @@ function restoreBackup(payload) {
     };
   });
   replaceCurrentState({
-    version: 21,
+    version: 22,
     active: true,
-    status: ['waiting', 'starting', 'playing', 'paused', 'resuming', 'finished'].includes(raw.status) ? raw.status : (raw.game.drawn?.length ? 'playing' : 'waiting'),
+    status: ['waiting', 'starting', 'playing', 'verifying', 'paused', 'resuming', 'finalizing', 'finished'].includes(raw.status) ? raw.status : (raw.game.drawn?.length ? 'playing' : 'waiting'),
     roomCode: String(raw.roomCode || randomCode(5)).slice(0, 12),
     createdAt: raw.createdAt || nowIso(),
     startedAt: raw.startedAt || null,
@@ -1666,6 +1702,7 @@ function restoreBackup(payload) {
     assignmentTimer: { ...blankState().assignmentTimer, ...(raw.assignmentTimer || {}) },
     testEvent: null,
     transition: raw.transition || null,
+    pauseReason: raw.pauseReason || null,
     deviceTransferRequests: [],
     adminMessage: raw.adminMessage && String(raw.adminMessage.text || '').trim()
       ? {
@@ -1960,9 +1997,10 @@ function createClaim(player, payload) {
   };
   state.claims.push(claim);
   clearWorkspaceTransitionTimer();
-  state.status = 'paused';
+  state.status = 'verifying';
+  state.pauseReason = 'claim';
   state.transition = null;
-  state.game.phase = 'PAUSED';
+  state.game.phase = 'REVIEWING_WINNER';
   logEvent('claim_created', { claimId: claim.id, type, prizeNumber, playerId: player.id, cardId, officialValid: valid });
   saveState();
   broadcast();
@@ -2023,15 +2061,21 @@ function resolveClaim(payload) {
   }
   logEvent('claim_resolved', { claimId: claim.id, resolution, prizeNumber: claim.prizeNumber || 1, officialValid: claim.officialValid });
   clearWorkspaceTransitionTimer();
-  state.status = 'paused';
   state.transition = null;
-  state.game.phase = 'PAUSED';
+  state.pauseReason = 'claim';
   if (resolution === 'confirmed' && claim.type === 'bingo') {
+    const startedAt = nowIso();
+    state.status = 'finalizing';
     state.game.phase = 'BINGO_CONFIRMED';
-    logEvent('bingo_confirmed_lock', { claimId: claim.id, cardId: claim.cardId, cardNumber: claim.cardNumber });
+    state.transition = { id: randomId('transition'), type: 'final-balls', startedAt, endsAt: new Date(Date.now() + FINAL_BALLS_SEQUENCE_MS).toISOString() };
+    logEvent('bingo_confirmed_final_extraction', { claimId: claim.id, cardId: claim.cardId, cardNumber: claim.cardNumber });
+  } else {
+    state.status = 'paused';
+    state.game.phase = 'PAUSED';
   }
   saveState();
   broadcast();
+  if (state.status === 'finalizing') scheduleTransition();
   return claim;
 }
 
@@ -2081,7 +2125,7 @@ function actaPayload() {
   const claims = confirmedClaims('ambo').concat(confirmedClaims('line'), confirmedClaims('bingo'))
     .sort((a, b) => new Date(a.createdAt || a.resolvedAt || 0) - new Date(b.createdAt || b.resolvedAt || 0));
   return {
-    version: '2.1',
+    version: '2.2',
     roomCode: state.roomCode,
     round: state.round,
     gameNumber: state.game.number,
@@ -2101,7 +2145,13 @@ function actaPayload() {
       cardNumbers: (player.cardIds || []).map(cardId => state.game.cards.find(card => card.id === cardId)?.number).filter(Boolean),
       selectionConfirmed: player.selectionConfirmed
     })),
-    winners: claims.map(winnerDetails)
+    winners: claims.map(winnerDetails),
+    categories: {
+      ambo: { label: 'AmboCabeza', enabled: Boolean(state.game.mode === 90 && state.game.rules?.ambocabeza), winners: confirmedClaims('ambo').map(winnerDetails) },
+      line1: { label: 'Primera línea', enabled: Boolean(state.game.rules?.line), winners: confirmedClaims('line').filter(claim => Number(claim.prizeNumber || 1) === 1).map(winnerDetails) },
+      line2: { label: 'Doble línea', enabled: Boolean(state.game.rules?.line && Number(state.roomSettings?.linePrizeCount || 1) === 2), winners: confirmedClaims('line').filter(claim => Number(claim.prizeNumber || 1) === 2).map(winnerDetails) },
+      bingo: { label: 'Bingo', enabled: Boolean(state.game.rules?.bingo), winners: confirmedClaims('bingo').map(winnerDetails) }
+    }
   };
 }
 
@@ -2168,6 +2218,9 @@ function actaCsv() {
     [],
     ['ORDEN', 'BOLILLA', 'FECHA Y HORA'],
     ...acta.balls.map(row => [row.order, row.number, formatLocalTimestamp(row.at)]),
+    [],
+    ['ESTADO DE PREMIOS'],
+    ...Object.values(acta.categories).map(category => [category.label, !category.enabled ? 'No sorteada' : category.winners.length ? `${category.winners.length} ganador(es)` : 'Sin ganador confirmado']),
     [],
     ['GANADORES'],
     ['PREMIO', 'JUGADOR', 'CARTÓN', 'CANTADO', 'BOLILLA'],
@@ -2290,7 +2343,7 @@ function buildResultsPdf() {
   rect(19, 10, 70, 70, COLORS.white, '#F2D3E2', 1);
   image(24, 15, 60, 60);
   text('RESULTADOS OFICIALES DEL SORTEO', 101, 18, 20, { bold: true, color: COLORS.white, maxWidth: 390 });
-  text('Bingo de la Gorda - Versión 2.1', 101, 47, 11, { bold: true, color: '#F7DDF0' });
+  text('Bingo de la Gorda - Versión 2.2', 101, 47, 11, { bold: true, color: '#F7DDF0' });
   text(`Sala ${acta.roomCode}  ·  Juego ${acta.gameNumber}  ·  Bingo ${acta.mode}`, 101, 65, 8.5, { color: '#E8D7EE' });
 
   const metaX = 510;
@@ -2381,10 +2434,10 @@ function buildResultsPdf() {
   const blockH = Math.max(145, 571 - blocksY);
 
   const categories = [
-    { label: 'AMBOCABEZA', color: '#147D64', winners: acta.winners.filter(w => w.type === 'ambo') },
-    { label: 'PRIMERA LÍNEA', color: COLORS.purple2, winners: acta.winners.filter(w => w.type === 'line' && w.prizeNumber === 1) },
-    { label: 'SEGUNDA LÍNEA', color: '#C58B00', winners: acta.winners.filter(w => w.type === 'line' && w.prizeNumber === 2) },
-    { label: 'BINGO', color: COLORS.pink, winners: acta.winners.filter(w => w.type === 'bingo') }
+    { label: 'AMBOCABEZA', color: '#147D64', enabled: acta.categories.ambo.enabled, winners: acta.categories.ambo.winners },
+    { label: 'PRIMERA LÍNEA', color: COLORS.purple2, enabled: acta.categories.line1.enabled, winners: acta.categories.line1.winners },
+    { label: 'DOBLE LÍNEA', color: '#C58B00', enabled: acta.categories.line2.enabled, winners: acta.categories.line2.winners },
+    { label: 'BINGO', color: COLORS.pink, enabled: acta.categories.bingo.enabled, winners: acta.categories.bingo.winners }
   ];
 
   const drawMiniCard = (winner, x, y, width, height) => {
@@ -2438,6 +2491,11 @@ function buildResultsPdf() {
     rect(x, blocksY, blockW, 25, category.color);
     text(category.label, x + blockW / 2, blocksY + 7, 9.2, { bold: true, color: COLORS.white, align: 'center' });
     const winners = category.winners;
+    if (!category.enabled) {
+      text('No sorteada', x + blockW / 2, blocksY + 75, 10, { bold: true, color: COLORS.muted, align: 'center' });
+      text('Esta categoría no estuvo habilitada.', x + blockW / 2, blocksY + 94, 6.8, { color: COLORS.muted, align: 'center' });
+      return;
+    }
     if (!winners.length) {
       text('Sin ganador confirmado', x + blockW / 2, blocksY + 75, 10, { bold: true, color: COLORS.muted, align: 'center' });
       text('La categoría quedó sin adjudicar.', x + blockW / 2, blocksY + 94, 6.8, { color: COLORS.muted, align: 'center' });
@@ -2462,7 +2520,7 @@ function buildResultsPdf() {
   });
 
   text(`Documento oficial generado al cerrar el sorteo · Sala ${acta.roomCode} · Ronda ${acta.round}`, 24, 582, 5.8, { color: COLORS.muted });
-  text('Bingo de la Gorda - Versión 2.1', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
+  text('Bingo de la Gorda - Versión 2.2', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
 
   const stream = commands.join('\n');
   const logoPath = path.join(ROOT, 'assets', 'logo-pdf.jpg');
@@ -2589,12 +2647,7 @@ function findWorkspaceByBroadcastToken(token) {
 }
 
 function masterStatePayload() {
-  return {
-    version: '2.1',
-    now: nowIso(),
-    ownerUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/admin`,
-    operators: platform.operators.map(operatorPublic).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-  };
+  return { version: '2.2', now: nowIso(), ownerUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/admin`, operatorsEnabled: false };
 }
 
 async function handleMasterApi(req, res, url) {
@@ -2606,55 +2659,16 @@ async function handleMasterApi(req, res, url) {
       if (!MASTER_ADMIN_PASSWORD) return sendJson(res, 503, { error: 'Falta configurar MASTER_ADMIN_PASSWORD o ADMIN_PASSWORD.' });
       if (!safeEqual(payload.password || '', MASTER_ADMIN_PASSWORD)) return sendJson(res, 401, { error: 'Contraseña principal incorrecta.' });
     }
-    return sendJson(res, 200, { token: createMasterSession(), expiresInHours: 24 });
+    const masterToken = createMasterSession();
+    const adminToken = createAdminSession({ workspaceId: 'owner', role: 'owner' });
+    return sendJson(res, 200, { token: masterToken, adminToken, expiresInHours: 24 });
   }
   if (!isMasterAuthorized(req, url)) return sendJson(res, 401, { error: 'Ingresá al panel principal.' });
   if (url.pathname === '/api/master/state' && req.method === 'GET') return sendJson(res, 200, masterStatePayload());
-  if (url.pathname === '/api/master/operators' && req.method === 'POST') {
-    const payload = await readJson(req);
-    const name = String(payload.name || '').trim().slice(0, 80);
-    if (!name) throw new Error('Ingresá el nombre del administrador temporal.');
-    const hours = Math.max(1, Math.min(24 * 30, Number(payload.hours) || 24));
-    const id = randomId('operator');
-    const accessToken = crypto.randomBytes(24).toString('base64url');
-    const operator = {
-      id, name, accessToken, workspaceId: `operator_${id}`,
-      createdAt: nowIso(), expiresAt: new Date(Date.now() + hours * 60 * 60 * 1000).toISOString(),
-      revokedAt: null, maxGames: Math.max(0, Math.min(999, Number(payload.maxGames) || 0)), gamesCreated: 0,
-      lastLoginAt: null
-    };
-    platform.operators.push(operator);
-    ensureWorkspace(operator.workspaceId, operator.id, operator.name);
-    savePlatform();
-    return sendJson(res, 201, { operator: operatorPublic(operator), state: masterStatePayload() });
+  if (url.pathname === '/api/master/admin-session' && req.method === 'POST') {
+    return sendJson(res, 200, { adminToken: createAdminSession({ workspaceId: 'owner', role: 'owner' }) });
   }
-  if (url.pathname === '/api/master/operators/extend' && req.method === 'POST') {
-    const payload = await readJson(req);
-    const operator = findOperatorById(String(payload.id || ''));
-    if (!operator) throw new Error('No se encontró el administrador temporal.');
-    const hours = Math.max(1, Math.min(24 * 30, Number(payload.hours) || 24));
-    const base = Math.max(Date.now(), new Date(operator.expiresAt || 0).getTime());
-    operator.expiresAt = new Date(base + hours * 60 * 60 * 1000).toISOString();
-    operator.revokedAt = null;
-    savePlatform();
-    return sendJson(res, 200, masterStatePayload());
-  }
-  if (url.pathname === '/api/master/operators/revoke' && req.method === 'POST') {
-    const payload = await readJson(req);
-    const operator = findOperatorById(String(payload.id || ''));
-    if (!operator) throw new Error('No se encontró el administrador temporal.');
-    operator.revokedAt = payload.revoke === false ? null : nowIso();
-    savePlatform();
-    return sendJson(res, 200, masterStatePayload());
-  }
-  if (url.pathname === '/api/master/operators/regenerate' && req.method === 'POST') {
-    const payload = await readJson(req);
-    const operator = findOperatorById(String(payload.id || ''));
-    if (!operator) throw new Error('No se encontró el administrador temporal.');
-    operator.accessToken = crypto.randomBytes(24).toString('base64url');
-    savePlatform();
-    return sendJson(res, 200, masterStatePayload());
-  }
+  if (url.pathname.startsWith('/api/master/operators')) return sendJson(res, 410, { error: 'Los administradores temporales están deshabilitados en esta versión.' });
   if (url.pathname === '/api/master/logout' && req.method === 'POST') {
     masterSessions.delete(masterTokenFrom(req, url));
     return sendJson(res, 200, { ok: true });
@@ -2665,16 +2679,8 @@ async function handleMasterApi(req, res, url) {
 async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/state' && req.method === 'GET') return sendJson(res, 200, adminPayload());
   if (url.pathname === '/api/admin/configure' && req.method === 'POST') {
-    assertOperatorMayStartNewGame(session);
     const payload = await readJson(req);
-    const result = configureRoom(payload);
-    if (session.role === 'operator') {
-      const operator = findOperatorById(session.operatorId);
-      operator.gamesCreated = Number(operator.gamesCreated || 0) + 1;
-      operator.lastRoomCode = state.roomCode;
-      savePlatform();
-    }
-    return sendJson(res, 200, result);
+    return sendJson(res, 200, configureRoom(payload));
   }
   if (url.pathname === '/api/admin/new-room' && req.method === 'POST') {
     assertOperatorMayStartNewGame(session);
@@ -2683,7 +2689,7 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/game' && req.method === 'POST') return sendJson(res, 200, updateGame((await readJson(req)).game));
   if (url.pathname === '/api/admin/start' && req.method === 'POST') return sendJson(res, 200, startRoom());
   if (url.pathname === '/api/admin/pause' && req.method === 'POST') return sendJson(res, 200, pauseRoom());
-  if (url.pathname === '/api/admin/resume' && req.method === 'POST') return sendJson(res, 200, resumeRoom());
+  if (url.pathname === '/api/admin/resume' && req.method === 'POST') return sendJson(res, 200, resumeRoom(await readJson(req)));
   if (url.pathname === '/api/admin/resolve-device-transfer' && req.method === 'POST') return sendJson(res, 200, resolveDeviceTransfer(await readJson(req)));
   if (url.pathname === '/api/admin/finish' && req.method === 'POST') return sendJson(res, 200, finishRoom());
   if (url.pathname === '/api/admin/assignment-timer' && req.method === 'POST') return sendJson(res, 200, controlAssignmentTimer(await readJson(req)));
@@ -2698,18 +2704,7 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/participants.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(participantsCsv(), 'utf8'), 'text/csv; charset=utf-8', `Bingo_Jugadores_${state.roomCode || 'sala'}.csv`);
   if (url.pathname === '/api/admin/acta.pdf' && req.method === 'GET') return sendBuffer(res, 200, actaPdf(), 'application/pdf', `Bingo_Acta_${state.roomCode || 'sala'}.pdf`);
   if (url.pathname === '/api/admin/backup' && req.method === 'GET') return sendJson(res, 200, backupPayload());
-  if (url.pathname === '/api/admin/restore' && req.method === 'POST') {
-    const startsNewGame = !state.active || ['closed', 'finished'].includes(state.status);
-    if (startsNewGame) assertOperatorMayStartNewGame(session);
-    const result = restoreBackup(await readJson(req));
-    if (startsNewGame && session.role === 'operator') {
-      const operator = findOperatorById(session.operatorId);
-      operator.gamesCreated = Number(operator.gamesCreated || 0) + 1;
-      operator.lastRoomCode = state.roomCode;
-      savePlatform();
-    }
-    return sendJson(res, 200, result);
-  }
+  if (url.pathname === '/api/admin/restore' && req.method === 'POST') return sendJson(res, 200, restoreBackup(await readJson(req)));
   if (url.pathname === '/api/admin/close' && req.method === 'POST') { closeRoom(); return sendJson(res, 200, { ok: true }); }
   if (url.pathname === '/api/admin/logout' && req.method === 'POST') { adminSessions.delete(adminTokenFrom(req, url)); return sendJson(res, 200, { ok: true }); }
   return sendJson(res, 404, { error: 'Acción de administrador no encontrada.' });
@@ -2718,24 +2713,12 @@ async function dispatchAdminApi(req, res, url, session) {
 async function handleApi(req, res, url) {
   try {
     if (url.pathname.startsWith('/api/master/')) return await handleMasterApi(req, res, url);
-    if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso(), version: '2.1' });
+    if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso(), version: '2.2' });
 
     if (url.pathname === '/api/admin/login' && req.method === 'POST') {
       if (!consumeRate(req, 'admin-login', 30, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
       const payload = await readJson(req);
-      if (payload.operatorAccessToken) {
-        const operator = findOperatorByAccessToken(String(payload.operatorAccessToken));
-        if (!operator) return sendJson(res, 401, { error: 'El enlace temporal no es válido.' });
-        const workspace = ensureWorkspace(operator.workspaceId, operator.id, operator.name);
-        const mayFinish = workspace.state.active && !['closed', 'finished'].includes(workspace.state.status);
-        const status = operatorStatus(operator);
-        if (status === 'revoked') return sendJson(res, 401, { error: 'El acceso temporal fue revocado por el administrador principal.' });
-        if (status !== 'active' && !mayFinish) return sendJson(res, 401, { error: 'El acceso temporal venció.' });
-        operator.lastLoginAt = nowIso(); savePlatform();
-        const hardExpiresAt = status === 'active' ? new Date(operator.expiresAt).getTime() : null;
-        const token = createAdminSession({ workspaceId: workspace.id, role: 'operator', operatorId: operator.id, hardExpiresAt });
-        return sendJson(res, 200, { token, role: 'operator', operator: operatorPublic(operator), onlineMode: ONLINE_MODE });
-      }
+      if (payload.operatorAccessToken) return sendJson(res, 410, { error: 'Los accesos temporales están deshabilitados.' });
       const localWithoutPassword = !ONLINE_MODE && isLoopback(req) && !MASTER_ADMIN_PASSWORD;
       if (!localWithoutPassword) {
         if (!MASTER_ADMIN_PASSWORD) return sendJson(res, 503, { error: 'Falta configurar MASTER_ADMIN_PASSWORD o ADMIN_PASSWORD.' });
@@ -2861,7 +2844,7 @@ function handleEvents(req, res, url) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || `localhost:${PORT}`}`);
-  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '2.1', workspaces: workspaces.size });
+  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '2.2', workspaces: workspaces.size });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('User-agent: *\nDisallow: /admin\nDisallow: /admin-principal\nDisallow: /operador\nDisallow: /transmision\n');
@@ -2875,7 +2858,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/admin-principal' || url.pathname === '/admin-principal/') return serveFile(res, path.join(ROOT, 'admin-principal.html'));
   if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'ABRIR_EL_BINGO_DE_LA_GORDA.html'));
-  if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'ABRIR_EL_BINGO_DE_LA_GORDA.html'));
+  if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return sendJson(res, 404, { error: 'Los accesos temporales están deshabilitados.' });
   if (/^\/transmision\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'transmision.html'));
   if (url.pathname === '/jugador' || url.pathname === '/jugador/') return serveFile(res, path.join(ROOT, 'jugador.html'));
   if (url.pathname === '/reglamento.pdf') return serveFile(res, path.join(ROOT, 'reglamento.pdf'));
@@ -2913,7 +2896,7 @@ setInterval(() => {
 for (const workspace of workspaces.values()) workspaceContext.run(workspace, () => scheduleTransition());
 
 server.listen(PORT, HOST, () => {
-  console.log('\nBINGO DE LA GORDA 2.1');
+  console.log('\nBINGO DE LA GORDA 2.2');
   const base = PUBLIC_URL || `http://localhost:${PORT}`;
   console.log(`Panel principal: ${base}/admin-principal`);
   console.log(`Administrador propio: ${base}/admin`);

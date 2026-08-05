@@ -16,9 +16,8 @@ class LocalRoomAdmin {
     this.assignments = [];
     this.syncTimer = null;
     this.backupTimer = null;
-    const operatorMatch = location.pathname.match(/^\/operador\/([^/]+)/);
-    this.operatorAccessToken = operatorMatch ? decodeURIComponent(operatorMatch[1]) : '';
-    this.sessionKey = this.operatorAccessToken ? `bingoOnlineAdminToken:operator:${this.operatorAccessToken.slice(0,12)}` : 'bingoOnlineAdminToken:owner';
+    this.operatorAccessToken = '';
+    this.sessionKey = 'bingoOnlineAdminToken:owner';
     this.adminToken = sessionStorage.getItem(this.sessionKey) || '';
     this.originalSave = app.save.bind(app);
     this.originalExitGame = app.exitGame.bind(app);
@@ -41,6 +40,9 @@ class LocalRoomAdmin {
     this.injectUi();
     this.patchApp();
     await this.ensureAdminAuth();
+    const requestedAction = new URLSearchParams(location.search).get('accion');
+    if (requestedAction === 'nuevo') this.app.openWizard();
+    if (requestedAction === 'recuperar') { this.app.renderGames(); $('gamesModal')?.classList.add('show'); }
     this.keepAliveTimer = setInterval(() => { if (this.active) fetch('/api/ping', { cache: 'no-store' }).catch(() => {}); }, 5 * 60 * 1000);
     this.uiClockTimer = setInterval(() => this.updateLiveCountdown(), 1000);
   }
@@ -52,18 +54,18 @@ class LocalRoomAdmin {
       return result;
     };
     this.app.requestDraw = (...args) => {
-      if (this.active && (this.serverState?.status !== 'playing' || this.serverState?.bingoConfirmed)) {
-        alert(this.serverState?.bingoConfirmed ? 'El bingo ya fue confirmado. No se pueden sortear más bolillas; finalizá el sorteo.' : this.serverState?.status === 'finished' ? 'El sorteo ya fue finalizado.' : 'La sala está esperando jugadores. Presioná INICIAR SORTEO antes de cantar la primera bolilla.');
+      if (this.active && this.serverState?.status !== 'playing') {
+        alert(this.serverState?.status === 'finished' ? 'El sorteo ya fue finalizado.' : this.serverState?.status === 'finalizing' ? 'Se están retirando las últimas bolillas.' : 'El sorteo no está habilitado para extraer una bolilla ahora.');
         return false;
       }
       return this.originalRequestDraw(...args);
     };
     this.app.processSpecificBall = (...args) => {
-      if (this.active && (this.serverState?.status !== 'playing' || this.serverState?.bingoConfirmed)) return false;
+      if (this.active && this.serverState?.status !== 'playing') return false;
       return this.originalProcessSpecificBall(...args);
     };
     this.app.startAutomatic = (...args) => {
-      if (this.active && (this.serverState?.status !== 'playing' || this.serverState?.bingoConfirmed)) return;
+      if (this.active && this.serverState?.status !== 'playing') return;
       return this.originalStartAutomatic(...args);
     };
     this.app.toggleAutomatic = (...args) => {
@@ -82,7 +84,7 @@ class LocalRoomAdmin {
     const button = document.createElement('button');
     button.id = 'localRoomBtn';
     button.className = 'tool localRoomTool';
-    button.textContent = '🌐 SALA ONLINE 2.1';
+    button.textContent = '🌐 SALA ONLINE 2.2';
     button.onclick = () => this.openMainModal();
     footer?.insertBefore(button, $('cardsBtn'));
 
@@ -272,6 +274,11 @@ class LocalRoomAdmin {
     const previousStatus = this.serverState?.status || this.lastRoomStatus;
     this.serverState = data;
     this.active = Boolean(data.active);
+    if (this.app.game && data.game?.id === this.app.game.id) {
+      this.app.game.drawn = [...(data.game.drawn || [])];
+      this.app.game.autoSeconds = Number(data.game.autoSeconds) || this.app.game.autoSeconds;
+      this.app.game.drawMode = data.game.drawMode || this.app.game.drawMode;
+    }
     this.syncParticipantNames(data);
     const button = $('localRoomBtn');
     if (button) {
@@ -282,14 +289,7 @@ class LocalRoomAdmin {
 
     if (data.status !== previousStatus) this.handleRoomStatusChange(previousStatus, data.status, data);
 
-    if (data.bingoConfirmed && ['playing','paused'].includes(data.status)) {
-      this.app.stopAutomatic(false);
-      this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
-      if (!this.bingoLockNotified) {
-        this.bingoLockNotified = true;
-        this.showCopyToast('Bingo confirmado: bolillero bloqueado');
-      }
-    } else if (!data.bingoConfirmed) this.bingoLockNotified = false;
+    if (data.status === 'finalizing') { this.app.stopAutomatic(false); this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED); }
 
     this.lastRoomStatus = data.status || '';
     if (this.app.game) {
@@ -315,11 +315,17 @@ class LocalRoomAdmin {
       this.sequenceTimers.push(setTimeout(() => this.app.voice?.event('luck', {}, true), 9000));
       return;
     }
+    if (current === 'verifying') { this.app.stopAutomatic(false); this.app.setPhase(window.BingoV8Engine.PHASE.REVIEW); return; }
     if (current === 'paused') {
       this.app.stopAutomatic(false);
       this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
-      const claimPending = (data.claims || []).some(claim => claim.status === 'pending');
-      if (!claimPending) this.app.voice?.event('pause', {}, true);
+      if (data.pauseReason === 'manual') this.app.voice?.event('pause', {}, true);
+      return;
+    }
+    if (current === 'finalizing') {
+      this.app.stopAutomatic(false);
+      this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
+      this.sequenceTimers.push(setTimeout(() => this.app.voice?.event('remainingBalls', {}, true), 3400));
       return;
     }
     if (current === 'resuming') {
@@ -331,7 +337,7 @@ class LocalRoomAdmin {
     }
     if (current === 'playing') {
       this.app.setPhase(this.app.game?.drawMode === 'automatic' ? window.BingoV8Engine.PHASE.DRAWING : window.BingoV8Engine.PHASE.READY);
-      if (['starting','resuming'].includes(previous) && this.app.game?.drawMode === 'automatic' && !this.app.autoRunning && !data.bingoConfirmed) {
+      if (['starting','resuming'].includes(previous) && this.app.game?.drawMode === 'automatic' && !this.app.autoRunning) {
         this.sequenceTimers.push(setTimeout(() => this.originalStartAutomatic(), 500));
       }
     }
@@ -635,6 +641,10 @@ class LocalRoomAdmin {
     } catch (error) { alert(error.message); }
   }
 
+  async resumeRoom(mode = '') {
+    try { this.applyState(await this.request('/api/admin/resume', { method:'POST', body:JSON.stringify({ mode }) })); } catch (error) { alert(error.message); }
+  }
+
   async toggleRoomPause() {
     const status = this.serverState?.status;
     if (!this.active) return this.originalToggleAutomatic();
@@ -647,8 +657,12 @@ class LocalRoomAdmin {
       return;
     }
     if (status === 'paused') {
-      try { this.applyState(await this.request('/api/admin/resume', { method: 'POST', body: '{}' })); }
-      catch (error) { alert(error.message); }
+      if (this.serverState?.pauseReason === 'claim') {
+        this.openMainModal();
+        alert('El reclamo ya fue resuelto. Elegí CONTINUAR AUTOMÁTICO o CONTINUAR MANUAL desde el panel de la sala.');
+        return;
+      }
+      return this.resumeRoom(this.app.game?.drawMode || 'manual');
     }
   }
 
@@ -856,9 +870,9 @@ class LocalRoomAdmin {
     const bingoAlerts = prizeStatus.bingo.closed ? 0 : (data.cardStatus || []).filter(card => card.hasBingo && card.bingoClaim === 'none').length;
     const playerPageUrl = this.playerPageUrl();
     const waiting = data.status === 'waiting';
-    const playing = ['starting','playing','paused','resuming'].includes(data.status);
+    const playing = ['starting','playing','verifying','paused','resuming','finalizing'].includes(data.status);
     const finished = data.status === 'finished';
-    const bingoConfirmed = Boolean(data.bingoConfirmed && playing);
+    const bingoConfirmed = Boolean(data.bingoConfirmed);
     const presenter = this.presenterInfo(data.game.presenter);
     const activeMessage = String(data.adminMessage?.text || '');
     const messageDraft = this.messageDraft === null ? activeMessage : this.messageDraft;
@@ -866,10 +880,10 @@ class LocalRoomAdmin {
     const timerEnabled = Boolean(timer.enabled);
     const timerStatus = timer.status || 'idle';
     const timerStatusLabel = timerStatus === 'running' ? 'EN MARCHA' : timerStatus === 'paused' ? 'PAUSADO' : timerStatus === 'completed' ? 'FINALIZADO' : 'SIN INICIAR';
-    const statusTitle = waiting ? 'SALA DE ESPERA' : data.status === 'starting' ? 'PREPARANDO INICIO' : data.status === 'paused' ? 'PARTIDA PAUSADA' : data.status === 'resuming' ? 'REANUDANDO EN 3, 2, 1' : bingoConfirmed ? 'BINGO CONFIRMADO' : playing ? 'SORTEO EN CURSO' : 'SORTEO FINALIZADO';
+    const statusTitle = waiting ? 'SALA DE ESPERA' : data.status === 'starting' ? 'PREPARANDO INICIO' : data.status === 'verifying' ? 'VERIFICANDO PREMIO' : data.status === 'paused' ? (data.pauseReason === 'manual' ? 'PARTIDA PAUSADA' : 'ESPERANDO TU DECISIÓN') : data.status === 'resuming' ? 'REANUDANDO EN 3, 2, 1' : data.status === 'finalizing' ? 'RETIRO FINAL DE BOLILLAS' : playing ? 'SORTEO EN CURSO' : 'SORTEO FINALIZADO';
     const statusDescription = waiting
       ? 'Compartí el enlace y los códigos. El sorteo no comenzará hasta que lo ordenes.'
-      : bingoConfirmed ? 'El bolillero quedó bloqueado. Revisá los reclamos pendientes y finalizá el sorteo.' : playing ? presenter.phrase : 'La secuencia oficial quedó cerrada. El PDF de resultados ya está disponible para todos.';
+      : data.status === 'verifying' ? 'El sorteo está detenido mientras comparás las marcas del jugador con las oficiales.' : data.status === 'finalizing' ? 'El sistema está retirando las últimas bolillas y cerrará el sorteo automáticamente.' : playing ? presenter.phrase : 'La secuencia oficial quedó cerrada. El PDF de resultados ya está disponible para todos.';
     const cardsLabel = player => player.cardIds.length
       ? player.cardIds.map(id => `#${esc(data.game.cards.find(card => card.id === id)?.number || '?')}`).join(' · ')
       : (player.reservedCardIds?.length
@@ -929,7 +943,9 @@ class LocalRoomAdmin {
       ${waiting ? `<div class="localCardBox" style="margin-top:14px"><h3>Modo de prueba</h3><small>Envía avisos y sonidos sin alterar bolillas, premios ni cartones.</small><div class="localToolbar"><button class="localSecondary" id="localTestLine">PROBAR LÍNEA</button><button class="localSecondary" id="localTestBingo">PROBAR BINGO</button><button class="localSecondary" id="localTestBall">PROBAR VOZ 42</button></div></div>` : ''}
       ${waiting ? `<div class="localStartBox ${data.readyToStart ? 'ready' : ''}"><b>${data.readyToStart ? 'La revisión previa está completa.' : 'La sala todavía tiene pendientes.'}</b><br><small>El sorteo NO comenzará solo. Debés presionar INICIAR SORTEO.</small><button id="localStartGame" ${data.readyToStart ? '' : 'disabled'}>▶ INICIAR SORTEO</button></div>` : ''}
       ${playing || finished ? `<div class="localCardBox" style="margin-top:14px"><div style="display:flex;gap:10px;justify-content:space-between;align-items:end;flex-wrap:wrap"><div><h3 style="margin:0">Control de cartones activos</h3><small>Se muestran los 25 más cercanos. Buscá por jugador o número para localizar otro.</small></div><input id="localMonitorSearch" placeholder="Buscar jugador o cartón" style="min-width:250px;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#10182b;color:#fff"></div><div id="localMonitorTableHost" class="localMonitorWrap">${this.monitorTable(data.cardStatus || [])}</div></div>` : ''}
-      ${playing ? `<div class="localFinishedBox" style="${bingoConfirmed ? 'background:#4f1728;border-color:#d65578' : ''}"><b>${bingoConfirmed ? 'BINGO CONFIRMADO — BOLILLERO BLOQUEADO' : 'Cuando termine la partida, cerrá la secuencia oficial.'}</b><br><small>${bingoConfirmed ? 'No pueden salir más bolillas. Resolvé cualquier empate pendiente y cerrá el resultado.' : 'Después podrás descargar el orden exacto de las bolillas.'}</small><button class="localDanger" id="localFinishGame" style="margin-top:10px;border:0;border-radius:10px;padding:11px 15px;font-weight:900;cursor:pointer">FINALIZAR SORTEO</button></div>` : ''}
+      ${data.status === 'paused' && data.pauseReason === 'claim' ? `<div class="localFinishedBox"><b>EL AUTOMÁTICO SIGUE DETENIDO</b><br><small>Elegí cómo continuar. No se reiniciará por sí solo.</small><div class="localToolbar" style="margin-top:10px"><button class="localPrimary" id="localResumeAuto">CONTINUAR AUTOMÁTICO</button><button class="localSecondary" id="localResumeManual">CONTINUAR MANUAL</button></div></div>` : ''}
+      ${data.status === 'finalizing' ? `<div class="localFinishedBox"><b>SE RETIRAN LAS ÚLTIMAS BOLILLAS FALTANTES</b><br><small>El sorteo se cerrará automáticamente y habilitará el PDF oficial.</small></div>` : ''}
+      ${data.status === 'playing' && (data.game?.drawn?.length || 0) >= (data.game?.mode || 90) ? `<button class="localDanger" id="localFinishGame">FINALIZAR SORTEO</button>` : ''}
       ${finished ? `<div class="localFinishedBox"><h3 style="margin-top:0">Resultados oficiales del sorteo</h3><p style="margin:0 0 12px;color:#c7cee0">El mismo PDF puede ser descargado por el administrador y por todos los jugadores. Incluye orden y hora de las bolillas, momentos de canto y cartones ganadores.</p><div class="localToolbar"><button class="localPrimary" id="localDownloadResults">RESULTADOS · DESCARGAR PDF</button><button class="localDanger" id="localNewRoom">NUEVA SALA</button></div>${this.actaTable(data)}</div>` : ''}
       <div class="localToolbar"><button class="localSecondary" id="localCopyLink">COPIAR PÁGINA PARA JUGADORES</button><button class="localSecondary" id="localDownloadBackup">DESCARGAR COPIA</button><button class="localSecondary" id="localRestoreFile">RESTAURAR ARCHIVO</button><button class="localSecondary" id="localRefresh">ACTUALIZAR</button><button class="localDanger" id="localCloseRoom">CERRAR SALA</button></div>`;
 
@@ -946,6 +962,8 @@ class LocalRoomAdmin {
     $('localCloseRoom').onclick = () => this.closeRoom();
     if ($('localStartGame')) $('localStartGame').onclick = () => this.startRoom();
     if ($('localFinishGame')) $('localFinishGame').onclick = () => this.finishRoom();
+    if ($('localResumeAuto')) $('localResumeAuto').onclick = () => this.resumeRoom('automatic');
+    if ($('localResumeManual')) $('localResumeManual').onclick = () => this.resumeRoom('manual');
     if ($('localTimerStart')) $('localTimerStart').onclick = () => this.controlAssignmentTimer('start', { durationMinutes: Number($('localLiveTimerMinutes')?.value || timer.durationMinutes || 10) });
     if ($('localTimerPause')) $('localTimerPause').onclick = () => this.controlAssignmentTimer('pause');
     if ($('localTimerResume')) $('localTimerResume').onclick = () => this.controlAssignmentTimer('resume');
@@ -1015,7 +1033,7 @@ class LocalRoomAdmin {
     this.backupTimer = setTimeout(async () => {
       try {
         const backup = await this.request('/api/admin/backup');
-        localStorage.setItem('bingoGorda21OnlineLastBackup', JSON.stringify(backup));
+        localStorage.setItem('bingoGorda22OnlineLastBackup', JSON.stringify(backup));
       } catch (error) {
         console.warn('No se pudo guardar la copia automática:', error);
       }
@@ -1025,18 +1043,18 @@ class LocalRoomAdmin {
   async downloadBackup() {
     try {
       const backup = await this.request('/api/admin/backup');
-      localStorage.setItem('bingoGorda21OnlineLastBackup', JSON.stringify(backup));
+      localStorage.setItem('bingoGorda22OnlineLastBackup', JSON.stringify(backup));
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `Bingo_2.1_Sala_${backup.state?.roomCode || 'copia'}_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `Bingo_2.2_Sala_${backup.state?.roomCode || 'copia'}_${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     } catch (error) { alert(error.message); }
   }
 
   async restoreBrowserBackup() {
-    const raw = localStorage.getItem('bingoGorda21OnlineLastBackup') || localStorage.getItem('bingoBetaOnlineLastBackup') || localStorage.getItem('bingoV10OnlineLastBackup');
+    const raw = localStorage.getItem('bingoGorda22OnlineLastBackup') || localStorage.getItem('bingoGorda21OnlineLastBackup') || localStorage.getItem('bingoBetaOnlineLastBackup') || localStorage.getItem('bingoV10OnlineLastBackup');
     if (!raw) { alert('No hay una copia automática guardada en este navegador.'); return; }
     try { await this.restoreBackup(JSON.parse(raw)); }
     catch (error) { alert(error.message); }
@@ -1203,6 +1221,7 @@ class LocalRoomAdmin {
       this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
       this.app.renderAutoControls();
       this.showCopyToast(this.app.game?.drawMode === 'automatic' ? 'Automático detenido · iniciá cuando estés listo' : 'Partida pausada · continuá cuando estés listo');
+      await this.refreshState();
       this.updateClaimBadge();
       setTimeout(() => this.showNextClaim(), 150);
     } catch (error) {
@@ -1235,6 +1254,7 @@ class LocalRoomAdmin {
     this.app.celebrate(type);
     const eventName = type === 'ambo' ? 'amboConfirmed' : type === 'line' ? 'lineConfirmed' : 'bingoConfirmed';
     this.app.voice.event(eventName, {}, true);
+    if (type === 'bingo') setTimeout(() => this.app.voice.event('remainingBalls', {}, true), 2300);
   }
 }
 
@@ -1243,7 +1263,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const app = window.__BINGO_V8__;
     if (!app) return;
     const version = $('versionBadge');
-    if (version) version.textContent = 'VERSIÓN 2.1';
+    if (version) version.textContent = 'VERSIÓN 2.2';
     new LocalRoomAdmin(app).init().catch(error => console.error('No se inició la sala online:', error));
   }, 0);
 });

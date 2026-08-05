@@ -31,6 +31,8 @@ class PlayerApp {
     this.claimOverlayTimer = null;
     this.messageTimer = null;
     this.sequenceTimer = null;
+    this.finalSequenceTimer = null;
+    this.lastFinalSequenceKey = '';
     this.transferPollTimer = null;
     this.pendingTransfer = null;
     this.lastResult = null;
@@ -39,11 +41,15 @@ class PlayerApp {
     this.fullscreenApiActive = false;
     this.guideStep = 0;
     this.guideSteps = [
-      { icon:'🔊', title:'Sonido', text:'Tocá el icono de sonido para encender o silenciar la voz del presentador y los efectos de la sala.' },
-      { icon:'🔔', title:'Avisos', text:'La campana activa o desactiva alertas visuales y vibración cuando aparece una jugada o un reclamo.' },
-      { icon:'✓', title:'Automarcar', text:'Automarcar completa todos tus cartones con las bolillas oficiales. También podés dejarlo apagado y marcar manualmente.' },
-      { icon:'🧾', title:'Tus cartones', text:'Usá las pestañas para pasar de un cartón a otro. Antes de confirmar podés renovar las opciones sin perder los elegidos.' },
-      { icon:'🏆', title:'Cantar premios', text:'Cuando tengas AmboCabeza, Línea o Bingo, el botón correspondiente se agrandará. Tocarlo envía el reclamo inmediatamente.' }
+      { icon:'☀️', title:'Tema claro o nocturno', text:'Tocá el icono del sol o la luna para cambiar la apariencia de la pantalla cuando quieras.' },
+      { icon:'👤', title:'Tu nombre y la sala', text:'En la parte superior aparecen tu nombre, el número de sala, el número de juego y la modalidad.' },
+      { icon:'🧾', title:'Cambiar de cartón', text:'Usá las pestañas de cartones para pasar de uno a otro sin perder ninguna marca.' },
+      { icon:'🔢', title:'Ver números', text:'El botón Ver números abre todos los números sorteados y también muestra el orden de salida.' },
+      { icon:'🔊', title:'Sonido y avisos', text:'El parlante controla la voz y los sonidos. La campana controla los avisos visuales y la vibración.' },
+      { icon:'✓', title:'Automarcar', text:'Automarcar completa tus cartones con las bolillas oficiales. También podés marcar manualmente.' },
+      { icon:'🏆', title:'Tenés que cantar', text:'Aunque el sistema marque solo o active una alarma, no avisa al administrador. Tocá Cantar AmboCabeza, Línea o Bingo para enviar el reclamo.' },
+      { icon:'📄', title:'Resultado oficial', text:'Cuando termine el sorteo aparecerá en el centro el botón Descargar resultados con el acta oficial.' },
+      { icon:'⚠️', title:'Recordatorio importante', text:'Marcar no es cantar. El reclamo solo es válido cuando tocás manualmente el botón del premio.' }
     ];
   }
 
@@ -75,6 +81,7 @@ class PlayerApp {
     $('closeDrawnBtn').onclick = () => this.closeModal('drawnOverlay');
     $('showWinnerBtn').onclick = () => this.openWinnerCard();
     $('resultsBtn').onclick = () => this.downloadResults();
+    $('finalDownloadBtn').onclick = () => this.downloadResults();
     $('closeWinnerBtn').onclick = () => this.closeModal('winnerOverlay');
     $('fullScreenBtn').onclick = () => this.setFocusMode(true);
     $('exitFocusBtn').onclick = () => this.setFocusMode(false);
@@ -233,12 +240,13 @@ class PlayerApp {
     const data = this.state;
     $('playerName').textContent = data.player.name;
     $('roomInfo').textContent = `Sala ${data.roomCode} · Juego ${String(data.game.number).padStart(4,'0')} · ${data.game.mode} bolas`;
-    $('connectionStatus').className = 'status on'; $('connectionStatus').textContent = data.status === 'waiting' ? 'EN ESPERA' : data.status === 'paused' ? 'PAUSADO' : data.status === 'starting' || data.status === 'resuming' ? 'PREPARANDO' : data.status === 'finished' ? 'FINALIZADO' : 'CONECTADO';
+    $('connectionStatus').className = 'status on'; $('connectionStatus').textContent = data.status === 'waiting' ? 'EN ESPERA' : data.status === 'verifying' ? 'VERIFICANDO' : data.status === 'paused' ? 'PAUSADO' : data.status === 'finalizing' ? 'CIERRE FINAL' : data.status === 'starting' || data.status === 'resuming' ? 'PREPARANDO' : data.status === 'finished' ? 'FINALIZADO' : 'CONECTADO';
     this.renderPresenter();
-    document.body.classList.toggle('isPlaying', ['playing','paused','resuming','finished'].includes(data.status));
+    document.body.classList.toggle('isPlaying', ['playing','verifying','paused','resuming','finalizing','finished'].includes(data.status));
     document.body.classList.toggle('isPaused', data.status === 'paused');
     document.body.classList.toggle('isTransitioning', ['starting','resuming'].includes(data.status));
     if (data.status === 'waiting' || data.status === 'starting') this.renderWaiting(); else this.renderPlaying();
+    $('finalResultsOverlay').classList.toggle('show', data.status === 'finished');
     this.renderNotice(); this.updateQuickTools();
   }
 
@@ -476,19 +484,30 @@ class PlayerApp {
 
   handleSequence(previous) {
     const status = this.state.status, transition = this.state.transition;
-    if (status === 'paused') {
-      const claimPending = (this.state.publicClaims || []).some(claim => claim.status === 'pending');
-      if (claimPending) {
-        clearInterval(this.sequenceTimer);
-        $('sequenceOverlay').classList.remove('show');
-      } else {
+    if (status === 'verifying') {
+      clearInterval(this.sequenceTimer); $('sequenceOverlay').classList.remove('show');
+    } else if (status === 'paused') {
+      if (this.state.pauseReason === 'manual') {
         this.showSequence('EL ADMINISTRADOR PAUSÓ LA PARTIDA', 'YA CONTINUAMOS', '');
         if (this.lastStatus !== 'paused') this.speakEvent('pause', {}, true);
-        clearInterval(this.sequenceTimer);
+      } else $('sequenceOverlay').classList.remove('show');
+      clearInterval(this.sequenceTimer);
+    } else if (status === 'finalizing') {
+      clearInterval(this.sequenceTimer);
+      $('sequenceOverlay').classList.remove('show');
+      const key = transition?.id || 'final';
+      if (this.lastFinalSequenceKey !== key) {
+        this.lastFinalSequenceKey = key;
+        clearTimeout(this.finalSequenceTimer);
+        this.finalSequenceTimer = setTimeout(() => {
+          if (this.state?.status !== 'finalizing' || (this.state.transition?.id || 'final') !== key) return;
+          this.showSequence('SE RETIRAN LAS ÚLTIMAS BOLILLAS FALTANTES', 'Luego se publicará el resultado oficial.', '');
+          this.speakSequenceOnce(`${key}:remaining`, 'remainingBalls', {});
+        }, 3400);
       }
     } else if (status === 'starting' && transition) this.runStartSequence(transition);
     else if (status === 'resuming' && transition) this.runResumeSequence(transition);
-    else { clearInterval(this.sequenceTimer); $('sequenceOverlay').classList.remove('show'); }
+    else { clearInterval(this.sequenceTimer); clearTimeout(this.finalSequenceTimer); $('sequenceOverlay').classList.remove('show'); }
     this.lastStatus = status;
   }
 
@@ -558,21 +577,25 @@ class PlayerApp {
     const key = `${claim.id}:${claim.status}`; if (key === this.lastPublicClaimKey) return; this.lastPublicClaimKey = key;
     const label = String(claim.prizeLabel || (claim.type === 'ambo' ? 'AMBOCABEZA' : claim.type === 'bingo' ? 'BINGO' : 'LÍNEA')).toUpperCase();
     if (claim.status === 'pending') {
-      this.showClaimOverlay({ kind:claim.type, icon:claim.type === 'bingo' ? '🎉' : '🔔', title:`${claim.playerName} cantó ${label}`, text:`Cartón ${claim.cardNumber}. El administrador está verificando.`, duration:6500 });
+      this.showClaimOverlay({ kind:claim.type, icon:'🔔', title:`${claim.playerName} cantó ${label}`, text:`Cartón ${claim.cardNumber}. Esperando verificación del administrador.`, duration:6500, force:true });
       this.playAlertSound(claim.type); this.speakEvent(claim.type === 'ambo' ? 'claimAmbo' : claim.type === 'line' ? 'claimLine' : 'claimBingo'); return;
     }
     if (claim.status === 'confirmed') {
-      this.showClaimOverlay({ kind:'confirmed', icon:'🏆', title:`${label} VÁLIDO`, text:`Ganador: ${claim.playerName} · Cartón ${claim.cardNumber}.`, duration:6500 });
+      const isDouble = claim.type === 'line' && Number(claim.prizeNumber || 1) === 2;
+      const badge = claim.type === 'bingo' ? 'assets/celebrations/bingo-confirmado.png' : claim.type === 'ambo' ? 'assets/celebrations/ambocabeza-confirmado.png' : isDouble ? 'assets/celebrations/doble-linea-confirmada.svg' : 'assets/celebrations/linea-confirmada.svg';
+      this.showClaimOverlay({ kind:'confirmed spectacular', icon:'', title:`${label} CONFIRMADO`, text:`Ganador: ${claim.playerName} · Cartón ${claim.cardNumber}.`, duration:claim.type === 'bingo' ? 9000 : 6000, badge, mascot:claim.type === 'bingo', force:true });
       this.playAlertSound('confirmed'); this.speakEvent(claim.type === 'ambo' ? 'amboConfirmed' : claim.type === 'line' ? 'lineConfirmed' : 'bingoConfirmed'); return;
     }
-    this.showClaimOverlay({ kind:'rejected', icon:'✖', title:'RECLAMO INVÁLIDO', text:`${claim.playerName} · Cartón ${claim.cardNumber}.`, duration:4500 });
+    this.showClaimOverlay({ kind:'rejected', icon:'✖', title:'PREMIO NO CONFIRMADO', text:`${claim.playerName} · Cartón ${claim.cardNumber}.`, duration:4500, badge:'assets/celebrations/premio-no-confirmado.svg', force:true });
     this.playAlertSound('rejected'); this.speakEvent('rejected');
   }
 
-  showClaimOverlay({ kind, icon, title, text, duration }) {
-    if (!this.alertsEnabled) return;
+  showClaimOverlay({ kind, icon, title, text, duration, badge = '', mascot = false, force = false }) {
+    if (!this.alertsEnabled && !force) return;
     const overlay = $('publicClaimOverlay'), popup = $('publicClaimPopup'); popup.className = `claimPopup ${kind}`;
-    $('publicClaimIcon').textContent = icon; $('publicClaimTitle').textContent = title; $('publicClaimText').textContent = text; $('publicClaimConfetti').classList.toggle('hidden', kind === 'rejected'); overlay.classList.add('show');
+    const badgeEl = $('publicClaimBadge'), mascotEl = $('publicClaimMascot');
+    badgeEl.src = badge || ''; badgeEl.style.display = badge ? 'block' : 'none'; mascotEl.style.display = mascot ? 'block' : 'none';
+    $('publicClaimIcon').textContent = icon; $('publicClaimIcon').style.display = icon ? '' : 'none'; $('publicClaimTitle').textContent = title; $('publicClaimText').textContent = text; $('publicClaimConfetti').classList.toggle('hidden', kind.includes('rejected')); overlay.classList.add('show');
     clearTimeout(this.claimOverlayTimer); this.claimOverlayTimer = setTimeout(() => overlay.classList.remove('show'), duration || 5000); overlay.onclick = () => overlay.classList.remove('show');
   }
 

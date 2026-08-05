@@ -1,9 +1,8 @@
 (() => {
 'use strict';
 
-const APP_VERSION = 21;
-const OPERATOR_STORAGE_MATCH = location.pathname.match(/^\/operador\/([^/]+)/);
-const STORAGE_SCOPE = OPERATOR_STORAGE_MATCH ? `:operador:${decodeURIComponent(OPERATOR_STORAGE_MATCH[1]).slice(0,16)}` : '';
+const APP_VERSION = 22;
+const STORAGE_SCOPE = '';
 const STORE_KEY = `bingoGordaV8Games${STORAGE_SCOPE}`;
 const CURRENT_KEY = `bingoGordaV8Current${STORAGE_SCOPE}`;
 const OLD_STORE_KEY = 'bingoGordaV5Games';
@@ -497,7 +496,7 @@ class BingoApp {
     $('generatedSetup').style.display = source === 'generated' ? '' : 'none'; $('manualSetup').style.display = source === 'manual' ? '' : 'none'; $('pdfSetup').style.display = source === 'pdf' ? 'block' : 'none';
     if (source === 'manual' && !this.wizard.manualCards.length) this.addManualCard();
   }
-  renderNames() { /* En 2.1 los cartones generados no se vinculan a nombres. */ }
+  renderNames() { /* En 2.2 los cartones generados no se vinculan a nombres. */ }
 
   addManualCard(copyBets = null) {
     if (this.wizard.manualCards.length >= 250) { alert('El máximo es de 250 cartones.'); return; }
@@ -718,14 +717,24 @@ class BingoApp {
     const automatic = this.game.drawMode === 'automatic';
     const roomStatus = this.localRoom?.serverState?.status || '';
     const online = Boolean(this.localRoom?.active);
-    const bingoLocked = Boolean(online && this.localRoom?.serverState?.bingoConfirmed);
+    const bingoLocked = Boolean(online && ['finalizing','finished'].includes(roomStatus));
     const roomBlocked = online && roomStatus !== 'playing';
     const locked = this.phase === PHASE.REVIEW || Boolean(this.localRoom?.claimOpen) || roomBlocked || bingoLocked;
     $('autoBtn').style.display = automatic && !online ? '' : 'none';
     $('pauseBtn').style.display = online || automatic ? '' : 'none';
     $('autoBtn').textContent = this.autoRunning ? '⏸ PAUSAR AUTOMÁTICO' : '▶ INICIAR AUTOMÁTICO';
-    $('pauseBtn').textContent = roomStatus === 'paused' ? (automatic ? '▶ INICIAR AUTOMÁTICO' : '▶ CONTINUAR PARTIDA') : roomStatus === 'resuming' ? '⏳ REANUDANDO' : '⏸ PAUSAR PARTIDA';
-    const stateText = roomStatus === 'starting' ? 'Preparando inicio y cuenta regresiva' : roomStatus === 'paused' ? (automatic ? 'Automático detenido · el administrador decide cuándo iniciarlo' : 'Partida pausada por el administrador') : roomStatus === 'resuming' ? 'La partida continúa en 3, 2, 1…' : roomStatus === 'waiting' ? 'Sala de espera · iniciá desde SALA ONLINE' : bingoLocked ? 'Bingo confirmado · bolillero bloqueado' : locked ? 'Detenido por posible ganador' : automatic ? (this.autoRunning ? `Automático activo · cada ${this.game.autoSeconds} segundos` : 'Automático detenido') : 'Sorteo manual';
+    $('pauseBtn').textContent = roomStatus === 'paused' ? (automatic ? '▶ CONTINUAR PARTIDA' : '▶ CONTINUAR PARTIDA') : roomStatus === 'resuming' ? '⏳ REANUDANDO' : '⏸ PAUSAR PARTIDA';
+    let stateText;
+    if (roomStatus === 'starting') stateText = 'Preparando inicio y cuenta regresiva';
+    else if (roomStatus === 'verifying') stateText = 'Verificando un reclamo';
+    else if (roomStatus === 'paused') stateText = automatic ? 'Automático detenido · elegí cómo continuar' : 'Partida pausada';
+    else if (roomStatus === 'resuming') stateText = 'La partida continúa en 3, 2, 1…';
+    else if (roomStatus === 'waiting') stateText = 'Sala de espera · iniciá desde SALA ONLINE';
+    else if (roomStatus === 'finalizing') stateText = 'Se retiran las últimas bolillas';
+    else if (roomStatus === 'finished') stateText = 'Sorteo finalizado';
+    else if (locked) stateText = 'Detenido por posible ganador';
+    else if (automatic) stateText = this.autoRunning ? `Automático activo · cada ${this.game.autoSeconds} segundos` : 'Automático detenido';
+    else stateText = 'Sorteo manual';
     if ($('autoSecondsLive')) { $('autoSecondsLive').value = String(this.game.autoSeconds); $('autoSecondsLive').disabled = !automatic || bingoLocked; }
     $('autoState').textContent = stateText;
     $('drawBtn').textContent = automatic ? '🎱 CANTAR SIGUIENTE AHORA' : '🎱 SIGUIENTE BOLILLA';
@@ -924,7 +933,7 @@ class BingoApp {
 }
 
 function showFatal(error) {
-  console.error(error); const box = $('fatalError'); if (box) { box.style.display = 'block'; box.textContent = `Bingo de la Gorda 2.1 encontró un error y detuvo la ejecución para no perder datos.\n\n${error?.stack || error}`; }
+  console.error(error); const box = $('fatalError'); if (box) { box.style.display = 'block'; box.textContent = `Bingo de la Gorda 2.2 encontró un error y detuvo la ejecución para no perder datos.\n\n${error?.stack || error}`; }
 }
 
 window.BingoV8Engine = { APP_VERSION, PHASE, GameStore, CardService, PrizeEngine, VoiceService, PdfImporter, BingoApp };

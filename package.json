@@ -1,13 +1,13 @@
 {
-  "name": "bingo-de-la-gorda-2-0",
-  "version": "2.0.0",
+  "name": "bingo-de-la-gorda-2-1",
+  "version": "2.1.0",
   "private": true,
-  "description": "Bingo de la Gorda 2.0: sala online, selección móvil de cartones, presentadores ampliados, sesiones seguras y acta oficial.",
+  "description": "Bingo de la Gorda 2.1: plataforma multioperador, accesos temporales, modo TikTok móvil, verificación manual y control completo del sorteo.",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/v2-smoke.js"
+    "test": "node tests/v21-smoke.js"
   }
 }

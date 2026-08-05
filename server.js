@@ -7,15 +7,36 @@ const os = require('os');
 const crypto = require('crypto');
 const { URL } = require('url');
 const { exec } = require('child_process');
+const { AsyncLocalStorage } = require('async_hooks');
+
+// Carga opcional de .env para uso local. En Render las variables se configuran
+// desde el panel del servicio y tienen prioridad sobre este archivo.
+const LOCAL_ENV_FILE = path.join(__dirname, '.env');
+if (fs.existsSync(LOCAL_ENV_FILE)) {
+  for (const rawLine of fs.readFileSync(LOCAL_ENV_FILE, 'utf8').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const separator = line.indexOf('=');
+    if (separator <= 0) continue;
+    const key = line.slice(0, separator).trim();
+    let value = line.slice(separator + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
 
 const ROOT = __dirname;
 const DATA_DIR = process.env.BINGO_DATA_DIR ? path.resolve(process.env.BINGO_DATA_DIR) : path.join(ROOT, 'data');
-const STATE_FILE = path.join(DATA_DIR, 'sala-online.json');
+const OWNER_STATE_FILE = path.join(DATA_DIR, 'sala-online.json');
+const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma-2.1.json');
+const WORKSPACES_DIR = path.join(DATA_DIR, 'operadores');
 const PORT = Number(process.env.PORT || 3210);
 const HOST = '0.0.0.0';
 const ONLINE_MODE = process.env.RENDER === 'true' || process.env.ONLINE_MODE === 'true';
 const PUBLIC_URL = String(process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '').replace(/\/+$/, '');
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
+const MASTER_ADMIN_PASSWORD = String(process.env.MASTER_ADMIN_PASSWORD || ADMIN_PASSWORD || '');
+const BINGO_TIMEZONE = String(process.env.BINGO_TIMEZONE || 'America/Argentina/Buenos_Aires');
 const MIN_CARDS = 2;
 const MAX_CARDS = 250;
 const MAX_ACTIVE_CARDS = 250;
@@ -32,35 +53,17 @@ const TEST_EVENT_TTL_MS = 20 * 1000;
 const START_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_START_SEQUENCE_MS || 11_000));
 const RESUME_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_RESUME_SEQUENCE_MS || 5_000));
 const MAX_TIE_WINNERS_PER_PRIZE = 4;
-const LAST_RESULT_PDF_FILE = path.join(DATA_DIR, 'ultimo-resultado.pdf');
-const LAST_RESULT_META_FILE = path.join(DATA_DIR, 'ultimo-resultado.json');
-
 fs.mkdirSync(DATA_DIR, { recursive: true });
+fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
 
-function loadLastResultMeta() {
+function loadLastResultMeta(metaFile, pdfFile) {
   try {
-    const meta = JSON.parse(fs.readFileSync(LAST_RESULT_META_FILE, 'utf8'));
-    if (!meta?.roomCode || !fs.existsSync(LAST_RESULT_PDF_FILE)) return null;
+    const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+    if (!meta?.roomCode || !fs.existsSync(pdfFile)) return null;
     return meta;
   } catch {
     return null;
   }
-}
-
-let lastResultMeta = loadLastResultMeta();
-
-function publicLastResult() {
-  if (!lastResultMeta?.roomCode || !fs.existsSync(LAST_RESULT_PDF_FILE)) return null;
-  return {
-    roomCode: lastResultMeta.roomCode,
-    gameNumber: lastResultMeta.gameNumber || null,
-    round: lastResultMeta.round || 1,
-    startedAt: lastResultMeta.startedAt || null,
-    endedAt: lastResultMeta.endedAt || null,
-    savedAt: lastResultMeta.savedAt || null,
-    filename: lastResultMeta.filename || `Resultados_Bingo_Sala_${lastResultMeta.roomCode}.pdf`,
-    downloadUrl: `/api/results.pdf?sala=${encodeURIComponent(lastResultMeta.roomCode)}`
-  };
 }
 
 const nowIso = () => new Date().toISOString();
@@ -133,7 +136,7 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
 
 function blankState() {
   return {
-    version: 20,
+    version: 21,
     active: false,
     status: 'closed',
     roomCode: null,
@@ -148,7 +151,13 @@ function blankState() {
       linePrizeCount: 1,
       bingoPrizeCount: 1,
       allowSamePlayerSecondLine: true,
-      tiePolicy: 'first_claim'
+      tiePolicy: 'first_claim',
+      gameType: 'real',
+      prizeAmounts: { ambo: 0, line: 0, bingo: 0 },
+      whatsapp: '',
+      showMercadoPago: true,
+      argentinaHint: true,
+      broadcastToken: null
     },
     assignmentTimer: {
       enabled: false,
@@ -171,9 +180,9 @@ function blankState() {
   };
 }
 
-function loadState() {
+function loadState(stateFile = OWNER_STATE_FILE) {
   try {
-    const parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    const parsed = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
     const defaults = blankState();
     const merged = {
       ...defaults,
@@ -193,6 +202,16 @@ function loadState() {
     merged.roomSettings.bingoPrizeCount = 1;
     merged.roomSettings.allowSamePlayerSecondLine = Boolean(merged.roomSettings.allowSamePlayerSecondLine);
     merged.roomSettings.tiePolicy = merged.roomSettings.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim';
+    merged.roomSettings.gameType = merged.roomSettings.gameType === 'test' ? 'test' : 'real';
+    merged.roomSettings.prizeAmounts = {
+      ambo: Math.max(0, Number(merged.roomSettings.prizeAmounts?.ambo) || 0),
+      line: Math.max(0, Number(merged.roomSettings.prizeAmounts?.line) || 0),
+      bingo: Math.max(0, Number(merged.roomSettings.prizeAmounts?.bingo) || 0)
+    };
+    merged.roomSettings.whatsapp = String(merged.roomSettings.whatsapp || '').slice(0, 40);
+    merged.roomSettings.showMercadoPago = merged.roomSettings.showMercadoPago !== false;
+    merged.roomSettings.argentinaHint = merged.roomSettings.argentinaHint !== false;
+    merged.roomSettings.broadcastToken = merged.roomSettings.broadcastToken ? String(merged.roomSettings.broadcastToken) : null;
     merged.testEvent = parsed.testEvent && new Date(parsed.testEvent.expiresAt || 0).getTime() > Date.now() ? parsed.testEvent : null;
     merged.assignmentTimer.durationMinutes = Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(merged.assignmentTimer.durationMinutes) || 10));
     if (!['idle', 'running', 'paused', 'completed'].includes(merged.assignmentTimer.status)) merged.assignmentTimer.status = 'idle';
@@ -225,16 +244,100 @@ function loadState() {
   }
 }
 
-let state = loadState();
-const sseClients = new Set();
+function loadPlatform() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(PLATFORM_FILE, 'utf8'));
+    return { version: 21, operators: Array.isArray(parsed.operators) ? parsed.operators : [] };
+  } catch {
+    return { version: 21, operators: [] };
+  }
+}
+
+let platform = loadPlatform();
+function savePlatform() {
+  const temp = `${PLATFORM_FILE}.tmp`;
+  fs.writeFileSync(temp, JSON.stringify(platform, null, 2), 'utf8');
+  fs.renameSync(temp, PLATFORM_FILE);
+}
+
+const workspaceContext = new AsyncLocalStorage();
+const workspaces = new Map();
+
+function safeWorkspaceId(value) {
+  return String(value || 'owner').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'owner';
+}
+
+function workspacePaths(id) {
+  const safe = safeWorkspaceId(id);
+  const base = safe === 'owner' ? DATA_DIR : path.join(WORKSPACES_DIR, safe);
+  fs.mkdirSync(base, { recursive: true });
+  return {
+    stateFile: safe === 'owner' ? OWNER_STATE_FILE : path.join(base, 'sala-online.json'),
+    resultPdfFile: safe === 'owner' ? path.join(DATA_DIR, 'ultimo-resultado.pdf') : path.join(base, 'ultimo-resultado.pdf'),
+    resultMetaFile: safe === 'owner' ? path.join(DATA_DIR, 'ultimo-resultado.json') : path.join(base, 'ultimo-resultado.json')
+  };
+}
+
+function ensureWorkspace(id = 'owner', operatorId = null, label = 'Administrador principal') {
+  const safe = safeWorkspaceId(id);
+  if (workspaces.has(safe)) return workspaces.get(safe);
+  const paths = workspacePaths(safe);
+  const workspace = {
+    id: safe, operatorId, label, ...paths,
+    state: loadState(paths.stateFile),
+    sseClients: new Set(),
+    lastResultMeta: loadLastResultMeta(paths.resultMetaFile, paths.resultPdfFile)
+  };
+  workspaces.set(safe, workspace);
+  return workspace;
+}
+
+const ownerWorkspace = ensureWorkspace('owner');
+for (const operator of platform.operators) ensureWorkspace(operator.workspaceId || `operator_${operator.id}`, operator.id, operator.name || 'Operador');
+
+function currentWorkspace() { return workspaceContext.getStore() || ownerWorkspace; }
+function replaceCurrentState(next) { currentWorkspace().state = next; }
+const state = new Proxy({}, {
+  get(_target, property) { return currentWorkspace().state[property]; },
+  set(_target, property, value) { currentWorkspace().state[property] = value; return true; },
+  ownKeys() { return Reflect.ownKeys(currentWorkspace().state); },
+  getOwnPropertyDescriptor() { return { enumerable: true, configurable: true }; }
+});
+const sseClients = new Proxy(new Set(), {
+  get(_target, property) {
+    const set = currentWorkspace().sseClients;
+    if (property === Symbol.iterator) return set[Symbol.iterator].bind(set);
+    const value = set[property];
+    return typeof value === 'function' ? value.bind(set) : value;
+  }
+});
 const adminSessions = new Map();
+const masterSessions = new Map();
 const rateBuckets = new Map();
 
+function currentResultFiles() {
+  const workspace = currentWorkspace();
+  return { pdfFile: workspace.resultPdfFile, metaFile: workspace.resultMetaFile };
+}
+
+function publicLastResult() {
+  const workspace = currentWorkspace();
+  const meta = workspace.lastResultMeta;
+  if (!meta?.roomCode || !fs.existsSync(workspace.resultPdfFile)) return null;
+  return {
+    roomCode: meta.roomCode, gameNumber: meta.gameNumber || null, round: meta.round || 1,
+    startedAt: meta.startedAt || null, endedAt: meta.endedAt || null, savedAt: meta.savedAt || null,
+    filename: meta.filename || `Resultados_Bingo_Sala_${meta.roomCode}.pdf`,
+    downloadUrl: `/api/results.pdf?sala=${encodeURIComponent(meta.roomCode)}`
+  };
+}
+
 function saveState() {
+  const workspace = currentWorkspace();
   state.updatedAt = nowIso();
-  const temp = `${STATE_FILE}.tmp`;
+  const temp = `${workspace.stateFile}.tmp`;
   fs.writeFileSync(temp, JSON.stringify(state, null, 2), 'utf8');
-  fs.renameSync(temp, STATE_FILE);
+  fs.renameSync(temp, workspace.stateFile);
 }
 
 function logEvent(type, details = {}) {
@@ -273,9 +376,27 @@ function consumeRate(req, bucketName, limit, windowMs) {
   return existing.count <= limit;
 }
 
-function createAdminSession() {
+function operatorStatus(operator) {
+  if (!operator) return 'missing';
+  if (operator.revokedAt) return 'revoked';
+  return new Date(operator.expiresAt || 0).getTime() > Date.now() ? 'active' : 'expired';
+}
+
+function findOperatorById(id) { return platform.operators.find(item => item.id === id) || null; }
+function findOperatorByAccessToken(token) { return platform.operators.find(item => item.accessToken && safeEqual(item.accessToken, token)) || null; }
+
+function createAdminSession({ workspaceId = 'owner', role = 'owner', operatorId = null, hardExpiresAt = null } = {}) {
   const token = randomId('admin');
-  adminSessions.set(token, Date.now() + ADMIN_SESSION_TTL_MS);
+  const now = Date.now();
+  const rolling = now + ADMIN_SESSION_TTL_MS;
+  const expiresAt = hardExpiresAt ? Math.min(rolling, Number(hardExpiresAt)) : rolling;
+  adminSessions.set(token, { token, workspaceId: safeWorkspaceId(workspaceId), role, operatorId, expiresAt, hardExpiresAt: hardExpiresAt || null });
+  return token;
+}
+
+function createMasterSession() {
+  const token = randomId('master');
+  masterSessions.set(token, Date.now() + ADMIN_SESSION_TTL_MS);
   return token;
 }
 
@@ -283,16 +404,75 @@ function adminTokenFrom(req, url) {
   return String(req.headers['x-admin-token'] || url.searchParams.get('adminToken') || '');
 }
 
-function isAdminAuthorized(req, url) {
+function adminSessionFrom(req, url) {
   const token = adminTokenFrom(req, url);
-  const expiresAt = adminSessions.get(token);
-  if (!expiresAt) return false;
-  if (expiresAt <= Date.now()) {
+  const session = adminSessions.get(token);
+  if (!session) return null;
+  const now = Date.now();
+  const workspace = workspaces.get(session.workspaceId);
+  const operator = session.operatorId ? findOperatorById(session.operatorId) : null;
+  const status = session.role === 'operator' ? operatorStatus(operator) : 'active';
+  const mayFinishActiveRoom = Boolean(operator && workspace?.state?.active && !['closed', 'finished'].includes(workspace.state.status));
+
+  // Una revocación manual es inmediata. Un vencimiento natural puede extender la
+  // sesión únicamente para terminar la partida que ya estaba en curso.
+  if (session.role === 'operator' && status === 'revoked') {
     adminSessions.delete(token);
-    return false;
+    return null;
   }
-  adminSessions.set(token, Date.now() + ADMIN_SESSION_TTL_MS);
+  if (session.role === 'operator' && status !== 'active' && !mayFinishActiveRoom) {
+    adminSessions.delete(token);
+    return null;
+  }
+  if (session.expiresAt <= now) {
+    if (!(session.role === 'operator' && status === 'expired' && mayFinishActiveRoom)) {
+      adminSessions.delete(token);
+      return null;
+    }
+    session.hardExpiresAt = null;
+  }
+
+  const hardLimit = session.hardExpiresAt ? Number(session.hardExpiresAt) : Infinity;
+  session.expiresAt = Math.min(now + ADMIN_SESSION_TTL_MS, hardLimit);
+  adminSessions.set(token, session);
+  return session;
+}
+
+function isAdminAuthorized(req, url) { return Boolean(adminSessionFrom(req, url)); }
+
+function masterTokenFrom(req, url) { return String(req.headers['x-master-token'] || url.searchParams.get('masterToken') || ''); }
+function isMasterAuthorized(req, url) {
+  const token = masterTokenFrom(req, url);
+  const expiresAt = masterSessions.get(token);
+  if (!expiresAt || expiresAt <= Date.now()) { if (token) masterSessions.delete(token); return false; }
+  masterSessions.set(token, Date.now() + ADMIN_SESSION_TTL_MS);
   return true;
+}
+
+function operatorCanCreate(operator) {
+  if (!operator || operatorStatus(operator) !== 'active') return false;
+  const limit = Number(operator.maxGames) || 0;
+  return !limit || Number(operator.gamesCreated || 0) < limit;
+}
+
+function assertOperatorMayStartNewGame(session) {
+  if (!session || session.role !== 'operator') return;
+  const operator = findOperatorById(session.operatorId);
+  if (!operatorCanCreate(operator)) {
+    if (operatorStatus(operator) !== 'active') throw new Error('El acceso temporal venció. Solo podés terminar la partida activa.');
+    throw new Error('Este acceso alcanzó la cantidad máxima de partidas permitidas.');
+  }
+}
+
+function operatorPublic(operator) {
+  const workspace = ensureWorkspace(operator.workspaceId || `operator_${operator.id}`, operator.id, operator.name);
+  return {
+    id: operator.id, name: operator.name, createdAt: operator.createdAt, expiresAt: operator.expiresAt, revokedAt: operator.revokedAt || null,
+    status: operatorStatus(operator), maxGames: Number(operator.maxGames) || 0, gamesCreated: Number(operator.gamesCreated) || 0,
+    lastLoginAt: operator.lastLoginAt || null, workspaceId: workspace.id, activeRoom: Boolean(workspace.state.active),
+    roomCode: workspace.state.roomCode || null, roomStatus: workspace.state.status || 'closed',
+    accessUrl: `${PUBLIC_URL || ''}/operador/${encodeURIComponent(operator.accessToken)}`
+  };
 }
 
 function playerByToken(token) {
@@ -666,7 +846,37 @@ function baseInfo() {
     maxTieWinnersPerPrize: MAX_TIE_WINNERS_PER_PRIZE,
     lastResult: publicLastResult(),
     publicUrl: PUBLIC_URL || null,
-    playerUrl: PUBLIC_URL ? `${PUBLIC_URL}/jugador` : null
+    playerUrl: PUBLIC_URL ? `${PUBLIC_URL}/jugador` : null,
+    version: '2.1',
+    workspace: { id: currentWorkspace().id, operatorId: currentWorkspace().operatorId || null, label: currentWorkspace().label }
+  };
+}
+
+function currentAccessContext() {
+  const workspace = currentWorkspace();
+  if (!workspace.operatorId) return { role: 'owner', name: 'Administrador principal', expiresAt: null, canCreateNewGames: true };
+  const operator = findOperatorById(workspace.operatorId);
+  return {
+    role: 'operator', name: operator?.name || workspace.label || 'Operador temporal',
+    expiresAt: operator?.expiresAt || null, status: operatorStatus(operator),
+    canCreateNewGames: operatorCanCreate(operator), maxGames: Number(operator?.maxGames) || 0, gamesCreated: Number(operator?.gamesCreated) || 0
+  };
+}
+
+function broadcastPayload() {
+  if (!state.active || !state.game) return { active: false, version: '2.1' };
+  const pendingClaim = state.claims.find(claim => claim.status === 'pending') || null;
+  const latestConfirmedRaw = [...state.claims].reverse().find(claim => claim.status === 'confirmed') || null;
+  const latestConfirmed = !pendingClaim && latestConfirmedRaw && Date.now() - new Date(latestConfirmedRaw.resolvedAt || 0).getTime() <= 20_000
+    ? latestConfirmedRaw : null;
+  return {
+    active: true, version: '2.1', status: state.status, roomCode: state.roomCode, round: state.round,
+    playersTotal: state.players.length, playersReady: state.players.filter(player => player.selectionConfirmed).length, playersConnected: connectedPlayerIds().size,
+    roomSettings: state.roomSettings, transition: state.transition, publicClaims: publicClaimsPayload(),
+    game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: state.game.presenter, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, total: state.game.mode },
+    pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, createdAt: pendingClaim.createdAt } : null,
+    latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt } : null,
+    updatedAt: state.updatedAt
   };
 }
 
@@ -683,6 +893,7 @@ function adminPayload() {
       claims: [],
       publicClaims: [],
       readyToStart: false,
+      accessContext: currentAccessContext(),
       lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`)
     };
   }
@@ -731,6 +942,8 @@ function adminPayload() {
     transition: state.transition,
     deviceTransferRequests: (state.deviceTransferRequests || []).filter(request => request.status === 'pending'),
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
+    accessContext: currentAccessContext(),
+    broadcastUrl: state.roomSettings?.broadcastToken ? `${PUBLIC_URL || `http://localhost:${PORT}`}/transmision/${encodeURIComponent(state.roomSettings.broadcastToken)}` : null,
     lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`),
     localUrl: `http://localhost:${PORT}`,
     game: state.game,
@@ -804,7 +1017,7 @@ function backupPayload() {
   const cleanState = deepCopy(state);
   cleanState.players = cleanState.players.map(player => ({ ...player, sessionToken: null }));
   return {
-    format: 'el-bingo-de-la-gorda-2.0-backup',
+    format: 'el-bingo-de-la-gorda-2.1-backup',
     exportedAt: nowIso(),
     state: cleanState
   };
@@ -851,6 +1064,8 @@ function broadcast() {
       if (client.role === 'admin') {
         if (!adminSessions.has(client.token)) writeSse(client.res, 'logout', { reason: 'La sesión de administrador venció.' });
         else writeSse(client.res, 'state', adminPayload());
+      } else if (client.role === 'broadcast') {
+        writeSse(client.res, 'state', broadcastPayload());
       } else {
         const player = state.players.find(item => item.id === client.playerId && item.sessionToken === client.token);
         if (!player) writeSse(client.res, 'logout', { reason: 'La sesión fue reemplazada o cerrada.' });
@@ -960,8 +1175,8 @@ function configureRoom(payload) {
   sanitizedGame.drawn = [];
   sanitizedGame.phase = 'READY';
   const requestedTimerMinutes = Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(payload.assignmentTimer?.durationMinutes) || 10));
-  state = {
-    version: 20,
+  replaceCurrentState({
+    version: 21,
     active: true,
     status: 'waiting',
     roomCode: randomCode(5),
@@ -976,7 +1191,17 @@ function configureRoom(payload) {
       linePrizeCount: Math.max(1, Math.min(2, Number(payload.roomSettings?.linePrizeCount) || 1)),
       bingoPrizeCount: 1,
       allowSamePlayerSecondLine: Boolean(payload.roomSettings?.allowSamePlayerSecondLine),
-      tiePolicy: payload.roomSettings?.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim'
+      tiePolicy: payload.roomSettings?.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim',
+      gameType: payload.roomSettings?.gameType === 'test' ? 'test' : 'real',
+      prizeAmounts: {
+        ambo: Math.max(0, Number(payload.roomSettings?.prizeAmounts?.ambo) || 0),
+        line: Math.max(0, Number(payload.roomSettings?.prizeAmounts?.line) || 0),
+        bingo: Math.max(0, Number(payload.roomSettings?.prizeAmounts?.bingo) || 0)
+      },
+      whatsapp: String(payload.roomSettings?.whatsapp || '').slice(0, 40),
+      showMercadoPago: payload.roomSettings?.showMercadoPago !== false,
+      argentinaHint: payload.roomSettings?.argentinaHint !== false,
+      broadcastToken: randomId('live')
     },
     assignmentTimer: {
       enabled: Boolean(payload.assignmentTimer?.enabled),
@@ -996,7 +1221,7 @@ function configureRoom(payload) {
     cardReservations: {},
     claims: [],
     eventLog: []
-  };
+  });
   updateCardDisplayNames();
   refreshAllOffers();
   logEvent('room_opened', { roomCode: state.roomCode, players: players.length, cards: payload.game.cards.length, status: 'waiting' });
@@ -1060,17 +1285,25 @@ function updateGame(game) {
   return adminPayload();
 }
 
-let transitionTimer = null;
+const transitionTimers = new Map();
+
+function clearWorkspaceTransitionTimer(workspace = currentWorkspace()) {
+  const timer = transitionTimers.get(workspace.id);
+  if (timer) clearTimeout(timer);
+  transitionTimers.delete(workspace.id);
+}
 
 function scheduleTransition() {
-  clearTimeout(transitionTimer);
-  transitionTimer = null;
+  const workspace = currentWorkspace();
+  clearWorkspaceTransitionTimer(workspace);
   if (!state.active || !state.transition?.endsAt) return;
   const delay = Math.max(0, new Date(state.transition.endsAt).getTime() - Date.now());
-  transitionTimer = setTimeout(() => completeTransition(), delay);
+  const timer = setTimeout(() => workspaceContext.run(workspace, () => completeTransition()), delay);
+  transitionTimers.set(workspace.id, timer);
 }
 
 function completeTransition() {
+  clearWorkspaceTransitionTimer();
   if (!state.active || !state.transition) return;
   const type = state.transition.type;
   if (type === 'start' || type === 'resume') {
@@ -1104,7 +1337,7 @@ function startRoom() {
   state.transition = {
     id: randomId('transition'), type: 'start', startedAt,
     endsAt: new Date(Date.now() + START_SEQUENCE_MS).toISOString(),
-    officialTime: new Date().toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false })
+    officialTime: new Date().toLocaleTimeString('es-AR', { timeZone: BINGO_TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false })
   };
   logEvent('game_start_sequence', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0) });
   saveState(); broadcast(); scheduleTransition();
@@ -1114,6 +1347,7 @@ function startRoom() {
 function pauseRoom() {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'playing') throw new Error('La partida solo se puede pausar mientras está en juego.');
+  clearWorkspaceTransitionTimer();
   state.status = 'paused';
   state.transition = null;
   state.game.phase = 'PAUSED';
@@ -1144,6 +1378,16 @@ function updateRoomSettings(payload) {
     state.roomSettings.tiePolicy = payload.tiePolicy === 'same_ball' ? 'same_ball' : (payload.tiePolicy === 'first_claim' ? 'first_claim' : state.roomSettings.tiePolicy);
   }
   state.roomSettings.bingoPrizeCount = 1;
+  if (payload.gameType) state.roomSettings.gameType = payload.gameType === 'test' ? 'test' : 'real';
+  if (payload.prizeAmounts) state.roomSettings.prizeAmounts = {
+    ambo: Math.max(0, Number(payload.prizeAmounts.ambo) || 0),
+    line: Math.max(0, Number(payload.prizeAmounts.line) || 0),
+    bingo: Math.max(0, Number(payload.prizeAmounts.bingo) || 0)
+  };
+  if (payload.whatsapp !== undefined) state.roomSettings.whatsapp = String(payload.whatsapp || '').slice(0, 40);
+  if (payload.showMercadoPago !== undefined) state.roomSettings.showMercadoPago = payload.showMercadoPago !== false;
+  if (payload.argentinaHint !== undefined) state.roomSettings.argentinaHint = payload.argentinaHint !== false;
+  state.roomSettings.broadcastToken ||= randomId('live');
   logEvent('room_settings_updated', { ...state.roomSettings });
   saveState();
   broadcast();
@@ -1217,11 +1461,12 @@ function controlAssignmentTimer(payload) {
 function archiveCurrentResults() {
   if (!state.active || !state.game || state.status !== 'finished') throw new Error('No hay un sorteo finalizado para archivar.');
   const pdf = buildResultsPdf();
-  const pdfTemp = `${LAST_RESULT_PDF_FILE}.tmp`;
-  const metaTemp = `${LAST_RESULT_META_FILE}.tmp`;
+  const { pdfFile, metaFile } = currentResultFiles();
+  const pdfTemp = `${pdfFile}.tmp`;
+  const metaTemp = `${metaFile}.tmp`;
   fs.writeFileSync(pdfTemp, pdf);
   const meta = {
-    version: '2.0',
+    version: '2.1',
     roomCode: state.roomCode,
     gameNumber: state.game.number,
     round: state.round,
@@ -1233,16 +1478,16 @@ function archiveCurrentResults() {
     size: pdf.length
   };
   fs.writeFileSync(metaTemp, JSON.stringify(meta, null, 2), 'utf8');
-  fs.renameSync(pdfTemp, LAST_RESULT_PDF_FILE);
-  fs.renameSync(metaTemp, LAST_RESULT_META_FILE);
-  lastResultMeta = meta;
+  fs.renameSync(pdfTemp, pdfFile);
+  fs.renameSync(metaTemp, metaFile);
+  currentWorkspace().lastResultMeta = meta;
   return meta;
 }
 
 function finishRoom() {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status === 'finished') return adminPayload();
-  if (state.status !== 'playing') throw new Error('El sorteo todavía no comenzó.');
+  if (!['playing', 'paused'].includes(state.status)) throw new Error('El sorteo todavía no comenzó.');
   if (state.claims.some(claim => claim.status === 'pending')) throw new Error('Primero resolvé el reclamo pendiente.');
   state.status = 'finished';
   state.endedAt = nowIso();
@@ -1352,7 +1597,7 @@ function sendTestEvent(payload) {
 function newRoomState() {
   if (state.active && state.status !== 'finished') throw new Error('Primero finalizá el sorteo actual antes de crear una sala nueva.');
   if (state.active) logEvent('new_room_requested');
-  state = blankState();
+  replaceCurrentState(blankState());
   saveState();
   broadcast();
   return adminPayload();
@@ -1407,8 +1652,8 @@ function restoreBackup(payload) {
       notices: Array.isArray(rawPlayer.notices) ? rawPlayer.notices.slice(-20) : []
     };
   });
-  state = {
-    version: 20,
+  replaceCurrentState({
+    version: 21,
     active: true,
     status: ['waiting', 'starting', 'playing', 'paused', 'resuming', 'finished'].includes(raw.status) ? raw.status : (raw.game.drawn?.length ? 'playing' : 'waiting'),
     roomCode: String(raw.roomCode || randomCode(5)).slice(0, 12),
@@ -1434,7 +1679,7 @@ function restoreBackup(payload) {
     cardReservations: {},
     claims: Array.isArray(raw.claims) ? raw.claims.slice(-100) : [],
     eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.slice(-2000) : []
-  };
+  });
   state.roomSettings.tiePolicy = state.roomSettings.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim';
   updateCardDisplayNames();
   refreshAllOffers();
@@ -1714,6 +1959,9 @@ function createClaim(player, payload) {
     tieGroupId: tieWith ? (tieWith.tieGroupId || tieWith.id) : null
   };
   state.claims.push(claim);
+  clearWorkspaceTransitionTimer();
+  state.status = 'paused';
+  state.transition = null;
   state.game.phase = 'PAUSED';
   logEvent('claim_created', { claimId: claim.id, type, prizeNumber, playerId: player.id, cardId, officialValid: valid });
   saveState();
@@ -1774,6 +2022,10 @@ function resolveClaim(payload) {
     });
   }
   logEvent('claim_resolved', { claimId: claim.id, resolution, prizeNumber: claim.prizeNumber || 1, officialValid: claim.officialValid });
+  clearWorkspaceTransitionTimer();
+  state.status = 'paused';
+  state.transition = null;
+  state.game.phase = 'PAUSED';
   if (resolution === 'confirmed' && claim.type === 'bingo') {
     state.game.phase = 'BINGO_CONFIRMED';
     logEvent('bingo_confirmed_lock', { claimId: claim.id, cardId: claim.cardId, cardNumber: claim.cardNumber });
@@ -1829,7 +2081,7 @@ function actaPayload() {
   const claims = confirmedClaims('ambo').concat(confirmedClaims('line'), confirmedClaims('bingo'))
     .sort((a, b) => new Date(a.createdAt || a.resolvedAt || 0) - new Date(b.createdAt || b.resolvedAt || 0));
   return {
-    version: '2.0',
+    version: '2.1',
     roomCode: state.roomCode,
     round: state.round,
     gameNumber: state.game.number,
@@ -1857,7 +2109,7 @@ function formatLocalTimestamp(value) {
   if (!value) return '';
   try {
     return new Intl.DateTimeFormat('es-AR', {
-      timeZone: 'America/Argentina/Buenos_Aires',
+      timeZone: BINGO_TIMEZONE,
       year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false
@@ -1871,7 +2123,7 @@ function formatLocalDate(value) {
   if (!value) return '—';
   try {
     return new Intl.DateTimeFormat('es-AR', {
-      timeZone: 'America/Argentina/Buenos_Aires',
+      timeZone: BINGO_TIMEZONE,
       year: 'numeric', month: '2-digit', day: '2-digit'
     }).format(new Date(value));
   } catch {
@@ -1883,7 +2135,7 @@ function formatLocalTime(value) {
   if (!value) return '—';
   try {
     return new Intl.DateTimeFormat('es-AR', {
-      timeZone: 'America/Argentina/Buenos_Aires',
+      timeZone: BINGO_TIMEZONE,
       hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false
     }).format(new Date(value));
@@ -2038,7 +2290,7 @@ function buildResultsPdf() {
   rect(19, 10, 70, 70, COLORS.white, '#F2D3E2', 1);
   image(24, 15, 60, 60);
   text('RESULTADOS OFICIALES DEL SORTEO', 101, 18, 20, { bold: true, color: COLORS.white, maxWidth: 390 });
-  text('Bingo de la Gorda - Versión 2.0', 101, 47, 11, { bold: true, color: '#F7DDF0' });
+  text('Bingo de la Gorda - Versión 2.1', 101, 47, 11, { bold: true, color: '#F7DDF0' });
   text(`Sala ${acta.roomCode}  ·  Juego ${acta.gameNumber}  ·  Bingo ${acta.mode}`, 101, 65, 8.5, { color: '#E8D7EE' });
 
   const metaX = 510;
@@ -2210,7 +2462,7 @@ function buildResultsPdf() {
   });
 
   text(`Documento oficial generado al cerrar el sorteo · Sala ${acta.roomCode} · Ronda ${acta.round}`, 24, 582, 5.8, { color: COLORS.muted });
-  text('Bingo de la Gorda - Versión 2.0', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
+  text('Bingo de la Gorda - Versión 2.1', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
 
   const stream = commands.join('\n');
   const logoPath = path.join(ROOT, 'assets', 'logo-pdf.jpg');
@@ -2295,6 +2547,8 @@ function serveFile(res, filePath) {
   const allowedHtml = new Set([
     path.join(ROOT, 'ABRIR_EL_BINGO_DE_LA_GORDA.html'),
     path.join(ROOT, 'jugador.html'),
+    path.join(ROOT, 'admin-principal.html'),
+    path.join(ROOT, 'transmision.html'),
     path.join(ROOT, 'reglamento.pdf')
   ]);
   const allowed = allowedHtml.has(normalized) || normalized.startsWith(assetRoot) || normalized.startsWith(jsRoot);
@@ -2312,105 +2566,258 @@ function serveFile(res, filePath) {
   });
 }
 
+function findWorkspaceByRoomCode(roomCode) {
+  const normalized = String(roomCode || '').trim().toUpperCase();
+  if (!normalized) return null;
+  return [...workspaces.values()].find(workspace => String(workspace.state.roomCode || '').toUpperCase() === normalized) || null;
+}
+
+function findWorkspaceByPlayerToken(token) {
+  const normalized = String(token || '');
+  if (!normalized) return null;
+  return [...workspaces.values()].find(workspace => workspace.state.players?.some(player => player.sessionToken === normalized)) || null;
+}
+
+function findWorkspaceByTransfer(requestId, deviceId = '') {
+  return [...workspaces.values()].find(workspace => workspace.state.deviceTransferRequests?.some(request => request.id === String(requestId || '') && (!deviceId || request.deviceId === String(deviceId)))) || null;
+}
+
+function findWorkspaceByBroadcastToken(token) {
+  const normalized = String(token || '');
+  if (!normalized) return null;
+  return [...workspaces.values()].find(workspace => workspace.state.roomSettings?.broadcastToken === normalized) || null;
+}
+
+function masterStatePayload() {
+  return {
+    version: '2.1',
+    now: nowIso(),
+    ownerUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/admin`,
+    operators: platform.operators.map(operatorPublic).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+  };
+}
+
+async function handleMasterApi(req, res, url) {
+  if (url.pathname === '/api/master/login' && req.method === 'POST') {
+    if (!consumeRate(req, 'master-login', 15, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
+    const payload = await readJson(req);
+    const localWithoutPassword = !ONLINE_MODE && isLoopback(req) && !MASTER_ADMIN_PASSWORD;
+    if (!localWithoutPassword) {
+      if (!MASTER_ADMIN_PASSWORD) return sendJson(res, 503, { error: 'Falta configurar MASTER_ADMIN_PASSWORD o ADMIN_PASSWORD.' });
+      if (!safeEqual(payload.password || '', MASTER_ADMIN_PASSWORD)) return sendJson(res, 401, { error: 'Contraseña principal incorrecta.' });
+    }
+    return sendJson(res, 200, { token: createMasterSession(), expiresInHours: 24 });
+  }
+  if (!isMasterAuthorized(req, url)) return sendJson(res, 401, { error: 'Ingresá al panel principal.' });
+  if (url.pathname === '/api/master/state' && req.method === 'GET') return sendJson(res, 200, masterStatePayload());
+  if (url.pathname === '/api/master/operators' && req.method === 'POST') {
+    const payload = await readJson(req);
+    const name = String(payload.name || '').trim().slice(0, 80);
+    if (!name) throw new Error('Ingresá el nombre del administrador temporal.');
+    const hours = Math.max(1, Math.min(24 * 30, Number(payload.hours) || 24));
+    const id = randomId('operator');
+    const accessToken = crypto.randomBytes(24).toString('base64url');
+    const operator = {
+      id, name, accessToken, workspaceId: `operator_${id}`,
+      createdAt: nowIso(), expiresAt: new Date(Date.now() + hours * 60 * 60 * 1000).toISOString(),
+      revokedAt: null, maxGames: Math.max(0, Math.min(999, Number(payload.maxGames) || 0)), gamesCreated: 0,
+      lastLoginAt: null
+    };
+    platform.operators.push(operator);
+    ensureWorkspace(operator.workspaceId, operator.id, operator.name);
+    savePlatform();
+    return sendJson(res, 201, { operator: operatorPublic(operator), state: masterStatePayload() });
+  }
+  if (url.pathname === '/api/master/operators/extend' && req.method === 'POST') {
+    const payload = await readJson(req);
+    const operator = findOperatorById(String(payload.id || ''));
+    if (!operator) throw new Error('No se encontró el administrador temporal.');
+    const hours = Math.max(1, Math.min(24 * 30, Number(payload.hours) || 24));
+    const base = Math.max(Date.now(), new Date(operator.expiresAt || 0).getTime());
+    operator.expiresAt = new Date(base + hours * 60 * 60 * 1000).toISOString();
+    operator.revokedAt = null;
+    savePlatform();
+    return sendJson(res, 200, masterStatePayload());
+  }
+  if (url.pathname === '/api/master/operators/revoke' && req.method === 'POST') {
+    const payload = await readJson(req);
+    const operator = findOperatorById(String(payload.id || ''));
+    if (!operator) throw new Error('No se encontró el administrador temporal.');
+    operator.revokedAt = payload.revoke === false ? null : nowIso();
+    savePlatform();
+    return sendJson(res, 200, masterStatePayload());
+  }
+  if (url.pathname === '/api/master/operators/regenerate' && req.method === 'POST') {
+    const payload = await readJson(req);
+    const operator = findOperatorById(String(payload.id || ''));
+    if (!operator) throw new Error('No se encontró el administrador temporal.');
+    operator.accessToken = crypto.randomBytes(24).toString('base64url');
+    savePlatform();
+    return sendJson(res, 200, masterStatePayload());
+  }
+  if (url.pathname === '/api/master/logout' && req.method === 'POST') {
+    masterSessions.delete(masterTokenFrom(req, url));
+    return sendJson(res, 200, { ok: true });
+  }
+  return sendJson(res, 404, { error: 'Acción principal no encontrada.' });
+}
+
+async function dispatchAdminApi(req, res, url, session) {
+  if (url.pathname === '/api/admin/state' && req.method === 'GET') return sendJson(res, 200, adminPayload());
+  if (url.pathname === '/api/admin/configure' && req.method === 'POST') {
+    assertOperatorMayStartNewGame(session);
+    const payload = await readJson(req);
+    const result = configureRoom(payload);
+    if (session.role === 'operator') {
+      const operator = findOperatorById(session.operatorId);
+      operator.gamesCreated = Number(operator.gamesCreated || 0) + 1;
+      operator.lastRoomCode = state.roomCode;
+      savePlatform();
+    }
+    return sendJson(res, 200, result);
+  }
+  if (url.pathname === '/api/admin/new-room' && req.method === 'POST') {
+    assertOperatorMayStartNewGame(session);
+    return sendJson(res, 200, newRoomState());
+  }
+  if (url.pathname === '/api/admin/game' && req.method === 'POST') return sendJson(res, 200, updateGame((await readJson(req)).game));
+  if (url.pathname === '/api/admin/start' && req.method === 'POST') return sendJson(res, 200, startRoom());
+  if (url.pathname === '/api/admin/pause' && req.method === 'POST') return sendJson(res, 200, pauseRoom());
+  if (url.pathname === '/api/admin/resume' && req.method === 'POST') return sendJson(res, 200, resumeRoom());
+  if (url.pathname === '/api/admin/resolve-device-transfer' && req.method === 'POST') return sendJson(res, 200, resolveDeviceTransfer(await readJson(req)));
+  if (url.pathname === '/api/admin/finish' && req.method === 'POST') return sendJson(res, 200, finishRoom());
+  if (url.pathname === '/api/admin/assignment-timer' && req.method === 'POST') return sendJson(res, 200, controlAssignmentTimer(await readJson(req)));
+  if (url.pathname === '/api/admin/settings' && req.method === 'POST') return sendJson(res, 200, updateRoomSettings(await readJson(req)));
+  if (url.pathname === '/api/admin/message' && req.method === 'POST') return sendJson(res, 200, updateAdminMessage(await readJson(req)));
+  if (url.pathname === '/api/admin/release-selection' && req.method === 'POST') return sendJson(res, 200, releasePlayerSelection(await readJson(req)));
+  if (url.pathname === '/api/admin/assign-player' && req.method === 'POST') return sendJson(res, 200, assignCardsToPlayer(await readJson(req)));
+  if (url.pathname === '/api/admin/test-event' && req.method === 'POST') return sendJson(res, 200, sendTestEvent(await readJson(req)));
+  if (url.pathname === '/api/admin/resolve' && req.method === 'POST') return sendJson(res, 200, resolveClaim(await readJson(req)));
+  if (url.pathname === '/api/admin/acta' && req.method === 'GET') return sendJson(res, 200, actaPayload());
+  if (url.pathname === '/api/admin/acta.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(actaCsv(), 'utf8'), 'text/csv; charset=utf-8', `Bingo_Acta_${state.roomCode || 'sala'}.csv`);
+  if (url.pathname === '/api/admin/participants.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(participantsCsv(), 'utf8'), 'text/csv; charset=utf-8', `Bingo_Jugadores_${state.roomCode || 'sala'}.csv`);
+  if (url.pathname === '/api/admin/acta.pdf' && req.method === 'GET') return sendBuffer(res, 200, actaPdf(), 'application/pdf', `Bingo_Acta_${state.roomCode || 'sala'}.pdf`);
+  if (url.pathname === '/api/admin/backup' && req.method === 'GET') return sendJson(res, 200, backupPayload());
+  if (url.pathname === '/api/admin/restore' && req.method === 'POST') {
+    const startsNewGame = !state.active || ['closed', 'finished'].includes(state.status);
+    if (startsNewGame) assertOperatorMayStartNewGame(session);
+    const result = restoreBackup(await readJson(req));
+    if (startsNewGame && session.role === 'operator') {
+      const operator = findOperatorById(session.operatorId);
+      operator.gamesCreated = Number(operator.gamesCreated || 0) + 1;
+      operator.lastRoomCode = state.roomCode;
+      savePlatform();
+    }
+    return sendJson(res, 200, result);
+  }
+  if (url.pathname === '/api/admin/close' && req.method === 'POST') { closeRoom(); return sendJson(res, 200, { ok: true }); }
+  if (url.pathname === '/api/admin/logout' && req.method === 'POST') { adminSessions.delete(adminTokenFrom(req, url)); return sendJson(res, 200, { ok: true }); }
+  return sendJson(res, 404, { error: 'Acción de administrador no encontrada.' });
+}
+
 async function handleApi(req, res, url) {
   try {
-    if (url.pathname === '/api/info' && req.method === 'GET') {
-      return sendJson(res, 200, { ...baseInfo(), port: PORT, lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`), active: state.active, status: state.status, roomCode: state.roomCode });
-    }
-
-    if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso() });
-
-    if (url.pathname === '/api/results.pdf' && req.method === 'GET') {
-      const requestedRoom = String(url.searchParams.get('sala') || '').trim().toUpperCase();
-      const currentRoom = String(state.roomCode || '').toUpperCase();
-      const archivedRoom = String(lastResultMeta?.roomCode || '').toUpperCase();
-
-      if (requestedRoom && requestedRoom === currentRoom && state.active && state.game) {
-        if (state.status !== 'finished') throw new Error('Los resultados estarán disponibles cuando finalice el sorteo.');
-        return sendBuffer(res, 200, buildResultsPdf(), 'application/pdf', resultsFilename());
-      }
-      if (requestedRoom && requestedRoom === archivedRoom && fs.existsSync(LAST_RESULT_PDF_FILE)) {
-        return sendBuffer(res, 200, fs.readFileSync(LAST_RESULT_PDF_FILE), 'application/pdf', lastResultMeta.filename || `Resultados_Bingo_Sala_${archivedRoom}.pdf`);
-      }
-      if (!requestedRoom) {
-        if (state.active && state.game) {
-          if (state.status !== 'finished') throw new Error('Los resultados estarán disponibles cuando finalice el sorteo.');
-          return sendBuffer(res, 200, buildResultsPdf(), 'application/pdf', resultsFilename());
-        }
-        if (lastResultMeta && fs.existsSync(LAST_RESULT_PDF_FILE)) {
-          return sendBuffer(res, 200, fs.readFileSync(LAST_RESULT_PDF_FILE), 'application/pdf', lastResultMeta.filename || 'Resultados_Bingo_Ultimo_Sorteo.pdf');
-        }
-      }
-      throw new Error(requestedRoom ? 'No se encontró un resultado finalizado para esa sala.' : 'No hay un sorteo finalizado disponible.');
-    }
+    if (url.pathname.startsWith('/api/master/')) return await handleMasterApi(req, res, url);
+    if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso(), version: '2.1' });
 
     if (url.pathname === '/api/admin/login' && req.method === 'POST') {
-      if (!consumeRate(req, 'admin-login', 15, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
+      if (!consumeRate(req, 'admin-login', 30, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
       const payload = await readJson(req);
-      const localWithoutPassword = !ONLINE_MODE && isLoopback(req) && !ADMIN_PASSWORD;
-      if (!localWithoutPassword) {
-        if (!ADMIN_PASSWORD) return sendJson(res, 503, { error: 'El servidor no tiene configurada la variable ADMIN_PASSWORD.' });
-        if (!safeEqual(payload.password || '', ADMIN_PASSWORD)) return sendJson(res, 401, { error: 'Contraseña de administrador incorrecta.' });
+      if (payload.operatorAccessToken) {
+        const operator = findOperatorByAccessToken(String(payload.operatorAccessToken));
+        if (!operator) return sendJson(res, 401, { error: 'El enlace temporal no es válido.' });
+        const workspace = ensureWorkspace(operator.workspaceId, operator.id, operator.name);
+        const mayFinish = workspace.state.active && !['closed', 'finished'].includes(workspace.state.status);
+        const status = operatorStatus(operator);
+        if (status === 'revoked') return sendJson(res, 401, { error: 'El acceso temporal fue revocado por el administrador principal.' });
+        if (status !== 'active' && !mayFinish) return sendJson(res, 401, { error: 'El acceso temporal venció.' });
+        operator.lastLoginAt = nowIso(); savePlatform();
+        const hardExpiresAt = status === 'active' ? new Date(operator.expiresAt).getTime() : null;
+        const token = createAdminSession({ workspaceId: workspace.id, role: 'operator', operatorId: operator.id, hardExpiresAt });
+        return sendJson(res, 200, { token, role: 'operator', operator: operatorPublic(operator), onlineMode: ONLINE_MODE });
       }
-      const token = createAdminSession();
-      return sendJson(res, 200, { token, expiresInHours: 24, onlineMode: ONLINE_MODE });
+      const localWithoutPassword = !ONLINE_MODE && isLoopback(req) && !MASTER_ADMIN_PASSWORD;
+      if (!localWithoutPassword) {
+        if (!MASTER_ADMIN_PASSWORD) return sendJson(res, 503, { error: 'Falta configurar MASTER_ADMIN_PASSWORD o ADMIN_PASSWORD.' });
+        if (!safeEqual(payload.password || '', MASTER_ADMIN_PASSWORD)) return sendJson(res, 401, { error: 'Contraseña de administrador incorrecta.' });
+      }
+      const token = createAdminSession({ workspaceId: 'owner', role: 'owner' });
+      return sendJson(res, 200, { token, role: 'owner', expiresInHours: 24, onlineMode: ONLINE_MODE });
     }
 
     if (url.pathname.startsWith('/api/admin/')) {
-      if (!isAdminAuthorized(req, url)) return sendJson(res, 401, { error: 'Ingresá como administrador.' });
-      if (url.pathname === '/api/admin/state' && req.method === 'GET') return sendJson(res, 200, adminPayload());
-      if (url.pathname === '/api/admin/configure' && req.method === 'POST') return sendJson(res, 200, configureRoom(await readJson(req)));
-      if (url.pathname === '/api/admin/game' && req.method === 'POST') return sendJson(res, 200, updateGame((await readJson(req)).game));
-      if (url.pathname === '/api/admin/start' && req.method === 'POST') return sendJson(res, 200, startRoom());
-      if (url.pathname === '/api/admin/pause' && req.method === 'POST') return sendJson(res, 200, pauseRoom());
-      if (url.pathname === '/api/admin/resume' && req.method === 'POST') return sendJson(res, 200, resumeRoom());
-      if (url.pathname === '/api/admin/resolve-device-transfer' && req.method === 'POST') return sendJson(res, 200, resolveDeviceTransfer(await readJson(req)));
-      if (url.pathname === '/api/admin/finish' && req.method === 'POST') return sendJson(res, 200, finishRoom());
-      if (url.pathname === '/api/admin/assignment-timer' && req.method === 'POST') return sendJson(res, 200, controlAssignmentTimer(await readJson(req)));
-      if (url.pathname === '/api/admin/settings' && req.method === 'POST') return sendJson(res, 200, updateRoomSettings(await readJson(req)));
-      if (url.pathname === '/api/admin/message' && req.method === 'POST') return sendJson(res, 200, updateAdminMessage(await readJson(req)));
-      if (url.pathname === '/api/admin/release-selection' && req.method === 'POST') return sendJson(res, 200, releasePlayerSelection(await readJson(req)));
-      if (url.pathname === '/api/admin/assign-player' && req.method === 'POST') return sendJson(res, 200, assignCardsToPlayer(await readJson(req)));
-      if (url.pathname === '/api/admin/test-event' && req.method === 'POST') return sendJson(res, 200, sendTestEvent(await readJson(req)));
-      if (url.pathname === '/api/admin/new-room' && req.method === 'POST') return sendJson(res, 200, newRoomState());
-      if (url.pathname === '/api/admin/resolve' && req.method === 'POST') return sendJson(res, 200, resolveClaim(await readJson(req)));
-      if (url.pathname === '/api/admin/acta' && req.method === 'GET') return sendJson(res, 200, actaPayload());
-      if (url.pathname === '/api/admin/acta.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(actaCsv(), 'utf8'), 'text/csv; charset=utf-8', `Bingo_Acta_${state.roomCode || 'sala'}.csv`);
-      if (url.pathname === '/api/admin/participants.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(participantsCsv(), 'utf8'), 'text/csv; charset=utf-8', `Bingo_Jugadores_${state.roomCode || 'sala'}.csv`);
-      if (url.pathname === '/api/admin/acta.pdf' && req.method === 'GET') return sendBuffer(res, 200, actaPdf(), 'application/pdf', `Bingo_Acta_${state.roomCode || 'sala'}.pdf`);
-      if (url.pathname === '/api/admin/backup' && req.method === 'GET') return sendJson(res, 200, backupPayload());
-      if (url.pathname === '/api/admin/restore' && req.method === 'POST') return sendJson(res, 200, restoreBackup(await readJson(req)));
-      if (url.pathname === '/api/admin/close' && req.method === 'POST') { closeRoom(); return sendJson(res, 200, { ok: true }); }
-      if (url.pathname === '/api/admin/logout' && req.method === 'POST') {
-        adminSessions.delete(adminTokenFrom(req, url));
-        return sendJson(res, 200, { ok: true });
-      }
-      return sendJson(res, 404, { error: 'Acción de administrador no encontrada.' });
+      const session = adminSessionFrom(req, url);
+      if (!session) return sendJson(res, 401, { error: 'Ingresá como administrador.' });
+      const workspace = workspaces.get(session.workspaceId) || ownerWorkspace;
+      return await workspaceContext.run(workspace, () => dispatchAdminApi(req, res, url, session));
+    }
+
+    if (url.pathname === '/api/info' && req.method === 'GET') {
+      const workspace = findWorkspaceByRoomCode(url.searchParams.get('sala')) || ownerWorkspace;
+      return workspaceContext.run(workspace, () => sendJson(res, 200, { ...baseInfo(), port: PORT, lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`), active: state.active, status: state.status, roomCode: state.roomCode }));
+    }
+
+    if (url.pathname === '/api/results.pdf' && req.method === 'GET') {
+      const requestedRoom = String(url.searchParams.get('sala') || '').trim().toUpperCase();
+      let workspace = requestedRoom ? findWorkspaceByRoomCode(requestedRoom) : ownerWorkspace;
+      if (!workspace && requestedRoom) workspace = [...workspaces.values()].find(item => String(item.lastResultMeta?.roomCode || '').toUpperCase() === requestedRoom) || null;
+      if (!workspace) throw new Error('No se encontró un resultado finalizado para esa sala.');
+      return workspaceContext.run(workspace, () => {
+        const meta = currentWorkspace().lastResultMeta;
+        if (requestedRoom && String(state.roomCode || '').toUpperCase() === requestedRoom && state.active && state.game) {
+          if (state.status !== 'finished') throw new Error('Los resultados estarán disponibles cuando finalice el sorteo.');
+          return sendBuffer(res, 200, buildResultsPdf(), 'application/pdf', resultsFilename());
+        }
+        if (meta && fs.existsSync(currentWorkspace().resultPdfFile) && (!requestedRoom || String(meta.roomCode).toUpperCase() === requestedRoom)) {
+          return sendBuffer(res, 200, fs.readFileSync(currentWorkspace().resultPdfFile), 'application/pdf', meta.filename || 'Resultados_Bingo.pdf');
+        }
+        throw new Error('No hay un sorteo finalizado disponible.');
+      });
+    }
+
+    if (url.pathname === '/api/broadcast/state' && req.method === 'GET') {
+      const workspace = findWorkspaceByBroadcastToken(url.searchParams.get('token'));
+      if (!workspace) return sendJson(res, 404, { error: 'Enlace de transmisión no válido.' });
+      return workspaceContext.run(workspace, () => sendJson(res, 200, broadcastPayload()));
     }
 
     if (url.pathname === '/api/player/login' && req.method === 'POST') {
       if (!consumeRate(req, 'player-login', 60, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
-      const result = loginPlayer(await readJson(req));
-      return sendJson(res, result.conflict ? 409 : 200, result);
+      const payload = await readJson(req);
+      const workspace = findWorkspaceByRoomCode(payload.roomCode);
+      if (!workspace) throw new Error('No se encontró esa sala.');
+      return workspaceContext.run(workspace, () => { const result = loginPlayer(payload); return sendJson(res, result.conflict ? 409 : 200, result); });
     }
-    if (url.pathname === '/api/player/request-transfer' && req.method === 'POST') return sendJson(res, 200, requestDeviceTransfer(await readJson(req)));
-    if (url.pathname === '/api/player/transfer-status' && req.method === 'POST') return sendJson(res, 200, deviceTransferStatus(await readJson(req)));
-
+    if (url.pathname === '/api/player/request-transfer' && req.method === 'POST') {
+      const payload = await readJson(req);
+      const workspace = findWorkspaceByRoomCode(payload.roomCode);
+      if (!workspace) throw new Error('No se encontró esa sala.');
+      return workspaceContext.run(workspace, () => sendJson(res, 200, requestDeviceTransfer(payload)));
+    }
+    if (url.pathname === '/api/player/transfer-status' && req.method === 'POST') {
+      const payload = await readJson(req);
+      const workspace = findWorkspaceByTransfer(payload.requestId, payload.deviceId);
+      if (!workspace) throw new Error('No se encontró la solicitud.');
+      return workspaceContext.run(workspace, () => sendJson(res, 200, deviceTransferStatus(payload)));
+    }
     if (url.pathname.startsWith('/api/player/')) {
       const token = req.headers['x-player-token'] || url.searchParams.get('token');
-      const player = playerByToken(token);
-      if (!player) return sendJson(res, 401, { error: 'La sesión no es válida. Volvé a ingresar con tu código.' });
-      if (url.pathname === '/api/player/state' && req.method === 'GET') return sendJson(res, 200, playerPayload(player));
-      if (url.pathname === '/api/player/reserve' && req.method === 'POST') return sendJson(res, 200, reserveCard(player, await readJson(req)));
-      if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
-      if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
-      if (url.pathname === '/api/player/release' && req.method === 'POST') return sendJson(res, 200, releaseOwnSelection(player));
-      if (url.pathname === '/api/player/mark' && req.method === 'POST') return sendJson(res, 200, markNumber(player, await readJson(req)));
-      if (url.pathname === '/api/player/automark' && req.method === 'POST') return sendJson(res, 200, setAutoMark(player, await readJson(req)));
-      if (url.pathname === '/api/player/claim' && req.method === 'POST') return sendJson(res, 200, createClaim(player, await readJson(req)));
-      return sendJson(res, 404, { error: 'Acción de jugador no encontrada.' });
+      const workspace = findWorkspaceByPlayerToken(token);
+      if (!workspace) return sendJson(res, 401, { error: 'La sesión no es válida. Volvé a ingresar con tu código.' });
+      return await workspaceContext.run(workspace, async () => {
+        const player = playerByToken(token);
+        if (!player) return sendJson(res, 401, { error: 'La sesión no es válida.' });
+        if (url.pathname === '/api/player/state' && req.method === 'GET') return sendJson(res, 200, playerPayload(player));
+        if (url.pathname === '/api/player/reserve' && req.method === 'POST') return sendJson(res, 200, reserveCard(player, await readJson(req)));
+        if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
+        if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
+        if (url.pathname === '/api/player/release' && req.method === 'POST') return sendJson(res, 200, releaseOwnSelection(player));
+        if (url.pathname === '/api/player/mark' && req.method === 'POST') return sendJson(res, 200, markNumber(player, await readJson(req)));
+        if (url.pathname === '/api/player/automark' && req.method === 'POST') return sendJson(res, 200, setAutoMark(player, await readJson(req)));
+        if (url.pathname === '/api/player/claim' && req.method === 'POST') return sendJson(res, 200, createClaim(player, await readJson(req)));
+        return sendJson(res, 404, { error: 'Acción de jugador no encontrada.' });
+      });
     }
-
     return sendJson(res, 404, { error: 'API no encontrada.' });
   } catch (error) {
     return sendJson(res, 400, { error: error.message || 'No se pudo completar la acción.' });
@@ -2419,47 +2826,57 @@ async function handleApi(req, res, url) {
 
 function handleEvents(req, res, url) {
   const role = url.searchParams.get('role');
+  let workspace = null;
   let player = null;
   let token = url.searchParams.get('token') || '';
   if (role === 'admin') {
     token = url.searchParams.get('adminToken') || '';
-    if (!isAdminAuthorized(req, new URL(`${url.origin}${url.pathname}?adminToken=${encodeURIComponent(token)}`))) return sendJson(res, 401, { error: 'Acceso de administrador denegado.' });
+    const session = adminSessionFrom(req, url);
+    if (!session) return sendJson(res, 401, { error: 'Acceso de administrador denegado.' });
+    workspace = workspaces.get(session.workspaceId) || null;
   } else if (role === 'player') {
-    player = playerByToken(token);
+    workspace = findWorkspaceByPlayerToken(token);
+    if (workspace) player = workspace.state.players.find(item => item.sessionToken === token) || null;
     if (!player) return sendJson(res, 401, { error: 'Sesión inválida.' });
-  } else {
-    return sendJson(res, 400, { error: 'Rol inválido.' });
-  }
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache, no-transform',
-    'Connection': 'keep-alive',
-    'X-Accel-Buffering': 'no',
-    'X-Content-Type-Options': 'nosniff'
+  } else if (role === 'broadcast') {
+    workspace = findWorkspaceByBroadcastToken(url.searchParams.get('broadcastToken'));
+    token = url.searchParams.get('broadcastToken') || '';
+    if (!workspace) return sendJson(res, 401, { error: 'Transmisión no válida.' });
+  } else return sendJson(res, 400, { error: 'Rol inválido.' });
+  if (!workspace) return sendJson(res, 401, { error: 'Acceso inválido.' });
+  return workspaceContext.run(workspace, () => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive', 'X-Accel-Buffering': 'no', 'X-Content-Type-Options': 'nosniff'
+    });
+    res.write(': conectado\n\n');
+    const client = { res, role, token, playerId: player?.id || null };
+    sseClients.add(client);
+    if (role === 'admin') writeSse(res, 'state', adminPayload());
+    else if (role === 'broadcast') writeSse(res, 'state', broadcastPayload());
+    else writeSse(res, 'state', playerPayload(player));
+    req.on('close', () => workspaceContext.run(workspace, () => sseClients.delete(client)));
   });
-  res.write(': conectado\n\n');
-  const client = { res, role, token, playerId: player?.id || null };
-  sseClients.add(client);
-  if (role === 'admin') writeSse(res, 'state', adminPayload());
-  else writeSse(res, 'state', playerPayload(player));
-  req.on('close', () => { sseClients.delete(client); });
 }
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || `localhost:${PORT}`}`);
-  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '2.0', active: state.active, status: state.status });
+  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '2.1', workspaces: workspaces.size });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    return res.end('User-agent: *\nDisallow: /admin\n');
+    return res.end('User-agent: *\nDisallow: /admin\nDisallow: /admin-principal\nDisallow: /operador\nDisallow: /transmision\n');
   }
   if (url.pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res, url);
   if (url.pathname.startsWith('/api/')) return handleApi(req, res, url);
 
   if (url.pathname === '/') {
-    res.writeHead(302, { Location: ONLINE_MODE ? '/jugador' : '/admin' });
+    res.writeHead(302, { Location: '/admin-principal' });
     return res.end();
   }
+  if (url.pathname === '/admin-principal' || url.pathname === '/admin-principal/') return serveFile(res, path.join(ROOT, 'admin-principal.html'));
   if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'ABRIR_EL_BINGO_DE_LA_GORDA.html'));
+  if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'ABRIR_EL_BINGO_DE_LA_GORDA.html'));
+  if (/^\/transmision\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'transmision.html'));
   if (url.pathname === '/jugador' || url.pathname === '/jugador/') return serveFile(res, path.join(ROOT, 'jugador.html'));
   if (url.pathname === '/reglamento.pdf') return serveFile(res, path.join(ROOT, 'reglamento.pdf'));
   const relative = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
@@ -2468,39 +2885,44 @@ const server = http.createServer(async (req, res) => {
 });
 
 setInterval(() => {
-  try { processAssignmentDeadline(); }
-  catch (error) { console.error('No se pudo completar la asignación automática:', error); }
+  for (const workspace of workspaces.values()) {
+    workspaceContext.run(workspace, () => {
+      try { processAssignmentDeadline(); }
+      catch (error) { console.error(`No se pudo completar la asignación automática en ${workspace.id}:`, error.message); }
+    });
+  }
 }, 1000).unref();
 
 setInterval(() => {
   const now = Date.now();
-  for (const [token, expiresAt] of adminSessions) if (expiresAt <= now) adminSessions.delete(token);
-  if (state.active && state.status === 'waiting' && purgeExpiredReservations()) {
-    refreshAllOffers();
-    saveState();
-    broadcast();
-  }
-  for (const client of [...sseClients]) {
-    try { client.res.write(': ping\n\n'); }
-    catch { sseClients.delete(client); }
+  for (const [token, session] of adminSessions) if (!session || session.expiresAt <= now) adminSessions.delete(token);
+  for (const [token, expiresAt] of masterSessions) if (expiresAt <= now) masterSessions.delete(token);
+  for (const workspace of workspaces.values()) {
+    workspaceContext.run(workspace, () => {
+      if (state.active && state.status === 'waiting' && purgeExpiredReservations()) {
+        refreshAllOffers(); saveState(); broadcast();
+      }
+      for (const client of [...sseClients]) {
+        try { client.res.write(': ping\n\n'); }
+        catch { sseClients.delete(client); }
+      }
+    });
   }
 }, 20_000).unref();
 
-scheduleTransition();
+for (const workspace of workspaces.values()) workspaceContext.run(workspace, () => scheduleTransition());
 
 server.listen(PORT, HOST, () => {
-  console.log('\nBINGO DE LA GORDA 2.0');
-  if (ONLINE_MODE) {
-    console.log(`Jugadores: ${PUBLIC_URL || 'URL pública de Render'}/jugador`);
-    console.log(`Administrador: ${PUBLIC_URL || 'URL pública de Render'}/admin`);
-    if (!ADMIN_PASSWORD) console.warn('ATENCIÓN: falta configurar ADMIN_PASSWORD.');
-  } else {
-    const addresses = getLanAddresses();
-    console.log(`Administrador: http://localhost:${PORT}/admin`);
-    addresses.forEach(ip => console.log(`Jugadores: http://${ip}:${PORT}/jugador`));
-    const target = `http://localhost:${PORT}/admin`;
+  console.log('\nBINGO DE LA GORDA 2.1');
+  const base = PUBLIC_URL || `http://localhost:${PORT}`;
+  console.log(`Panel principal: ${base}/admin-principal`);
+  console.log(`Administrador propio: ${base}/admin`);
+  console.log(`Jugadores: ${base}/jugador`);
+  if (ONLINE_MODE && !MASTER_ADMIN_PASSWORD) console.warn('ATENCIÓN: falta configurar MASTER_ADMIN_PASSWORD o ADMIN_PASSWORD.');
+  if (!ONLINE_MODE) {
+    const target = `http://localhost:${PORT}/admin-principal`;
     const command = process.platform === 'win32' ? `start "" "${target}"` : process.platform === 'darwin' ? `open "${target}"` : `xdg-open "${target}"`;
     exec(command, () => {});
   }
-  console.log(`Límites: ${MAX_PLAYERS} jugadores · ${MAX_CARDS} cartones · ${MAX_CARDS_PER_PLAYER} por jugador\n`);
+  console.log(`Límites por sala: ${MAX_PLAYERS} jugadores · ${MAX_CARDS} cartones · ${MAX_CARDS_PER_PLAYER} por jugador\n`);
 });

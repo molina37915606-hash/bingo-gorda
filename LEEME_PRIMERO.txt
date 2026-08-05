@@ -1,61 +1,53 @@
-BINGO DE LA GORDA 2.0
+BINGO DE LA GORDA 2.1
 ======================
 
-Esta versión toma como base la última Beta y conserva el cierre seguro del bingo, el bloqueo del bolillero y el acta oficial en PDF. Además, reorganiza el flujo de salas, mejora el uso desde celular y amplía el sistema de presentadores.
+ACCESO PRINCIPAL
+----------------
+Al publicar el proyecto, ingresá a:
+  https://TU-DOMINIO/admin-principal
 
-INICIO RÁPIDO EN ESTA COMPUTADORA
-1. Instalá Node.js 18 o superior.
-2. Ejecutá PROBAR_EN_ESTA_PC.bat.
-3. Abrí el administrador en: http://localhost:3210/admin
-4. Abrí un jugador en: http://localhost:3210/jugador
+Ese panel es únicamente tuyo. Desde allí podés:
+- abrir tu propio bingo;
+- crear accesos temporales de 6, 12, 24, 48, 72 horas o 7 días;
+- limitar la cantidad de partidas;
+- copiar el enlace privado de cada operador;
+- extender, revocar o regenerar un enlace.
 
-FLUJO DE UNA PARTIDA
-1. Elegí CREAR SALA.
-2. Configurá 75 o 90 bolas, premios y forma de sorteo.
-3. Generá entre 1 y 250 cartones al azar, cargalos manualmente o importalos desde PDF.
-4. Configurá la sala antes de ingresar al panel del sorteo.
-5. Compartí los accesos de los jugadores.
-6. Los jugadores eligen cartones, pueden renovar los no seleccionados y luego continúan a la sala de espera.
-7. Cuando todos estén listos, presioná INICIAR SORTEO.
-8. El presentador anuncia la hora oficial, aparece la preparación, la cuenta regresiva y recién después sale la primera bolilla.
-9. Al confirmar el bingo, resolvé cualquier reclamo pendiente y finalizá el sorteo.
-10. Descargá el acta oficial desde RESULTADOS.
+ADMINISTRADORES TEMPORALES
+--------------------------
+Cada operador recibe un enlace diferente:
+  https://TU-DOMINIO/operador/TOKEN-PRIVADO
 
-CAMBIOS PRINCIPALES DE 2.0
-- Pantalla inicial con Crear sala, Recuperar partida e Ingresar a sala.
-- Generación simple de hasta 250 cartones sin lista de jugadores.
-- Renovación de cartones ofrecidos sin perder los ya seleccionados.
-- Panel del jugador compacto para celular.
-- Sonido general con un solo botón, campana de avisos y automarcado compacto.
-- Botones dinámicos para AmboCabeza, Línea y Bingo.
-- Reclamos enviados directamente, sin confirmación previa.
-- Persistencia de cartones y marcas aunque el jugador minimice el navegador o pierda conexión.
-- Protección contra el uso simultáneo del mismo acceso en dos dispositivos.
-- Cambio de dispositivo únicamente con autorización del administrador.
-- Tutorial breve opcional al confirmar los cartones.
-- Secuencias visuales y habladas de inicio, pausa y reanudación.
-- Guiones ampliados y diferenciados para Vero, Vivi, Josu y Daia.
-- Sistema de frases mezcladas para reducir repeticiones.
-- AmboCabeza incorporado al control de reclamos y al acta final.
+No usa tu contraseña y no puede ver tus salas ni las de otros operadores.
+Al vencer el plazo no puede crear nuevas partidas. Si el vencimiento ocurre durante una partida activa, puede terminarla. Una revocación manual bloquea el acceso inmediatamente.
+
+JUGADORES
+---------
+Los jugadores entran desde el enlace de la sala o desde:
+  https://TU-DOMINIO/jugador
+
+Cambiar a WhatsApp, bloquear el celular o perder conexión no libera los cartones. Para usar otro dispositivo deben solicitar el cambio y esperar la autorización del administrador.
+
+MODO TIKTOK
+-----------
+Cada sala genera un enlace vertical de transmisión. Abrilo en un segundo celular. La vista muestra el estado, la bolilla, premios, WhatsApp y avisos, pero no contiene controles administrativos.
+
+La voz humana y el micrófono pertenecen a TikTok. La página permite elegir voz completa, solo números o sin voz automática. La posibilidad de compartir pantalla depende de las funciones LIVE disponibles en la cuenta y el celular.
+
+RECLAMOS
+--------
+AmboCabeza, Línea y Bingo nunca se anuncian automáticamente. El jugador debe tocar el botón. El administrador compara el cartón marcado por el jugador con el cartón validado por el sistema y decide aprobar o rechazar.
+
+Después de cualquier reclamo, la partida queda pausada. El administrador decide cuándo continuar. El modo automático no se reinicia solo.
 
 REGLAMENTO
-El botón DESCARGAR REGLAMENTO ya está preparado. El archivo reglamento.pdf todavía no está incluido porque se redactará después de cerrar estas correcciones. Mientras no exista el PDF, el sistema informa claramente que todavía no fue cargado.
+----------
+El botón está preparado, pero el archivo reglamento.pdf debe agregarse cuando se redacte el reglamento definitivo.
 
-SESIONES DE JUGADORES
-- Salir a WhatsApp, bloquear el celular o perder conexión no libera los cartones.
-- Al volver con el mismo enlace y dispositivo se recupera la partida.
-- Si el enlace se abre en otro dispositivo, el jugador debe solicitar el cambio.
-- El administrador puede aprobarlo o rechazarlo.
-- Al aprobar, se cierra el acceso anterior y el nuevo dispositivo recupera cartones, marcas y estado.
+PRUEBA
+------
+Ejecutá:
+  npm test
 
-CIERRE SEGURO Y RESULTADOS
-- Cuando se confirma el bingo, el bolillero se bloquea.
-- No se pueden modificar bolillas después del cierre.
-- El acta registra bolillas, horarios, reclamos y ganadores.
-- Descargá el PDF al finalizar cada partida.
-
-IMPORTANTE PARA RENDER GRATUITO
-El almacenamiento de Render puede ser temporal. Guardá el PDF y una copia de seguridad al terminar cada sorteo. No actualices el proyecto mientras haya una partida activa.
-
-ACTUALIZACIÓN POSPUESTA
-El modo especial de transmisión para Facebook y TikTok no está incluido en esta versión.
+Resultado esperado:
+  PRUEBAS BINGO DE LA GORDA 2.1: OK

@@ -16,7 +16,10 @@ class LocalRoomAdmin {
     this.assignments = [];
     this.syncTimer = null;
     this.backupTimer = null;
-    this.adminToken = sessionStorage.getItem('bingoOnlineAdminToken') || '';
+    const operatorMatch = location.pathname.match(/^\/operador\/([^/]+)/);
+    this.operatorAccessToken = operatorMatch ? decodeURIComponent(operatorMatch[1]) : '';
+    this.sessionKey = this.operatorAccessToken ? `bingoOnlineAdminToken:operator:${this.operatorAccessToken.slice(0,12)}` : 'bingoOnlineAdminToken:owner';
+    this.adminToken = sessionStorage.getItem(this.sessionKey) || '';
     this.originalSave = app.save.bind(app);
     this.originalExitGame = app.exitGame.bind(app);
     this.originalRequestDraw = app.requestDraw.bind(app);
@@ -79,7 +82,7 @@ class LocalRoomAdmin {
     const button = document.createElement('button');
     button.id = 'localRoomBtn';
     button.className = 'tool localRoomTool';
-    button.textContent = '🌐 SALA ONLINE 2.0';
+    button.textContent = '🌐 SALA ONLINE 2.1';
     button.onclick = () => this.openMainModal();
     footer?.insertBefore(button, $('cardsBtn'));
 
@@ -103,7 +106,7 @@ class LocalRoomAdmin {
       </section>
       <section class="localModal show" id="onlineAdminLogin" aria-hidden="false">
         <div class="localPanel onlineLoginPanel">
-          <div class="localHead"><div><b>ACCESO DEL ADMINISTRADOR</b><small>Esta contraseña se configura en Render.</small></div></div>
+          <div class="localHead"><div><b id="onlineAdminTitle">ACCESO DEL ADMINISTRADOR</b><small id="onlineAdminSubtitle">Esta contraseña se configura en Render.</small></div></div>
           <div class="onlineLoginBody">
             <label>CONTRASEÑA DE ADMINISTRADOR</label>
             <input id="onlineAdminPassword" type="password" autocomplete="current-password" placeholder="Tu contraseña">
@@ -192,23 +195,25 @@ class LocalRoomAdmin {
 
   async ensureAdminAuth() {
     if (this.adminToken) {
+      try { await this.refreshState(); this.hideAdminLogin(); this.connectEvents(); return; }
+      catch { this.adminToken = ''; sessionStorage.removeItem(this.sessionKey); }
+    }
+    if (this.operatorAccessToken) {
+      $('onlineAdminTitle').textContent = 'ACCESO TEMPORAL';
+      $('onlineAdminSubtitle').textContent = 'Validando el enlace privado del operador…';
+      $('onlineAdminPassword').style.display = 'none';
+      $('onlineAdminLoginBtn').style.display = 'none';
       try {
-        await this.refreshState();
-        this.hideAdminLogin();
-        this.connectEvents();
-        return;
-      } catch { this.adminToken = ''; }
+        const data = await this.request('/api/admin/login', { method: 'POST', body: JSON.stringify({ operatorAccessToken: this.operatorAccessToken }) }, false);
+        this.adminToken = data.token; sessionStorage.setItem(this.sessionKey, this.adminToken);
+        this.hideAdminLogin(); await this.refreshState(); this.connectEvents(); return;
+      } catch (error) { this.showAdminLogin(error.message); return; }
     }
     try {
       const local = await this.request('/api/admin/login', { method: 'POST', body: JSON.stringify({ password: '' }) }, false);
-      this.adminToken = local.token;
-      sessionStorage.setItem('bingoOnlineAdminToken', this.adminToken);
-      this.hideAdminLogin();
-      await this.refreshState();
-      this.connectEvents();
-    } catch {
-      this.showAdminLogin();
-    }
+      this.adminToken = local.token; sessionStorage.setItem(this.sessionKey, this.adminToken);
+      this.hideAdminLogin(); await this.refreshState(); this.connectEvents();
+    } catch { this.showAdminLogin(); }
   }
 
   showAdminLogin(message = '') {
@@ -230,7 +235,7 @@ class LocalRoomAdmin {
       $('onlineAdminLoginBtn').disabled = true;
       const data = await this.request('/api/admin/login', { method: 'POST', body: JSON.stringify({ password }) }, false);
       this.adminToken = data.token;
-      sessionStorage.setItem('bingoOnlineAdminToken', this.adminToken);
+      sessionStorage.setItem(this.sessionKey, this.adminToken);
       this.hideAdminLogin();
       await this.refreshState();
       this.connectEvents();
@@ -255,7 +260,7 @@ class LocalRoomAdmin {
       this.applyState(data);
       this.handlePendingClaims(data.claims || []);
     });
-    this.eventSource.addEventListener('logout', () => { this.adminToken = ''; sessionStorage.removeItem('bingoOnlineAdminToken'); this.showAdminLogin('La sesión venció. Volvé a ingresar.'); });
+    this.eventSource.addEventListener('logout', () => { this.adminToken = ''; sessionStorage.removeItem(this.sessionKey); this.showAdminLogin('La sesión venció. Volvé a ingresar.'); });
     this.eventSource.onerror = () => {
       $('localRoomBtn').textContent = '⚠ SERVIDOR DESCONECTADO';
       clearTimeout(this.reconnectCheckTimer);
@@ -313,7 +318,8 @@ class LocalRoomAdmin {
     if (current === 'paused') {
       this.app.stopAutomatic(false);
       this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
-      this.app.voice?.event('pause', {}, true);
+      const claimPending = (data.claims || []).some(claim => claim.status === 'pending');
+      if (!claimPending) this.app.voice?.event('pause', {}, true);
       return;
     }
     if (current === 'resuming') {
@@ -325,7 +331,7 @@ class LocalRoomAdmin {
     }
     if (current === 'playing') {
       this.app.setPhase(this.app.game?.drawMode === 'automatic' ? window.BingoV8Engine.PHASE.DRAWING : window.BingoV8Engine.PHASE.READY);
-      if (this.app.game?.drawMode === 'automatic' && !this.app.autoRunning && !data.bingoConfirmed) {
+      if (['starting','resuming'].includes(previous) && this.app.game?.drawMode === 'automatic' && !this.app.autoRunning && !data.bingoConfirmed) {
         this.sequenceTimers.push(setTimeout(() => this.originalStartAutomatic(), 500));
       }
     }
@@ -502,6 +508,20 @@ class LocalRoomAdmin {
               <label style="display:grid;grid-template-columns:1fr 90px;gap:10px;align-items:center"><span><b>Tiempo para elegir</b><br><small>Entre 1 y 30 minutos.</small></span><input id="localAutoAssignMinutes" type="number" min="1" max="30" value="10" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff;font-weight:900"></label>
             </div>
           </div>
+          <div class="localCardBox" style="margin-top:14px">
+            <h3>Partida y modo TikTok</h3>
+            <div class="localGrid2">
+              <label style="display:grid;gap:7px"><b>Tipo de partida</b><select id="localGameType" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"><option value="real">Juego con premios</option><option value="test">Juego de prueba</option></select></label>
+              <label style="display:grid;gap:7px"><b>WhatsApp de contacto</b><input id="localWhatsapp" placeholder="Ej.: +54 3764 123456" maxlength="40" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label>
+            </div>
+            <div class="localGrid2" style="margin-top:10px">
+              <label><b>Premio AmboCabeza</b><input id="localPrizeAmbo" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label>
+              <label><b>Premio Línea</b><input id="localPrizeLine" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label>
+            </div>
+            <label style="display:grid;gap:7px;margin-top:10px"><b>Premio Bingo</b><input id="localPrizeBingo" type="number" min="0" value="0" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label>
+            <label class="localToggleRow"><span><b>Mostrar Mercado Pago</b><br><small>Solo como medio de contacto/pago; no procesa pagos.</small></span><input id="localShowMercadoPago" type="checkbox" checked></label>
+            <label class="localToggleRow"><span><b>Guiño a Argentina</b><br><small>Muestra “Argentina”, +54 y detalles sutiles sin cambiar los colores de la marca.</small></span><input id="localArgentinaHint" type="checkbox" checked></label>
+          </div>
           <div class="localToggleRow"><div><b>Permitir canto de números en celulares</b><br><small>Cada jugador podrá activarlo o silenciarlo.</small></div><input id="localPlayerAudioAllowed" type="checkbox" checked></div>
           <div id="localSetupError"></div>
           <div class="localToolbar"><button class="localSecondary" id="localRestoreBrowser">RESTAURAR ÚLTIMA COPIA</button><button class="localSecondary" id="localRestoreFile">RESTAURAR ARCHIVO</button><button class="localPrimary" id="localOpenRoom">ABRIR SALA DE ESPERA</button></div>
@@ -568,7 +588,16 @@ class LocalRoomAdmin {
         linePrizeCount: Number($('localLinePrizeCount')?.value || 1),
         bingoPrizeCount: 1,
         allowSamePlayerSecondLine: Boolean($('localSamePlayerSecondLine')?.checked),
-        tiePolicy: $('localTiePolicy')?.value === 'same_ball' ? 'same_ball' : 'first_claim'
+        tiePolicy: $('localTiePolicy')?.value === 'same_ball' ? 'same_ball' : 'first_claim',
+        gameType: $('localGameType')?.value === 'test' ? 'test' : 'real',
+        prizeAmounts: {
+          ambo: Math.max(0, Number($('localPrizeAmbo')?.value) || 0),
+          line: Math.max(0, Number($('localPrizeLine')?.value) || 0),
+          bingo: Math.max(0, Number($('localPrizeBingo')?.value) || 0)
+        },
+        whatsapp: String($('localWhatsapp')?.value || '').trim(),
+        showMercadoPago: $('localShowMercadoPago')?.checked !== false,
+        argentinaHint: $('localArgentinaHint')?.checked !== false
       };
       const assignmentTimer = {
         enabled: Boolean($('localAutoAssignEnabled')?.checked),
@@ -624,7 +653,7 @@ class LocalRoomAdmin {
   }
 
   async syncGameNow() {
-    if (!this.active || !this.app.game || this.serverState?.status !== 'playing') return;
+    if (!this.active || !this.app.game || !['playing','paused'].includes(this.serverState?.status)) return;
     const data = await this.request('/api/admin/game', { method: 'POST', body: JSON.stringify({ game: this.serializeGame() }) });
     this.serverState = data;
   }
@@ -876,6 +905,12 @@ class LocalRoomAdmin {
         <div class="localCardBox"><h3>Ingreso de jugadores</h3><div class="localCompactAccess"><div><small>Página general</small><div class="localCode">SALA ${esc(data.roomCode)}</div></div><button class="localSecondary" id="localCopyPlayerPage">COPIAR PÁGINA PARA JUGADORES</button></div><small>El enlace largo no se muestra. Quien lo reciba escribe su código privado.</small></div>
         <div class="localCardBox"><h3>Código de sala</h3><div class="localUrl">${esc(data.roomCode)}</div><small>Estado: ${waiting ? 'esperando jugadores' : playing ? 'sorteo iniciado' : 'sorteo finalizado'}.</small></div>
       </div>
+      <div class="localCardBox" style="margin-top:14px;border-color:#d04cff">
+        <h3>Modo transmisión TikTok</h3>
+        <div class="localUrl">${esc(data.broadcastUrl || 'Se habilitará al abrir la sala')}</div>
+        <small>Es un enlace vertical, privado y de solo lectura para abrir en un segundo celular.</small>
+        <div class="localToolbar"><button class="localPrimary" id="localCopyBroadcast" ${data.broadcastUrl ? '' : 'disabled'}>COPIAR ENLACE TIKTOK</button><button class="localSecondary" id="localOpenBroadcast" ${data.broadcastUrl ? '' : 'disabled'}>ABRIR VISTA</button></div>
+      </div>
       ${waiting && timerEnabled ? `<div class="localTimerBox"><div class="localTimerTop"><div><b>Asignación automática · ${timerStatusLabel}</b><br><small>Al finalizar, conserva elecciones confirmadas y completa a quienes falten.</small></div><div id="localAssignmentCountdown" class="localCountdown">${this.formatCountdown(this.assignmentRemainingSeconds())}</div></div>${timerControls}</div>` : ''}
       ${waiting && !timerEnabled ? `<div class="localTimerBox"><div class="localTimerTop"><div><b>Asignación manual</b><br><small>No hay cuenta regresiva configurada. Podés cerrar la elección y asignar pendientes cuando quieras.</small></div></div><div class="localTimerActions"><button class="danger" id="localAssignNow">ASIGNAR PENDIENTES AHORA</button></div></div>` : ''}
       <div class="localCardBox" style="margin-top:14px">
@@ -900,6 +935,8 @@ class LocalRoomAdmin {
 
     $('localCopyLink').onclick = () => this.copyText(playerPageUrl);
     if ($('localCopyPlayerPage')) $('localCopyPlayerPage').onclick = () => this.copyText(playerPageUrl);
+    if ($('localCopyBroadcast') && data.broadcastUrl) $('localCopyBroadcast').onclick = () => this.copyText(data.broadcastUrl, 'Enlace TikTok copiado');
+    if ($('localOpenBroadcast') && data.broadcastUrl) $('localOpenBroadcast').onclick = () => window.open(data.broadcastUrl, '_blank', 'noopener');
     body.querySelectorAll('[data-copy-direct]').forEach(button => button.onclick = () => this.copyText(this.playerDirectUrl(button.dataset.copyDirect), 'Ingreso directo copiado'));
     body.querySelectorAll('[data-copy-page]').forEach(button => button.onclick = () => this.copyText(playerPageUrl));
     $('localDownloadBackup').onclick = () => this.downloadBackup();
@@ -978,7 +1015,7 @@ class LocalRoomAdmin {
     this.backupTimer = setTimeout(async () => {
       try {
         const backup = await this.request('/api/admin/backup');
-        localStorage.setItem('bingoGorda2OnlineLastBackup', JSON.stringify(backup));
+        localStorage.setItem('bingoGorda21OnlineLastBackup', JSON.stringify(backup));
       } catch (error) {
         console.warn('No se pudo guardar la copia automática:', error);
       }
@@ -988,18 +1025,18 @@ class LocalRoomAdmin {
   async downloadBackup() {
     try {
       const backup = await this.request('/api/admin/backup');
-      localStorage.setItem('bingoGorda2OnlineLastBackup', JSON.stringify(backup));
+      localStorage.setItem('bingoGorda21OnlineLastBackup', JSON.stringify(backup));
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `Bingo_2.0_Sala_${backup.state?.roomCode || 'copia'}_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `Bingo_2.1_Sala_${backup.state?.roomCode || 'copia'}_${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     } catch (error) { alert(error.message); }
   }
 
   async restoreBrowserBackup() {
-    const raw = localStorage.getItem('bingoGorda2OnlineLastBackup') || localStorage.getItem('bingoBetaOnlineLastBackup') || localStorage.getItem('bingoV10OnlineLastBackup');
+    const raw = localStorage.getItem('bingoGorda21OnlineLastBackup') || localStorage.getItem('bingoBetaOnlineLastBackup') || localStorage.getItem('bingoV10OnlineLastBackup');
     if (!raw) { alert('No hay una copia automática guardada en este navegador.'); return; }
     try { await this.restoreBackup(JSON.parse(raw)); }
     catch (error) { alert(error.message); }
@@ -1049,7 +1086,7 @@ class LocalRoomAdmin {
   }
 
   async syncGame() {
-    if (!this.active || !this.app.game || this.serverState?.status !== 'playing') return;
+    if (!this.active || !this.app.game || !['playing','paused'].includes(this.serverState?.status)) return;
     try {
       const data = await this.request('/api/admin/game', { method: 'POST', body: JSON.stringify({ game: this.serializeGame() }) });
       this.applyState(data);
@@ -1165,6 +1202,7 @@ class LocalRoomAdmin {
       this.claimOpen = false;
       this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
       this.app.renderAutoControls();
+      this.showCopyToast(this.app.game?.drawMode === 'automatic' ? 'Automático detenido · iniciá cuando estés listo' : 'Partida pausada · continuá cuando estés listo');
       this.updateClaimBadge();
       setTimeout(() => this.showNextClaim(), 150);
     } catch (error) {
@@ -1205,7 +1243,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const app = window.__BINGO_V8__;
     if (!app) return;
     const version = $('versionBadge');
-    if (version) version.textContent = 'VERSIÓN 2.0';
+    if (version) version.textContent = 'VERSIÓN 2.1';
     new LocalRoomAdmin(app).init().catch(error => console.error('No se inició la sala online:', error));
   }, 0);
 });

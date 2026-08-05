@@ -1,42 +1,21 @@
-CÓMO PUBLICAR BINGO DE LA GORDA 2.0 EN RENDER
+CÓMO PUBLICAR BINGO DE LA GORDA 2.1 EN RENDER
 ==============================================
 
-PRIMERA PUBLICACIÓN
-1. Subí todo el contenido de esta carpeta a la raíz de un repositorio de GitHub.
-2. En Render creá un Web Service conectado al repositorio.
-3. Configurá:
+1. Subí el proyecto completo a GitHub.
+2. Entrá en Render y creá un nuevo Web Service conectado al repositorio.
+3. Configuración:
    Build Command: npm install
    Start Command: npm start
-   Plan: Free
-4. Variables recomendadas:
-   NODE_VERSION = 22
-   ONLINE_MODE = true
-   ADMIN_PASSWORD = una contraseña privada
-   BINGO_TIMEZONE = America/Argentina/Buenos_Aires
-5. Health Check Path: /healthz
-6. Publicá y esperá que el servicio indique Live.
+   Health Check Path: /healthz
+4. Variables de entorno:
+   ONLINE_MODE=true
+   MASTER_ADMIN_PASSWORD=UNA_CLAVE_LARGA_Y_PRIVADA
+   BINGO_TIMEZONE=America/Argentina/Buenos_Aires
+5. Al publicar, abrí:
+   https://TU-SERVICIO.onrender.com/admin-principal
+6. Desde el panel principal creá los enlaces temporales.
 
-DIRECCIONES
-- Administrador: https://TU-SERVICIO.onrender.com/admin
-- Jugadores: https://TU-SERVICIO.onrender.com/jugador
-
-FLUJO RECOMENDADO
-1. Creá una partida nueva.
-2. Elegí modalidad, premios y forma de sorteo.
-3. Generá entre 1 y 250 cartones, cargalos manualmente o importalos desde PDF.
-4. Configurá la sala.
-5. Compartí los accesos.
-6. Esperá que los jugadores seleccionen y confirmen sus cartones.
-7. Revisá jugadores, cartones y solicitudes pendientes.
-8. Presioná INICIAR SORTEO. El sistema realizará el anuncio y la cuenta regresiva.
-9. Resolvé los reclamos desde el panel.
-10. Al confirmar el bingo, finalizá el sorteo y descargá RESULTADOS.
-
-LIMITACIONES DEL PLAN GRATUITO
-- El servicio puede tardar en despertar después de estar inactivo.
-- El almacenamiento local puede perderse al reiniciar o volver a desplegar.
-- Descargá resultados y copias de seguridad durante partidas importantes.
-- Evitá desplegar una actualización con una sala activa.
-
-REGLAMENTO
-El botón ya está preparado, pero el archivo reglamento.pdf deberá agregarse a la raíz del proyecto cuando se termine de redactar.
+IMPORTANTE
+- El plan gratuito puede suspender el servicio cuando no se usa y puede reiniciar el contenedor.
+- Para vender accesos de manera regular conviene utilizar almacenamiento persistente o una base de datos gestionada. La carpeta data no debe tratarse como una garantía de almacenamiento permanente en un servicio efímero.
+- Nunca compartas la contraseña principal ni la guardes en GitHub.

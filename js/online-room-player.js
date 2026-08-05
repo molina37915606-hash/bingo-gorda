@@ -477,9 +477,15 @@ class PlayerApp {
   handleSequence(previous) {
     const status = this.state.status, transition = this.state.transition;
     if (status === 'paused') {
-      this.showSequence('EL ADMINISTRADOR PAUSÓ LA PARTIDA', 'YA CONTINUAMOS', '');
-      if (this.lastStatus !== 'paused') this.speakEvent('pause', {}, true);
-      clearInterval(this.sequenceTimer);
+      const claimPending = (this.state.publicClaims || []).some(claim => claim.status === 'pending');
+      if (claimPending) {
+        clearInterval(this.sequenceTimer);
+        $('sequenceOverlay').classList.remove('show');
+      } else {
+        this.showSequence('EL ADMINISTRADOR PAUSÓ LA PARTIDA', 'YA CONTINUAMOS', '');
+        if (this.lastStatus !== 'paused') this.speakEvent('pause', {}, true);
+        clearInterval(this.sequenceTimer);
+      }
     } else if (status === 'starting' && transition) this.runStartSequence(transition);
     else if (status === 'resuming' && transition) this.runResumeSequence(transition);
     else { clearInterval(this.sequenceTimer); $('sequenceOverlay').classList.remove('show'); }

@@ -1,11 +1,13 @@
 (() => {
 'use strict';
 
-const APP_VERSION = 20;
-const STORE_KEY = 'bingoGordaV8Games';
-const CURRENT_KEY = 'bingoGordaV8Current';
+const APP_VERSION = 21;
+const OPERATOR_STORAGE_MATCH = location.pathname.match(/^\/operador\/([^/]+)/);
+const STORAGE_SCOPE = OPERATOR_STORAGE_MATCH ? `:operador:${decodeURIComponent(OPERATOR_STORAGE_MATCH[1]).slice(0,16)}` : '';
+const STORE_KEY = `bingoGordaV8Games${STORAGE_SCOPE}`;
+const CURRENT_KEY = `bingoGordaV8Current${STORAGE_SCOPE}`;
 const OLD_STORE_KEY = 'bingoGordaV5Games';
-const VOICE_KEY = 'bingoGordaV8Voices';
+const VOICE_KEY = `bingoGordaV8Voices${STORAGE_SCOPE}`;
 const PHASE = Object.freeze({
   HOME: 'HOME', CONFIGURING: 'CONFIGURING', READY: 'READY', DRAWING: 'DRAWING',
   PAUSED: 'PAUSED', REVIEW: 'REVIEWING_WINNER', ROUND_END: 'ROUND_ENDED'
@@ -46,7 +48,7 @@ class GameStore {
   }
   remove(id) { this.writeAll(this.readAll().filter(game => game.id !== id)); }
   migrateLegacyOnce() {
-    if (storageGet(STORE_KEY) !== null) return;
+    if (storageGet(STORE_KEY) !== null || STORAGE_SCOPE) return;
     try {
       const old = JSON.parse(storageGet(OLD_STORE_KEY) || '[]');
       if (Array.isArray(old) && old.length) this.writeAll(old.map(GameStore.normalizeGame));
@@ -495,7 +497,7 @@ class BingoApp {
     $('generatedSetup').style.display = source === 'generated' ? '' : 'none'; $('manualSetup').style.display = source === 'manual' ? '' : 'none'; $('pdfSetup').style.display = source === 'pdf' ? 'block' : 'none';
     if (source === 'manual' && !this.wizard.manualCards.length) this.addManualCard();
   }
-  renderNames() { /* En 2.0 los cartones generados no se vinculan a nombres. */ }
+  renderNames() { /* En 2.1 los cartones generados no se vinculan a nombres. */ }
 
   addManualCard(copyBets = null) {
     if (this.wizard.manualCards.length >= 250) { alert('El máximo es de 250 cartones.'); return; }
@@ -612,7 +614,7 @@ class BingoApp {
     this.animateLastBall();
     const candidateGame = this.localRoom?.active && this.localRoom.participatingGame ? this.localRoom.participatingGame() : this.game;
     let groups = PrizeEngine.candidateGroups(candidateGame);
-    if (this.localRoom?.active) groups = groups.filter(group => group.type === 'ambo');
+    if (this.localRoom?.active) groups = [];
     if (groups.length) {
       this.stopAutomatic(false); this.reviewQueue = groups; this.setPhase(PHASE.REVIEW);
       groups.forEach(group => { this.game.prizes[group.type].status = 'pending'; });
@@ -624,6 +626,15 @@ class BingoApp {
     setTimeout(() => this.voice.speakBall(number), 300); return true;
   }
   animateLastBall() { const ball = $('lastBall'); ball.classList.remove('spin'); void ball.offsetWidth; ball.classList.add('spin'); }
+  updateAutoSeconds(value) {
+    if (!this.game) return;
+    const seconds = Math.max(3, Math.min(60, Number(value) || 10));
+    this.game.autoSeconds = seconds;
+    if ($('autoSecondsLive')) $('autoSecondsLive').value = String(seconds);
+    this.save();
+    if (this.autoRunning) this.scheduleAutomatic();
+    this.renderAutoControls();
+  }
   startAutomatic() {
     if (!this.game || this.game.drawMode !== 'automatic' || this.phase === PHASE.REVIEW || this.activeReview) return;
     this.autoRunning = true; this.setPhase(PHASE.DRAWING); this.renderAutoControls(); this.requestDraw('automatic');
@@ -713,8 +724,9 @@ class BingoApp {
     $('autoBtn').style.display = automatic && !online ? '' : 'none';
     $('pauseBtn').style.display = online || automatic ? '' : 'none';
     $('autoBtn').textContent = this.autoRunning ? '⏸ PAUSAR AUTOMÁTICO' : '▶ INICIAR AUTOMÁTICO';
-    $('pauseBtn').textContent = roomStatus === 'paused' ? '▶ CONTINUAR PARTIDA' : roomStatus === 'resuming' ? '⏳ REANUDANDO' : '⏸ PAUSAR PARTIDA';
-    const stateText = roomStatus === 'starting' ? 'Preparando inicio y cuenta regresiva' : roomStatus === 'paused' ? 'Partida pausada por el administrador' : roomStatus === 'resuming' ? 'La partida continúa en 3, 2, 1…' : roomStatus === 'waiting' ? 'Sala de espera · iniciá desde SALA ONLINE' : bingoLocked ? 'Bingo confirmado · bolillero bloqueado' : locked ? 'Detenido por posible ganador' : automatic ? (this.autoRunning ? `Automático activo · cada ${this.game.autoSeconds} segundos` : 'Automático detenido') : 'Sorteo manual';
+    $('pauseBtn').textContent = roomStatus === 'paused' ? (automatic ? '▶ INICIAR AUTOMÁTICO' : '▶ CONTINUAR PARTIDA') : roomStatus === 'resuming' ? '⏳ REANUDANDO' : '⏸ PAUSAR PARTIDA';
+    const stateText = roomStatus === 'starting' ? 'Preparando inicio y cuenta regresiva' : roomStatus === 'paused' ? (automatic ? 'Automático detenido · el administrador decide cuándo iniciarlo' : 'Partida pausada por el administrador') : roomStatus === 'resuming' ? 'La partida continúa en 3, 2, 1…' : roomStatus === 'waiting' ? 'Sala de espera · iniciá desde SALA ONLINE' : bingoLocked ? 'Bingo confirmado · bolillero bloqueado' : locked ? 'Detenido por posible ganador' : automatic ? (this.autoRunning ? `Automático activo · cada ${this.game.autoSeconds} segundos` : 'Automático detenido') : 'Sorteo manual';
+    if ($('autoSecondsLive')) { $('autoSecondsLive').value = String(this.game.autoSeconds); $('autoSecondsLive').disabled = !automatic || bingoLocked; }
     $('autoState').textContent = stateText;
     $('drawBtn').textContent = automatic ? '🎱 CANTAR SIGUIENTE AHORA' : '🎱 SIGUIENTE BOLILLA';
     ['drawBtn','autoBtn','undoBtn'].forEach(id => { $(id).disabled = locked; });
@@ -868,7 +880,7 @@ class BingoApp {
   renderThemes() { const host = $('themeGrid'); host.innerHTML = ''; this.themeDefinitions().forEach(([id, name, a, b]) => { const button = document.createElement('button'); button.className = 'themeChoice'; button.dataset.theme = id; button.style.background = `linear-gradient(135deg,${a},${b})`; button.innerHTML = `<span>${name}</span>`; button.onclick = () => this.applyTheme(id); host.appendChild(button); }); this.applyTheme(storageGet('gorda-theme') || 'clasico'); }
 
   bindEvents() {
-    $('newGameBtn').onclick = () => this.openWizard(); if ($('enterRoomBtn')) $('enterRoomBtn').onclick = () => location.href = '/jugador'; $('loadGameBtn').onclick = () => { this.renderGames(); $('gamesModal').classList.add('show'); }; $('cancelWizard').onclick = () => { this.setPhase(PHASE.HOME); this.showScreen('home'); };
+    $('newGameBtn').onclick = () => this.openWizard(); $('loadGameBtn').onclick = () => { this.renderGames(); $('gamesModal').classList.add('show'); }; $('cancelWizard').onclick = () => { this.setPhase(PHASE.HOME); this.showScreen('home'); };
     document.querySelectorAll('.modeChoice button').forEach(button => button.onclick = () => { this.wizard.mode = Number(button.dataset.mode); document.querySelectorAll('.modeChoice button').forEach(b => b.classList.toggle('active', b === button)); if (this.wizard.mode === 75) { $('globalAmbo').checked = false; $('globalAmbo').disabled = true; if (this.wizard.source === 'pdf') this.setWizardSource('generated'); } else $('globalAmbo').disabled = false; });
     document.querySelectorAll('.presenterCard').forEach(card => {
       card.onclick = event => { if (event.target.closest('.voicePreview')) return; this.wizard.presenter = card.dataset.id; document.querySelectorAll('.presenterCard').forEach(other => { other.classList.toggle('selected', other === card); other.classList.toggle('dimmed', other !== card); }); $('wizardNext').disabled = false; };
@@ -893,7 +905,7 @@ class BingoApp {
     $('savePdfReview').onclick = () => { const card = this.collectPdfReview(), result = CardService.validate(card); if (!result.valid) { $('pdfReviewError').textContent = result.errors.join(' · '); return; } card.reviewed = true; card.valid = true; this.wizard.pdfCards[this.pdfReviewIndex] = card; $('pdfReviewModal').classList.remove('show'); this.renderPdfCards(); };
     $('clearPdfReview').onclick = () => { $('pdfReviewGrid').querySelectorAll('input').forEach(input => { input.value = ''; }); this.validatePdfReview(); }; $('closePdfReview').onclick = () => $('pdfReviewModal').classList.remove('show');
 
-    $('drawBtn').onclick = () => this.requestDraw('button'); $('autoBtn').onclick = () => this.toggleAutomatic(); $('pauseBtn').onclick = () => this.toggleAutomatic(); $('undoBtn').onclick = () => this.undoLast(); $('resetBtn').onclick = () => this.newRound();
+    $('drawBtn').onclick = () => this.requestDraw('button'); $('autoBtn').onclick = () => this.toggleAutomatic(); $('pauseBtn').onclick = () => this.toggleAutomatic(); $('undoBtn').onclick = () => this.undoLast(); $('resetBtn').onclick = () => this.newRound(); if ($('autoSecondsLive')) $('autoSecondsLive').onchange = event => this.updateAutoSeconds(event.target.value);
     $('amboBtn').onclick = () => this.game?.prizes.ambo.winners.length ? this.showConfirmedPrize('ambo') : null; $('lineBtn').onclick = () => this.game?.prizes.line.winners.length ? this.showConfirmedPrize('line') : null; $('bingoBtn').onclick = () => this.game?.prizes.bingo.winners.length ? this.showConfirmedPrize('bingo') : null;
     $('continueGame').onclick = () => this.activeReview?.pending ? this.confirmReview() : this.advanceReview(); $('finishGame').onclick = () => this.activeReview?.pending ? this.rejectReview() : this.advanceReview();
     $('viewWinnerCard').onclick = () => { const card = this.activeReview?.candidates?.[0]?.card; if (card) { $('winnerOverlay').classList.remove('show'); this.openLarge(card.id); } };
@@ -912,7 +924,7 @@ class BingoApp {
 }
 
 function showFatal(error) {
-  console.error(error); const box = $('fatalError'); if (box) { box.style.display = 'block'; box.textContent = `Bingo de la Gorda 2.0 encontró un error y detuvo la ejecución para no perder datos.\n\n${error?.stack || error}`; }
+  console.error(error); const box = $('fatalError'); if (box) { box.style.display = 'block'; box.textContent = `Bingo de la Gorda 2.1 encontró un error y detuvo la ejecución para no perder datos.\n\n${error?.stack || error}`; }
 }
 
 window.BingoV8Engine = { APP_VERSION, PHASE, GameStore, CardService, PrizeEngine, VoiceService, PdfImporter, BingoApp };

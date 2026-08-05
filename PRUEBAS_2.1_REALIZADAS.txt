@@ -1,0 +1,28 @@
+PRUEBAS AUTOMÁTICAS - BINGO DE LA GORDA 2.1
+============================================
+
+La prueba incluida verifica:
+- versión y páginas principales;
+- inicio de sesión del propietario;
+- creación de administrador temporal;
+- acceso por enlace separado;
+- aislamiento entre propietario y operador;
+- creación de 250 cartones;
+- configuración de premios y modo TikTok;
+- selección, renovación y reserva de cartones;
+- cambio de dispositivo autorizado;
+- inicio, pausa y reanudación;
+- cambio del tiempo automático durante la partida;
+- ausencia de anuncio automático de AmboCabeza;
+- verificación manual de AmboCabeza, Línea y Bingo;
+- permanencia en pausa después de cada reclamo;
+- celebración publicada solo después de confirmar;
+- acta, PDF final y copia de seguridad 2.1;
+- límite de partidas del operador;
+- revocación del acceso temporal.
+
+Comando:
+  npm test
+
+Resultado esperado:
+  PRUEBAS BINGO DE LA GORDA 2.1: OK

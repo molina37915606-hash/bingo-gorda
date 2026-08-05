@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
-<title>Bingo de la Gorda 2.0</title>
+<title>Bingo de la Gorda 2.1</title>
 <style>
 :root{
  --bg:#040712;--panel:#0b1430;--line:#2b4174;--txt:#fff;--muted:#9eb0d8;
@@ -260,7 +260,7 @@ body{background:radial-gradient(circle at 50% -20%,#192962 0,#071020 46%,#02040b
 
 
 .sourceChoice{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:12px 0 18px}.sourceChoice button{padding:18px;font-size:18px}.sourceChoice button.active{background:#6b35d4;border-color:#d6b6ff}.manualTools{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.manualCards{display:grid;gap:16px}.manualCard{padding:14px;border:1px solid #ffffff24;border-radius:16px;background:#0d1730}.manualCardHead{display:grid;grid-template-columns:130px 1fr auto;gap:10px;align-items:center}.manualBets{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0}.manualBets label{display:flex;gap:6px;align-items:center;background:#ffffff0b;padding:7px 10px;border-radius:10px}.manualGrid90,.manualGrid75{display:grid;gap:4px;margin-top:10px}.manualGrid90{grid-template-columns:repeat(9,minmax(42px,1fr))}.manualGrid75{grid-template-columns:repeat(5,minmax(50px,1fr))}.manualCell{width:100%;min-width:0;text-align:center;padding:9px 4px;border-radius:8px;border:1px solid #ffffff2b;background:#081126;color:#fff;font-weight:800}.manualCell.invalid{border-color:#ff5964;background:#3c1118}.manualError{color:#ff9aa2;font-size:13px;margin-top:8px;white-space:pre-line}.betTag{font-size:11px;color:#d8c8ff}.big.ambo{background:linear-gradient(135deg,#7a3be0,#b45cff)}
-.gameConfig{display:grid;gap:14px;max-width:760px;margin:0 auto}.configBlock{background:#0d1837;border:1px solid #314878;border-radius:14px;padding:14px}.configBlock h4{margin:0 0 10px;color:var(--yellow)}.checkRow{display:flex;flex-wrap:wrap;gap:10px}.checkRow label,.radioRow label{display:flex;align-items:center;gap:7px;background:#ffffff0b;border:1px solid #ffffff18;border-radius:10px;padding:10px 12px;font-weight:900}.radioRow{display:flex;flex-wrap:wrap;gap:10px}.autoControls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.autoState{font-size:12px;color:var(--yellow);font-weight:900;text-align:center;margin-top:6px}.draw.secondaryDraw{background:linear-gradient(#247fd8,#124d9e)}
+.gameConfig{display:grid;gap:14px;max-width:760px;margin:0 auto}.configBlock{background:#0d1837;border:1px solid #314878;border-radius:14px;padding:14px}.configBlock h4{margin:0 0 10px;color:var(--yellow)}.checkRow{display:flex;flex-wrap:wrap;gap:10px}.checkRow label,.radioRow label{display:flex;align-items:center;gap:7px;background:#ffffff0b;border:1px solid #ffffff18;border-radius:10px;padding:10px 12px;font-weight:900}.radioRow{display:flex;flex-wrap:wrap;gap:10px}.autoControls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.autoSecondsLive{display:flex;align-items:center;justify-content:center;gap:5px;background:#101c38;border:1px solid #40598e;border-radius:10px;padding:6px 8px;font-size:12px;font-weight:900}.autoSecondsLive input{width:54px;background:#070e20;color:#fff;border:1px solid #526da6;border-radius:7px;padding:6px;text-align:center;font-weight:900}.autoState{font-size:12px;color:var(--yellow);font-weight:900;text-align:center;margin-top:6px}.draw.secondaryDraw{background:linear-gradient(#247fd8,#124d9e)}
 @media(max-width:700px){.sourceChoice{grid-template-columns:1fr}.manualCardHead{grid-template-columns:1fr}.manualGrid90{grid-template-columns:repeat(9,minmax(30px,1fr))}.manualCell{padding:7px 1px;font-size:12px}}
 
 /* V7.2: ajuste de pantalla, temas, confirmación y edición */
@@ -351,9 +351,8 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 <div class="homeBtns">
 <button class="primary" id="newGameBtn">CREAR SALA</button>
 <button class="secondary" id="loadGameBtn">RECUPERAR PARTIDA</button>
-<button class="secondary" id="enterRoomBtn">INGRESAR A SALA</button>
 </div>
-<div class="homeSub">BINGO DE LA GORDA 2.0 · Bingo de 75 o 90 bolas · Hasta 250 cartones</div>
+<div class="homeSub">BINGO DE LA GORDA 2.1 · Bingo de 75 o 90 bolas · Hasta 250 cartones</div>
 </div>
 </section>
 <section class="screen" id="wizard">
@@ -429,7 +428,7 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 </section>
 <section class="screen" id="game">
 <header class="gameTop card">
-<div class="gameTitle">EL BINGO DE LA GORDA<span id="versionBadge" style="font-size:11px;color:var(--muted);font-weight:800;margin-left:8px">VERSIÓN 2.0</span></div>
+<div class="gameTitle">EL BINGO DE LA GORDA<span id="versionBadge" style="font-size:11px;color:var(--muted);font-weight:800;margin-left:8px">VERSIÓN 2.1</span></div>
 <div class="statusLine" id="lineStatus">Línea: pendiente</div>
 <div class="gameNo" id="gameNo">Juego 0001</div>
 </header>
@@ -442,7 +441,7 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 <div class="centerTitle">ÚLTIMA BOLILLA</div><div class="machine"><div class="ball" id="lastBall">—</div></div>
 <div class="counter">SORTEADAS: <b id="counter">0 / 90</b></div><div class="recent" id="recent"></div>
 <button class="primary draw secondaryDraw" id="drawBtn">🎱 SIGUIENTE BOLILLA</button>
-<div class="autoControls"><button class="primary" id="autoBtn">▶ INICIAR AUTOMÁTICO</button><button class="secondary" id="undoBtn">↶ DESHACER</button></div>
+<div class="autoControls"><button class="primary" id="autoBtn">▶ INICIAR AUTOMÁTICO</button><label class="autoSecondsLive">INTERVALO <input id="autoSecondsLive" type="number" min="3" max="60" value="10"> s</label><button class="secondary" id="undoBtn">↶ DESHACER</button></div>
 <div class="autoState" id="autoState">Sorteo manual</div>
 <div class="two"><button class="secondary" id="resetBtn">⟳ NUEVA RONDA</button><button class="secondary" id="pauseBtn">⏸ DETENER</button></div>
 </section>
@@ -533,5 +532,5 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 <label style="display:grid;grid-template-columns:110px 1fr;gap:7px;margin:8px 0"><span>Vol. efectos</span><input id="fxVol" max=".5" min="0" step=".01" type="range" value=".18"/></label>
 </div>
 
-<div id="fatalError" style="display:none;position:fixed;inset:18px;z-index:999;background:#2a0710;color:#fff;border:2px solid #ff5964;border-radius:18px;padding:20px;overflow:auto;white-space:pre-wrap;font:16px/1.45 Segoe UI,Arial"></div><script defer="defer" src="js/presenter-scripts.js?v=2.0"></script><script defer="defer" src="js/app-v8.js?v=2.0"></script><script defer="defer" src="js/online-room-admin.js?v=2.0"></script></body>
+<div id="fatalError" style="display:none;position:fixed;inset:18px;z-index:999;background:#2a0710;color:#fff;border:2px solid #ff5964;border-radius:18px;padding:20px;overflow:auto;white-space:pre-wrap;font:16px/1.45 Segoe UI,Arial"></div><script defer="defer" src="js/presenter-scripts.js?v=2.1"></script><script defer="defer" src="js/app-v8.js?v=2.1"></script><script defer="defer" src="js/online-room-admin.js?v=2.1"></script></body>
 </html>

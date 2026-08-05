@@ -8,15 +8,21 @@ PRUEBAS AUTOMÁTICAS - VERSIÓN BETA
 - Alertas oficiales de primera línea, segunda línea y bingo: OK.
 - El mismo jugador puede ganar ambas líneas con cartones diferentes: OK.
 - Empate con la misma última bolilla: OK.
+- Límite de 4 ganadores simultáneos para mantener una sola hoja: OK.
+- Bloqueo inmediato del bolillero al confirmar bingo: OK.
+- Bloqueo de cambios de bolillas después del bingo confirmado: OK.
 - Bloqueo de reclamos y bolillas después de finalizar: OK.
+- PDF inaccesible antes de finalizar el sorteo: OK.
 - Botón RESULTADOS disponible sin contraseña después del cierre: OK.
-- PDF oficial de una sola hoja: OK.
+- PDF oficial de una sola hoja A4 horizontal: OK.
 - Logo, fecha, inicio, finalización y duración: OK.
 - Orden y hora exacta de cada bolilla: OK.
 - Marcas de L1, L2 y B sobre la secuencia: OK.
 - Hora de canto y bolilla asociada: OK.
 - Cartones ganadores completos y números premiados resaltados: OK.
 - Descarga desde administrador y jugador: OK.
-- Copia de seguridad y creación de una sala nueva: OK.
+- Conservación del último PDF al crear una sala nueva: OK.
+- Recuperación del último resultado después de reiniciar con la carpeta de datos conservada: OK.
+- Copia de seguridad y creación segura de una sala nueva: OK.
 
 Resultado final: PRUEBAS BETA OK.

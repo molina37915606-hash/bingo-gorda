@@ -26,6 +26,7 @@ class LocalRoomAdmin {
     this.originalCardNames = new Map();
     this.originalCardNamesGameId = null;
     this.messageDraft = null;
+    this.bingoLockNotified = false;
     app.localRoom = this;
   }
 
@@ -45,19 +46,19 @@ class LocalRoomAdmin {
       return result;
     };
     this.app.requestDraw = (...args) => {
-      if (this.active && this.serverState?.status !== 'playing') {
-        alert(this.serverState?.status === 'finished' ? 'El sorteo ya fue finalizado.' : 'La sala está esperando jugadores. Presioná INICIAR SORTEO antes de cantar la primera bolilla.');
+      if (this.active && (this.serverState?.status !== 'playing' || this.serverState?.bingoConfirmed)) {
+        alert(this.serverState?.bingoConfirmed ? 'El bingo ya fue confirmado. No se pueden sortear más bolillas; finalizá el sorteo.' : this.serverState?.status === 'finished' ? 'El sorteo ya fue finalizado.' : 'La sala está esperando jugadores. Presioná INICIAR SORTEO antes de cantar la primera bolilla.');
         return false;
       }
       return this.originalRequestDraw(...args);
     };
     this.app.processSpecificBall = (...args) => {
-      if (this.active && this.serverState?.status !== 'playing') return false;
+      if (this.active && (this.serverState?.status !== 'playing' || this.serverState?.bingoConfirmed)) return false;
       return this.originalProcessSpecificBall(...args);
     };
     this.app.startAutomatic = (...args) => {
-      if (this.active && this.serverState?.status !== 'playing') {
-        alert(this.serverState?.status === 'finished' ? 'El sorteo ya fue finalizado.' : 'Primero presioná INICIAR SORTEO desde SALA ONLINE.');
+      if (this.active && (this.serverState?.status !== 'playing' || this.serverState?.bingoConfirmed)) {
+        alert(this.serverState?.bingoConfirmed ? 'El bingo ya fue confirmado. Finalizá el sorteo antes de continuar.' : this.serverState?.status === 'finished' ? 'El sorteo ya fue finalizado.' : 'Primero presioná INICIAR SORTEO desde SALA ONLINE.');
         return;
       }
       return this.originalStartAutomatic(...args);
@@ -268,6 +269,17 @@ class LocalRoomAdmin {
       button.classList.toggle('activeRoom', this.active);
     }
     if (this.active) this.scheduleAutoBackup();
+    if (data.bingoConfirmed && data.status === 'playing') {
+      this.app.stopAutomatic(false);
+      this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
+      this.app.renderAutoControls();
+      if (!this.bingoLockNotified) {
+        this.bingoLockNotified = true;
+        this.showCopyToast('Bingo confirmado: bolillero bloqueado');
+      }
+    } else if (!data.bingoConfirmed) {
+      this.bingoLockNotified = false;
+    }
     if (this.app.game) this.app.renderRanking();
     if ($('localRoomModal')?.classList.contains('show')) this.renderMainModal();
   }
@@ -420,6 +432,7 @@ class LocalRoomAdmin {
     const presenter = this.presenterInfo(this.app.game.presenter);
     body.innerHTML = `
       <div class="localIntro">
+        ${this.serverState?.lastResult ? `<div class="localFinishedBox"><h3 style="margin:0 0 7px">Último resultado guardado</h3><p style="margin:0;color:#c7cee0">Sala ${esc(this.serverState.lastResult.roomCode)} · Finalizado ${new Date(this.serverState.lastResult.endedAt).toLocaleString('es-AR')}</p><div class="localToolbar"><button class="localPrimary" id="localDownloadLastResult">DESCARGAR ÚLTIMO PDF</button></div></div>` : ''}
         <div class="localWaitingHero"><img src="assets/${esc(this.app.game.presenter)}.png" alt="${esc(presenter.name)}"><div><h3>${esc(presenter.name)} acompañará esta partida</h3><p>La sala se abrirá en modo espera. Los jugadores elegirán sus cartones y el sorteo solo comenzará cuando presiones INICIAR SORTEO.</p></div></div>
         <div class="localGrid2">
           <div class="localCardBox"><h3>Partida actual</h3><div>Juego ${String(this.app.game.number).padStart(4, '0')} · Bingo ${this.app.game.mode}</div><div>${this.app.game.cards.length} cartones disponibles · Jugadores configurables: 2 a 60</div></div>
@@ -434,7 +447,7 @@ class LocalRoomAdmin {
             <div class="localCardBox">
               <h3>Premios de línea</h3>
               <label style="display:grid;gap:7px"><b>Cantidad de líneas ganadoras</b><select id="localLinePrizeCount" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"><option value="1">Una línea</option><option value="2">Primera y segunda línea</option></select></label>
-              <label class="localToggleRow"><span><b>Permitir que el mismo jugador gane ambas líneas</b><br><small>Recomendado: cada cartón participa por separado. Solo se permite con cartones diferentes.</small></span><input id="localSamePlayerSecondLine" type="checkbox" checked></label><label style="display:grid;gap:7px;margin-top:10px"><b>Reclamos simultáneos</b><select id="localTiePolicy" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"><option value="first_claim">Gana el primer reclamo recibido</option><option value="same_ball">Permitir empate con la misma última bolilla</option></select></label>
+              <label class="localToggleRow"><span><b>Permitir que el mismo jugador gane ambas líneas</b><br><small>Recomendado: cada cartón participa por separado. Solo se permite con cartones diferentes.</small></span><input id="localSamePlayerSecondLine" type="checkbox" checked></label><label style="display:grid;gap:7px;margin-top:10px"><b>Reclamos simultáneos</b><select id="localTiePolicy" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"><option value="first_claim">Gana el primer reclamo recibido</option><option value="same_ball">Permitir empate con la misma última bolilla (máximo 4)</option></select></label>
             </div>
             <div class="localCardBox">
               <h3>Asignación automática</h3>
@@ -451,8 +464,12 @@ class LocalRoomAdmin {
     $('localPlayerCount').onchange = event => this.setPlayerCount(event.target.value);
     $('localPlayerCount').oninput = event => { const value = Math.max(2, Math.min(60, Number(event.target.value) || 2)); if (value !== this.assignments.length) this.setPlayerCount(value); };
     $('localOpenRoom').onclick = () => this.openRoom();
+    if ($('localTiePolicy')) $('localTiePolicy').onchange = event => {
+      if (event.target.value === 'same_ball') alert('Los empates se permiten únicamente con la misma última bolilla y hasta 4 cartones ganadores por premio, para que todos aparezcan en la hoja PDF.');
+    };
     $('localRestoreBrowser').onclick = () => this.restoreBrowserBackup();
     $('localRestoreFile').onclick = () => $('localBackupFile').click();
+    if ($('localDownloadLastResult')) $('localDownloadLastResult').onclick = () => this.downloadResults(this.serverState?.lastResult?.roomCode);
   }
 
   renderAssignmentRows() {
@@ -578,9 +595,9 @@ class LocalRoomAdmin {
   }
 
   async createNewRoom() {
-    if (!confirm('¿Crear una sala nueva? Se eliminará del servidor el estado de la sala actual. Descargá los resultados o la copia antes de continuar.')) return;
+    if (!confirm('El resultado anterior ya quedó guardado y seguirá disponible para descargar. ¿Crear una sala nueva?')) return;
     try {
-      await this.request('/api/admin/new-room', { method: 'POST', body: '{}' });
+      const data = await this.request('/api/admin/new-room', { method: 'POST', body: '{}' });
       this.app.stopAutomatic(false);
       if (this.app.game) {
         this.app.game.drawn = [];
@@ -589,7 +606,7 @@ class LocalRoomAdmin {
         this.app.save();
         this.app.renderGame();
       }
-      this.applyState({ active: false, status: 'closed', maxCards: 250, maxActiveCards: 240, maxPlayers: 60 });
+      this.applyState(data);
       this.assignments = [];
       this.renderMainModal();
     } catch (error) { alert(error.message); }
@@ -670,9 +687,9 @@ class LocalRoomAdmin {
     } catch (error) { alert(error.message); }
   }
 
-  async downloadResults() {
+  async downloadResults(roomOverride = '') {
     try {
-      const room = this.serverState?.roomCode || 'sala';
+      const room = roomOverride || this.serverState?.roomCode || this.serverState?.lastResult?.roomCode || 'sala';
       const response = await fetch(`/api/results.pdf?sala=${encodeURIComponent(room)}`, { cache: 'no-store' });
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
@@ -738,6 +755,7 @@ class LocalRoomAdmin {
     const waiting = data.status === 'waiting';
     const playing = data.status === 'playing';
     const finished = data.status === 'finished';
+    const bingoConfirmed = Boolean(data.bingoConfirmed && playing);
     const presenter = this.presenterInfo(data.game.presenter);
     const activeMessage = String(data.adminMessage?.text || '');
     const messageDraft = this.messageDraft === null ? activeMessage : this.messageDraft;
@@ -745,10 +763,10 @@ class LocalRoomAdmin {
     const timerEnabled = Boolean(timer.enabled);
     const timerStatus = timer.status || 'idle';
     const timerStatusLabel = timerStatus === 'running' ? 'EN MARCHA' : timerStatus === 'paused' ? 'PAUSADO' : timerStatus === 'completed' ? 'FINALIZADO' : 'SIN INICIAR';
-    const statusTitle = waiting ? 'SALA DE ESPERA' : playing ? 'SORTEO EN CURSO' : 'SORTEO FINALIZADO';
+    const statusTitle = waiting ? 'SALA DE ESPERA' : bingoConfirmed ? 'BINGO CONFIRMADO' : playing ? 'SORTEO EN CURSO' : 'SORTEO FINALIZADO';
     const statusDescription = waiting
       ? 'Compartí el enlace y los códigos. El sorteo no comenzará hasta que lo ordenes.'
-      : playing ? presenter.phrase : 'La secuencia oficial quedó cerrada. El PDF de resultados ya está disponible para todos.';
+      : bingoConfirmed ? 'El bolillero quedó bloqueado. Revisá los reclamos pendientes y finalizá el sorteo.' : playing ? presenter.phrase : 'La secuencia oficial quedó cerrada. El PDF de resultados ya está disponible para todos.';
     const cardsLabel = player => player.cardIds.length
       ? player.cardIds.map(id => `#${esc(data.game.cards.find(card => card.id === id)?.number || '?')}`).join(' · ')
       : (player.reservedCardIds?.length
@@ -801,7 +819,7 @@ class LocalRoomAdmin {
       ${waiting ? `<div class="localCardBox" style="margin-top:14px"><h3>Modo de prueba</h3><small>Envía avisos y sonidos sin alterar bolillas, premios ni cartones.</small><div class="localToolbar"><button class="localSecondary" id="localTestLine">PROBAR LÍNEA</button><button class="localSecondary" id="localTestBingo">PROBAR BINGO</button><button class="localSecondary" id="localTestBall">PROBAR VOZ 42</button></div></div>` : ''}
       ${waiting ? `<div class="localStartBox ${data.readyToStart ? 'ready' : ''}"><b>${data.readyToStart ? 'La revisión previa está completa.' : 'La sala todavía tiene pendientes.'}</b><br><small>El sorteo NO comenzará solo. Debés presionar INICIAR SORTEO.</small><button id="localStartGame" ${data.readyToStart ? '' : 'disabled'}>▶ INICIAR SORTEO</button></div>` : ''}
       ${playing || finished ? `<div class="localCardBox" style="margin-top:14px"><div style="display:flex;gap:10px;justify-content:space-between;align-items:end;flex-wrap:wrap"><div><h3 style="margin:0">Control de cartones activos</h3><small>Se muestran los 25 más cercanos. Buscá por jugador o número para localizar otro.</small></div><input id="localMonitorSearch" placeholder="Buscar jugador o cartón" style="min-width:250px;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#10182b;color:#fff"></div><div id="localMonitorTableHost" class="localMonitorWrap">${this.monitorTable(data.cardStatus || [])}</div></div>` : ''}
-      ${playing ? `<div class="localFinishedBox"><b>Cuando termine la partida, cerrá la secuencia oficial.</b><br><small>Después podrás descargar el orden exacto de las bolillas.</small><button class="localDanger" id="localFinishGame" style="margin-top:10px;border:0;border-radius:10px;padding:11px 15px;font-weight:900;cursor:pointer">FINALIZAR SORTEO</button></div>` : ''}
+      ${playing ? `<div class="localFinishedBox" style="${bingoConfirmed ? 'background:#4f1728;border-color:#d65578' : ''}"><b>${bingoConfirmed ? 'BINGO CONFIRMADO — BOLILLERO BLOQUEADO' : 'Cuando termine la partida, cerrá la secuencia oficial.'}</b><br><small>${bingoConfirmed ? 'No pueden salir más bolillas. Resolvé cualquier empate pendiente y cerrá el resultado.' : 'Después podrás descargar el orden exacto de las bolillas.'}</small><button class="localDanger" id="localFinishGame" style="margin-top:10px;border:0;border-radius:10px;padding:11px 15px;font-weight:900;cursor:pointer">FINALIZAR SORTEO</button></div>` : ''}
       ${finished ? `<div class="localFinishedBox"><h3 style="margin-top:0">Resultados oficiales del sorteo</h3><p style="margin:0 0 12px;color:#c7cee0">El mismo PDF puede ser descargado por el administrador y por todos los jugadores. Incluye orden y hora de las bolillas, momentos de canto y cartones ganadores.</p><div class="localToolbar"><button class="localPrimary" id="localDownloadResults">RESULTADOS · DESCARGAR PDF</button><button class="localDanger" id="localNewRoom">NUEVA SALA</button></div>${this.actaTable(data)}</div>` : ''}
       <div class="localToolbar"><button class="localSecondary" id="localCopyLink">COPIAR PÁGINA PARA JUGADORES</button><button class="localSecondary" id="localDownloadBackup">DESCARGAR COPIA</button><button class="localSecondary" id="localRestoreFile">RESTAURAR ARCHIVO</button><button class="localSecondary" id="localRefresh">ACTUALIZAR</button><button class="localDanger" id="localCloseRoom">CERRAR SALA</button></div>`;
 
@@ -811,6 +829,7 @@ class LocalRoomAdmin {
     body.querySelectorAll('[data-copy-page]').forEach(button => button.onclick = () => this.copyText(playerPageUrl));
     $('localDownloadBackup').onclick = () => this.downloadBackup();
     $('localRestoreFile').onclick = () => $('localBackupFile').click();
+    if ($('localDownloadLastResult')) $('localDownloadLastResult').onclick = () => this.downloadResults(this.serverState?.lastResult?.roomCode);
     $('localRefresh').onclick = () => this.refreshState().catch(error => alert(error.message));
     $('localCloseRoom').onclick = () => this.closeRoom();
     if ($('localStartGame')) $('localStartGame').onclick = () => this.startRoom();

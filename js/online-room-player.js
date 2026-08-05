@@ -32,10 +32,12 @@ class PlayerApp {
     this.fullscreenApiActive = false;
     this.lastPrizeReadyKey = '';
     this.lastTestEventId = '';
+    this.lastResult = null;
   }
 
   async init() {
     $('loginBtn').onclick = () => this.login();
+    $('lastResultBtn').onclick = () => this.downloadLastPublicResult();
     $('accessCode').addEventListener('keydown', event => { if (event.key === 'Enter') this.login(); });
     $('claimLine').onclick = () => this.claim('line');
     $('claimBingo').onclick = () => this.claim('bingo');
@@ -65,6 +67,7 @@ class PlayerApp {
       }
     });
     this.applyTheme();
+    await this.loadPublicInfo();
     $('numberVoiceOn').onchange = event => this.setAudioEnabled(event.target.checked);
     $('numberVoiceVolume').value = String(this.audioVolume);
     $('numberVoiceVolume').oninput = event => {
@@ -96,6 +99,44 @@ class PlayerApp {
     }
     this.keepAliveTimer = setInterval(() => { if (this.state?.active) fetch('/api/ping', { cache: 'no-store' }).catch(() => {}); }, 5 * 60 * 1000);
     this.assignmentClockTimer = setInterval(() => this.updateAssignmentCountdown(), 1000);
+  }
+
+  async loadPublicInfo() {
+    try {
+      const response = await fetch('/api/info', { cache: 'no-store' });
+      const data = await response.json();
+      this.lastResult = data.lastResult || null;
+      const button = $('lastResultBtn');
+      button.classList.toggle('hidden', !this.lastResult);
+      if (this.lastResult) {
+        const date = this.lastResult.endedAt ? new Date(this.lastResult.endedAt).toLocaleDateString('es-AR') : '';
+        button.textContent = `DESCARGAR ÚLTIMO RESULTADO${date ? ` · ${date}` : ''}`;
+      }
+    } catch {
+      $('lastResultBtn').classList.add('hidden');
+    }
+  }
+
+  async downloadLastPublicResult() {
+    if (!this.lastResult?.roomCode) return;
+    try {
+      const room = this.lastResult.roomCode;
+      const response = await fetch(`/api/results.pdf?sala=${encodeURIComponent(room)}`, { cache: 'no-store' });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || 'No se pudo descargar el resultado.');
+      }
+      const blob = await response.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = this.lastResult.filename || `Resultados_Bingo_Sala_${room}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1200);
+    } catch (error) {
+      $('loginError').innerHTML = `<div class="error">${esc(error.message)}</div>`;
+    }
   }
 
   async request(url, options = {}) {

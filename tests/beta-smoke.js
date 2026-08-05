@@ -78,8 +78,12 @@ function card(index) {
     assert.ok(appJs.includes('length: 250'));
     assert.ok(adminHtml.includes('VERSIÓN BETA'));
     assert.ok(playerHtml.includes('resultsBtn'));
+    assert.ok(playerHtml.includes('lastResultBtn'));
     assert.ok(playerJs.includes('/api/results.pdf'));
     assert.ok(adminJs.includes('RESULTADOS · DESCARGAR PDF'));
+    assert.ok(adminJs.includes('BINGO CONFIRMADO — BOLILLERO BLOQUEADO'));
+    assert.ok(adminJs.includes('Último resultado guardado'));
+    assert.ok(appJs.includes('Bingo confirmado · bolillero bloqueado'));
 
     result = await json('/api/admin/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -208,23 +212,26 @@ function card(index) {
     const playerOneState = (await json('/api/player/state', { headers: sessions[0].headers })).data;
     assert.ok(playerOneState.readiness.some(item => item.lineEligible));
 
-    // Dos reclamos con la misma última bolilla forman un empate por la primera línea.
-    const p1Card = state.players[0].cardIds[0];
-    const p2Card = state.players[1].cardIds[0];
-    const claim1 = await json('/api/player/claim', {
-      method: 'POST', headers: sessions[0].headers,
-      body: JSON.stringify({ cardId: p1Card, type: 'line' })
+    // Cinco reclamos con la misma última bolilla: entran hasta cuatro empates para que todos aparezcan en la única hoja.
+    const lineClaims = [];
+    for (let i = 0; i < 4; i++) {
+      const lineCard = state.players[i].cardIds[0];
+      const claim = await json('/api/player/claim', {
+        method: 'POST', headers: sessions[i].headers,
+        body: JSON.stringify({ cardId: lineCard, type: 'line' })
+      });
+      assert.strictEqual(claim.response.status, 200, JSON.stringify(claim.data));
+      assert.strictEqual(claim.data.prizeNumber, 1);
+      lineClaims.push(claim.data);
+    }
+    const fifthTie = await json('/api/player/claim', {
+      method: 'POST', headers: sessions[4].headers,
+      body: JSON.stringify({ cardId: state.players[4].cardIds[0], type: 'line' })
     });
-    assert.strictEqual(claim1.response.status, 200, JSON.stringify(claim1.data));
-    const claim2 = await json('/api/player/claim', {
-      method: 'POST', headers: sessions[1].headers,
-      body: JSON.stringify({ cardId: p2Card, type: 'line' })
-    });
-    assert.strictEqual(claim2.response.status, 200, JSON.stringify(claim2.data));
-    assert.strictEqual(claim1.data.prizeNumber, 1);
-    assert.strictEqual(claim2.data.prizeNumber, 1);
+    assert.strictEqual(fifthTie.response.status, 400);
+    assert.ok(String(fifthTie.data.error || '').includes('máximo es de 4'));
 
-    for (const claim of [claim1.data, claim2.data]) {
+    for (const claim of lineClaims) {
       result = await json('/api/admin/resolve', {
         method: 'POST', headers: adminHeaders,
         body: JSON.stringify({ claimId: claim.id, resolution: 'confirmed' })
@@ -233,7 +240,7 @@ function card(index) {
     }
     state = (await json('/api/admin/state', { headers: adminHeaders })).data;
     assert.strictEqual(state.prizeStatus.line.awarded, 1);
-    assert.strictEqual(state.prizeStatus.line.winners.length, 2);
+    assert.strictEqual(state.prizeStatus.line.winners.length, 4);
     assert.strictEqual(state.prizeStatus.line.closed, false);
 
     // Segunda línea para el mismo jugador, pero con otro cartón, y cierre del botón de línea.
@@ -276,6 +283,18 @@ function card(index) {
     });
     assert.strictEqual(result.response.status, 200);
 
+    // Al confirmar bingo se bloquea inmediatamente el bolillero y el PDF todavía no puede descargarse.
+    state = (await json('/api/admin/state', { headers: adminHeaders })).data;
+    assert.strictEqual(state.bingoConfirmed, true);
+    assert.strictEqual(state.game.phase, 'BINGO_CONFIRMED');
+    const prematurePdf = await fetch(`${base}/api/results.pdf?sala=${state.roomCode}`);
+    assert.strictEqual(prematurePdf.status, 400);
+    game.drawn.push(90);
+    result = await json('/api/admin/game', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ game }) });
+    assert.strictEqual(result.response.status, 400);
+    assert.ok(String(result.data.error || '').includes('bingo ya fue confirmado'));
+    game.drawn.pop();
+
     // Cierre, acta completa y exportación separada de jugadores.
     result = await json('/api/admin/finish', { method: 'POST', headers: adminHeaders, body: '{}' });
     assert.strictEqual(result.response.status, 200, JSON.stringify(result.data));
@@ -286,7 +305,7 @@ function card(index) {
     assert.strictEqual(acta.data.version, 'Beta');
     assert.deepStrictEqual(acta.data.balls.map(row => row.number), game.drawn);
     assert.strictEqual(acta.data.participants.length, 6);
-    assert.strictEqual(acta.data.winners.length, 4); // empate de primera línea + segunda línea + bingo
+    assert.strictEqual(acta.data.winners.length, 6); // cuatro empates de primera línea + segunda línea + bingo
 
     const csvResponse = await fetch(`${base}/api/admin/acta.csv`, { headers: { 'X-Admin-Token': adminHeaders['X-Admin-Token'] } });
     assert.strictEqual(csvResponse.status, 200);
@@ -310,6 +329,11 @@ function card(index) {
     assert.strictEqual(pdf.subarray(0, 5).toString(), '%PDF-');
     assert.ok(pdf.length > 50000);
     if (process.env.BINGO_TEST_PDF_OUT) fs.writeFileSync(process.env.BINGO_TEST_PDF_OUT, pdf);
+    assert.ok(fs.existsSync(path.join(dataDir, 'ultimo-resultado.pdf')));
+    assert.ok(fs.existsSync(path.join(dataDir, 'ultimo-resultado.json')));
+    const publicInfo = await json('/api/info');
+    assert.strictEqual(publicInfo.data.lastResult.roomCode, state.roomCode);
+    assert.strictEqual(publicInfo.data.maxTieWinnersPerPrize, 4);
 
     const wrongRoomPdf = await fetch(`${base}/api/results.pdf?sala=OTRA`);
     assert.strictEqual(wrongRoomPdf.status, 400);
@@ -323,12 +347,20 @@ function card(index) {
     assert.strictEqual(result.response.status, 200);
     assert.strictEqual(result.data.format, 'el-bingo-de-la-gorda-beta-backup');
 
-    // Nueva sala limpia todo el estado anterior.
+    // Nueva sala limpia la partida, pero conserva el último resultado y su enlace público.
+    const finishedRoomCode = state.roomCode;
     result = await json('/api/admin/new-room', { method: 'POST', headers: adminHeaders, body: '{}' });
     assert.strictEqual(result.response.status, 200);
     assert.strictEqual(result.data.active, false);
     assert.strictEqual(result.data.status, 'closed');
     assert.strictEqual(result.data.players.length, 0);
+    assert.strictEqual(result.data.lastResult.roomCode, finishedRoomCode);
+    const archivedPdfResponse = await fetch(`${base}/api/results.pdf?sala=${finishedRoomCode}`);
+    assert.strictEqual(archivedPdfResponse.status, 200);
+    const archivedPdf = Buffer.from(await archivedPdfResponse.arrayBuffer());
+    assert.strictEqual(archivedPdf.subarray(0, 5).toString(), '%PDF-');
+    const latestPdfResponse = await fetch(`${base}/api/results.pdf`);
+    assert.strictEqual(latestPdfResponse.status, 200);
 
     console.log('PRUEBAS BETA: OK');
   } catch (error) {

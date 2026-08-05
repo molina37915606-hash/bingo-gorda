@@ -8,7 +8,19 @@ NOVEDADES PRINCIPALES
 - Marca sobre la secuencia el momento de primera línea, segunda línea y bingo.
 - Incluye nombre, número y representación completa del cartón ganador de cada categoría.
 - La línea ganadora queda resaltada; en bingo se resaltan todos los números sorteados del cartón.
-- El mismo jugador puede ganar primera y segunda línea con cartones diferentes cuando la opción está habilitada.
+- El último resultado queda guardado aunque se cree una sala nueva.
+- Puede descargarse desde el panel de administrador o desde la pantalla de ingreso de jugadores.
+
+CIERRE SEGURO
+- Cuando el administrador confirma el bingo, el bolillero se detiene y queda bloqueado.
+- No se pueden agregar, quitar ni cambiar bolillas después de confirmar el bingo.
+- Resolvé cualquier reclamo simultáneo pendiente y presioná FINALIZAR SORTEO.
+- El PDF se habilita únicamente cuando el sorteo quedó oficialmente finalizado.
+
+EMPATES
+- Se recomienda usar “Gana el primer reclamo recibido”.
+- Si se permite empate con la misma última bolilla, el máximo es de 4 cartones ganadores por premio.
+- Este límite garantiza que todos los cartones aceptados entren en la única hoja del PDF.
 
 FUNCIONES GENERALES
 - Una sala activa por vez.
@@ -16,6 +28,7 @@ FUNCIONES GENERALES
 - Hasta 250 cartones generados y 240 activos.
 - Entre 1 y 4 cartones por jugador.
 - Una o dos líneas ganadoras y un bingo.
+- El mismo jugador puede ganar primera y segunda línea con cartones diferentes cuando la opción está habilitada.
 - Marcado manual o automático.
 - Temporizador opcional para elegir cartones.
 - Asignación manual o automática sin duplicados.
@@ -28,4 +41,6 @@ ACTUALIZACIÓN EN GITHUB
 Usá Bingo_de_la_Gorda_Version_Beta_para_GitHub.zip. Descomprimilo y subí todo su contenido a la raíz del repositorio.
 
 IMPORTANTE
-Actualizá cuando no haya una partida activa. Al terminar cada sorteo, presioná FINALIZAR SORTEO antes de descargar RESULTADOS.
+Actualizá cuando no haya una partida activa. Al terminar cada sorteo, confirmá el bingo, resolvé los reclamos pendientes y presioná FINALIZAR SORTEO antes de descargar RESULTADOS.
+
+Render gratuito usa almacenamiento temporal. Descargá el PDF al terminar cada sorteo: el archivo guardado en el servidor puede perderse si el servicio se reinicia, se vuelve a desplegar o entra en suspensión. La conservación al crear una sala nueva funciona mientras el servicio mantiene su carpeta de datos.

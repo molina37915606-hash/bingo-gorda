@@ -29,8 +29,37 @@ const CARD_RESERVATION_TTL_MS = 2 * 60 * 1000;
 const ADMIN_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const CLAIM_QUEUE_WINDOW_MS = 3000;
 const TEST_EVENT_TTL_MS = 20 * 1000;
+const MAX_TIE_WINNERS_PER_PRIZE = 4;
+const LAST_RESULT_PDF_FILE = path.join(DATA_DIR, 'ultimo-resultado.pdf');
+const LAST_RESULT_META_FILE = path.join(DATA_DIR, 'ultimo-resultado.json');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
+
+function loadLastResultMeta() {
+  try {
+    const meta = JSON.parse(fs.readFileSync(LAST_RESULT_META_FILE, 'utf8'));
+    if (!meta?.roomCode || !fs.existsSync(LAST_RESULT_PDF_FILE)) return null;
+    return meta;
+  } catch {
+    return null;
+  }
+}
+
+let lastResultMeta = loadLastResultMeta();
+
+function publicLastResult() {
+  if (!lastResultMeta?.roomCode || !fs.existsSync(LAST_RESULT_PDF_FILE)) return null;
+  return {
+    roomCode: lastResultMeta.roomCode,
+    gameNumber: lastResultMeta.gameNumber || null,
+    round: lastResultMeta.round || 1,
+    startedAt: lastResultMeta.startedAt || null,
+    endedAt: lastResultMeta.endedAt || null,
+    savedAt: lastResultMeta.savedAt || null,
+    filename: lastResultMeta.filename || `Resultados_Bingo_Sala_${lastResultMeta.roomCode}.pdf`,
+    downloadUrl: `/api/results.pdf?sala=${encodeURIComponent(lastResultMeta.roomCode)}`
+  };
+}
 
 const nowIso = () => new Date().toISOString();
 const deepCopy = value => JSON.parse(JSON.stringify(value));
@@ -598,6 +627,8 @@ function baseInfo() {
     maxPlayers: MAX_PLAYERS,
     maxCardsPerPlayer: MAX_CARDS_PER_PLAYER,
     maxCardOptions: MAX_CARD_OPTIONS,
+    maxTieWinnersPerPrize: MAX_TIE_WINNERS_PER_PRIZE,
+    lastResult: publicLastResult(),
     publicUrl: PUBLIC_URL || null,
     playerUrl: PUBLIC_URL ? `${PUBLIC_URL}/jugador` : null
   };
@@ -658,6 +689,7 @@ function adminPayload() {
     roomSettings: state.roomSettings,
     assignmentTimer: assignmentTimerPayload(),
     prizeStatus: prizeStatusPayload(),
+    bingoConfirmed: prizeStatusPayload().bingo.closed,
     adminMessage: state.adminMessage,
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
     lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`),
@@ -696,6 +728,7 @@ function playerPayload(player) {
     roomSettings: state.roomSettings,
     assignmentTimer: assignmentTimerPayload(),
     prizeStatus: prizeStatusPayload(),
+    bingoConfirmed: prizeStatusPayload().bingo.closed,
     adminMessage: state.adminMessage,
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
     readiness: playerPrizeReadiness(player),
@@ -939,6 +972,9 @@ function updateGame(game) {
   if (state.status === 'waiting' && sanitized.drawn.length > previousDrawn.length) {
     throw new Error('La partida está en sala de espera. Presioná INICIAR SORTEO antes de sortear.');
   }
+  if (state.status === 'playing' && prizeStatusPayload().bingo.closed && JSON.stringify(sanitized.drawn) !== JSON.stringify(previousDrawn)) {
+    throw new Error('El bingo ya fue confirmado. No se pueden agregar, quitar ni cambiar bolillas; finalizá el sorteo.');
+  }
   if (state.status === 'finished' && JSON.stringify(sanitized.drawn) !== JSON.stringify(previousDrawn)) {
     throw new Error('El sorteo ya fue finalizado. No se pueden modificar las bolillas.');
   }
@@ -1085,6 +1121,31 @@ function controlAssignmentTimer(payload) {
   return adminPayload();
 }
 
+function archiveCurrentResults() {
+  if (!state.active || !state.game || state.status !== 'finished') throw new Error('No hay un sorteo finalizado para archivar.');
+  const pdf = buildResultsPdf();
+  const pdfTemp = `${LAST_RESULT_PDF_FILE}.tmp`;
+  const metaTemp = `${LAST_RESULT_META_FILE}.tmp`;
+  fs.writeFileSync(pdfTemp, pdf);
+  const meta = {
+    version: 'Beta',
+    roomCode: state.roomCode,
+    gameNumber: state.game.number,
+    round: state.round,
+    startedAt: state.startedAt,
+    endedAt: state.endedAt,
+    savedAt: nowIso(),
+    filename: resultsFilename(),
+    sha256: crypto.createHash('sha256').update(pdf).digest('hex'),
+    size: pdf.length
+  };
+  fs.writeFileSync(metaTemp, JSON.stringify(meta, null, 2), 'utf8');
+  fs.renameSync(pdfTemp, LAST_RESULT_PDF_FILE);
+  fs.renameSync(metaTemp, LAST_RESULT_META_FILE);
+  lastResultMeta = meta;
+  return meta;
+}
+
 function finishRoom() {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status === 'finished') return adminPayload();
@@ -1094,6 +1155,7 @@ function finishRoom() {
   state.endedAt = nowIso();
   state.game.phase = 'ROUND_END';
   logEvent('game_finished', { round: state.round, balls: state.game.drawn.length });
+  archiveCurrentResults();
   saveState();
   broadcast();
   return adminPayload();
@@ -1195,6 +1257,7 @@ function sendTestEvent(payload) {
 }
 
 function newRoomState() {
+  if (state.active && state.status !== 'finished') throw new Error('Primero finalizá el sorteo actual antes de crear una sala nueva.');
   if (state.active) logEvent('new_room_requested');
   state = blankState();
   saveState();
@@ -1454,6 +1517,13 @@ function createClaim(player, payload) {
       Number(first.drawnAtClaim?.at(-1)) === Number(state.game.drawn.at(-1)) &&
       Date.now() - new Date(first.createdAt).getTime() <= CLAIM_QUEUE_WINDOW_MS;
     if (!sameBallWindow) throw new Error('Ya hay un reclamo siendo revisado. Esperá la decisión del administrador.');
+    const tieGroupId = first.tieGroupId || first.id;
+    const tieGroupSize = state.claims.filter(claim =>
+      claim.type === type && ['pending', 'confirmed'].includes(claim.status) && (claim.tieGroupId || claim.id) === tieGroupId
+    ).length;
+    if (tieGroupSize >= MAX_TIE_WINNERS_PER_PRIZE) {
+      throw new Error(`El máximo es de ${MAX_TIE_WINNERS_PER_PRIZE} ganadores simultáneos por premio para conservar el resultado en una sola hoja.`);
+    }
     tieWith = first;
   }
   if (state.claims.some(claim => claim.type === type && claim.cardId === cardId && claim.status === 'confirmed')) {
@@ -1503,6 +1573,12 @@ function resolveClaim(payload) {
     const prizes = prizeStatusPayload();
     const current = prizes[claim.type];
     const confirmedTie = claim.tieGroupId && confirmedClaims(claim.type).find(item => (item.tieGroupId || item.id) === claim.tieGroupId);
+    if (confirmedTie) {
+      const tieWinners = confirmedClaims(claim.type).filter(item => (item.tieGroupId || item.id) === claim.tieGroupId && Number(item.prizeNumber || 1) === Number(confirmedTie.prizeNumber || 1));
+      if (tieWinners.length >= MAX_TIE_WINNERS_PER_PRIZE) {
+        throw new Error(`El máximo es de ${MAX_TIE_WINNERS_PER_PRIZE} ganadores simultáneos por premio para conservar el resultado en una sola hoja.`);
+      }
+    }
     if (current.closed && !confirmedTie) throw new Error(claim.type === 'line' ? 'Los premios de línea ya fueron entregados.' : 'El premio de bingo ya fue entregado.');
     if (claim.type === 'line' && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(item => item.playerId === claim.playerId)) {
       throw new Error('Este jugador ya ganó una línea y no está habilitado para ganar la segunda.');
@@ -1536,6 +1612,10 @@ function resolveClaim(payload) {
     });
   }
   logEvent('claim_resolved', { claimId: claim.id, resolution, prizeNumber: claim.prizeNumber || 1, officialValid: claim.officialValid });
+  if (resolution === 'confirmed' && claim.type === 'bingo') {
+    state.game.phase = 'BINGO_CONFIRMED';
+    logEvent('bingo_confirmed_lock', { claimId: claim.id, cardId: claim.cardId, cardNumber: claim.cardNumber });
+  }
   saveState();
   broadcast();
   return claim;
@@ -2071,9 +2151,26 @@ async function handleApi(req, res, url) {
 
     if (url.pathname === '/api/results.pdf' && req.method === 'GET') {
       const requestedRoom = String(url.searchParams.get('sala') || '').trim().toUpperCase();
-      if (!state.active || !state.game) throw new Error('No hay un sorteo disponible.');
-      if (requestedRoom && requestedRoom !== String(state.roomCode || '').toUpperCase()) throw new Error('La sala indicada no coincide con el sorteo actual.');
-      return sendBuffer(res, 200, buildResultsPdf(), 'application/pdf', resultsFilename());
+      const currentRoom = String(state.roomCode || '').toUpperCase();
+      const archivedRoom = String(lastResultMeta?.roomCode || '').toUpperCase();
+
+      if (requestedRoom && requestedRoom === currentRoom && state.active && state.game) {
+        if (state.status !== 'finished') throw new Error('Los resultados estarán disponibles cuando finalice el sorteo.');
+        return sendBuffer(res, 200, buildResultsPdf(), 'application/pdf', resultsFilename());
+      }
+      if (requestedRoom && requestedRoom === archivedRoom && fs.existsSync(LAST_RESULT_PDF_FILE)) {
+        return sendBuffer(res, 200, fs.readFileSync(LAST_RESULT_PDF_FILE), 'application/pdf', lastResultMeta.filename || `Resultados_Bingo_Sala_${archivedRoom}.pdf`);
+      }
+      if (!requestedRoom) {
+        if (state.active && state.game) {
+          if (state.status !== 'finished') throw new Error('Los resultados estarán disponibles cuando finalice el sorteo.');
+          return sendBuffer(res, 200, buildResultsPdf(), 'application/pdf', resultsFilename());
+        }
+        if (lastResultMeta && fs.existsSync(LAST_RESULT_PDF_FILE)) {
+          return sendBuffer(res, 200, fs.readFileSync(LAST_RESULT_PDF_FILE), 'application/pdf', lastResultMeta.filename || 'Resultados_Bingo_Ultimo_Sorteo.pdf');
+        }
+      }
+      throw new Error(requestedRoom ? 'No se encontró un resultado finalizado para esa sala.' : 'No hay un sorteo finalizado disponible.');
     }
 
     if (url.pathname === '/api/admin/login' && req.method === 'POST') {

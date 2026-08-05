@@ -711,10 +711,10 @@ class BingoApp {
     if (lineWinners.length) { $('lineHistory').textContent = `Ganó Línea: ${lineWinners.map(w => `${w.name} (Cartón ${w.number})`).join(' · ')}`; $('lineHistory').classList.add('show'); } else $('lineHistory').classList.remove('show');
   }
   renderAutoControls() {
-    if (!this.game) return; const automatic = this.game.drawMode === 'automatic', roomWaiting = Boolean(this.localRoom?.active && this.localRoom?.serverState?.status !== 'playing'), locked = this.phase === PHASE.REVIEW || Boolean(this.localRoom?.claimOpen) || roomWaiting;
+    if (!this.game) return; const automatic = this.game.drawMode === 'automatic', bingoLocked = Boolean(this.localRoom?.active && this.localRoom?.serverState?.status === 'playing' && this.localRoom?.serverState?.bingoConfirmed), roomWaiting = Boolean(this.localRoom?.active && this.localRoom?.serverState?.status !== 'playing'), locked = this.phase === PHASE.REVIEW || Boolean(this.localRoom?.claimOpen) || roomWaiting || bingoLocked;
     $('autoBtn').style.display = automatic ? '' : 'none'; $('pauseBtn').style.display = automatic ? '' : 'none';
     $('autoBtn').textContent = this.autoRunning ? '⏸ PAUSAR AUTOMÁTICO' : '▶ REANUDAR AUTOMÁTICO'; $('pauseBtn').textContent = this.autoRunning ? '⏸ DETENER' : '▶ REANUDAR';
-    $('autoState').textContent = roomWaiting ? 'Sala de espera · presioná INICIAR SORTEO desde SALA ONLINE' : locked ? 'Detenido por posible ganador' : automatic ? (this.autoRunning ? `Automático activo · cada ${this.game.autoSeconds} segundos` : 'Automático detenido') : 'Sorteo manual';
+    $('autoState').textContent = bingoLocked ? 'Bingo confirmado · bolillero bloqueado · finalizá el sorteo' : roomWaiting ? 'Sala de espera · presioná INICIAR SORTEO desde SALA ONLINE' : locked ? 'Detenido por posible ganador' : automatic ? (this.autoRunning ? `Automático activo · cada ${this.game.autoSeconds} segundos` : 'Automático detenido') : 'Sorteo manual';
     $('drawBtn').textContent = automatic ? '🎱 CANTAR SIGUIENTE AHORA' : '🎱 SIGUIENTE BOLILLA';
     ['drawBtn','autoBtn','pauseBtn','undoBtn'].forEach(id => { $(id).disabled = locked; });
   }

@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
-<title>Bingo de la Gorda - Versión Beta</title>
+<title>Bingo de la Gorda 2.0</title>
 <style>
 :root{
  --bg:#040712;--panel:#0b1430;--line:#2b4174;--txt:#fff;--muted:#9eb0d8;
@@ -342,16 +342,18 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 .reviewLock{pointer-events:none;opacity:.65}
 #game[data-phase="REVIEWING_WINNER"] #drawBtn,#game[data-phase="REVIEWING_WINNER"] #autoBtn,#game[data-phase="REVIEWING_WINNER"] #pauseBtn,#game[data-phase="REVIEWING_WINNER"] #undoBtn{opacity:.45;pointer-events:none}
 @media(max-width:1280px){.main{grid-template-columns:280px 330px minmax(460px,1fr)}.bottom{grid-template-columns:1fr 1fr 1fr repeat(4,120px)}.tool{font-size:12px}.gameTitle{font-size:15px}}
+.wizardInfo{margin-top:12px;padding:13px;border-radius:12px;background:#10182b;border:1px solid #ffffff20;color:var(--muted);line-height:1.4}.generatedOnly{grid-template-columns:1fr 180px;align-items:center}@media(max-width:620px){.generatedOnly{grid-template-columns:1fr}}
 </style></head>
 <body>
 <section class="screen active" id="home">
 <div class="homeBox card">
 <img alt="El Bingo de la Gorda" class="homeLogo" src="assets/logo.png"/>
 <div class="homeBtns">
-<button class="primary" id="newGameBtn">NUEVO JUEGO</button>
-<button class="secondary" id="loadGameBtn">CARGAR JUEGO</button>
+<button class="primary" id="newGameBtn">CREAR SALA</button>
+<button class="secondary" id="loadGameBtn">RECUPERAR PARTIDA</button>
+<button class="secondary" id="enterRoomBtn">INGRESAR A SALA</button>
 </div>
-<div class="homeSub">Versión Beta Online · Bingo de 75 o 90 bolas · Hasta 250 cartones</div>
+<div class="homeSub">BINGO DE LA GORDA 2.0 · Bingo de 75 o 90 bolas · Hasta 250 cartones</div>
 </div>
 </section>
 <section class="screen" id="wizard">
@@ -362,7 +364,7 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 <div class="gameConfig">
 <div class="configBlock"><h4>1. Cantidad de bolillas</h4><div class="modeChoice"><button data-mode="75" type="button">75 BOLAS</button><button class="active" data-mode="90" type="button">90 BOLAS</button></div></div>
 <div class="configBlock"><h4>2. Premios que se jugarán</h4><div class="checkRow"><label><input checked="" id="globalAmbo" type="checkbox"/> AmboCabeza</label><label><input checked="" id="globalLine" type="checkbox"/> Línea</label><label><input checked="" id="globalBingo" type="checkbox"/> Bingo</label></div><small id="gameModeError" style="display:block;color:#ff9aa2;margin-top:8px"></small></div>
-<div class="configBlock"><h4>3. Forma de sorteo</h4><div class="radioRow"><label><input name="drawMode" type="radio" value="manual"/> Manual</label><label><input checked="" name="drawMode" type="radio" value="automatic"/> Automático</label></div><label style="display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center;margin-top:12px">Segundos entre bolillas <select id="autoSeconds"><option value="4">4 segundos</option><option selected="" value="6">6 segundos</option><option value="8">8 segundos</option><option value="10">10 segundos</option><option value="15">15 segundos</option></select></label><small style="display:block;color:var(--muted);margin-top:8px">En automático se detendrá cuando aparezca un premio para poder verificarlo.</small></div>
+<div class="configBlock"><h4>3. Forma de sorteo</h4><div class="radioRow"><label><input name="drawMode" type="radio" value="manual"/> Manual</label><label><input checked="" name="drawMode" type="radio" value="automatic"/> Automático</label></div><label style="display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center;margin-top:12px">Segundos entre bolillas <select id="autoSeconds"><option value="4">4 segundos</option><option value="6">6 segundos</option><option value="8">8 segundos</option><option selected="" value="10">10 segundos</option><option value="15">15 segundos</option></select></label><small style="display:block;color:var(--muted);margin-top:8px">En automático se detendrá cuando aparezca un premio para poder verificarlo.</small></div>
 </div>
 </div>
 <div class="step" data-step="2">
@@ -386,12 +388,10 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 <h3>Elegí cómo cargar los cartones</h3>
 <div class="sourceChoice"><button class="active" id="sourceGenerated" type="button">GENERAR CARTONES</button><button id="sourceManual" type="button">CARGA MANUAL</button><button id="sourcePdf" type="button">IMPORTAR PDF</button></div>
 <div id="generatedSetup">
-<div class="setupGrid">
-<label>Cantidad de cartones</label><select id="qty"></select>
-<label>Pegar lista de nombres</label><textarea id="bulkNames" placeholder="Uno por línea o separados por coma"></textarea>
+<div class="setupGrid generatedOnly">
+<label for="qty">Cantidad de cartones a generar al azar</label><select id="qty"></select>
 </div>
-<div style="margin-top:10px"><button class="secondary" id="applyNames">APLICAR LISTA</button></div>
-<div class="namesList" id="namesList"></div>
+<div class="wizardInfo">Los cartones se generan sin nombres ni jugadores asignados. Los participantes los elegirán después dentro de la sala.</div>
 </div>
 <div class="pdfSetup" id="pdfSetup">
 <div class="pdfDrop"><b>IMPORTAR CARTONES DESDE PDF</b><input accept="application/pdf" id="pdfFile" type="file"/><div class="pdfHelp">Pensado para PDF de cartones con texto, como los generados por bingo.es. La primera importación necesita conexión para cargar el lector PDF.</div></div>
@@ -429,7 +429,7 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 </section>
 <section class="screen" id="game">
 <header class="gameTop card">
-<div class="gameTitle">EL BINGO DE LA GORDA<span id="versionBadge" style="font-size:11px;color:var(--muted);font-weight:800;margin-left:8px">VERSIÓN BETA</span></div>
+<div class="gameTitle">EL BINGO DE LA GORDA<span id="versionBadge" style="font-size:11px;color:var(--muted);font-weight:800;margin-left:8px">VERSIÓN 2.0</span></div>
 <div class="statusLine" id="lineStatus">Línea: pendiente</div>
 <div class="gameNo" id="gameNo">Juego 0001</div>
 </header>
@@ -533,5 +533,5 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 <label style="display:grid;grid-template-columns:110px 1fr;gap:7px;margin:8px 0"><span>Vol. efectos</span><input id="fxVol" max=".5" min="0" step=".01" type="range" value=".18"/></label>
 </div>
 
-<div id="fatalError" style="display:none;position:fixed;inset:18px;z-index:999;background:#2a0710;color:#fff;border:2px solid #ff5964;border-radius:18px;padding:20px;overflow:auto;white-space:pre-wrap;font:16px/1.45 Segoe UI,Arial"></div><script defer="defer" src="js/app-v8.js?v=beta"></script><script defer="defer" src="js/online-room-admin.js?v=beta"></script></body>
+<div id="fatalError" style="display:none;position:fixed;inset:18px;z-index:999;background:#2a0710;color:#fff;border:2px solid #ff5964;border-radius:18px;padding:20px;overflow:auto;white-space:pre-wrap;font:16px/1.45 Segoe UI,Arial"></div><script defer="defer" src="js/presenter-scripts.js?v=2.0"></script><script defer="defer" src="js/app-v8.js?v=2.0"></script><script defer="defer" src="js/online-room-admin.js?v=2.0"></script></body>
 </html>

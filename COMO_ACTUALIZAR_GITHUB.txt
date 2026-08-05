@@ -1,13 +1,15 @@
-ACTUALIZAR BINGO DE LA GORDA - VERSIÓN BETA EN GITHUB
+ACTUALIZAR BINGO DE LA GORDA 2.0 EN GITHUB
+==========================================
 
-1. Descomprimí Bingo_de_la_Gorda_Version_Beta_para_GitHub.zip.
-2. Entrá al repositorio de GitHub que usa Render.
-3. Tocá Add file y después Upload files.
-4. Subí TODO el contenido descomprimido, manteniendo las carpetas assets, js, data y tests.
-5. Confirmá que GitHub reemplace los archivos anteriores.
-6. Escribí como mensaje: Bingo de la Gorda - Version Beta
-7. Tocá Commit changes.
+1. Descomprimí BINGO DE LA GORDA 2.0.zip.
+2. Entrá al repositorio de GitHub conectado con Render.
+3. Elegí Add file y luego Upload files.
+4. Subí TODO el contenido de la carpeta BINGO DE LA GORDA 2.0, manteniendo las carpetas assets, js, data y tests.
+5. Confirmá que se reemplacen los archivos anteriores.
+6. Usá como mensaje: Bingo de la Gorda 2.0
+7. Confirmá con Commit changes.
 8. Esperá que Render termine el despliegue y muestre Live.
 9. Actualizá /admin y /jugador con Ctrl + F5.
+10. Ejecutá una partida de prueba antes de vender cartones.
 
-No hagas la actualización mientras haya una partida activa.
+No hagas la actualización mientras haya una partida activa. Descargá antes cualquier resultado o copia de seguridad que necesites conservar.

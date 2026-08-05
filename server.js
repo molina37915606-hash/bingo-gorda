@@ -18,7 +18,7 @@ const PUBLIC_URL = String(process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
 const MIN_CARDS = 2;
 const MAX_CARDS = 250;
-const MAX_ACTIVE_CARDS = 240;
+const MAX_ACTIVE_CARDS = 250;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 60;
 const MAX_CARDS_PER_PLAYER = 4;
@@ -29,6 +29,8 @@ const CARD_RESERVATION_TTL_MS = 2 * 60 * 1000;
 const ADMIN_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const CLAIM_QUEUE_WINDOW_MS = 3000;
 const TEST_EVENT_TTL_MS = 20 * 1000;
+const START_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_START_SEQUENCE_MS || 11_000));
+const RESUME_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_RESUME_SEQUENCE_MS || 5_000));
 const MAX_TIE_WINNERS_PER_PRIZE = 4;
 const LAST_RESULT_PDF_FILE = path.join(DATA_DIR, 'ultimo-resultado.pdf');
 const LAST_RESULT_META_FILE = path.join(DATA_DIR, 'ultimo-resultado.json');
@@ -99,6 +101,14 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
   const lineMissing = lines.length ? Math.min(...lines.map(line => line.values.filter(n => !drawn.has(n)).length)) : numbers.length;
   const completeLines = lines.filter(line => line.values.length && line.values.every(n => drawn.has(n)));
   const bingoMissing = numbers.filter(n => !drawn.has(n)).length;
+  const amboDetails = Number(card.mode) === 90 ? (card.grid || []).map((row, rowIndex) => {
+    const values = row.filter(Number.isFinite);
+    if (values.length !== 5) return null;
+    const middleClean = values.slice(1, -1).every(number => !drawn.has(number));
+    return drawn.has(values[0]) && drawn.has(values.at(-1)) && middleClean
+      ? { key: `row-${rowIndex}`, label: `Fila ${rowIndex + 1}`, values: [values[0], values.at(-1)] }
+      : null;
+  }).filter(Boolean) : [];
   const officialMarked = numbers.filter(n => drawn.has(n));
   const playerMarked = numbers.filter(n => marks.has(n));
   const missed = officialMarked.filter(n => !marks.has(n));
@@ -106,6 +116,8 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
   return {
     lineMissing,
     bingoMissing,
+    hasAmbo: amboDetails.length > 0,
+    amboDetails,
     hasLine: completeLines.length > 0,
     hasBingo: bingoMissing === 0 && numbers.length > 0,
     completeLines,
@@ -121,7 +133,7 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
 
 function blankState() {
   return {
-    version: 8,
+    version: 20,
     active: false,
     status: 'closed',
     roomCode: null,
@@ -132,7 +144,7 @@ function blankState() {
     round: 1,
     roomSettings: {
       playerAudioAllowed: true,
-      playerAudioDefault: false,
+      playerAudioDefault: true,
       linePrizeCount: 1,
       bingoPrizeCount: 1,
       allowSamePlayerSecondLine: true,
@@ -148,6 +160,8 @@ function blankState() {
       completedAt: null
     },
     adminMessage: null,
+    transition: null,
+    deviceTransferRequests: [],
     testEvent: null,
     game: null,
     players: [],
@@ -169,10 +183,12 @@ function loadState() {
       players: parsed.players || [],
       cardReservations: parsed.cardReservations || {},
       claims: parsed.claims || [],
-      eventLog: parsed.eventLog || []
+      eventLog: parsed.eventLog || [],
+      transition: parsed.transition || null,
+      deviceTransferRequests: Array.isArray(parsed.deviceTransferRequests) ? parsed.deviceTransferRequests : []
     };
     if (merged.active && !parsed.status) merged.status = merged.game?.drawn?.length ? 'playing' : 'waiting';
-    if (!['closed', 'waiting', 'playing', 'finished'].includes(merged.status)) merged.status = 'closed';
+    if (!['closed', 'waiting', 'starting', 'playing', 'paused', 'resuming', 'finished'].includes(merged.status)) merged.status = 'closed';
     merged.roomSettings.linePrizeCount = Math.max(1, Math.min(2, Number(merged.roomSettings.linePrizeCount) || 1));
     merged.roomSettings.bingoPrizeCount = 1;
     merged.roomSettings.allowSamePlayerSecondLine = Boolean(merged.roomSettings.allowSamePlayerSecondLine);
@@ -199,7 +215,8 @@ function loadState() {
         reservedCardIds: Array.isArray(player.reservedCardIds) ? player.reservedCardIds.map(String) : [],
         marks: player.marks || {},
         autoMark: Boolean(player.autoMark),
-        notices: player.notices || []
+        notices: player.notices || [],
+        sessionDeviceId: String(player.sessionDeviceId || '')
       };
     });
     return merged;
@@ -348,7 +365,7 @@ function availableCardIdsFor(player) {
     });
 }
 
-function refreshOffersForPlayer(player) {
+function refreshOffersForPlayer(player, renew = false) {
   if (!state.game || !player || state.status !== 'waiting' || player.selectionConfirmed) {
     if (player) player.offeredCardIds = [];
     return;
@@ -356,9 +373,13 @@ function refreshOffersForPlayer(player) {
   const available = availableCardIdsFor(player);
   const allowedSet = new Set(available);
   const reserved = (player.reservedCardIds || []).filter(cardId => allowedSet.has(cardId));
-  const kept = (player.offeredCardIds || []).filter(cardId => allowedSet.has(cardId) && !reserved.includes(cardId));
-  const pool = shuffle(available.filter(cardId => !reserved.includes(cardId) && !kept.includes(cardId)));
+  const previous = (player.offeredCardIds || []).filter(cardId => allowedSet.has(cardId) && !reserved.includes(cardId));
+  const kept = renew ? [] : previous;
+  let pool = shuffle(available.filter(cardId => !reserved.includes(cardId) && !kept.includes(cardId) && (!renew || !previous.includes(cardId))));
   const target = Math.min(MAX_CARD_OPTIONS, available.length);
+  if (renew && pool.length + reserved.length < target) {
+    pool = [...pool, ...shuffle(previous.filter(cardId => !pool.includes(cardId)))];
+  }
   player.offeredCardIds = [...reserved, ...kept, ...pool].slice(0, target);
 }
 
@@ -425,10 +446,12 @@ function playerPrizeReadiness(player) {
     return {
       cardId,
       cardNumber: card.number,
+      hasAmbo: analysis.hasAmbo,
       hasLine: analysis.hasLine,
       hasBingo: analysis.hasBingo,
       lineMissing: analysis.lineMissing,
       bingoMissing: analysis.bingoMissing,
+      amboEligible: state.status === 'playing' && analysis.hasAmbo && !prizes.ambo.closed && card.bets?.ambocabeza !== false,
       lineEligible: state.status === 'playing' && analysis.hasLine && !prizes.line.closed && !samePlayerBlocked && !cardAlreadyWonLine && card.bets?.line !== false,
       bingoEligible: state.status === 'playing' && analysis.hasBingo && !prizes.bingo.closed && !cardAlreadyWonBingo && card.bets?.bingo !== false
     };
@@ -463,7 +486,18 @@ function prizeStatusPayload() {
   const bingoTotal = 1;
   const lineAwarded = new Set(confirmedClaims('line').map(claim => Number(claim.prizeNumber) || 1)).size;
   const bingoAwarded = new Set(confirmedClaims('bingo').map(claim => Number(claim.prizeNumber) || 1)).size;
+  const amboEnabled = Boolean(state.game?.mode === 90 && state.game?.rules?.ambocabeza);
+  const amboAwarded = confirmedClaims('ambo').length;
   return {
+    ambo: {
+      total: amboEnabled ? 1 : 0,
+      awarded: amboAwarded,
+      remaining: amboEnabled ? Math.max(0, 1 - amboAwarded) : 0,
+      closed: !amboEnabled || amboAwarded >= 1,
+      nextNumber: 1,
+      nextLabel: 'AmboCabeza',
+      winners: confirmedClaims('ambo').map(claim => ({ playerId: claim.playerId, playerName: claim.playerName, cardId: claim.cardId, cardNumber: claim.cardNumber, prizeNumber: 1 }))
+    },
     line: {
       total: lineTotal,
       awarded: lineAwarded,
@@ -583,7 +617,7 @@ function publicClaimsPayload() {
       status: claim.status,
       resolvedAt: claim.resolvedAt || null,
       prizeNumber: claim.prizeNumber || 1,
-      prizeLabel: claim.prizeLabel || (claim.type === 'line' ? 'Primera línea' : 'Bingo')
+      prizeLabel: claim.prizeLabel || (claim.type === 'ambo' ? 'AmboCabeza' : claim.type === 'line' ? 'Primera línea' : 'Bingo')
     };
     if (claim.status === 'confirmed') {
       const card = state.game?.cards?.find(item => item.id === claim.cardId);
@@ -599,10 +633,12 @@ function publicClaimsPayload() {
         };
         payload.drawnAtClaim = claim.drawnAtClaim || [];
         payload.officialMarked = claim.comparison?.officialMarked || cardNumbers(card).filter(number => payload.drawnAtClaim.includes(number));
-        payload.winningNumbers = claim.type === 'line'
-          ? (completeLine?.values || [])
-          : cardNumbers(card);
-        payload.winningLineLabel = claim.type === 'line' ? (completeLine?.label || 'Línea completa') : null;
+        payload.winningNumbers = claim.type === 'ambo'
+          ? (claim.comparison?.amboDetails?.[0]?.values || [])
+          : claim.type === 'line' ? (completeLine?.values || []) : cardNumbers(card);
+        payload.winningLineLabel = claim.type === 'ambo'
+          ? (claim.comparison?.amboDetails?.[0]?.label || 'AmboCabeza')
+          : claim.type === 'line' ? (completeLine?.label || 'Línea completa') : null;
       }
     }
     return payload;
@@ -669,6 +705,7 @@ function adminPayload() {
         cardNumber: card.number,
         cardName: card.name,
         ...analysis,
+        amboClaim: claimStateForCard(cardId, 'ambo'),
         lineClaim: claimStateForCard(cardId, 'line'),
         bingoClaim: claimStateForCard(cardId, 'bingo')
       });
@@ -691,6 +728,8 @@ function adminPayload() {
     prizeStatus: prizeStatusPayload(),
     bingoConfirmed: prizeStatusPayload().bingo.closed,
     adminMessage: state.adminMessage,
+    transition: state.transition,
+    deviceTransferRequests: (state.deviceTransferRequests || []).filter(request => request.status === 'pending'),
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
     lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`),
     localUrl: `http://localhost:${PORT}`,
@@ -705,7 +744,8 @@ function adminPayload() {
       offeredCardIds: player.offeredCardIds,
       reservedCardIds: player.reservedCardIds || [],
       autoMark: Boolean(player.autoMark),
-      connected: connected.has(player.id)
+      connected: connected.has(player.id),
+      transferPending: (state.deviceTransferRequests || []).some(request => request.playerId === player.id && request.status === 'pending')
     })),
     cardStatus,
     claims: state.claims.slice(-100),
@@ -730,6 +770,7 @@ function playerPayload(player) {
     prizeStatus: prizeStatusPayload(),
     bingoConfirmed: prizeStatusPayload().bingo.closed,
     adminMessage: state.adminMessage,
+    transition: state.transition,
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
     readiness: playerPrizeReadiness(player),
     publicClaims: publicClaimsPayload(),
@@ -763,7 +804,7 @@ function backupPayload() {
   const cleanState = deepCopy(state);
   cleanState.players = cleanState.players.map(player => ({ ...player, sessionToken: null }));
   return {
-    format: 'el-bingo-de-la-gorda-beta-backup',
+    format: 'el-bingo-de-la-gorda-2.0-backup',
     exportedAt: nowIso(),
     state: cleanState
   };
@@ -909,6 +950,7 @@ function configureRoom(payload) {
       offeredCardIds: [],
       reservedCardIds: [],
       sessionToken: null,
+      sessionDeviceId: '',
       marks: Object.fromEntries(cardIds.map(cardId => [cardId, []])),
       autoMark: false,
       notices: []
@@ -919,7 +961,7 @@ function configureRoom(payload) {
   sanitizedGame.phase = 'READY';
   const requestedTimerMinutes = Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(payload.assignmentTimer?.durationMinutes) || 10));
   state = {
-    version: 8,
+    version: 20,
     active: true,
     status: 'waiting',
     roomCode: randomCode(5),
@@ -930,7 +972,7 @@ function configureRoom(payload) {
     round: 1,
     roomSettings: {
       playerAudioAllowed: payload.roomSettings?.playerAudioAllowed !== false,
-      playerAudioDefault: Boolean(payload.roomSettings?.playerAudioDefault),
+      playerAudioDefault: payload.roomSettings?.playerAudioDefault !== false,
       linePrizeCount: Math.max(1, Math.min(2, Number(payload.roomSettings?.linePrizeCount) || 1)),
       bingoPrizeCount: 1,
       allowSamePlayerSecondLine: Boolean(payload.roomSettings?.allowSamePlayerSecondLine),
@@ -946,6 +988,8 @@ function configureRoom(payload) {
       completedAt: null
     },
     adminMessage: null,
+    transition: null,
+    deviceTransferRequests: [],
     testEvent: null,
     game: sanitizedGame,
     players,
@@ -972,7 +1016,7 @@ function updateGame(game) {
   if (state.status === 'waiting' && sanitized.drawn.length > previousDrawn.length) {
     throw new Error('La partida está en sala de espera. Presioná INICIAR SORTEO antes de sortear.');
   }
-  if (state.status === 'playing' && prizeStatusPayload().bingo.closed && JSON.stringify(sanitized.drawn) !== JSON.stringify(previousDrawn)) {
+  if (['playing','paused','resuming'].includes(state.status) && prizeStatusPayload().bingo.closed && JSON.stringify(sanitized.drawn) !== JSON.stringify(previousDrawn)) {
     throw new Error('El bingo ya fue confirmado. No se pueden agregar, quitar ni cambiar bolillas; finalizá el sorteo.');
   }
   if (state.status === 'finished' && JSON.stringify(sanitized.drawn) !== JSON.stringify(previousDrawn)) {
@@ -1016,6 +1060,29 @@ function updateGame(game) {
   return adminPayload();
 }
 
+let transitionTimer = null;
+
+function scheduleTransition() {
+  clearTimeout(transitionTimer);
+  transitionTimer = null;
+  if (!state.active || !state.transition?.endsAt) return;
+  const delay = Math.max(0, new Date(state.transition.endsAt).getTime() - Date.now());
+  transitionTimer = setTimeout(() => completeTransition(), delay);
+}
+
+function completeTransition() {
+  if (!state.active || !state.transition) return;
+  const type = state.transition.type;
+  if (type === 'start' || type === 'resume') {
+    state.status = 'playing';
+    state.game.phase = state.game.drawMode === 'automatic' ? 'DRAWING' : 'READY';
+    logEvent(type === 'start' ? 'game_started' : 'game_resumed', { round: state.round });
+  }
+  state.transition = null;
+  saveState();
+  broadcast();
+}
+
 function startRoom() {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'waiting') return adminPayload();
@@ -1026,18 +1093,44 @@ function startRoom() {
   for (const player of state.players) player.reservedCardIds = [];
   state.assignmentTimer = {
     ...(state.assignmentTimer || blankState().assignmentTimer),
-    status: 'completed',
-    endsAt: null,
-    remainingMs: 0,
+    status: 'completed', endsAt: null, remainingMs: 0,
     completedAt: state.assignmentTimer?.completedAt || nowIso()
   };
-  state.status = 'playing';
-  state.startedAt = nowIso();
+  const startedAt = nowIso();
+  state.status = 'starting';
+  state.startedAt = startedAt;
   state.endedAt = null;
-  state.game.phase = state.game.drawMode === 'automatic' ? 'DRAWING' : 'READY';
-  logEvent('game_started', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0) });
-  saveState();
-  broadcast();
+  state.game.phase = 'READY';
+  state.transition = {
+    id: randomId('transition'), type: 'start', startedAt,
+    endsAt: new Date(Date.now() + START_SEQUENCE_MS).toISOString(),
+    officialTime: new Date().toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false })
+  };
+  logEvent('game_start_sequence', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0) });
+  saveState(); broadcast(); scheduleTransition();
+  return adminPayload();
+}
+
+function pauseRoom() {
+  if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
+  if (state.status !== 'playing') throw new Error('La partida solo se puede pausar mientras está en juego.');
+  state.status = 'paused';
+  state.transition = null;
+  state.game.phase = 'PAUSED';
+  logEvent('game_paused');
+  saveState(); broadcast();
+  return adminPayload();
+}
+
+function resumeRoom() {
+  if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
+  if (state.status !== 'paused') throw new Error('La partida no está pausada.');
+  const startedAt = nowIso();
+  state.status = 'resuming';
+  state.transition = { id: randomId('transition'), type: 'resume', startedAt, endsAt: new Date(Date.now() + RESUME_SEQUENCE_MS).toISOString() };
+  state.game.phase = 'PAUSED';
+  logEvent('game_resume_sequence');
+  saveState(); broadcast(); scheduleTransition();
   return adminPayload();
 }
 
@@ -1128,7 +1221,7 @@ function archiveCurrentResults() {
   const metaTemp = `${LAST_RESULT_META_FILE}.tmp`;
   fs.writeFileSync(pdfTemp, pdf);
   const meta = {
-    version: 'Beta',
+    version: '2.0',
     roomCode: state.roomCode,
     gameNumber: state.game.number,
     round: state.round,
@@ -1308,15 +1401,16 @@ function restoreBackup(payload) {
       offeredCardIds: Array.isArray(rawPlayer.offeredCardIds) ? rawPlayer.offeredCardIds.map(String).filter(id => validCardIds.has(id)) : [],
       reservedCardIds: [],
       sessionToken: null,
+      sessionDeviceId: '',
       marks,
       autoMark: Boolean(rawPlayer.autoMark),
       notices: Array.isArray(rawPlayer.notices) ? rawPlayer.notices.slice(-20) : []
     };
   });
   state = {
-    version: 8,
+    version: 20,
     active: true,
-    status: ['waiting', 'playing', 'finished'].includes(raw.status) ? raw.status : (raw.game.drawn?.length ? 'playing' : 'waiting'),
+    status: ['waiting', 'starting', 'playing', 'paused', 'resuming', 'finished'].includes(raw.status) ? raw.status : (raw.game.drawn?.length ? 'playing' : 'waiting'),
     roomCode: String(raw.roomCode || randomCode(5)).slice(0, 12),
     createdAt: raw.createdAt || nowIso(),
     startedAt: raw.startedAt || null,
@@ -1326,6 +1420,8 @@ function restoreBackup(payload) {
     roomSettings: { ...blankState().roomSettings, ...(raw.roomSettings || {}) },
     assignmentTimer: { ...blankState().assignmentTimer, ...(raw.assignmentTimer || {}) },
     testEvent: null,
+    transition: raw.transition || null,
+    deviceTransferRequests: [],
     adminMessage: raw.adminMessage && String(raw.adminMessage.text || '').trim()
       ? {
           id: String(raw.adminMessage.id || randomId('msg')),
@@ -1345,6 +1441,7 @@ function restoreBackup(payload) {
   logEvent('backup_restored', { players: players.length, cards: state.game.cards.length, status: state.status });
   saveState();
   broadcast();
+  scheduleTransition();
   return adminPayload();
 }
 
@@ -1353,15 +1450,62 @@ function loginPlayer(payload) {
   const roomCode = String(payload?.roomCode || '').trim().toUpperCase();
   if (roomCode && roomCode !== state.roomCode) throw new Error('El código de sala no coincide.');
   const normalized = String(payload?.code || '').trim().toUpperCase();
+  const deviceId = String(payload?.deviceId || '').trim().slice(0, 120);
   const player = state.players.find(item => item.code === normalized);
   if (!player) throw new Error('Código incorrecto. Revisalo con el administrador.');
-  player.sessionToken = randomId('session');
+  if (player.sessionToken && player.sessionDeviceId && deviceId && player.sessionDeviceId !== deviceId) {
+    return { conflict: true, playerId: player.id, playerName: player.name, message: 'Tu sesión está activa en otro dispositivo.' };
+  }
+  player.sessionToken = player.sessionToken || randomId('session');
+  player.sessionDeviceId = deviceId || player.sessionDeviceId || randomId('device');
   player.lastLoginAt = nowIso();
   if (state.status === 'waiting') refreshOffersForPlayer(player);
   logEvent('player_login', { playerId: player.id, playerName: player.name });
-  saveState();
-  broadcast();
+  saveState(); broadcast();
   return { token: player.sessionToken, state: playerPayload(player) };
+}
+
+function requestDeviceTransfer(payload) {
+  if (!state.active) throw new Error('La sala no está activa.');
+  const code = String(payload?.code || '').trim().toUpperCase();
+  const deviceId = String(payload?.deviceId || '').trim().slice(0, 120);
+  const player = state.players.find(item => item.code === code);
+  if (!player || !deviceId) throw new Error('No se pudo identificar el acceso.');
+  state.deviceTransferRequests ||= [];
+  const existing = state.deviceTransferRequests.find(request => request.playerId === player.id && request.deviceId === deviceId && request.status === 'pending');
+  if (existing) return { requestId: existing.id, status: existing.status, playerName: player.name };
+  const request = { id: randomId('transfer'), playerId: player.id, playerName: player.name, deviceId, status: 'pending', createdAt: nowIso() };
+  state.deviceTransferRequests.push(request);
+  logEvent('device_transfer_requested', { requestId: request.id, playerId: player.id, playerName: player.name });
+  saveState(); broadcast();
+  return { requestId: request.id, status: request.status, playerName: player.name };
+}
+
+function deviceTransferStatus(payload) {
+  const requestId = String(payload?.requestId || '');
+  const deviceId = String(payload?.deviceId || '');
+  const request = (state.deviceTransferRequests || []).find(item => item.id === requestId && item.deviceId === deviceId);
+  if (!request) throw new Error('No se encontró la solicitud.');
+  const player = state.players.find(item => item.id === request.playerId);
+  return { status: request.status, playerName: request.playerName, token: request.status === 'approved' ? player?.sessionToken || null : null, state: request.status === 'approved' && player ? playerPayload(player) : null };
+}
+
+function resolveDeviceTransfer(payload) {
+  const request = (state.deviceTransferRequests || []).find(item => item.id === String(payload.requestId || ''));
+  if (!request || request.status !== 'pending') throw new Error('La solicitud ya no está pendiente.');
+  const player = state.players.find(item => item.id === request.playerId);
+  if (!player) throw new Error('No se encontró el jugador.');
+  const approved = payload.resolution === 'approved';
+  request.status = approved ? 'approved' : 'rejected';
+  request.resolvedAt = nowIso();
+  if (approved) {
+    player.sessionToken = randomId('session');
+    player.sessionDeviceId = request.deviceId;
+    player.lastLoginAt = nowIso();
+  }
+  logEvent('device_transfer_resolved', { requestId: request.id, playerId: player.id, resolution: request.status });
+  saveState(); broadcast();
+  return adminPayload();
 }
 
 function reserveCard(player, payload) {
@@ -1407,6 +1551,17 @@ function reserveCard(player, payload) {
   logEvent('card_reserved', { playerId: player.id, playerName: player.name, cardId });
   saveState();
   broadcast();
+  return playerPayload(player);
+}
+
+function renewOffers(player) {
+  if (!state.active || !state.game) throw new Error('La sala no está activa.');
+  if (!selectionIsOpen()) throw new Error('La elección de cartones ya está cerrada.');
+  if (player.selectionConfirmed) throw new Error('Tus cartones ya están confirmados.');
+  purgeExpiredReservations();
+  refreshOffersForPlayer(player, true);
+  logEvent('card_offers_renewed', { playerId: player.id, playerName: player.name });
+  saveState(); broadcast();
   return playerPayload(player);
 }
 
@@ -1498,16 +1653,20 @@ function setAutoMark(player, payload) {
 function createClaim(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
   if (state.status !== 'playing') throw new Error('La partida todavía no comenzó o ya finalizó.');
-  const type = payload.type === 'bingo' ? 'bingo' : 'line';
+  const type = payload.type === 'ambo' ? 'ambo' : payload.type === 'bingo' ? 'bingo' : 'line';
   const cardId = String(payload.cardId || '');
   const card = state.game.cards.find(item => item.id === cardId);
   if (!card || !player.cardIds.includes(cardId)) throw new Error('Ese cartón no pertenece al jugador.');
+  if (type === 'ambo' && (state.game.mode !== 90 || state.game.rules?.ambocabeza === false || card.bets?.ambocabeza === false)) throw new Error('Este cartón no participa por AmboCabeza.');
   if (type === 'line' && card.bets?.line === false) throw new Error('Este cartón no participa por línea.');
   if (type === 'bingo' && card.bets?.bingo === false) throw new Error('Este cartón no participa por bingo.');
 
   const prizes = prizeStatusPayload();
   const prize = prizes[type];
-  if (prize.closed) throw new Error(type === 'line' ? 'Los premios de línea ya fueron entregados.' : 'El premio de bingo ya fue entregado.');
+  if (prize.closed) {
+    const closedLabel = type === 'ambo' ? 'El premio de AmboCabeza ya fue entregado.' : type === 'line' ? 'Los premios de línea ya fueron entregados.' : 'El premio de bingo ya fue entregado.';
+    throw new Error(closedLabel);
+  }
   const pendingClaims = state.claims.filter(claim => claim.status === 'pending');
   let tieWith = null;
   if (pendingClaims.length) {
@@ -1527,16 +1686,16 @@ function createClaim(player, payload) {
     tieWith = first;
   }
   if (state.claims.some(claim => claim.type === type && claim.cardId === cardId && claim.status === 'confirmed')) {
-    throw new Error(`Ese cartón ya ganó ${type === 'line' ? 'línea' : 'bingo'}.`);
+    throw new Error(`Ese cartón ya ganó ${type === 'ambo' ? 'AmboCabeza' : type === 'line' ? 'línea' : 'bingo'}.`);
   }
   if (type === 'line' && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(claim => claim.playerId === player.id)) {
     throw new Error('Este jugador ya ganó una línea y la sala no permite que gane la segunda.');
   }
 
   const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
-  const valid = type === 'line' ? analysis.hasLine : analysis.hasBingo;
+  const valid = type === 'ambo' ? analysis.hasAmbo : type === 'line' ? analysis.hasLine : analysis.hasBingo;
   const prizeNumber = tieWith ? Number(tieWith.prizeNumber || (prize.awarded + 1)) : prize.awarded + 1;
-  const prizeLabel = type === 'line' ? (prizeNumber === 1 ? 'Primera línea' : 'Segunda línea') : 'Bingo';
+  const prizeLabel = type === 'ambo' ? 'AmboCabeza' : type === 'line' ? (prizeNumber === 1 ? 'Primera línea' : 'Segunda línea') : 'Bingo';
   const claim = {
     id: randomId('claim'),
     type,
@@ -1579,7 +1738,10 @@ function resolveClaim(payload) {
         throw new Error(`El máximo es de ${MAX_TIE_WINNERS_PER_PRIZE} ganadores simultáneos por premio para conservar el resultado en una sola hoja.`);
       }
     }
-    if (current.closed && !confirmedTie) throw new Error(claim.type === 'line' ? 'Los premios de línea ya fueron entregados.' : 'El premio de bingo ya fue entregado.');
+    if (current.closed && !confirmedTie) {
+      const closedLabel = claim.type === 'ambo' ? 'El premio de AmboCabeza ya fue entregado.' : claim.type === 'line' ? 'Los premios de línea ya fueron entregados.' : 'El premio de bingo ya fue entregado.';
+      throw new Error(closedLabel);
+    }
     if (claim.type === 'line' && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(item => item.playerId === claim.playerId)) {
       throw new Error('Este jugador ya ganó una línea y no está habilitado para ganar la segunda.');
     }
@@ -1587,7 +1749,7 @@ function resolveClaim(payload) {
       throw new Error('Ese cartón ya recibió este premio.');
     }
     claim.prizeNumber = confirmedTie ? Number(confirmedTie.prizeNumber || claim.prizeNumber || 1) : current.awarded + 1;
-    claim.prizeLabel = claim.type === 'line' ? (claim.prizeNumber === 1 ? 'Primera línea' : 'Segunda línea') : 'Bingo';
+    claim.prizeLabel = claim.type === 'ambo' ? 'AmboCabeza' : claim.type === 'line' ? (claim.prizeNumber === 1 ? 'Primera línea' : 'Segunda línea') : 'Bingo';
   }
 
   claim.status = resolution;
@@ -1607,8 +1769,8 @@ function resolveClaim(payload) {
       result: resolution,
       officialValid: claim.officialValid,
       text: resolution === 'confirmed'
-        ? `${claim.prizeLabel || (claim.type === 'line' ? 'Línea' : 'Bingo')} confirmada en el cartón ${claim.cardNumber}.`
-        : `${claim.type === 'line' ? 'Línea' : 'Bingo'} rechazado en el cartón ${claim.cardNumber}.`
+        ? `${claim.prizeLabel || (claim.type === 'ambo' ? 'AmboCabeza' : claim.type === 'line' ? 'Línea' : 'Bingo')} confirmada en el cartón ${claim.cardNumber}.`
+        : `${claim.type === 'ambo' ? 'AmboCabeza' : claim.type === 'line' ? 'Línea' : 'Bingo'} rechazado en el cartón ${claim.cardNumber}.`
     });
   }
   logEvent('claim_resolved', { claimId: claim.id, resolution, prizeNumber: claim.prizeNumber || 1, officialValid: claim.officialValid });
@@ -1638,11 +1800,12 @@ function officialBallRows() {
 function winnerDetails(claim) {
   const card = state.game?.cards?.find(item => item.id === claim.cardId) || null;
   const completeLine = claim.comparison?.completeLines?.[0] || null;
+  const completeAmbo = claim.comparison?.amboDetails?.[0] || null;
   const drawnAtClaim = Array.isArray(claim.drawnAtClaim) ? claim.drawnAtClaim : [];
   return {
     type: claim.type,
     prizeNumber: Number(claim.prizeNumber) || 1,
-    prizeLabel: claim.prizeLabel || (claim.type === 'line' ? 'Línea' : 'Bingo'),
+    prizeLabel: claim.prizeLabel || (claim.type === 'ambo' ? 'AmboCabeza' : claim.type === 'line' ? 'Línea' : 'Bingo'),
     playerName: claim.playerName,
     cardId: claim.cardId,
     cardNumber: claim.cardNumber,
@@ -1652,17 +1815,21 @@ function winnerDetails(claim) {
     ballNumber: drawnAtClaim.at(-1) ?? null,
     mode: Number(card?.mode || state.game?.mode) === 75 ? 75 : 90,
     grid: card ? deepCopy(card.grid) : [],
-    winningNumbers: claim.type === 'line' ? (completeLine?.values || []) : cardNumbers(card),
-    winningLineLabel: claim.type === 'line' ? (completeLine?.label || 'Línea completa') : null
+    winningNumbers: claim.type === 'ambo'
+      ? (completeAmbo?.values || [])
+      : claim.type === 'line' ? (completeLine?.values || []) : cardNumbers(card),
+    winningLineLabel: claim.type === 'ambo'
+      ? (completeAmbo?.label || 'AmboCabeza')
+      : claim.type === 'line' ? (completeLine?.label || 'Línea completa') : null
   };
 }
 
 function actaPayload() {
   if (!state.active || !state.game) throw new Error('No hay una sala disponible.');
-  const claims = confirmedClaims('line').concat(confirmedClaims('bingo'))
+  const claims = confirmedClaims('ambo').concat(confirmedClaims('line'), confirmedClaims('bingo'))
     .sort((a, b) => new Date(a.createdAt || a.resolvedAt || 0) - new Date(b.createdAt || b.resolvedAt || 0));
   return {
-    version: 'Beta',
+    version: '2.0',
     roomCode: state.roomCode,
     round: state.round,
     gameNumber: state.game.number,
@@ -1871,7 +2038,7 @@ function buildResultsPdf() {
   rect(19, 10, 70, 70, COLORS.white, '#F2D3E2', 1);
   image(24, 15, 60, 60);
   text('RESULTADOS OFICIALES DEL SORTEO', 101, 18, 20, { bold: true, color: COLORS.white, maxWidth: 390 });
-  text('Bingo de la Gorda - Versión Beta', 101, 47, 11, { bold: true, color: '#F7DDF0' });
+  text('Bingo de la Gorda - Versión 2.0', 101, 47, 11, { bold: true, color: '#F7DDF0' });
   text(`Sala ${acta.roomCode}  ·  Juego ${acta.gameNumber}  ·  Bingo ${acta.mode}`, 101, 65, 8.5, { color: '#E8D7EE' });
 
   const metaX = 510;
@@ -1896,7 +2063,7 @@ function buildResultsPdf() {
   const markerMap = new Map();
   for (const winner of acta.winners) {
     if (!winner.ballOrder) continue;
-    const label = winner.type === 'bingo' ? 'B' : winner.prizeNumber === 2 ? 'L2' : 'L1';
+    const label = winner.type === 'ambo' ? 'A' : winner.type === 'bingo' ? 'B' : winner.prizeNumber === 2 ? 'L2' : 'L1';
     const list = markerMap.get(winner.ballOrder) || [];
     list.push({ label, time: formatLocalTime(winner.claimedAt), type: winner.type, prizeNumber: winner.prizeNumber });
     markerMap.set(winner.ballOrder, list);
@@ -1929,7 +2096,7 @@ function buildResultsPdf() {
     text(formatLocalTime(ball.at), x + cellW / 2, y + 22.5, 5.7, { color: COLORS.muted, align: 'center' });
     if (marks.length) {
       const labels = marks.map(mark => mark.label).join('·');
-      rect(x + cellW - 16, y + 2, 14, 8, marks.some(mark => mark.type === 'bingo') ? COLORS.pink : COLORS.purple2);
+      rect(x + cellW - 16, y + 2, 14, 8, marks.some(mark => mark.type === 'bingo') ? COLORS.pink : marks.some(mark => mark.type === 'ambo') ? '#147D64' : COLORS.purple2);
       text(labels, x + cellW - 9, y + 2.2, labels.length > 2 ? 4.7 : 5.5, { bold: true, color: COLORS.white, align: 'center', maxWidth: 12 });
     }
   }
@@ -1938,6 +2105,7 @@ function buildResultsPdf() {
   const legendY = gridBottom + 7;
   text('MARCAS DE CANTO:', 24, legendY, 7, { bold: true, color: COLORS.ink });
   const legend = [
+    ['A', 'AmboCabeza', '#147D64'],
     ['L1', 'Primera línea', COLORS.purple2],
     ['L2', 'Segunda línea', COLORS.gold],
     ['B', 'Bingo', COLORS.pink]
@@ -1947,7 +2115,7 @@ function buildResultsPdf() {
     rect(lx, legendY - 1, 16, 10, color);
     text(tag, lx + 8, legendY, 5.8, { bold: true, color: COLORS.white, align: 'center' });
     text(label, lx + 21, legendY, 6.7, { color: COLORS.muted });
-    lx += tag === 'B' ? 65 : 104;
+    lx += tag === 'A' ? 94 : tag === 'B' ? 65 : 104;
   });
   text('La marca se ubica sobre la última bolilla sorteada al momento del canto.', 818, legendY, 6.7, { color: COLORS.muted, align: 'right' });
 
@@ -1957,10 +2125,11 @@ function buildResultsPdf() {
 
   const blocksY = winnersTitleY + 20;
   const blockGap = 9;
-  const blockW = (794 - blockGap * 2) / 3;
+  const blockW = (794 - blockGap * 3) / 4;
   const blockH = Math.max(145, 571 - blocksY);
 
   const categories = [
+    { label: 'AMBOCABEZA', color: '#147D64', winners: acta.winners.filter(w => w.type === 'ambo') },
     { label: 'PRIMERA LÍNEA', color: COLORS.purple2, winners: acta.winners.filter(w => w.type === 'line' && w.prizeNumber === 1) },
     { label: 'SEGUNDA LÍNEA', color: '#C58B00', winners: acta.winners.filter(w => w.type === 'line' && w.prizeNumber === 2) },
     { label: 'BINGO', color: COLORS.pink, winners: acta.winners.filter(w => w.type === 'bingo') }
@@ -2041,7 +2210,7 @@ function buildResultsPdf() {
   });
 
   text(`Documento oficial generado al cerrar el sorteo · Sala ${acta.roomCode} · Ronda ${acta.round}`, 24, 582, 5.8, { color: COLORS.muted });
-  text('Bingo de la Gorda - Versión Beta', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
+  text('Bingo de la Gorda - Versión 2.0', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
 
   const stream = commands.join('\n');
   const logoPath = path.join(ROOT, 'assets', 'logo-pdf.jpg');
@@ -2115,7 +2284,8 @@ const MIME_TYPES = {
   '.jpeg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.json': 'application/json; charset=utf-8',
-  '.txt': 'text/plain; charset=utf-8'
+  '.txt': 'text/plain; charset=utf-8',
+  '.pdf': 'application/pdf'
 };
 
 function serveFile(res, filePath) {
@@ -2124,7 +2294,8 @@ function serveFile(res, filePath) {
   const jsRoot = `${path.join(ROOT, 'js')}${path.sep}`;
   const allowedHtml = new Set([
     path.join(ROOT, 'ABRIR_EL_BINGO_DE_LA_GORDA.html'),
-    path.join(ROOT, 'jugador.html')
+    path.join(ROOT, 'jugador.html'),
+    path.join(ROOT, 'reglamento.pdf')
   ]);
   const allowed = allowedHtml.has(normalized) || normalized.startsWith(assetRoot) || normalized.startsWith(jsRoot);
   if (!allowed) return sendJson(res, 403, { error: 'Acceso denegado.' });
@@ -2191,6 +2362,9 @@ async function handleApi(req, res, url) {
       if (url.pathname === '/api/admin/configure' && req.method === 'POST') return sendJson(res, 200, configureRoom(await readJson(req)));
       if (url.pathname === '/api/admin/game' && req.method === 'POST') return sendJson(res, 200, updateGame((await readJson(req)).game));
       if (url.pathname === '/api/admin/start' && req.method === 'POST') return sendJson(res, 200, startRoom());
+      if (url.pathname === '/api/admin/pause' && req.method === 'POST') return sendJson(res, 200, pauseRoom());
+      if (url.pathname === '/api/admin/resume' && req.method === 'POST') return sendJson(res, 200, resumeRoom());
+      if (url.pathname === '/api/admin/resolve-device-transfer' && req.method === 'POST') return sendJson(res, 200, resolveDeviceTransfer(await readJson(req)));
       if (url.pathname === '/api/admin/finish' && req.method === 'POST') return sendJson(res, 200, finishRoom());
       if (url.pathname === '/api/admin/assignment-timer' && req.method === 'POST') return sendJson(res, 200, controlAssignmentTimer(await readJson(req)));
       if (url.pathname === '/api/admin/settings' && req.method === 'POST') return sendJson(res, 200, updateRoomSettings(await readJson(req)));
@@ -2216,8 +2390,11 @@ async function handleApi(req, res, url) {
 
     if (url.pathname === '/api/player/login' && req.method === 'POST') {
       if (!consumeRate(req, 'player-login', 60, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
-      return sendJson(res, 200, loginPlayer(await readJson(req)));
+      const result = loginPlayer(await readJson(req));
+      return sendJson(res, result.conflict ? 409 : 200, result);
     }
+    if (url.pathname === '/api/player/request-transfer' && req.method === 'POST') return sendJson(res, 200, requestDeviceTransfer(await readJson(req)));
+    if (url.pathname === '/api/player/transfer-status' && req.method === 'POST') return sendJson(res, 200, deviceTransferStatus(await readJson(req)));
 
     if (url.pathname.startsWith('/api/player/')) {
       const token = req.headers['x-player-token'] || url.searchParams.get('token');
@@ -2225,6 +2402,7 @@ async function handleApi(req, res, url) {
       if (!player) return sendJson(res, 401, { error: 'La sesión no es válida. Volvé a ingresar con tu código.' });
       if (url.pathname === '/api/player/state' && req.method === 'GET') return sendJson(res, 200, playerPayload(player));
       if (url.pathname === '/api/player/reserve' && req.method === 'POST') return sendJson(res, 200, reserveCard(player, await readJson(req)));
+      if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
       if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
       if (url.pathname === '/api/player/release' && req.method === 'POST') return sendJson(res, 200, releaseOwnSelection(player));
       if (url.pathname === '/api/player/mark' && req.method === 'POST') return sendJson(res, 200, markNumber(player, await readJson(req)));
@@ -2269,7 +2447,7 @@ function handleEvents(req, res, url) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || `localhost:${PORT}`}`);
-  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: 'Beta', active: state.active, status: state.status });
+  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '2.0', active: state.active, status: state.status });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('User-agent: *\nDisallow: /admin\n');
@@ -2283,6 +2461,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'ABRIR_EL_BINGO_DE_LA_GORDA.html'));
   if (url.pathname === '/jugador' || url.pathname === '/jugador/') return serveFile(res, path.join(ROOT, 'jugador.html'));
+  if (url.pathname === '/reglamento.pdf') return serveFile(res, path.join(ROOT, 'reglamento.pdf'));
   const relative = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
   if (!(relative.startsWith('assets/') || relative.startsWith('js/'))) return sendJson(res, 404, { error: 'Archivo no encontrado.' });
   return serveFile(res, path.join(ROOT, relative));
@@ -2307,8 +2486,10 @@ setInterval(() => {
   }
 }, 20_000).unref();
 
+scheduleTransition();
+
 server.listen(PORT, HOST, () => {
-  console.log('\nBINGO DE LA GORDA - VERSIÓN BETA');
+  console.log('\nBINGO DE LA GORDA 2.0');
   if (ONLINE_MODE) {
     console.log(`Jugadores: ${PUBLIC_URL || 'URL pública de Render'}/jugador`);
     console.log(`Administrador: ${PUBLIC_URL || 'URL pública de Render'}/admin`);

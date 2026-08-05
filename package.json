@@ -1,13 +1,13 @@
 {
-  "name": "bingo-de-la-gorda-beta-online",
-  "version": "0.0.0-beta",
+  "name": "bingo-de-la-gorda-2-0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Versión Beta online con sala única, resultados oficiales en PDF, cartones ganadores y hasta 250 cartones generados.",
+  "description": "Bingo de la Gorda 2.0: sala online, selección móvil de cartones, presentadores ampliados, sesiones seguras y acta oficial.",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/beta-smoke.js"
+    "test": "node tests/v2-smoke.js"
   }
 }

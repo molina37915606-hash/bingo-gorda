@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = 10;
+const APP_VERSION = 20;
 const STORE_KEY = 'bingoGordaV8Games';
 const CURRENT_KEY = 'bingoGordaV8Current';
 const OLD_STORE_KEY = 'bingoGordaV5Games';
@@ -268,13 +268,8 @@ class VoiceService {
   constructor(app) {
     this.app = app; this.voices = []; this.map = this.loadMap();
     this.audioCtx = null; this.musicTimer = null; this.musicStep = 0;
-    this.profiles = {
-      vero: { rate: 1.06, pitch: 1.32, intros: ['¡Sale el', '¡Vamos con el', '¡Atención, número'], preview: '¡Hola! Soy Vero. ¡Vamos a jugar!', line: '¡Tenemos línea! ¡Felicitaciones!', bingo: '¡Bingo! ¡Tenemos ganador!' },
-      vivi: { rate: 1.06, pitch: 1.32, intros: ['¡Sale el', '¡Vamos con el', '¡Atención, número'], preview: '¡Hola! Soy Vivi. ¡Vamos a divertirnos!', line: '¡Tenemos línea! ¡Felicitaciones!', bingo: '¡Bingo! ¡Tenemos ganador!' },
-      daia: { rate: 1.06, pitch: 1.32, intros: ['¡Sale el', '¡Vamos con el', '¡Atención, número'], preview: '¡Hola! Soy Daia. Mucha suerte para todos.', line: '¡Tenemos línea! ¡Felicitaciones!', bingo: '¡Bingo! ¡Tenemos ganador!' },
-      josu: { rate: .98, pitch: .88, intros: ['Seguimos con el', 'En juego el número', 'Sale el'], preview: '¡Buenas! Soy Josu. ¿Listos para jugar?', line: '¡Hay línea! Felicitaciones.', bingo: '¡Bingo! Tenemos ganador.' }
-    };
-  }
+    this.profiles = window.BingoPresenterScripts?.profiles || {};
+    this.phrases = new (window.BingoPresenterScripts?.PhraseEngine || class { ball(id,n){ return `Número ${n}`; } event(){ return ''; } reset(){} })();  }
   loadMap() { try { return JSON.parse(storageGet(VOICE_KEY) || '{}'); } catch { return {}; } }
   saveMap() { storageSet(VOICE_KEY, JSON.stringify(this.map)); }
   key(voice) { return `${voice.name}|||${voice.lang}`; }
@@ -287,42 +282,48 @@ class VoiceService {
     const spanish = this.voices.filter(v => this.spanish(v));
     const female = spanish.find(v => this.female(v)) || spanish.find(v => !this.male(v)) || spanish[0] || this.voices[0];
     const male = spanish.find(v => this.male(v)) || spanish.find(v => !this.female(v)) || spanish[1] || this.voices[0];
-    if (force || !this.byKey(this.map.femaleShared)) this.map.femaleShared = female ? this.key(female) : '';
+    for (const id of ['vero','vivi','daia']) if (force || !this.byKey(this.map[id])) this.map[id] = female ? this.key(female) : '';
     if (force || !this.byKey(this.map.josu)) this.map.josu = male ? this.key(male) : '';
     this.saveMap(); this.renderControls();
   }
-  voiceFor(id) { return this.byKey(id === 'josu' ? this.map.josu : this.map.femaleShared); }
+  voiceFor(id) { return this.byKey(this.map[id] || (id === 'josu' ? this.map.josu : this.map.vero)); }
   renderControls() {
     const ids = ['vero','vivi','josu','daia'];
     ids.forEach(id => {
       const select = $(`voiceSelect${id[0].toUpperCase()}${id.slice(1)}`);
       if (!select) return;
-      const selected = id === 'josu' ? this.map.josu : this.map.femaleShared;
+      const selected = this.map[id] || '';
       select.innerHTML = '';
       if (!this.voices.length) { const option = new Option('Sin voces disponibles', ''); select.add(option); return; }
       this.voices.forEach(v => select.add(new Option(`${v.name} — ${v.lang}`, this.key(v), false, this.key(v) === selected)));
     });
     const spanish = this.voices.filter(v => this.spanish(v));
-    if ($('voiceStatus')) $('voiceStatus').textContent = this.voices.length ? `${this.voices.length} voces detectadas; ${spanish.length} en español. Vero, Vivi y Daia comparten la misma voz.` : 'El navegador todavía no informó voces.';
+    if ($('voiceStatus')) $('voiceStatus').textContent = this.voices.length ? `${this.voices.length} voces detectadas; ${spanish.length} en español. Cada presentador puede usar una voz distinta.` : 'El navegador todavía no informó voces.';
   }
   setVoice(id, key) {
-    if (id === 'josu') this.map.josu = key; else this.map.femaleShared = key;
+    this.map[id] = key;
     this.saveMap(); this.renderControls();
   }
-  speak(text, id = this.app.game?.presenter || this.app.wizard.presenter || 'vero') {
-    if (!$('voiceOn')?.checked || !window.speechSynthesis) return;
-    const profile = this.profiles[id] || this.profiles.vero;
+  speak(text, id = this.app.game?.presenter || this.app.wizard.presenter || 'vero', priority = false) {
+    if (!$('voiceOn')?.checked || !window.speechSynthesis || !text) return;
+    const profile = this.profiles[id] || this.profiles.vero || { rate: 1, pitch: 1 };
     const utterance = new SpeechSynthesisUtterance(text);
     const voice = this.voiceFor(id);
     if (voice) { utterance.voice = voice; utterance.lang = voice.lang; } else utterance.lang = 'es-AR';
     utterance.rate = profile.rate; utterance.pitch = profile.pitch; utterance.volume = Number($('voiceVol')?.value || 1);
-    window.speechSynthesis.cancel(); window.speechSynthesis.speak(utterance);
+    if (priority) window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
   }
   speakBall(n) {
-    const id = this.app.game?.presenter || 'vero', profile = this.profiles[id] || this.profiles.vero;
-    this.speak(`${profile.intros[Math.floor(Math.random() * profile.intros.length)]} ${n}`, id);
+    const id = this.app.game?.presenter || 'vero';
+    const text = this.phrases.ball(id, n, this.app.game?.drawn?.length || 0, this.app.game?.mode || 90);
+    this.speak(text, id, false);
   }
-  preview(id) { this.speak((this.profiles[id] || this.profiles.vero).preview, id); }
+  event(name, replacements = {}, priority = true) {
+    const id = this.app.game?.presenter || this.app.wizard.presenter || 'vero';
+    this.speak(this.phrases.event(id, name, replacements), id, priority);
+  }
+  preview(id) { this.speak((this.profiles[id] || this.profiles.vero).preview, id, true); }
   audio() {
     if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
@@ -440,7 +441,7 @@ class BingoApp {
     this.voice = new VoiceService(this); this.pdf = new PdfImporter(this);
   }
   freshWizard() {
-    return { step: 1, mode: 90, rules: { ambocabeza: true, line: true, bingo: true }, drawMode: 'automatic', autoSeconds: 6, presenter: null, source: 'generated', names: Array.from({ length: 8 }, (_, i) => `Jugador ${i + 1}`), manualCards: [], pdfCards: [], previewCards: [], previewPage: 0, previewPerPage: 8 };
+    return { step: 1, mode: 90, rules: { ambocabeza: true, line: true, bingo: true }, drawMode: 'automatic', autoSeconds: 10, presenter: null, source: 'generated', names: [], manualCards: [], pdfCards: [], previewCards: [], previewPage: 0, previewPerPage: 8 };
   }
   init() {
     this.populateQuantities(); this.bindEvents(); this.renderGames(); this.renderThemes();
@@ -479,12 +480,12 @@ class BingoApp {
     document.querySelectorAll('.presenterCard').forEach(card => card.classList.remove('selected', 'dimmed'));
     document.querySelectorAll('.modeChoice button').forEach(button => button.classList.toggle('active', Number(button.dataset.mode) === 90));
     $('globalAmbo').checked = $('globalLine').checked = $('globalBingo').checked = true; $('globalAmbo').disabled = false;
-    document.querySelector('input[name="drawMode"][value="automatic"]').checked = true; $('autoSeconds').value = '6'; $('qty').value = '8';
-    this.setWizardSource('generated'); this.renderNames(); this.setWizardStep(1); this.setPhase(PHASE.CONFIGURING); this.showScreen('wizard');
+    document.querySelector('input[name="drawMode"][value="automatic"]').checked = true; $('autoSeconds').value = '10'; $('qty').value = '8';
+    this.setWizardSource('generated'); this.setWizardStep(1); this.setPhase(PHASE.CONFIGURING); this.showScreen('wizard');
   }
   setWizardStep(step) {
     this.wizard.step = step; document.querySelectorAll('.step').forEach(el => el.classList.toggle('active', Number(el.dataset.step) === step));
-    $('wizardBack').style.visibility = step === 1 ? 'hidden' : 'visible'; $('wizardNext').textContent = step === 4 ? 'EMPEZAR JUEGO' : 'CONTINUAR';
+    $('wizardBack').style.visibility = step === 1 ? 'hidden' : 'visible'; $('wizardNext').textContent = step === 4 ? 'CONFIGURAR SALA' : 'CONTINUAR';
     $('wizardNext').disabled = step === 2 && !this.wizard.presenter;
   }
   setWizardSource(source) {
@@ -494,16 +495,8 @@ class BingoApp {
     $('generatedSetup').style.display = source === 'generated' ? '' : 'none'; $('manualSetup').style.display = source === 'manual' ? '' : 'none'; $('pdfSetup').style.display = source === 'pdf' ? 'block' : 'none';
     if (source === 'manual' && !this.wizard.manualCards.length) this.addManualCard();
   }
-  renderNames() {
-    const count = Number($('qty').value || 8);
-    while (this.wizard.names.length < count) this.wizard.names.push(`Jugador ${this.wizard.names.length + 1}`);
-    this.wizard.names = this.wizard.names.slice(0, count); $('namesList').innerHTML = '';
-    this.wizard.names.forEach((name, i) => {
-      const row = document.createElement('div'); row.className = 'nameRow'; row.innerHTML = `<label>Cartón ${i + 1}</label>`;
-      const input = document.createElement('input'); input.value = name; input.oninput = () => { this.wizard.names[i] = input.value; };
-      row.appendChild(input); $('namesList').appendChild(row);
-    });
-  }
+  renderNames() { /* En 2.0 los cartones generados no se vinculan a nombres. */ }
+
   addManualCard(copyBets = null) {
     if (this.wizard.manualCards.length >= 250) { alert('El máximo es de 250 cartones.'); return; }
     const i = this.wizard.manualCards.length, rules = this.wizard.rules;
@@ -574,7 +567,7 @@ class BingoApp {
   validatePdfReview() { const card = this.collectPdfReview(), result = CardService.validate(card); $('pdfReviewError').textContent = result.valid ? 'Cartón válido.' : result.errors.join(' · '); return result; }
   buildPreview() {
     if (this.wizard.source === 'generated') {
-      const count = Number($('qty').value); this.wizard.previewCards = CardService.generateMany(count, this.wizard.mode).map((grid, i) => CardService.normalizeCard({ id: uid('preview'), number: String(i + 1).padStart(3, '0'), name: this.wizard.names[i] || `Jugador ${i + 1}`, source: 'generated', grid, bets: this.wizard.rules }, this.wizard.mode, this.wizard.rules, i));
+      const count = Number($('qty').value); this.wizard.previewCards = CardService.generateMany(count, this.wizard.mode).map((grid, i) => CardService.normalizeCard({ id: uid('preview'), number: String(i + 1).padStart(3, '0'), name: `Cartón ${String(i + 1).padStart(3, '0')}`, source: 'generated', grid, bets: this.wizard.rules }, this.wizard.mode, this.wizard.rules, i));
     } else if (this.wizard.source === 'manual') {
       const invalid = this.wizard.manualCards.find(card => !CardService.validate(card).valid); if (invalid) { alert(`Revisá el cartón ${invalid.number}:\n${CardService.validate(invalid).errors.join('\n')}`); return false; }
       this.wizard.previewCards = clone(this.wizard.manualCards);
@@ -582,7 +575,7 @@ class BingoApp {
       const selected = this.wizard.pdfCards.filter(card => card.selected); if (!selected.length) { alert('Seleccioná al menos un cartón del PDF.'); return false; }
       if (selected.length > 250) { alert('El máximo es de 250 cartones por partida.'); return false; }
       const invalid = selected.find(card => !CardService.validate(card).valid); if (invalid) { alert(`El cartón ${invalid.number} necesita revisión.`); return false; }
-      this.wizard.previewCards = selected.map((card, i) => ({ ...clone(card), name: card.name.trim() || `Jugador ${i + 1}` }));
+      this.wizard.previewCards = selected.map((card, i) => ({ ...clone(card), name: card.name.trim() || `Cartón ${String(i + 1).padStart(3, '0')}` }));
     }
     if (!this.wizard.previewCards.length) { alert('No hay cartones para iniciar la partida.'); return false; }
     this.wizard.previewPage = 0; this.renderPreview(); return true;
@@ -599,7 +592,7 @@ class BingoApp {
     const cards = this.wizard.previewCards.map((card, i) => CardService.normalizeCard({ ...clone(card), id: uid('card') }, this.wizard.mode, this.wizard.rules, i));
     const invalid = cards.find(card => !CardService.validate(card).valid); if (invalid) { alert(`No se puede iniciar: el cartón ${invalid.number} no es válido.`); return; }
     this.game = GameStore.normalizeGame({ id: uid('game'), number: this.store.nextNumber(), mode: this.wizard.mode, rules: this.wizard.rules, drawMode: this.wizard.drawMode, autoSeconds: this.wizard.autoSeconds, presenter: this.wizard.presenter, theme: storageGet('gorda-theme') || 'clasico', cards, drawn: [] });
-    this.setPhase(PHASE.READY); this.save(); this.showScreen('game'); this.applyTheme(this.game.theme); this.renderGame();
+    this.setPhase(PHASE.READY); this.save(); this.showScreen('game'); this.applyTheme(this.game.theme); this.renderGame(); setTimeout(() => this.localRoom?.openMainModal(), 250);
   }
 
   /* Drawing and prize state machine */
@@ -661,8 +654,7 @@ class BingoApp {
     const review = this.activeReview; if (!review || !review.pending) return this.advanceReview();
     const prize = this.game.prizes[review.type], records = review.candidates.map(({ card, details }) => ({ cardId: card.id, name: card.name, number: card.number, ball: review.ball, details: clone(details), confirmedAt: new Date().toISOString() }));
     prize.status = 'confirmed'; prize.winners = records; review.pending = false; this.save(); this.renderGame(); this.celebrate(review.type);
-    const profile = this.voice.profiles[this.game.presenter] || this.voice.profiles.vero;
-    this.voice.speak(review.type === 'ambo' ? 'AmboCabeza confirmado. Felicitaciones.' : review.type === 'line' ? profile.line : profile.bingo, this.game.presenter);
+    this.voice.event(review.type === 'ambo' ? 'amboConfirmed' : review.type === 'line' ? 'lineConfirmed' : 'bingoConfirmed');
     this.renderWinnerOverlay(false);
   }
   rejectReview() {
@@ -711,12 +703,22 @@ class BingoApp {
     if (lineWinners.length) { $('lineHistory').textContent = `Ganó Línea: ${lineWinners.map(w => `${w.name} (Cartón ${w.number})`).join(' · ')}`; $('lineHistory').classList.add('show'); } else $('lineHistory').classList.remove('show');
   }
   renderAutoControls() {
-    if (!this.game) return; const automatic = this.game.drawMode === 'automatic', bingoLocked = Boolean(this.localRoom?.active && this.localRoom?.serverState?.status === 'playing' && this.localRoom?.serverState?.bingoConfirmed), roomWaiting = Boolean(this.localRoom?.active && this.localRoom?.serverState?.status !== 'playing'), locked = this.phase === PHASE.REVIEW || Boolean(this.localRoom?.claimOpen) || roomWaiting || bingoLocked;
-    $('autoBtn').style.display = automatic ? '' : 'none'; $('pauseBtn').style.display = automatic ? '' : 'none';
-    $('autoBtn').textContent = this.autoRunning ? '⏸ PAUSAR AUTOMÁTICO' : '▶ REANUDAR AUTOMÁTICO'; $('pauseBtn').textContent = this.autoRunning ? '⏸ DETENER' : '▶ REANUDAR';
-    $('autoState').textContent = bingoLocked ? 'Bingo confirmado · bolillero bloqueado · finalizá el sorteo' : roomWaiting ? 'Sala de espera · presioná INICIAR SORTEO desde SALA ONLINE' : locked ? 'Detenido por posible ganador' : automatic ? (this.autoRunning ? `Automático activo · cada ${this.game.autoSeconds} segundos` : 'Automático detenido') : 'Sorteo manual';
+    if (!this.game) return;
+    const automatic = this.game.drawMode === 'automatic';
+    const roomStatus = this.localRoom?.serverState?.status || '';
+    const online = Boolean(this.localRoom?.active);
+    const bingoLocked = Boolean(online && this.localRoom?.serverState?.bingoConfirmed);
+    const roomBlocked = online && roomStatus !== 'playing';
+    const locked = this.phase === PHASE.REVIEW || Boolean(this.localRoom?.claimOpen) || roomBlocked || bingoLocked;
+    $('autoBtn').style.display = automatic && !online ? '' : 'none';
+    $('pauseBtn').style.display = online || automatic ? '' : 'none';
+    $('autoBtn').textContent = this.autoRunning ? '⏸ PAUSAR AUTOMÁTICO' : '▶ INICIAR AUTOMÁTICO';
+    $('pauseBtn').textContent = roomStatus === 'paused' ? '▶ CONTINUAR PARTIDA' : roomStatus === 'resuming' ? '⏳ REANUDANDO' : '⏸ PAUSAR PARTIDA';
+    const stateText = roomStatus === 'starting' ? 'Preparando inicio y cuenta regresiva' : roomStatus === 'paused' ? 'Partida pausada por el administrador' : roomStatus === 'resuming' ? 'La partida continúa en 3, 2, 1…' : roomStatus === 'waiting' ? 'Sala de espera · iniciá desde SALA ONLINE' : bingoLocked ? 'Bingo confirmado · bolillero bloqueado' : locked ? 'Detenido por posible ganador' : automatic ? (this.autoRunning ? `Automático activo · cada ${this.game.autoSeconds} segundos` : 'Automático detenido') : 'Sorteo manual';
+    $('autoState').textContent = stateText;
     $('drawBtn').textContent = automatic ? '🎱 CANTAR SIGUIENTE AHORA' : '🎱 SIGUIENTE BOLILLA';
-    ['drawBtn','autoBtn','pauseBtn','undoBtn'].forEach(id => { $(id).disabled = locked; });
+    ['drawBtn','autoBtn','undoBtn'].forEach(id => { $(id).disabled = locked; });
+    $('pauseBtn').disabled = online ? !['playing','paused'].includes(roomStatus) : locked;
   }
   renderPrizeButtons() {
     const defs = { ambo: ['amboBtn', 'AMBOCABEZA'], line: ['lineBtn', '★ LÍNEA'], bingo: ['bingoBtn', 'BINGO'] };
@@ -866,14 +868,14 @@ class BingoApp {
   renderThemes() { const host = $('themeGrid'); host.innerHTML = ''; this.themeDefinitions().forEach(([id, name, a, b]) => { const button = document.createElement('button'); button.className = 'themeChoice'; button.dataset.theme = id; button.style.background = `linear-gradient(135deg,${a},${b})`; button.innerHTML = `<span>${name}</span>`; button.onclick = () => this.applyTheme(id); host.appendChild(button); }); this.applyTheme(storageGet('gorda-theme') || 'clasico'); }
 
   bindEvents() {
-    $('newGameBtn').onclick = () => this.openWizard(); $('loadGameBtn').onclick = () => { this.renderGames(); $('gamesModal').classList.add('show'); }; $('cancelWizard').onclick = () => { this.setPhase(PHASE.HOME); this.showScreen('home'); };
+    $('newGameBtn').onclick = () => this.openWizard(); if ($('enterRoomBtn')) $('enterRoomBtn').onclick = () => location.href = '/jugador'; $('loadGameBtn').onclick = () => { this.renderGames(); $('gamesModal').classList.add('show'); }; $('cancelWizard').onclick = () => { this.setPhase(PHASE.HOME); this.showScreen('home'); };
     document.querySelectorAll('.modeChoice button').forEach(button => button.onclick = () => { this.wizard.mode = Number(button.dataset.mode); document.querySelectorAll('.modeChoice button').forEach(b => b.classList.toggle('active', b === button)); if (this.wizard.mode === 75) { $('globalAmbo').checked = false; $('globalAmbo').disabled = true; if (this.wizard.source === 'pdf') this.setWizardSource('generated'); } else $('globalAmbo').disabled = false; });
     document.querySelectorAll('.presenterCard').forEach(card => {
       card.onclick = event => { if (event.target.closest('.voicePreview')) return; this.wizard.presenter = card.dataset.id; document.querySelectorAll('.presenterCard').forEach(other => { other.classList.toggle('selected', other === card); other.classList.toggle('dimmed', other !== card); }); $('wizardNext').disabled = false; };
     });
     document.querySelectorAll('.voicePreview').forEach(button => button.onclick = event => { event.stopPropagation(); this.voice.preview(button.dataset.voice); });
     $('sourceGenerated').onclick = () => this.setWizardSource('generated'); $('sourceManual').onclick = () => this.setWizardSource('manual'); $('sourcePdf').onclick = () => this.setWizardSource('pdf');
-    $('qty').onchange = () => this.renderNames(); $('applyNames').onclick = () => { const values = $('bulkNames').value.split(/\r?\n|,/).map(x => x.trim()).filter(Boolean), count = Number($('qty').value); this.wizard.names = Array.from({ length: count }, (_, i) => values[i] || `Jugador ${i + 1}`); this.renderNames(); };
+    $('qty').onchange = () => {}; 
     $('addManualCard').onclick = () => this.addManualCard(); $('copyLastBets').onclick = () => this.addManualCard(this.wizard.manualCards.at(-1)?.bets);
     $('pdfFile').onchange = event => { const file = event.target.files?.[0]; if (file) this.importPdf(file); }; $('pdfSelectAll').onclick = () => { this.wizard.pdfCards.forEach(card => { card.selected = true; }); this.renderPdfCards(); }; $('pdfSelectNone').onclick = () => { this.wizard.pdfCards.forEach(card => { card.selected = false; }); this.renderPdfCards(); }; $('pdfSearch').oninput = () => this.renderPdfCards();
     $('wizardBack').onclick = () => this.setWizardStep(Math.max(1, this.wizard.step - 1));
@@ -883,7 +885,7 @@ class BingoApp {
         if (!Object.values(this.wizard.rules).some(Boolean)) { $('gameModeError').textContent = 'Elegí al menos un premio para jugar.'; return; }
         $('gameModeError').textContent = ''; this.wizard.drawMode = document.querySelector('input[name="drawMode"]:checked')?.value || 'manual'; this.wizard.autoSeconds = Number($('autoSeconds').value) || 6; this.setWizardStep(2); return;
       }
-      if (this.wizard.step === 2) { if (!this.wizard.presenter) return; this.renderNames(); this.setWizardStep(3); return; }
+      if (this.wizard.step === 2) { if (!this.wizard.presenter) return; this.setWizardStep(3); return; }
       if (this.wizard.step === 3) { if (!this.buildPreview()) return; this.setWizardStep(4); return; }
       this.startCreatedGame();
     };
@@ -910,7 +912,7 @@ class BingoApp {
 }
 
 function showFatal(error) {
-  console.error(error); const box = $('fatalError'); if (box) { box.style.display = 'block'; box.textContent = `Bingo de la Gorda - Versión Beta encontró un error y detuvo la ejecución para no perder datos.\n\n${error?.stack || error}`; }
+  console.error(error); const box = $('fatalError'); if (box) { box.style.display = 'block'; box.textContent = `Bingo de la Gorda 2.0 encontró un error y detuvo la ejecución para no perder datos.\n\n${error?.stack || error}`; }
 }
 
 window.BingoV8Engine = { APP_VERSION, PHASE, GameStore, CardService, PrizeEngine, VoiceService, PdfImporter, BingoApp };

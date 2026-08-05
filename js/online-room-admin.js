@@ -21,12 +21,15 @@ class LocalRoomAdmin {
     this.originalExitGame = app.exitGame.bind(app);
     this.originalRequestDraw = app.requestDraw.bind(app);
     this.originalStartAutomatic = app.startAutomatic.bind(app);
+    this.originalToggleAutomatic = app.toggleAutomatic.bind(app);
     this.originalProcessSpecificBall = app.processSpecificBall.bind(app);
     this.originalRenderRanking = app.renderRanking.bind(app);
     this.originalCardNames = new Map();
     this.originalCardNamesGameId = null;
     this.messageDraft = null;
     this.bingoLockNotified = false;
+    this.lastRoomStatus = '';
+    this.sequenceTimers = [];
     app.localRoom = this;
   }
 
@@ -57,11 +60,12 @@ class LocalRoomAdmin {
       return this.originalProcessSpecificBall(...args);
     };
     this.app.startAutomatic = (...args) => {
-      if (this.active && (this.serverState?.status !== 'playing' || this.serverState?.bingoConfirmed)) {
-        alert(this.serverState?.bingoConfirmed ? 'El bingo ya fue confirmado. Finalizá el sorteo antes de continuar.' : this.serverState?.status === 'finished' ? 'El sorteo ya fue finalizado.' : 'Primero presioná INICIAR SORTEO desde SALA ONLINE.');
-        return;
-      }
+      if (this.active && (this.serverState?.status !== 'playing' || this.serverState?.bingoConfirmed)) return;
       return this.originalStartAutomatic(...args);
+    };
+    this.app.toggleAutomatic = (...args) => {
+      if (this.active) return this.toggleRoomPause();
+      return this.originalToggleAutomatic(...args);
     };
     this.app.exitGame = () => {
       if (this.active && !confirm('La sala online seguirá abierta aunque salgas del juego. ¿Continuar?')) return;
@@ -75,7 +79,7 @@ class LocalRoomAdmin {
     const button = document.createElement('button');
     button.id = 'localRoomBtn';
     button.className = 'tool localRoomTool';
-    button.textContent = '🌐 SALA ONLINE';
+    button.textContent = '🌐 SALA ONLINE 2.0';
     button.onclick = () => this.openMainModal();
     footer?.insertBefore(button, $('cardsBtn'));
 
@@ -260,6 +264,7 @@ class LocalRoomAdmin {
   }
 
   applyState(data) {
+    const previousStatus = this.serverState?.status || this.lastRoomStatus;
     this.serverState = data;
     this.active = Boolean(data.active);
     this.syncParticipantNames(data);
@@ -269,19 +274,61 @@ class LocalRoomAdmin {
       button.classList.toggle('activeRoom', this.active);
     }
     if (this.active) this.scheduleAutoBackup();
-    if (data.bingoConfirmed && data.status === 'playing') {
+
+    if (data.status !== previousStatus) this.handleRoomStatusChange(previousStatus, data.status, data);
+
+    if (data.bingoConfirmed && ['playing','paused'].includes(data.status)) {
       this.app.stopAutomatic(false);
       this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
-      this.app.renderAutoControls();
       if (!this.bingoLockNotified) {
         this.bingoLockNotified = true;
         this.showCopyToast('Bingo confirmado: bolillero bloqueado');
       }
-    } else if (!data.bingoConfirmed) {
-      this.bingoLockNotified = false;
+    } else if (!data.bingoConfirmed) this.bingoLockNotified = false;
+
+    this.lastRoomStatus = data.status || '';
+    if (this.app.game) {
+      this.app.renderRanking();
+      this.app.renderAutoControls();
     }
-    if (this.app.game) this.app.renderRanking();
     if ($('localRoomModal')?.classList.contains('show')) this.renderMainModal();
+  }
+
+  clearSequenceTimers() {
+    this.sequenceTimers.forEach(timer => clearTimeout(timer));
+    this.sequenceTimers = [];
+  }
+
+  handleRoomStatusChange(previous, current, data) {
+    this.clearSequenceTimers();
+    if (current === 'starting') {
+      this.app.stopAutomatic(false);
+      this.app.setPhase(window.BingoV8Engine.PHASE.READY);
+      const time = data.transition?.officialTime || new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      this.app.voice?.event('startTime', { time }, true);
+      this.sequenceTimers.push(setTimeout(() => this.app.voice?.event('ready', {}, true), 3500));
+      this.sequenceTimers.push(setTimeout(() => this.app.voice?.event('luck', {}, true), 9000));
+      return;
+    }
+    if (current === 'paused') {
+      this.app.stopAutomatic(false);
+      this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
+      this.app.voice?.event('pause', {}, true);
+      return;
+    }
+    if (current === 'resuming') {
+      this.app.stopAutomatic(false);
+      this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
+      this.app.voice?.event('resume', {}, true);
+      [3,2,1].forEach((number, index) => this.sequenceTimers.push(setTimeout(() => this.app.voice?.speak(String(number), data.game?.presenter, true), 1200 + index * 1000)));
+      return;
+    }
+    if (current === 'playing') {
+      this.app.setPhase(this.app.game?.drawMode === 'automatic' ? window.BingoV8Engine.PHASE.DRAWING : window.BingoV8Engine.PHASE.READY);
+      if (this.app.game?.drawMode === 'automatic' && !this.app.autoRunning && !data.bingoConfirmed) {
+        this.sequenceTimers.push(setTimeout(() => this.originalStartAutomatic(), 500));
+      }
+    }
   }
 
   syncParticipantNames(data) {
@@ -422,9 +469,9 @@ class LocalRoomAdmin {
     if (!host) return;
     const authorized = this.assignments.reduce((sum, item) => sum + Math.max(1, Math.min(4, Number(item.allowedCardCount) || 1)), 0);
     const available = this.app.game?.cards?.length || 0;
-    const invalid = authorized > available || authorized > 240;
+    const invalid = authorized > available || authorized > 250;
     host.className = invalid ? 'localError' : 'localNotice localSuccess';
-    host.textContent = `${this.assignments.length} jugadores · ${authorized} cartones activos autorizados (máximo 240) · ${available} cartones generados.`;
+    host.textContent = `${this.assignments.length} jugadores · ${authorized} cartones activos autorizados (máximo 250) · ${available} cartones generados.`;
   }
 
   renderSetup(body) {
@@ -497,7 +544,7 @@ class LocalRoomAdmin {
     if (cleaned.length > 60) throw new Error('La sala admite como máximo 60 jugadores.');
     for (const player of cleaned) if (!player.name) throw new Error('Todos los jugadores deben tener nombre o alias.');
     const total = cleaned.reduce((sum, player) => sum + player.allowedCardCount, 0);
-    if (total > 240) throw new Error(`Autorizaste ${total} cartones activos, pero el máximo es 240.`);
+    if (total > 250) throw new Error(`Autorizaste ${total} cartones activos, pero el máximo es 250.`);
     if (total > this.app.game.cards.length) throw new Error(`Autorizaste ${total} cartones, pero la partida solo tiene ${this.app.game.cards.length}.`);
     return cleaned;
   }
@@ -517,7 +564,7 @@ class LocalRoomAdmin {
       const players = this.validateAssignments();
       const roomSettings = {
         playerAudioAllowed: $('localPlayerAudioAllowed')?.checked !== false,
-        playerAudioDefault: false,
+        playerAudioDefault: true,
         linePrizeCount: Number($('localLinePrizeCount')?.value || 1),
         bingoPrizeCount: 1,
         allowSamePlayerSecondLine: Boolean($('localSamePlayerSecondLine')?.checked),
@@ -550,17 +597,44 @@ class LocalRoomAdmin {
       alert('Todavía hay jugadores que no confirmaron sus cartones. El sorteo seguirá detenido.');
       return;
     }
-    if (!confirm('¿INICIAR EL SORTEO ahora? Desde este momento se bloquean las elecciones de cartones.')) return;
     try {
+      this.app.stopAutomatic(false);
       const data = await this.request('/api/admin/start', { method: 'POST', body: '{}' });
       this.applyState(data);
-      this.app.setPhase(window.BingoV8Engine.PHASE.READY);
       this.app.renderGame();
-      if (this.app.game.drawMode === 'automatic') setTimeout(() => this.app.startAutomatic(), 700);
       this.renderMainModal();
-    } catch (error) {
-      alert(error.message);
+    } catch (error) { alert(error.message); }
+  }
+
+  async toggleRoomPause() {
+    const status = this.serverState?.status;
+    if (!this.active) return this.originalToggleAutomatic();
+    if (status === 'playing') {
+      try {
+        this.app.stopAutomatic(false);
+        await this.syncGameNow();
+        this.applyState(await this.request('/api/admin/pause', { method: 'POST', body: '{}' }));
+      } catch (error) { alert(error.message); }
+      return;
     }
+    if (status === 'paused') {
+      try { this.applyState(await this.request('/api/admin/resume', { method: 'POST', body: '{}' })); }
+      catch (error) { alert(error.message); }
+    }
+  }
+
+  async syncGameNow() {
+    if (!this.active || !this.app.game || this.serverState?.status !== 'playing') return;
+    const data = await this.request('/api/admin/game', { method: 'POST', body: JSON.stringify({ game: this.serializeGame() }) });
+    this.serverState = data;
+  }
+
+  async resolveDeviceTransfer(requestId, resolution) {
+    try {
+      const data = await this.request('/api/admin/resolve-device-transfer', { method: 'POST', body: JSON.stringify({ requestId, resolution }) });
+      this.applyState(data);
+      this.renderMainModal();
+    } catch (error) { alert(error.message); }
   }
 
   async releaseSelection(playerId) {
@@ -614,7 +688,7 @@ class LocalRoomAdmin {
 
   async updateAudioSetting(allowed) {
     try {
-      const data = await this.request('/api/admin/settings', { method: 'POST', body: JSON.stringify({ playerAudioAllowed: allowed, playerAudioDefault: false }) });
+      const data = await this.request('/api/admin/settings', { method: 'POST', body: JSON.stringify({ playerAudioAllowed: allowed, playerAudioDefault: true }) });
       this.applyState(data);
     } catch (error) { alert(error.message); }
   }
@@ -748,12 +822,12 @@ class LocalRoomAdmin {
     const data = this.serverState;
     const connectedCount = (data.players || []).filter(player => player.connected).length;
     const selectedCount = (data.players || []).filter(player => player.selectionConfirmed).length;
-    const prizeStatus = data.prizeStatus || { line: { total: 1, awarded: 0, closed: false }, bingo: { total: 1, awarded: 0, closed: false } };
+    const prizeStatus = data.prizeStatus || { ambo: { total: 0, awarded: 0, closed: true }, line: { total: 1, awarded: 0, closed: false }, bingo: { total: 1, awarded: 0, closed: false } };
     const lineAlerts = prizeStatus.line.closed ? 0 : (data.cardStatus || []).filter(card => card.hasLine && card.lineClaim === 'none').length;
     const bingoAlerts = prizeStatus.bingo.closed ? 0 : (data.cardStatus || []).filter(card => card.hasBingo && card.bingoClaim === 'none').length;
     const playerPageUrl = this.playerPageUrl();
     const waiting = data.status === 'waiting';
-    const playing = data.status === 'playing';
+    const playing = ['starting','playing','paused','resuming'].includes(data.status);
     const finished = data.status === 'finished';
     const bingoConfirmed = Boolean(data.bingoConfirmed && playing);
     const presenter = this.presenterInfo(data.game.presenter);
@@ -763,7 +837,7 @@ class LocalRoomAdmin {
     const timerEnabled = Boolean(timer.enabled);
     const timerStatus = timer.status || 'idle';
     const timerStatusLabel = timerStatus === 'running' ? 'EN MARCHA' : timerStatus === 'paused' ? 'PAUSADO' : timerStatus === 'completed' ? 'FINALIZADO' : 'SIN INICIAR';
-    const statusTitle = waiting ? 'SALA DE ESPERA' : bingoConfirmed ? 'BINGO CONFIRMADO' : playing ? 'SORTEO EN CURSO' : 'SORTEO FINALIZADO';
+    const statusTitle = waiting ? 'SALA DE ESPERA' : data.status === 'starting' ? 'PREPARANDO INICIO' : data.status === 'paused' ? 'PARTIDA PAUSADA' : data.status === 'resuming' ? 'REANUDANDO EN 3, 2, 1' : bingoConfirmed ? 'BINGO CONFIRMADO' : playing ? 'SORTEO EN CURSO' : 'SORTEO FINALIZADO';
     const statusDescription = waiting
       ? 'Compartí el enlace y los códigos. El sorteo no comenzará hasta que lo ordenes.'
       : bingoConfirmed ? 'El bolillero quedó bloqueado. Revisá los reclamos pendientes y finalizá el sorteo.' : playing ? presenter.phrase : 'La secuencia oficial quedó cerrada. El PDF de resultados ya está disponible para todos.';
@@ -814,6 +888,7 @@ class LocalRoomAdmin {
         <div class="localToolbar"><button class="localPrimary" id="localPublishMessage">PUBLICAR / ACTUALIZAR</button><button class="localDanger" id="localClearMessage" ${activeMessage ? '' : 'disabled'}>BORRAR MENSAJE</button></div>
         ${activeMessage ? `<div class="localMessageActive"><b>MENSAJE ACTIVO</b>${esc(activeMessage)}</div>` : '<div class="localNotice">No hay un mensaje activo. El globo permanece oculto en los celulares.</div>'}
       </div>
+      ${(data.deviceTransferRequests || []).length ? `<div class="localCardBox" style="margin-top:14px;border-color:#ffca2f"><h3>Solicitudes de cambio de dispositivo</h3>${data.deviceTransferRequests.map(request => `<div class="localToggleRow"><div><b>${esc(request.playerName)}</b><br><small>Solicita trasladar sus cartones a otro dispositivo.</small></div><div class="localAccessActions"><button class="direct" data-transfer-approve="${esc(request.id)}">APROBAR</button><button class="release" data-transfer-reject="${esc(request.id)}">RECHAZAR</button></div></div>`).join('')}</div>` : ''}
       <div class="localCardBox" style="margin-top:14px"><h3>Códigos privados y elección</h3><table class="localCodes"><thead><tr><th>Jugador</th><th>Autorizado</th><th>Cartones elegidos</th><th>Código</th><th>Estado</th><th>Accesos</th>${waiting ? '<th>Administrar</th>' : ''}</tr></thead><tbody>${(data.players || []).map(player => `<tr><td>${esc(player.name)}</td><td>${player.allowedCardCount}</td><td>${cardsLabel(player)}</td><td class="localCode">${esc(player.code)}</td><td><span class="localChoiceState ${player.selectionConfirmed ? 'ready' : 'waiting'}">${choiceState(player)}</span></td><td><div class="localAccessActions"><button class="direct" data-copy-direct="${esc(player.code)}">COPIAR INGRESO DIRECTO</button><button data-copy-page>COPIAR PÁGINA DE ACCESO</button></div></td>${waiting ? `<td><div class="localAccessActions"><button class="direct" data-assign-player="${esc(player.id)}">ASIGNAR / CAMBIAR</button>${player.selectionConfirmed ? `<button class="release" data-release-player="${esc(player.id)}">LIBERAR</button>` : ''}</div></td>` : ''}</tr>`).join('')}</tbody></table></div>
       ${waiting ? this.preflightHtml(data) : ''}
       ${waiting ? `<div class="localCardBox" style="margin-top:14px"><h3>Modo de prueba</h3><small>Envía avisos y sonidos sin alterar bolillas, premios ni cartones.</small><div class="localToolbar"><button class="localSecondary" id="localTestLine">PROBAR LÍNEA</button><button class="localSecondary" id="localTestBingo">PROBAR BINGO</button><button class="localSecondary" id="localTestBall">PROBAR VOZ 42</button></div></div>` : ''}
@@ -851,6 +926,8 @@ class LocalRoomAdmin {
     };
     if ($('localPublishMessage')) $('localPublishMessage').onclick = () => this.publishAdminMessage();
     if ($('localClearMessage')) $('localClearMessage').onclick = () => this.clearAdminMessage();
+    body.querySelectorAll('[data-transfer-approve]').forEach(button => button.onclick = () => this.resolveDeviceTransfer(button.dataset.transferApprove, 'approved'));
+    body.querySelectorAll('[data-transfer-reject]').forEach(button => button.onclick = () => this.resolveDeviceTransfer(button.dataset.transferReject, 'rejected'));
     body.querySelectorAll('[data-release-player]').forEach(button => button.onclick = () => this.releaseSelection(button.dataset.releasePlayer));
     body.querySelectorAll('[data-assign-player]').forEach(button => button.onclick = () => this.assignPlayerCards(button.dataset.assignPlayer));
     body.querySelectorAll('[data-card-detail]').forEach(button => button.onclick = () => this.openCardDetail(button.dataset.cardDetail));
@@ -872,7 +949,7 @@ class LocalRoomAdmin {
     const rows = [
       { good: Number(check.totalPlayers) >= 2 && Number(check.totalPlayers) <= 60, text: `${Number(check.totalPlayers) || 0} jugadores configurados` },
       { good: Number(check.readyPlayers) === Number(check.totalPlayers) && Number(check.totalPlayers) > 0, text: `${Number(check.readyPlayers) || 0}/${Number(check.totalPlayers) || 0} jugadores con cartones completos` },
-      { good: Number(check.activeCards) > 0 && Number(check.activeCards) <= 240, text: `${Number(check.activeCards) || 0} cartones activos de ${Number(check.generatedCards) || 0} generados · máximo activo 240` },
+      { good: Number(check.activeCards) > 0 && Number(check.activeCards) <= 250, text: `${Number(check.activeCards) || 0} cartones activos de ${Number(check.generatedCards) || 0} generados · máximo activo 250` },
       { good: !(check.duplicateCardIds || []).length, text: (check.duplicateCardIds || []).length ? `${check.duplicateCardIds.length} cartones duplicados` : 'Sin cartones duplicados' },
       { good: true, text: lineLabel },
       { good: true, text: tieLabel }
@@ -884,13 +961,14 @@ class LocalRoomAdmin {
   monitorTable(cards, query = '') {
     const normalized = String(query || '').trim().toLowerCase();
     const filtered = normalized ? cards.filter(card => String(card.playerName || '').toLowerCase().includes(normalized) || String(card.cardNumber || '').toLowerCase().includes(normalized)) : cards;
-    const sorted = [...filtered].sort((a, b) => Number(b.hasBingo) - Number(a.hasBingo) || Number(b.hasLine) - Number(a.hasLine) || a.bingoMissing - b.bingoMissing || a.lineMissing - b.lineMissing);
+    const sorted = [...filtered].sort((a, b) => Number(b.hasBingo) - Number(a.hasBingo) || Number(b.hasLine) - Number(a.hasLine) || Number(b.hasAmbo) - Number(a.hasAmbo) || a.bingoMissing - b.bingoMissing || a.lineMissing - b.lineMissing);
+    const amboClosed = Boolean(this.serverState?.prizeStatus?.ambo?.closed);
     const lineClosed = Boolean(this.serverState?.prizeStatus?.line?.closed);
     const bingoClosed = Boolean(this.serverState?.prizeStatus?.bingo?.closed);
     const visible = normalized ? sorted : sorted.slice(0, 25);
     return `<div style="margin:8px 0;color:#a9b7d3">Mostrando ${visible.length} de ${cards.length} cartones activos.</div><table class="localMonitor"><thead><tr><th>Jugador</th><th>Cartón</th><th>Conexión</th><th>Falta línea</th><th>Falta bingo</th><th>Modo</th><th>Marcas jugador</th><th>Diferencias</th><th></th></tr></thead><tbody>${visible.map(card => {
-      const rowClass = !bingoClosed && card.hasBingo && card.bingoClaim === 'none' ? 'alertBingo' : !lineClosed && card.hasLine && card.lineClaim === 'none' ? 'alertLine' : '';
-      const prize = !bingoClosed && card.hasBingo ? '<span class="localStatus danger">BINGO SIN CANTAR</span>' : !lineClosed && card.hasLine ? '<span class="localStatus warn">LÍNEA SIN CANTAR</span>' : '';
+      const rowClass = !bingoClosed && card.hasBingo && card.bingoClaim === 'none' ? 'alertBingo' : !lineClosed && card.hasLine && card.lineClaim === 'none' ? 'alertLine' : !amboClosed && card.hasAmbo && card.amboClaim === 'none' ? 'alertLine' : '';
+      const prize = !bingoClosed && card.hasBingo ? '<span class="localStatus danger">BINGO SIN CANTAR</span>' : !lineClosed && card.hasLine ? '<span class="localStatus warn">LÍNEA SIN CANTAR</span>' : !amboClosed && card.hasAmbo ? '<span class="localStatus warn">AMBOCABEZA SIN CANTAR</span>' : '';
       return `<tr class="${rowClass}"><td><b>${esc(card.playerName)}</b><br>${prize}</td><td>#${esc(card.cardNumber)}</td><td><span class="localStatus ${card.connected ? 'on' : 'off'}">${card.connected ? 'Sí' : 'No'}</span></td><td><b>${card.lineMissing}</b></td><td><b>${card.bingoMissing}</b></td><td>${card.autoMark ? '<span class="localStatus on">AUTO</span>' : 'Manual'}</td><td>${card.playerMarkedCount}/${card.totalNumbers}</td><td>${card.missed.length ? `Olvidó: ${card.missed.join(', ')}` : ''}${card.wrong.length ? `${card.missed.length ? '<br>' : ''}Mal marcados: ${card.wrong.join(', ')}` : (!card.missed.length ? 'Sin diferencias' : '')}</td><td><button data-card-detail="${esc(card.cardId)}">VER</button></td></tr>`;
     }).join('')}</tbody></table>`;
   }
@@ -900,7 +978,7 @@ class LocalRoomAdmin {
     this.backupTimer = setTimeout(async () => {
       try {
         const backup = await this.request('/api/admin/backup');
-        localStorage.setItem('bingoBetaOnlineLastBackup', JSON.stringify(backup));
+        localStorage.setItem('bingoGorda2OnlineLastBackup', JSON.stringify(backup));
       } catch (error) {
         console.warn('No se pudo guardar la copia automática:', error);
       }
@@ -910,18 +988,18 @@ class LocalRoomAdmin {
   async downloadBackup() {
     try {
       const backup = await this.request('/api/admin/backup');
-      localStorage.setItem('bingoBetaOnlineLastBackup', JSON.stringify(backup));
+      localStorage.setItem('bingoGorda2OnlineLastBackup', JSON.stringify(backup));
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `Bingo_Beta_Sala_${backup.state?.roomCode || 'copia'}_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `Bingo_2.0_Sala_${backup.state?.roomCode || 'copia'}_${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     } catch (error) { alert(error.message); }
   }
 
   async restoreBrowserBackup() {
-    const raw = localStorage.getItem('bingoBetaOnlineLastBackup') || localStorage.getItem('bingoV10OnlineLastBackup');
+    const raw = localStorage.getItem('bingoGorda2OnlineLastBackup') || localStorage.getItem('bingoBetaOnlineLastBackup') || localStorage.getItem('bingoV10OnlineLastBackup');
     if (!raw) { alert('No hay una copia automática guardada en este navegador.'); return; }
     try { await this.restoreBackup(JSON.parse(raw)); }
     catch (error) { alert(error.message); }
@@ -1028,7 +1106,8 @@ class LocalRoomAdmin {
     this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
     this.app.renderAutoControls();
     const card = this.serverState?.game?.cards?.find(item => item.id === claim.cardId);
-    $('localClaimTitle').textContent = `${claim.prizeLabel || (claim.type === 'line' ? 'LÍNEA' : 'BINGO')} CANTADO`;
+    const claimLabel = claim.prizeLabel || (claim.type === 'ambo' ? 'AMBOCABEZA' : claim.type === 'line' ? 'LÍNEA' : 'BINGO');
+    $('localClaimTitle').textContent = `${claimLabel} CANTADO`;
     $('localClaimSubtitle').textContent = `${claim.playerName} · Cartón ${claim.cardNumber}`;
     $('localClaimBody').innerHTML = this.comparisonHtml(card, claim.playerMarksAtClaim, claim.drawnAtClaim, claim.comparison, claim);
     $('localClaimConfirm').style.display = '';
@@ -1043,7 +1122,12 @@ class LocalRoomAdmin {
     if (!card) return '<div class="localError">No se encontró el cartón.</div>';
     const title = claim ? (claim.officialValid ? `RECLAMO VÁLIDO SEGÚN EL SISTEMA` : `RECLAMO INVÁLIDO SEGÚN EL SISTEMA`) : 'COMPARACIÓN EN VIVO';
     const className = claim?.officialValid ? 'localClaimValid' : claim ? 'localClaimValid localClaimInvalid' : 'localNotice';
-    return `<div class="${className}">${title}${claim ? `<br><small>${claim.type === 'line' ? (analysis.completeLines?.map(line => line.label).join(' · ') || 'No hay línea completa') : `Faltan ${analysis.bingoMissing} números para bingo`}</small>` : ''}</div>
+    const claimDetail = !claim ? '' : claim.type === 'ambo'
+      ? (analysis.amboDetails?.map(item => `${item.label}: ${item.values.join(' y ')}`).join(' · ') || 'No hay AmboCabeza válido')
+      : claim.type === 'line'
+        ? (analysis.completeLines?.map(line => line.label).join(' · ') || 'No hay línea completa')
+        : `Faltan ${analysis.bingoMissing} números para bingo`;
+    return `<div class="${className}">${title}${claim ? `<br><small>${claimDetail}</small>` : ''}</div>
       <div class="localCompareLegend"><span><i class="localSwatch ok"></i> Marcado correcto</span><span><i class="localSwatch missed"></i> Salió y el jugador no lo marcó</span><span><i class="localSwatch wrong"></i> Marcado sin haber salido</span></div>
       <div class="localCompare">
         <div class="localCompareBox"><h3>Marcado por el jugador</h3><small>Lo que tocó en su celular.</small>${this.ticketHtml(card, playerMarks, officialMarks, 'player')}</div>
@@ -1103,7 +1187,7 @@ class LocalRoomAdmin {
         ball: this.app.game.drawn.at(-1),
         details: claim.comparison.completeLines || [],
         prizeNumber: claim.prizeNumber || 1,
-        prizeLabel: claim.prizeLabel || (type === 'line' ? 'Línea' : 'Bingo'),
+        prizeLabel: claim.prizeLabel || (type === 'ambo' ? 'AmboCabeza' : type === 'line' ? 'Línea' : 'Bingo'),
         confirmedAt: new Date().toISOString(),
         source: 'online-room'
       });
@@ -1111,8 +1195,8 @@ class LocalRoomAdmin {
     this.app.save();
     this.app.renderGame();
     this.app.celebrate(type);
-    const profile = this.app.voice.profiles[this.app.game.presenter] || this.app.voice.profiles.vero;
-    this.app.voice.speak(type === 'line' ? profile.line : profile.bingo, this.app.game.presenter);
+    const eventName = type === 'ambo' ? 'amboConfirmed' : type === 'line' ? 'lineConfirmed' : 'bingoConfirmed';
+    this.app.voice.event(eventName, {}, true);
   }
 }
 
@@ -1121,7 +1205,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const app = window.__BINGO_V8__;
     if (!app) return;
     const version = $('versionBadge');
-    if (version) version.textContent = 'VERSIÓN BETA';
+    if (version) version.textContent = 'VERSIÓN 2.0';
     new LocalRoomAdmin(app).init().catch(error => console.error('No se inició la sala online:', error));
   }, 0);
 });

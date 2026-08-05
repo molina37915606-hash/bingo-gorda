@@ -1,46 +1,61 @@
-BINGO DE LA GORDA - VERSIÓN BETA ONLINE
+BINGO DE LA GORDA 2.0
+======================
 
-NOVEDADES PRINCIPALES
-- Botón RESULTADOS disponible para administrador y jugadores al finalizar el sorteo.
-- Descarga de un único PDF oficial en una hoja A4 horizontal.
-- El PDF incluye logo, fecha, hora de inicio, hora de finalización y duración.
-- Muestra las bolillas en el orden exacto de salida y la hora de cada una.
-- Marca sobre la secuencia el momento de primera línea, segunda línea y bingo.
-- Incluye nombre, número y representación completa del cartón ganador de cada categoría.
-- La línea ganadora queda resaltada; en bingo se resaltan todos los números sorteados del cartón.
-- El último resultado queda guardado aunque se cree una sala nueva.
-- Puede descargarse desde el panel de administrador o desde la pantalla de ingreso de jugadores.
+Esta versión toma como base la última Beta y conserva el cierre seguro del bingo, el bloqueo del bolillero y el acta oficial en PDF. Además, reorganiza el flujo de salas, mejora el uso desde celular y amplía el sistema de presentadores.
 
-CIERRE SEGURO
-- Cuando el administrador confirma el bingo, el bolillero se detiene y queda bloqueado.
-- No se pueden agregar, quitar ni cambiar bolillas después de confirmar el bingo.
-- Resolvé cualquier reclamo simultáneo pendiente y presioná FINALIZAR SORTEO.
-- El PDF se habilita únicamente cuando el sorteo quedó oficialmente finalizado.
+INICIO RÁPIDO EN ESTA COMPUTADORA
+1. Instalá Node.js 18 o superior.
+2. Ejecutá PROBAR_EN_ESTA_PC.bat.
+3. Abrí el administrador en: http://localhost:3210/admin
+4. Abrí un jugador en: http://localhost:3210/jugador
 
-EMPATES
-- Se recomienda usar “Gana el primer reclamo recibido”.
-- Si se permite empate con la misma última bolilla, el máximo es de 4 cartones ganadores por premio.
-- Este límite garantiza que todos los cartones aceptados entren en la única hoja del PDF.
+FLUJO DE UNA PARTIDA
+1. Elegí CREAR SALA.
+2. Configurá 75 o 90 bolas, premios y forma de sorteo.
+3. Generá entre 1 y 250 cartones al azar, cargalos manualmente o importalos desde PDF.
+4. Configurá la sala antes de ingresar al panel del sorteo.
+5. Compartí los accesos de los jugadores.
+6. Los jugadores eligen cartones, pueden renovar los no seleccionados y luego continúan a la sala de espera.
+7. Cuando todos estén listos, presioná INICIAR SORTEO.
+8. El presentador anuncia la hora oficial, aparece la preparación, la cuenta regresiva y recién después sale la primera bolilla.
+9. Al confirmar el bingo, resolvé cualquier reclamo pendiente y finalizá el sorteo.
+10. Descargá el acta oficial desde RESULTADOS.
 
-FUNCIONES GENERALES
-- Una sala activa por vez.
-- Hasta 60 jugadores.
-- Hasta 250 cartones generados y 240 activos.
-- Entre 1 y 4 cartones por jugador.
-- Una o dos líneas ganadoras y un bingo.
-- El mismo jugador puede ganar primera y segunda línea con cartones diferentes cuando la opción está habilitada.
-- Marcado manual o automático.
-- Temporizador opcional para elegir cartones.
-- Asignación manual o automática sin duplicados.
-- Alertas de línea y bingo para los jugadores.
-- Revisión de reclamos desde el panel del administrador.
-- Presentadores, canto de números, mensajes, modo día/noche y pantalla completa.
-- Copia de seguridad de la sala.
+CAMBIOS PRINCIPALES DE 2.0
+- Pantalla inicial con Crear sala, Recuperar partida e Ingresar a sala.
+- Generación simple de hasta 250 cartones sin lista de jugadores.
+- Renovación de cartones ofrecidos sin perder los ya seleccionados.
+- Panel del jugador compacto para celular.
+- Sonido general con un solo botón, campana de avisos y automarcado compacto.
+- Botones dinámicos para AmboCabeza, Línea y Bingo.
+- Reclamos enviados directamente, sin confirmación previa.
+- Persistencia de cartones y marcas aunque el jugador minimice el navegador o pierda conexión.
+- Protección contra el uso simultáneo del mismo acceso en dos dispositivos.
+- Cambio de dispositivo únicamente con autorización del administrador.
+- Tutorial breve opcional al confirmar los cartones.
+- Secuencias visuales y habladas de inicio, pausa y reanudación.
+- Guiones ampliados y diferenciados para Vero, Vivi, Josu y Daia.
+- Sistema de frases mezcladas para reducir repeticiones.
+- AmboCabeza incorporado al control de reclamos y al acta final.
 
-ACTUALIZACIÓN EN GITHUB
-Usá Bingo_de_la_Gorda_Version_Beta_para_GitHub.zip. Descomprimilo y subí todo su contenido a la raíz del repositorio.
+REGLAMENTO
+El botón DESCARGAR REGLAMENTO ya está preparado. El archivo reglamento.pdf todavía no está incluido porque se redactará después de cerrar estas correcciones. Mientras no exista el PDF, el sistema informa claramente que todavía no fue cargado.
 
-IMPORTANTE
-Actualizá cuando no haya una partida activa. Al terminar cada sorteo, confirmá el bingo, resolvé los reclamos pendientes y presioná FINALIZAR SORTEO antes de descargar RESULTADOS.
+SESIONES DE JUGADORES
+- Salir a WhatsApp, bloquear el celular o perder conexión no libera los cartones.
+- Al volver con el mismo enlace y dispositivo se recupera la partida.
+- Si el enlace se abre en otro dispositivo, el jugador debe solicitar el cambio.
+- El administrador puede aprobarlo o rechazarlo.
+- Al aprobar, se cierra el acceso anterior y el nuevo dispositivo recupera cartones, marcas y estado.
 
-Render gratuito usa almacenamiento temporal. Descargá el PDF al terminar cada sorteo: el archivo guardado en el servidor puede perderse si el servicio se reinicia, se vuelve a desplegar o entra en suspensión. La conservación al crear una sala nueva funciona mientras el servicio mantiene su carpeta de datos.
+CIERRE SEGURO Y RESULTADOS
+- Cuando se confirma el bingo, el bolillero se bloquea.
+- No se pueden modificar bolillas después del cierre.
+- El acta registra bolillas, horarios, reclamos y ganadores.
+- Descargá el PDF al finalizar cada partida.
+
+IMPORTANTE PARA RENDER GRATUITO
+El almacenamiento de Render puede ser temporal. Guardá el PDF y una copia de seguridad al terminar cada sorteo. No actualices el proyecto mientras haya una partida activa.
+
+ACTUALIZACIÓN POSPUESTA
+El modo especial de transmisión para Facebook y TikTok no está incluido en esta versión.

@@ -19,8 +19,8 @@ DIRECCIONES
 - Administrador: https://TU-SERVICIO.onrender.com/admin
 - Jugadores: https://TU-SERVICIO.onrender.com/jugador
 
-FLUJO RECOMENDADO V10.6
-1. Generá entre 2 y 100 cartones sin sortear bolillas.
+FLUJO RECOMENDADO V10.7
+1. Generá entre 2 y 250 cartones sin sortear bolillas.
 2. Abrí SALA ONLINE.
 3. Configurá de 2 a 60 jugadores y autorizá de 1 a 4 cartones por persona.
 4. Elegí una o dos líneas ganadoras y la regla para el mismo jugador.

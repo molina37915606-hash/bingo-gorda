@@ -17,7 +17,8 @@ const ONLINE_MODE = process.env.RENDER === 'true' || process.env.ONLINE_MODE ===
 const PUBLIC_URL = String(process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '').replace(/\/+$/, '');
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
 const MIN_CARDS = 2;
-const MAX_CARDS = 100;
+const MAX_CARDS = 250;
+const MAX_ACTIVE_CARDS = 240;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 60;
 const MAX_CARDS_PER_PLAYER = 4;
@@ -26,6 +27,8 @@ const MIN_ASSIGNMENT_MINUTES = 1;
 const MAX_ASSIGNMENT_MINUTES = 30;
 const CARD_RESERVATION_TTL_MS = 2 * 60 * 1000;
 const ADMIN_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const CLAIM_QUEUE_WINDOW_MS = 3000;
+const TEST_EVENT_TTL_MS = 20 * 1000;
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -89,7 +92,7 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
 
 function blankState() {
   return {
-    version: 7,
+    version: 8,
     active: false,
     status: 'closed',
     roomCode: null,
@@ -103,7 +106,8 @@ function blankState() {
       playerAudioDefault: false,
       linePrizeCount: 1,
       bingoPrizeCount: 1,
-      allowSamePlayerSecondLine: false
+      allowSamePlayerSecondLine: false,
+      tiePolicy: 'first_claim'
     },
     assignmentTimer: {
       enabled: false,
@@ -115,6 +119,7 @@ function blankState() {
       completedAt: null
     },
     adminMessage: null,
+    testEvent: null,
     game: null,
     players: [],
     cardReservations: {},
@@ -142,6 +147,8 @@ function loadState() {
     merged.roomSettings.linePrizeCount = Math.max(1, Math.min(2, Number(merged.roomSettings.linePrizeCount) || 1));
     merged.roomSettings.bingoPrizeCount = 1;
     merged.roomSettings.allowSamePlayerSecondLine = Boolean(merged.roomSettings.allowSamePlayerSecondLine);
+    merged.roomSettings.tiePolicy = merged.roomSettings.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim';
+    merged.testEvent = parsed.testEvent && new Date(parsed.testEvent.expiresAt || 0).getTime() > Date.now() ? parsed.testEvent : null;
     merged.assignmentTimer.durationMinutes = Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(merged.assignmentTimer.durationMinutes) || 10));
     if (!['idle', 'running', 'paused', 'completed'].includes(merged.assignmentTimer.status)) merged.assignmentTimer.status = 'idle';
     merged.adminMessage = parsed.adminMessage && typeof parsed.adminMessage === 'object' && String(parsed.adminMessage.text || '').trim()
@@ -346,6 +353,59 @@ function allPlayersReady() {
   );
 }
 
+
+function preflightPayload() {
+  const assigned = state.players.flatMap(player => player.selectionConfirmed ? (player.cardIds || []).map(cardId => ({ playerId: player.id, cardId })) : []);
+  const ids = assigned.map(item => item.cardId);
+  const duplicates = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
+  const pendingPlayers = state.players.filter(player => !(player.selectionConfirmed && player.cardIds.length === player.allowedCardCount));
+  const activeCards = ids.length;
+  const availableCards = Math.max(0, (state.game?.cards?.length || 0) - new Set(ids).size);
+  const errors = [];
+  if (!state.players.length) errors.push('No hay jugadores configurados.');
+  if (pendingPlayers.length) errors.push(`${pendingPlayers.length} jugador${pendingPlayers.length === 1 ? '' : 'es'} todavía no tiene${pendingPlayers.length === 1 ? '' : 'n'} todos sus cartones.`);
+  if (duplicates.length) errors.push(`Hay ${duplicates.length} cartón${duplicates.length === 1 ? '' : 'es'} duplicado${duplicates.length === 1 ? '' : 's'}.`);
+  if (activeCards > MAX_ACTIVE_CARDS) errors.push(`Hay ${activeCards} cartones activos y el máximo es ${MAX_ACTIVE_CARDS}.`);
+  return {
+    ok: Boolean(state.active && state.status === 'waiting' && state.game && errors.length === 0),
+    totalPlayers: state.players.length,
+    readyPlayers: state.players.length - pendingPlayers.length,
+    pendingPlayers: pendingPlayers.map(player => ({ id: player.id, name: player.name, missing: Math.max(0, player.allowedCardCount - player.cardIds.length) })),
+    generatedCards: state.game?.cards?.length || 0,
+    activeCards,
+    availableCards,
+    duplicateCardIds: duplicates,
+    linePrizeCount: Math.max(1, Math.min(2, Number(state.roomSettings?.linePrizeCount) || 1)),
+    allowSamePlayerSecondLine: Boolean(state.roomSettings?.allowSamePlayerSecondLine),
+    tiePolicy: state.roomSettings?.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim',
+    errors
+  };
+}
+
+function playerPrizeReadiness(player) {
+  if (!state.game || !player?.selectionConfirmed) return [];
+  const prizes = prizeStatusPayload();
+  const playerAlreadyWonLine = (prizes.line.winners || []).some(winner => winner.playerId === player.id);
+  return (player.cardIds || []).map(cardId => {
+    const card = state.game.cards.find(item => item.id === cardId);
+    if (!card) return null;
+    const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
+    const cardAlreadyWonLine = (prizes.line.winners || []).some(winner => winner.cardId === cardId);
+    const cardAlreadyWonBingo = (prizes.bingo.winners || []).some(winner => winner.cardId === cardId);
+    const samePlayerBlocked = !prizes.allowSamePlayerSecondLine && playerAlreadyWonLine;
+    return {
+      cardId,
+      cardNumber: card.number,
+      hasLine: analysis.hasLine,
+      hasBingo: analysis.hasBingo,
+      lineMissing: analysis.lineMissing,
+      bingoMissing: analysis.bingoMissing,
+      lineEligible: state.status === 'playing' && analysis.hasLine && !prizes.line.closed && !samePlayerBlocked && !cardAlreadyWonLine && card.bets?.line !== false,
+      bingoEligible: state.status === 'playing' && analysis.hasBingo && !prizes.bingo.closed && !cardAlreadyWonBingo && card.bets?.bingo !== false
+    };
+  }).filter(Boolean);
+}
+
 function syncAutoMarksForPlayer(player) {
   if (!state.game || !player?.autoMark) return;
   const drawn = new Set(state.game.drawn || []);
@@ -372,8 +432,8 @@ function confirmedClaims(type) {
 function prizeStatusPayload() {
   const lineTotal = Math.max(1, Math.min(2, Number(state.roomSettings?.linePrizeCount) || 1));
   const bingoTotal = 1;
-  const lineAwarded = confirmedClaims('line').length;
-  const bingoAwarded = confirmedClaims('bingo').length;
+  const lineAwarded = new Set(confirmedClaims('line').map(claim => Number(claim.prizeNumber) || 1)).size;
+  const bingoAwarded = new Set(confirmedClaims('bingo').map(claim => Number(claim.prizeNumber) || 1)).size;
   return {
     line: {
       total: lineTotal,
@@ -533,6 +593,7 @@ function baseInfo() {
     onlineMode: ONLINE_MODE,
     minCards: MIN_CARDS,
     maxCards: MAX_CARDS,
+    maxActiveCards: MAX_ACTIVE_CARDS,
     minPlayers: MIN_PLAYERS,
     maxPlayers: MAX_PLAYERS,
     maxCardsPerPlayer: MAX_CARDS_PER_PLAYER,
@@ -548,6 +609,13 @@ function adminPayload() {
       ...baseInfo(),
       active: false,
       status: 'closed',
+      roomCode: '',
+      game: null,
+      players: [],
+      cardStatus: [],
+      claims: [],
+      publicClaims: [],
+      readyToStart: false,
       lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`)
     };
   }
@@ -579,7 +647,8 @@ function adminPayload() {
     ...baseInfo(),
     active: true,
     status: state.status,
-    readyToStart: allPlayersReady(),
+    readyToStart: preflightPayload().ok,
+    preflight: preflightPayload(),
     roomCode: state.roomCode,
     createdAt: state.createdAt,
     startedAt: state.startedAt,
@@ -590,6 +659,7 @@ function adminPayload() {
     assignmentTimer: assignmentTimerPayload(),
     prizeStatus: prizeStatusPayload(),
     adminMessage: state.adminMessage,
+    testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
     lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`),
     localUrl: `http://localhost:${PORT}`,
     game: state.game,
@@ -627,6 +697,8 @@ function playerPayload(player) {
     assignmentTimer: assignmentTimerPayload(),
     prizeStatus: prizeStatusPayload(),
     adminMessage: state.adminMessage,
+    testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
+    readiness: playerPrizeReadiness(player),
     publicClaims: publicClaimsPayload(),
     game: {
       id: state.game.id,
@@ -658,7 +730,7 @@ function backupPayload() {
   const cleanState = deepCopy(state);
   cleanState.players = cleanState.players.map(player => ({ ...player, sessionToken: null }));
   return {
-    format: 'el-bingo-de-la-gorda-v10-6-backup',
+    format: 'el-bingo-de-la-gorda-v10-7-backup',
     exportedAt: nowIso(),
     state: cleanState
   };
@@ -773,6 +845,7 @@ function validateAssignments(game, assignments) {
     }
     authorizedCards += allowedCardCount;
   }
+  if (authorizedCards > MAX_ACTIVE_CARDS) throw new Error(`Autorizaste ${authorizedCards} cartones activos, pero el máximo es ${MAX_ACTIVE_CARDS}.`);
   if (authorizedCards > game.cards.length) throw new Error(`Autorizaste ${authorizedCards} cartones, pero la partida tiene ${game.cards.length}.`);
 }
 
@@ -813,7 +886,7 @@ function configureRoom(payload) {
   sanitizedGame.phase = 'READY';
   const requestedTimerMinutes = Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(payload.assignmentTimer?.durationMinutes) || 10));
   state = {
-    version: 7,
+    version: 8,
     active: true,
     status: 'waiting',
     roomCode: randomCode(5),
@@ -827,7 +900,8 @@ function configureRoom(payload) {
       playerAudioDefault: Boolean(payload.roomSettings?.playerAudioDefault),
       linePrizeCount: Math.max(1, Math.min(2, Number(payload.roomSettings?.linePrizeCount) || 1)),
       bingoPrizeCount: 1,
-      allowSamePlayerSecondLine: Boolean(payload.roomSettings?.allowSamePlayerSecondLine)
+      allowSamePlayerSecondLine: Boolean(payload.roomSettings?.allowSamePlayerSecondLine),
+      tiePolicy: payload.roomSettings?.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim'
     },
     assignmentTimer: {
       enabled: Boolean(payload.assignmentTimer?.enabled),
@@ -839,6 +913,7 @@ function configureRoom(payload) {
       completedAt: null
     },
     adminMessage: null,
+    testEvent: null,
     game: sanitizedGame,
     players,
     cardReservations: {},
@@ -908,7 +983,8 @@ function updateGame(game) {
 function startRoom() {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'waiting') return adminPayload();
-  if (!allPlayersReady()) throw new Error('Todos los jugadores deben elegir y confirmar sus cartones antes de iniciar.');
+  const preflight = preflightPayload();
+  if (!preflight.ok) throw new Error(preflight.errors[0] || 'La sala todavía no está lista para iniciar.');
   if (state.game.drawn.length) throw new Error('La ronda ya contiene bolillas. Reiniciala antes de empezar.');
   state.cardReservations = {};
   for (const player of state.players) player.reservedCardIds = [];
@@ -936,6 +1012,7 @@ function updateRoomSettings(payload) {
   if (state.status === 'waiting') {
     state.roomSettings.linePrizeCount = Math.max(1, Math.min(2, Number(payload.linePrizeCount ?? state.roomSettings.linePrizeCount) || 1));
     state.roomSettings.allowSamePlayerSecondLine = Boolean(payload.allowSamePlayerSecondLine ?? state.roomSettings.allowSamePlayerSecondLine);
+    state.roomSettings.tiePolicy = payload.tiePolicy === 'same_ball' ? 'same_ball' : (payload.tiePolicy === 'first_claim' ? 'first_claim' : state.roomSettings.tiePolicy);
   }
   state.roomSettings.bingoPrizeCount = 1;
   logEvent('room_settings_updated', { ...state.roomSettings });
@@ -1044,7 +1121,7 @@ function updateAdminMessage(payload) {
 }
 
 function releasePlayerSelection(payload) {
-  if (!state.active || !selectionIsOpen()) throw new Error('Las elecciones ya están cerradas.');
+  if (!state.active || state.status !== 'waiting') throw new Error('Los cartones solo se pueden modificar antes de iniciar el sorteo.');
   const player = state.players.find(item => item.id === String(payload.playerId || ''));
   if (!player) throw new Error('No se encontró el jugador.');
   releaseReservationsForPlayer(player);
@@ -1056,6 +1133,70 @@ function releasePlayerSelection(payload) {
   updateCardDisplayNames();
   refreshAllOffers();
   logEvent('player_selection_released', { playerId: player.id, playerName: player.name });
+  saveState();
+  broadcast();
+  return adminPayload();
+}
+
+
+function assignCardsToPlayer(payload) {
+  if (!state.active || !state.game || state.status !== 'waiting') throw new Error('Los cartones solo se pueden asignar antes de iniciar el sorteo.');
+  const player = state.players.find(item => item.id === String(payload.playerId || ''));
+  if (!player) throw new Error('No se encontró el jugador.');
+  const requestedNumbers = Array.isArray(payload.cardNumbers) ? payload.cardNumbers.map(value => String(value).trim()).filter(Boolean) : [];
+  const currentIds = new Set(player.cardIds || []);
+  const occupied = new Set(state.players.filter(item => item.id !== player.id && item.selectionConfirmed).flatMap(item => item.cardIds || []));
+  let chosen = [];
+  if (requestedNumbers.length) {
+    if (requestedNumbers.length !== player.allowedCardCount) throw new Error(`Este jugador necesita exactamente ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}.`);
+    const normalized = [...new Set(requestedNumbers)];
+    if (normalized.length !== requestedNumbers.length) throw new Error('Repetiste un número de cartón.');
+    for (const number of normalized) {
+      const card = state.game.cards.find(item => String(item.number).toUpperCase() === String(number).toUpperCase());
+      if (!card) throw new Error(`No existe el cartón ${number}.`);
+      if (occupied.has(card.id)) throw new Error(`El cartón ${number} ya pertenece a otro jugador.`);
+      chosen.push(card.id);
+    }
+  } else {
+    const available = shuffle(state.game.cards.map(card => card.id).filter(cardId => !occupied.has(cardId)));
+    chosen = [...currentIds, ...available.filter(id => !currentIds.has(id))].slice(0, player.allowedCardCount);
+    if (chosen.length < player.allowedCardCount) throw new Error('No quedan cartones suficientes para completar la asignación.');
+  }
+  releaseReservationsForPlayer(player);
+  player.cardIds = chosen;
+  player.selectionConfirmed = true;
+  player.offeredCardIds = [];
+  player.reservedCardIds = [];
+  player.marks = Object.fromEntries(chosen.map(cardId => [cardId, []]));
+  syncAutoMarksForPlayer(player);
+  updateCardDisplayNames();
+  refreshAllOffers();
+  logEvent('admin_player_cards_assigned', { playerId: player.id, playerName: player.name, cardIds: chosen });
+  saveState();
+  broadcast();
+  return adminPayload();
+}
+
+function sendTestEvent(payload) {
+  if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
+  const type = ['line', 'bingo', 'ball', 'message'].includes(payload?.type) ? payload.type : 'line';
+  state.testEvent = {
+    id: randomId('test'),
+    type,
+    number: Math.max(1, Math.min(state.game.mode, Number(payload?.number) || 42)),
+    text: String(payload?.text || '').trim().slice(0, 160),
+    createdAt: nowIso(),
+    expiresAt: new Date(Date.now() + TEST_EVENT_TTL_MS).toISOString()
+  };
+  logEvent('test_event_sent', { testType: type });
+  saveState();
+  broadcast();
+  return adminPayload();
+}
+
+function newRoomState() {
+  if (state.active) logEvent('new_room_requested');
+  state = blankState();
   saveState();
   broadcast();
   return adminPayload();
@@ -1110,7 +1251,7 @@ function restoreBackup(payload) {
     };
   });
   state = {
-    version: 7,
+    version: 8,
     active: true,
     status: ['waiting', 'playing', 'finished'].includes(raw.status) ? raw.status : (raw.game.drawn?.length ? 'playing' : 'waiting'),
     roomCode: String(raw.roomCode || randomCode(5)).slice(0, 12),
@@ -1121,6 +1262,7 @@ function restoreBackup(payload) {
     round: Math.max(1, Number(raw.round) || 1),
     roomSettings: { ...blankState().roomSettings, ...(raw.roomSettings || {}) },
     assignmentTimer: { ...blankState().assignmentTimer, ...(raw.assignmentTimer || {}) },
+    testEvent: null,
     adminMessage: raw.adminMessage && String(raw.adminMessage.text || '').trim()
       ? {
           id: String(raw.adminMessage.id || randomId('msg')),
@@ -1134,6 +1276,7 @@ function restoreBackup(payload) {
     claims: Array.isArray(raw.claims) ? raw.claims.slice(-100) : [],
     eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.slice(-2000) : []
   };
+  state.roomSettings.tiePolicy = state.roomSettings.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim';
   updateCardDisplayNames();
   refreshAllOffers();
   logEvent('backup_restored', { players: players.length, cards: state.game.cards.length, status: state.status });
@@ -1302,8 +1445,16 @@ function createClaim(player, payload) {
   const prizes = prizeStatusPayload();
   const prize = prizes[type];
   if (prize.closed) throw new Error(type === 'line' ? 'Los premios de línea ya fueron entregados.' : 'El premio de bingo ya fue entregado.');
-  if (state.claims.some(claim => claim.status === 'pending')) {
-    throw new Error('Ya hay un reclamo siendo revisado. Esperá la decisión del administrador.');
+  const pendingClaims = state.claims.filter(claim => claim.status === 'pending');
+  let tieWith = null;
+  if (pendingClaims.length) {
+    const first = pendingClaims[0];
+    const sameBallWindow = state.roomSettings.tiePolicy === 'same_ball' && first.type === type &&
+      first.drawnAtClaim?.length === state.game.drawn.length &&
+      Number(first.drawnAtClaim?.at(-1)) === Number(state.game.drawn.at(-1)) &&
+      Date.now() - new Date(first.createdAt).getTime() <= CLAIM_QUEUE_WINDOW_MS;
+    if (!sameBallWindow) throw new Error('Ya hay un reclamo siendo revisado. Esperá la decisión del administrador.');
+    tieWith = first;
   }
   if (state.claims.some(claim => claim.type === type && claim.cardId === cardId && claim.status === 'confirmed')) {
     throw new Error(`Ese cartón ya ganó ${type === 'line' ? 'línea' : 'bingo'}.`);
@@ -1314,7 +1465,7 @@ function createClaim(player, payload) {
 
   const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
   const valid = type === 'line' ? analysis.hasLine : analysis.hasBingo;
-  const prizeNumber = prize.awarded + 1;
+  const prizeNumber = tieWith ? Number(tieWith.prizeNumber || (prize.awarded + 1)) : prize.awarded + 1;
   const prizeLabel = type === 'line' ? (prizeNumber === 1 ? 'Primera línea' : 'Segunda línea') : 'Bingo';
   const claim = {
     id: randomId('claim'),
@@ -1330,7 +1481,8 @@ function createClaim(player, payload) {
     officialValid: valid,
     drawnAtClaim: [...state.game.drawn],
     playerMarksAtClaim: [...(player.marks?.[cardId] || [])],
-    comparison: analysis
+    comparison: analysis,
+    tieGroupId: tieWith ? (tieWith.tieGroupId || tieWith.id) : null
   };
   state.claims.push(claim);
   state.game.phase = 'PAUSED';
@@ -1350,14 +1502,15 @@ function resolveClaim(payload) {
     if (!claim.officialValid) throw new Error('El sistema determinó que el reclamo no es válido.');
     const prizes = prizeStatusPayload();
     const current = prizes[claim.type];
-    if (current.closed) throw new Error(claim.type === 'line' ? 'Los premios de línea ya fueron entregados.' : 'El premio de bingo ya fue entregado.');
+    const confirmedTie = claim.tieGroupId && confirmedClaims(claim.type).find(item => (item.tieGroupId || item.id) === claim.tieGroupId);
+    if (current.closed && !confirmedTie) throw new Error(claim.type === 'line' ? 'Los premios de línea ya fueron entregados.' : 'El premio de bingo ya fue entregado.');
     if (claim.type === 'line' && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(item => item.playerId === claim.playerId)) {
       throw new Error('Este jugador ya ganó una línea y no está habilitado para ganar la segunda.');
     }
     if (confirmedClaims(claim.type).some(item => item.cardId === claim.cardId)) {
       throw new Error('Ese cartón ya recibió este premio.');
     }
-    claim.prizeNumber = current.awarded + 1;
+    claim.prizeNumber = confirmedTie ? Number(confirmedTie.prizeNumber || claim.prizeNumber || 1) : current.awarded + 1;
     claim.prizeLabel = claim.type === 'line' ? (claim.prizeNumber === 1 ? 'Primera línea' : 'Segunda línea') : 'Bingo';
   }
 
@@ -1406,7 +1559,7 @@ function actaPayload() {
   if (!state.active || !state.game) throw new Error('No hay una sala disponible.');
   const claims = confirmedClaims('line').concat(confirmedClaims('bingo')).sort((a, b) => new Date(a.resolvedAt || a.createdAt) - new Date(b.resolvedAt || b.createdAt));
   return {
-    version: '10.6',
+    version: '10.7',
     roomCode: state.roomCode,
     round: state.round,
     gameNumber: state.game.number,
@@ -1419,6 +1572,7 @@ function actaPayload() {
     totalPlayers: state.players.length,
     activeCards: state.players.reduce((sum, player) => sum + (player.selectionConfirmed ? player.cardIds.length : 0), 0),
     balls: officialBallRows(),
+    participants: state.players.map(player => ({ name: player.name, code: player.code, allowedCardCount: player.allowedCardCount, cardNumbers: (player.cardIds || []).map(cardId => state.game.cards.find(card => card.id === cardId)?.number).filter(Boolean), selectionConfirmed: player.selectionConfirmed })),
     winners: claims.map(claim => ({
       type: claim.type,
       prizeNumber: claim.prizeNumber || 1,
@@ -1462,7 +1616,34 @@ function actaCsv() {
     [],
     ['GANADORES'],
     ['PREMIO', 'JUGADOR', 'CARTÓN', 'CONFIRMADO'],
-    ...acta.winners.map(winner => [winner.prizeLabel, winner.playerName, winner.cardNumber, formatLocalTimestamp(winner.confirmedAt)])
+    ...acta.winners.map(winner => [winner.prizeLabel, winner.playerName, winner.cardNumber, formatLocalTimestamp(winner.confirmedAt)]),
+    [],
+    ['JUGADORES Y CARTONES'],
+    ['JUGADOR', 'CÓDIGO', 'CARTONES ASIGNADOS', 'CANTIDAD'],
+    ...acta.participants.map(participant => [participant.name, participant.code, participant.cardNumbers.join(' · '), participant.cardNumbers.length])
+  ];
+  const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  return '\ufeff' + lines.map(row => row.map(quote).join(';')).join('\r\n');
+}
+
+function participantsCsv() {
+  const acta = actaPayload();
+  const lines = [
+    ['EL BINGO DE LA GORDA - JUGADORES Y CARTONES'],
+    ['Sala', acta.roomCode],
+    ['Juego', acta.gameNumber],
+    ['Jugadores', acta.totalPlayers],
+    ['Cartones activos', acta.activeCards],
+    [],
+    ['JUGADOR', 'CÓDIGO', 'AUTORIZADOS', 'CARTONES ASIGNADOS', 'CANTIDAD', 'ESTADO'],
+    ...acta.participants.map(participant => [
+      participant.name,
+      participant.code,
+      participant.allowedCardCount,
+      participant.cardNumbers.join(' · '),
+      participant.cardNumbers.length,
+      participant.selectionConfirmed ? 'CONFIRMADO' : 'PENDIENTE'
+    ])
   ];
   const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
   return '\ufeff' + lines.map(row => row.map(quote).join(';')).join('\r\n');
@@ -1540,7 +1721,10 @@ function actaPdf() {
     'GANADORES',
     ...(acta.winners.length
       ? acta.winners.map(winner => `${winner.prizeLabel}: ${winner.playerName} - Carton ${winner.cardNumber} - ${formatLocalTimestamp(winner.confirmedAt)}`)
-      : ['Sin premios confirmados.'])
+      : ['Sin premios confirmados.']),
+    '',
+    'JUGADORES Y CARTONES',
+    ...acta.participants.map(participant => `${participant.name} [${participant.code}]: ${participant.cardNumbers.length ? participant.cardNumbers.join(', ') : 'sin cartones'}`)
   ];
   return buildSimplePdf(lines);
 }
@@ -1622,9 +1806,13 @@ async function handleApi(req, res, url) {
       if (url.pathname === '/api/admin/settings' && req.method === 'POST') return sendJson(res, 200, updateRoomSettings(await readJson(req)));
       if (url.pathname === '/api/admin/message' && req.method === 'POST') return sendJson(res, 200, updateAdminMessage(await readJson(req)));
       if (url.pathname === '/api/admin/release-selection' && req.method === 'POST') return sendJson(res, 200, releasePlayerSelection(await readJson(req)));
+      if (url.pathname === '/api/admin/assign-player' && req.method === 'POST') return sendJson(res, 200, assignCardsToPlayer(await readJson(req)));
+      if (url.pathname === '/api/admin/test-event' && req.method === 'POST') return sendJson(res, 200, sendTestEvent(await readJson(req)));
+      if (url.pathname === '/api/admin/new-room' && req.method === 'POST') return sendJson(res, 200, newRoomState());
       if (url.pathname === '/api/admin/resolve' && req.method === 'POST') return sendJson(res, 200, resolveClaim(await readJson(req)));
       if (url.pathname === '/api/admin/acta' && req.method === 'GET') return sendJson(res, 200, actaPayload());
       if (url.pathname === '/api/admin/acta.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(actaCsv(), 'utf8'), 'text/csv; charset=utf-8', `Bingo_Acta_${state.roomCode || 'sala'}.csv`);
+      if (url.pathname === '/api/admin/participants.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(participantsCsv(), 'utf8'), 'text/csv; charset=utf-8', `Bingo_Jugadores_${state.roomCode || 'sala'}.csv`);
       if (url.pathname === '/api/admin/acta.pdf' && req.method === 'GET') return sendBuffer(res, 200, actaPdf(), 'application/pdf', `Bingo_Acta_${state.roomCode || 'sala'}.pdf`);
       if (url.pathname === '/api/admin/backup' && req.method === 'GET') return sendJson(res, 200, backupPayload());
       if (url.pathname === '/api/admin/restore' && req.method === 'POST') return sendJson(res, 200, restoreBackup(await readJson(req)));
@@ -1691,7 +1879,7 @@ function handleEvents(req, res, url) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || `localhost:${PORT}`}`);
-  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '10.6', active: state.active, status: state.status });
+  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '10.7', active: state.active, status: state.status });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('User-agent: *\nDisallow: /admin\n');
@@ -1730,7 +1918,7 @@ setInterval(() => {
 }, 20_000).unref();
 
 server.listen(PORT, HOST, () => {
-  console.log('\nEL BINGO DE LA GORDA - V10.6 ONLINE');
+  console.log('\nEL BINGO DE LA GORDA - V10.7 ONLINE');
   if (ONLINE_MODE) {
     console.log(`Jugadores: ${PUBLIC_URL || 'URL pública de Render'}/jugador`);
     console.log(`Administrador: ${PUBLIC_URL || 'URL pública de Render'}/admin`);

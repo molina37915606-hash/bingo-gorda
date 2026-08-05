@@ -30,6 +30,8 @@ class PlayerApp {
     this.theme = localStorage.getItem('bingoPlayerTheme') === 'day' ? 'day' : 'night';
     this.focusMode = false;
     this.fullscreenApiActive = false;
+    this.lastPrizeReadyKey = '';
+    this.lastTestEventId = '';
   }
 
   async init() {
@@ -182,6 +184,8 @@ class PlayerApp {
     $('gameView').classList.remove('hidden');
     this.render();
     this.renderPublicClaim();
+    this.handleOwnPrizeReadiness();
+    this.handleTestEvent();
     if ($('drawnOverlay').classList.contains('show')) this.renderDrawnNumbers();
     if ($('winnerOverlay').classList.contains('show')) this.renderWinnerCard();
     const currentCount = data.game.drawn.length;
@@ -484,9 +488,52 @@ class PlayerApp {
     this.fullscreenApiActive = false;
   }
 
+  readinessFor(cardId) {
+    return (this.state?.readiness || []).find(item => item.cardId === cardId) || null;
+  }
+
+  eligibleCard(type) {
+    const key = type === 'bingo' ? 'bingoEligible' : 'lineEligible';
+    return (this.state?.readiness || []).find(item => item[key]) || null;
+  }
+
+  handleOwnPrizeReadiness() {
+    if (!this.state || this.state.status !== 'playing') return;
+    const bingo = this.eligibleCard('bingo');
+    const line = this.eligibleCard('line');
+    const ready = bingo ? { type: 'bingo', card: bingo } : line ? { type: 'line', card: line } : null;
+    if (!ready) { this.lastPrizeReadyKey = ''; return; }
+    const prizeNumber = ready.type === 'line' ? (this.state.prizeStatus?.line?.nextNumber || 1) : 1;
+    const key = `${ready.type}:${ready.card.cardId}:${prizeNumber}`;
+    if (key === this.lastPrizeReadyKey) return;
+    this.lastPrizeReadyKey = key;
+    this.activeCardId = ready.card.cardId;
+    sessionStorage.setItem('bingoOnlineCard', this.activeCardId);
+    this.renderTabs();
+    this.renderTicket();
+    this.playAlertSound(ready.type);
+    try { if (navigator.vibrate) navigator.vibrate(ready.type === 'bingo' ? [180,80,180,80,260] : [160,80,160]); } catch {}
+    this.showMessage(ready.type === 'bingo' ? `¡TENÉS BINGO EN EL CARTÓN ${ready.card.cardNumber}! Tocá el botón ahora.` : `¡TENÉS LÍNEA EN EL CARTÓN ${ready.card.cardNumber}! Tocá el botón ahora.`, 'notice');
+  }
+
+  handleTestEvent() {
+    const event = this.state?.testEvent;
+    if (!event?.id || event.id === this.lastTestEventId) return;
+    if (new Date(event.expiresAt || 0).getTime() <= Date.now()) return;
+    this.lastTestEventId = event.id;
+    if (event.type === 'ball') {
+      this.speakBall(event.number || 42);
+      this.showMessage(`PRUEBA: canto del número ${event.number || 42}.`, 'notice');
+      return;
+    }
+    const kind = event.type === 'bingo' ? 'bingo' : 'line';
+    this.showClaimOverlay({ kind, icon: kind === 'bingo' ? '🎉' : '🔔', title: `PRUEBA DE ${kind.toUpperCase()}`, text: event.text || 'Esta es una prueba del administrador. No afecta la partida.', duration: 4200 });
+    this.playAlertSound(kind);
+  }
+
   renderTabs() {
     const cards = this.state.player.cards || [];
-    $('cardTabs').innerHTML = cards.map(card => `<button data-card="${esc(card.id)}" class="${card.id === this.activeCardId ? 'active' : ''}">CARTÓN ${esc(card.number)}</button>`).join('');
+    $('cardTabs').innerHTML = cards.map(card => { const ready = this.readinessFor(card.id); const cls = [card.id === this.activeCardId ? 'active' : '', ready?.bingoEligible ? 'readyBingo' : ready?.lineEligible ? 'readyLine' : ''].filter(Boolean).join(' '); return `<button data-card="${esc(card.id)}" class="${cls}">CARTÓN ${esc(card.number)}</button>`; }).join('');
     $('cardTabs').querySelectorAll('button').forEach(button => button.onclick = () => {
       this.activeCardId = button.dataset.card;
       sessionStorage.setItem('bingoOnlineCard', this.activeCardId);
@@ -538,6 +585,12 @@ class PlayerApp {
     $('claimBingo').title = bingo.closed ? 'El premio de bingo ya fue entregado.'
       : pending ? 'Hay un reclamo en revisión.'
       : '';
+    const readyLine = this.eligibleCard('line');
+    const readyBingo = this.eligibleCard('bingo');
+    $('claimLine').classList.toggle('prizeReady', Boolean(readyLine) && !$('claimLine').disabled);
+    $('claimBingo').classList.toggle('prizeReady', Boolean(readyBingo) && !$('claimBingo').disabled);
+    if (readyLine && !$('claimLine').disabled) $('claimLine').textContent = `¡TENÉS ${line.awarded > 0 ? 'SEGUNDA LÍNEA' : 'LÍNEA'}! TOCÁ ACÁ`;
+    if (readyBingo && !$('claimBingo').disabled) $('claimBingo').textContent = '¡TENÉS BINGO! TOCÁ ACÁ';
   }
 
   async toggleMark(cardId, number, marked) {
@@ -570,6 +623,13 @@ class PlayerApp {
   }
 
   async claim(type) {
+    const ready = this.eligibleCard(type);
+    if (ready) {
+      this.activeCardId = ready.cardId;
+      sessionStorage.setItem('bingoOnlineCard', this.activeCardId);
+      this.renderTabs();
+      this.renderTicket();
+    }
     const card = this.state?.player.cards.find(item => item.id === this.activeCardId);
     if (!card) return;
     const label = type === 'line'

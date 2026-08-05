@@ -1,29 +1,31 @@
-EL BINGO DE LA GORDA V10.6 ONLINE
+EL BINGO DE LA GORDA V10.7 ONLINE
 
 NOVEDADES DE ESTA VERSIÓN
-- Hasta 60 jugadores y 100 cartones.
-- Cuenta regresiva opcional de 1 a 30 minutos para elegir cartones.
-- El administrador inicia, pausa, reanuda o extiende el conteo y puede finalizarlo cuando quiera.
-- Al vencer el tiempo se conservan los cartones confirmados y las reservas válidas; los pendientes se asignan automáticamente sin duplicados.
-- El sorteo NO comienza cuando termina el conteo: sigue siendo obligatorio presionar INICIAR SORTEO.
-- Se puede configurar una sola línea o primera y segunda línea.
-- La segunda línea puede prohibirse para el mismo jugador, aun cuando tenga otro cartón.
-- Mientras se verifica un reclamo, los botones quedan bloqueados para todos.
-- Después de confirmar el último premio de línea o el bingo, el botón correspondiente queda cerrado definitivamente.
-- Al finalizar el sorteo se muestra la secuencia oficial por orden de extracción.
-- Descarga del acta final en PDF y CSV, con horas y ganadores.
+- Hasta 60 jugadores.
+- Hasta 250 cartones generados y un máximo de 240 cartones activos.
+- Entre 1 y 4 cartones por jugador.
+- Los botones de LÍNEA y BINGO titilan cuando el control oficial detecta un premio en el celular.
+- Aviso opcional con sonido y vibración para que el jugador reclame rápido.
+- Revisión previa antes de iniciar: jugadores listos, cartones activos, duplicados, premios y regla de empate.
+- El administrador puede asignar, cambiar o liberar cartones antes del inicio.
+- Buscador por jugador o número de cartón; el panel muestra por defecto solamente los 25 cartones más cercanos.
+- Regla configurable para reclamos simultáneos: primer reclamo o empate con la misma última bolilla.
+- Modo de prueba para línea, bingo y canto de bolilla sin alterar la partida.
+- Nueva sala limpia bolillas, premios, reclamos, jugadores y asignaciones anteriores.
+- Descarga de acta PDF, CSV completo y CSV separado de jugadores/cartones.
 
 FUNCIONES QUE SE CONSERVAN
-- Entre 1 y 4 cartones por jugador.
-- Elección exclusiva de cartones y reserva contra duplicados.
-- Sala de espera e inicio manual.
+- Temporizador opcional de 1 a 30 minutos y asignación automática sin duplicados.
+- Sala de espera e inicio manual obligatorio.
+- Una o dos líneas ganadoras y bloqueo de premios entregados.
 - Marcado manual o automático.
-- Presentadora, canto de números, mensajes y avisos con sonido.
+- Presentadora, canto de números, mensajes y avisos para todos.
 - Modo día/noche, pantalla completa, tablero de números y cartón ganador público.
 - Comparación entre marcado del jugador y control oficial.
+- Reconexión de celulares y copia de seguridad de la sala.
 
 ACTUALIZACIÓN EN GITHUB
-Usá Actualizacion_V10_6_para_GitHub.zip. Descomprimilo y subí todo su contenido a la raíz del repositorio. GitHub reemplazará los archivos anteriores y Render publicará la actualización automáticamente.
+Usá Actualizacion_V10_7_para_GitHub.zip. Descomprimilo y subí todo su contenido a la raíz del repositorio. GitHub reemplazará los archivos anteriores y Render publicará la actualización automáticamente.
 
 IMPORTANTE
-Actualizá cuando no haya una partida activa. El plan gratuito de Render puede reiniciar el servidor y usa almacenamiento temporal. Descargá una copia de seguridad durante partidas importantes y el acta final cuando termine el sorteo.
+Actualizá cuando no haya una partida activa. El plan gratuito de Render puede reiniciar el servidor y usa almacenamiento temporal. Descargá copias de seguridad durante partidas importantes y el acta final cuando termine el sorteo.

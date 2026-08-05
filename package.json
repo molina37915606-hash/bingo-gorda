@@ -1,8 +1,8 @@
 {
-  "name": "el-bingo-de-la-gorda-v10-6-online",
-  "version": "10.6.0",
+  "name": "el-bingo-de-la-gorda-v10-7-online",
+  "version": "10.7.0",
   "private": true,
-  "description": "Sala online con asignación automática por tiempo, primera y segunda línea, premios bloqueados y acta final descargable.",
+  "description": "Sala online estable: 60 jugadores, 250 cartones generados, 240 activos, alertas de premio, revisión previa, reasignación y modo prueba.",
   "engines": {
     "node": ">=18"
   },

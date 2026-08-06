@@ -4,7 +4,7 @@ La aplicación usa un único servicio Node.js con cuatro vistas separadas:
 
 - `/admin-principal`: ingreso del propietario con la clave configurada en Render.
 - `/admin`: creación y control de salas.
-- `/jugador`: ingreso con código privado, nombre y selección de cartones.
+- `/jugador`: ingreso directo con enlace o código privado; el nombre se confirma durante la selección de cartones.
 - `/transmision/<token>`: pantalla vertical de solo lectura para TikTok.
 
 Los administradores temporales permanecen deshabilitados.

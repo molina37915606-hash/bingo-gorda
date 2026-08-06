@@ -516,7 +516,7 @@ class LocalRoomAdmin {
         </div>
         <div class="localCardBox">
           <h3>Accesos de jugadores</h3>
-          <div class="localToggleRow"><div><b>Cantidad de jugadores</b><br><small>Elegí entre 2 y 60. Cada persona escribirá su nombre al ingresar con su código.</small></div><input id="localPlayerCount" type="number" min="2" max="60" value="${this.assignments.length}" style="width:92px;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff;font-weight:900"></div>
+          <div class="localToggleRow"><div><b>Cantidad de jugadores</b><br><small>Elegí entre 2 y 60. Cada persona ingresará con su código y escribirá su nombre al confirmar los cartones.</small></div><input id="localPlayerCount" type="number" min="2" max="60" value="${this.assignments.length}" style="width:92px;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff;font-weight:900"></div>
           <div id="localAssignmentSummary"></div>
           <div id="localPlayersEditor" class="localPlayersEditor"></div>
           <div class="localGrid2" style="margin-top:14px">

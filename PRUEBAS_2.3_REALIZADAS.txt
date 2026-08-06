@@ -6,9 +6,10 @@ Se verificó:
 - Inicio del servidor y versión 2.3.
 - Acceso del propietario y operadores temporales deshabilitados.
 - Creación de sala sin cargar nombres desde el administrador.
-- Nombre obligatorio del jugador y rechazo de “Jugador 1”.
-- Rechazo de nombres duplicados en una misma sala.
-- Jugador habilitado para 4 cartones que confirma solamente 1.
+- Ingreso directo sin pedir nombre en la pantalla inicial.
+- Nombre obligatorio al confirmar cartones, rechazo de “Jugador 1” y de nombres duplicados.
+- Jugador habilitado para 4 cartones que confirma solamente 1 y guarda su nombre en la misma acción.
+- Confirmación de nombre dentro de la sala cuando los cartones ya estaban preasignados.
 - Cambio de presentador personal sin afectar a otro jugador.
 - Inicio de sala con todos los jugadores identificados y con al menos un cartón.
 - Cambio de intervalo automático durante la partida.

@@ -5,7 +5,7 @@ BINGO DE LA GORDA 2.3
 3. Creá o recuperá una partida.
 4. Generá o importá cartones y configurá la sala.
 5. El administrador solo define cantidad de accesos y máximo de cartones.
-6. Cada jugador recibe un código, escribe su nombre y elige entre 1 y el máximo habilitado.
+6. Cada jugador recibe un enlace o código, ingresa a la sala, escribe su nombre al elegir cartones y confirma entre 1 y el máximo habilitado.
 7. Ejecutá npm test antes de publicar una actualización.
 
 El modo TikTok se abre desde el enlace privado de transmisión en un segundo celular.

@@ -1,8 +1,8 @@
 BINGO DE LA GORDA 2.3
 
 CAMBIOS PRINCIPALES
-- El administrador crea accesos/cupos, no nombres. Cada jugador escribe su nombre o apodo al ingresar.
-- Se bloquean nombres vacíos o genéricos como “Jugador X”. Los nombres no pueden repetirse en la misma sala.
+- El administrador crea accesos/cupos, no nombres. El enlace directo ingresa automáticamente a la sala y el jugador escribe su nombre o apodo al confirmar los cartones.
+- Se bloquean nombres vacíos o genéricos como “Jugador X”. Los nombres no pueden repetirse en la misma sala. Si los cartones ya estaban asignados, el nombre se confirma dentro de la sala.
 - Sin avatares.
 - Cada jugador puede cambiar solamente su presentador personal desde “Mi suerte”.
 - El máximo de cartones es un límite, no una obligación. Un jugador habilitado para 4 puede confirmar 1, 2, 3 o 4.

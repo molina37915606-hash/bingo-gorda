@@ -74,6 +74,12 @@ function card(index) {
     const ownerHtml = await (await fetch(base + '/admin-principal')).text();
     assert(ownerHtml.includes('CREAR SALA'));
     assert(!ownerHtml.toLowerCase().includes('administrador temporal'));
+    const playerHtml = await (await fetch(base + '/jugador')).text();
+    const playerJs = await (await fetch(base + '/js/online-room-player.js')).text();
+    assert(!playerHtml.includes('id="playerAlias"'));
+    assert(playerHtml.includes('Tu nombre se pedirá al momento de confirmar los cartones.'));
+    assert(playerJs.includes('await this.login(directCode, roomCode)'));
+    assert(playerJs.includes("'/api/player/name'"));
 
     result = await json('/api/master/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password })
@@ -95,7 +101,7 @@ function card(index) {
       method: 'POST', headers: adminHeaders,
       body: JSON.stringify({
         game,
-        players: [{ allowedCardCount: 4 }, { allowedCardCount: 1 }],
+        players: [{ allowedCardCount: 4 }, { allowedCardCount: 1 }, { allowedCardCount: 1, cardIds: ['c6'] }],
         roomSettings: { linePrizeCount: 1, gameType: 'test' }
       })
     });
@@ -110,51 +116,62 @@ function card(index) {
     const broadcast = await json(`/api/broadcast/state?token=${encodeURIComponent(broadcastToken)}`);
     assert.equal(broadcast.data.version, '2.3');
 
-    // El nombre es obligatorio y no acepta valores genéricos.
+    // El enlace/código permite ingresar sin nombre; el nombre se confirma junto con los cartones.
     result = await json('/api/player/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: state.players[0].code, roomCode: state.roomCode, deviceId: 'device-a' })
     });
-    assert.equal(result.response.status, 400);
-    result = await json('/api/player/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: state.players[0].code, roomCode: state.roomCode, deviceId: 'device-a', name: 'Jugador 1' })
-    });
-    assert.equal(result.response.status, 400);
-
-    // Primer jugador: autorizado a 4, confirma solo 1.
-    result = await json('/api/player/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: state.players[0].code, roomCode: state.roomCode, deviceId: 'device-a', name: 'Ana' })
-    });
     assert.equal(result.response.status, 200);
+    assert.equal(result.data.state.player.nameSet, false);
     const tokenA = result.data.token;
     const playerAHeaders = { 'Content-Type': 'application/json', 'X-Player-Token': tokenA };
     const chosenA = result.data.state.player.offeredCards[0].id;
     await json('/api/player/reserve', { method: 'POST', headers: playerAHeaders, body: JSON.stringify({ cardId: chosenA, reserve: true }) });
+
     result = await json('/api/player/choose', { method: 'POST', headers: playerAHeaders, body: JSON.stringify({ cardIds: [chosenA] }) });
+    assert.equal(result.response.status, 400);
+    result = await json('/api/player/choose', { method: 'POST', headers: playerAHeaders, body: JSON.stringify({ cardIds: [chosenA], name: 'Jugador 1' }) });
+    assert.equal(result.response.status, 400);
+    result = await json('/api/player/choose', { method: 'POST', headers: playerAHeaders, body: JSON.stringify({ cardIds: [chosenA], name: 'Ana' }) });
     assert.equal(result.response.status, 200);
+    assert.equal(result.data.player.name, 'Ana');
+    assert.equal(result.data.player.nameSet, true);
     assert.equal(result.data.player.cards.length, 1);
     assert.equal(result.data.player.allowedCardCount, 4);
     assert.equal(result.data.player.selectionConfirmed, true);
 
-    // Segundo jugador: nombre duplicado rechazado y luego válido.
+    // Segundo jugador: también entra directo; el nombre duplicado se rechaza al confirmar.
     result = await json('/api/player/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: state.players[1].code, roomCode: state.roomCode, deviceId: 'device-b', name: 'Ana' })
-    });
-    assert.equal(result.response.status, 400);
-    result = await json('/api/player/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: state.players[1].code, roomCode: state.roomCode, deviceId: 'device-b', name: 'Bruno' })
+      body: JSON.stringify({ code: state.players[1].code, roomCode: state.roomCode, deviceId: 'device-b' })
     });
     assert.equal(result.response.status, 200);
     const tokenB = result.data.token;
     const playerBHeaders = { 'Content-Type': 'application/json', 'X-Player-Token': tokenB };
     const chosenB = result.data.state.player.offeredCards[0].id;
     await json('/api/player/reserve', { method: 'POST', headers: playerBHeaders, body: JSON.stringify({ cardId: chosenB, reserve: true }) });
-    result = await json('/api/player/choose', { method: 'POST', headers: playerBHeaders, body: JSON.stringify({ cardIds: [chosenB] }) });
+    result = await json('/api/player/choose', { method: 'POST', headers: playerBHeaders, body: JSON.stringify({ cardIds: [chosenB], name: 'Ana' }) });
+    assert.equal(result.response.status, 400);
+    result = await json('/api/player/choose', { method: 'POST', headers: playerBHeaders, body: JSON.stringify({ cardIds: [chosenB], name: 'Bruno' }) });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.player.name, 'Bruno');
     assert.equal(result.data.player.selectionConfirmed, true);
+
+    // Si los cartones ya fueron asignados, se pide solamente el nombre dentro de la sala.
+    result = await json('/api/player/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: state.players[2].code, roomCode: state.roomCode, deviceId: 'device-c' })
+    });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.state.player.selectionConfirmed, true);
+    assert.equal(result.data.state.player.nameSet, false);
+    const playerCHeaders = { 'Content-Type': 'application/json', 'X-Player-Token': result.data.token };
+    result = await json('/api/player/name', { method: 'POST', headers: playerCHeaders, body: JSON.stringify({ name: 'Ana' }) });
+    assert.equal(result.response.status, 400);
+    result = await json('/api/player/name', { method: 'POST', headers: playerCHeaders, body: JSON.stringify({ name: 'Carla' }) });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.player.name, 'Carla');
+    assert.equal(result.data.player.nameSet, true);
 
     // Cambiar mi suerte solo para ese jugador.
     result = await json('/api/player/presenter', { method: 'POST', headers: playerAHeaders, body: JSON.stringify({ presenter: 'vero' }) });
@@ -164,7 +181,7 @@ function card(index) {
 
     state = (await json('/api/admin/state', { headers: adminHeaders })).data;
     assert.equal(state.readyToStart, true);
-    assert.equal(state.preflight.activeCards, 2);
+    assert.equal(state.preflight.activeCards, 3);
 
     await json('/api/admin/start', { method: 'POST', headers: adminHeaders, body: '{}' });
     state = await waitForStatus(adminHeaders, 'playing');

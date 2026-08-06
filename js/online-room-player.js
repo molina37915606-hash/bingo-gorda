@@ -35,6 +35,7 @@ class PlayerApp {
     this.lastFinalSequenceKey = '';
     this.transferPollTimer = null;
     this.pendingTransfer = null;
+    this.pendingPlayerName = '';
     this.lastResult = null;
     this.theme = localStorage.getItem('bingoPlayerTheme') === 'day' ? 'day' : 'night';
     this.focusMode = false;
@@ -63,8 +64,7 @@ class PlayerApp {
   async init() {
     $('loginBtn').onclick = () => this.login();
     $('lastResultBtn').onclick = () => this.downloadLastPublicResult();
-    $('accessCode').addEventListener('keydown', event => { if (event.key === 'Enter') $('playerAlias').focus(); });
-    $('playerAlias').addEventListener('keydown', event => { if (event.key === 'Enter') this.login(); });
+    $('accessCode').addEventListener('keydown', event => { if (event.key === 'Enter') this.login(); });
     $('claimAmbo').onclick = () => this.claim('ambo');
     $('claimLine').onclick = () => this.claim('line');
     $('claimBingo').onclick = () => this.claim('bingo');
@@ -114,11 +114,10 @@ class PlayerApp {
     const params = new URLSearchParams(location.search);
     const directCode = String(params.get('acceso') || params.get('codigo') || params.get('code') || '').trim().toUpperCase();
     const roomCode = String(params.get('sala') || '').trim().toUpperCase();
-    if (this.token) await this.resume();
-    else if (directCode) {
+    if (directCode) {
       $('accessCode').value = directCode;
-      $('playerAlias').focus();
-    }
+      await this.login(directCode, roomCode);
+    } else if (this.token) await this.resume();
 
     this.keepAliveTimer = setInterval(() => { if (this.state?.active) fetch('/api/ping', { cache:'no-store' }).catch(() => {}); }, 5 * 60 * 1000);
     this.assignmentClockTimer = setInterval(() => this.updateAssignmentCountdown(), 1000);
@@ -148,14 +147,12 @@ class PlayerApp {
     const code = String(codeOverride || $('accessCode').value).trim().toUpperCase();
     const queryRoom = String(new URLSearchParams(location.search).get('sala') || '').trim().toUpperCase();
     const roomCode = String(roomOverride || queryRoom).trim().toUpperCase();
-    const name = String($('playerAlias').value || '').trim().replace(/\s+/g, ' ');
     $('loginError').innerHTML = '';
     if (code.length < 4) return $('loginError').innerHTML = '<div class="error">Escribí el código completo.</div>';
-    if (name.length < 2) return $('loginError').innerHTML = '<div class="error">Escribí tu nombre o apodo.</div>';
-    if (/^(jugador|player|invitado)(?:\s*[x#_-]?\s*\d*)?$/i.test(name)) return $('loginError').innerHTML = '<div class="error">Elegí un nombre o apodo propio. No podés continuar como “Jugador X”.</div>';
     try {
       $('loginBtn').disabled = true;
-      const data = await this.request('/api/player/login', { method:'POST', body:JSON.stringify({ code, roomCode, deviceId:this.deviceId, name }) });
+      $('loginBtn').textContent = 'INGRESANDO…';
+      const data = await this.request('/api/player/login', { method:'POST', body:JSON.stringify({ code, roomCode, deviceId:this.deviceId }) });
       this.acceptLogin(data);
     } catch (error) {
       if (error.status === 409 && error.data?.conflict) {
@@ -170,8 +167,16 @@ class PlayerApp {
   acceptLogin(data) {
     this.token = data.token;
     localStorage.setItem('bingoOnlineToken', this.token);
+    this.cleanDirectAccessUrl();
     this.applyState(data.state);
     this.connectEvents();
+  }
+
+  cleanDirectAccessUrl() {
+    const url = new URL(location.href);
+    let changed = false;
+    ['acceso','codigo','code'].forEach(key => { if (url.searchParams.has(key)) { url.searchParams.delete(key); changed = true; } });
+    if (changed) history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
   }
 
   async resume() {
@@ -312,7 +317,14 @@ class PlayerApp {
   renderWaiting() {
     $('playPanel').classList.add('hidden'); $('waitingPanel').classList.remove('hidden');
     const player = this.state.player, timerHtml = this.assignmentTimerHtml();
+    const nameSection = this.playerNameSectionHtml();
     if (player.selectionConfirmed) {
+      if (!player.nameSet) {
+        $('waitingPanel').innerHTML = `${timerHtml}<h2>Confirmá tu nombre</h2><div class="waitingLead">Tus cartones ya están asignados. Solo falta indicar quién va a jugar.</div>${nameSection}<button id="confirmAssignedName" class="btn primary" disabled>CONFIRMAR NOMBRE</button>`;
+        this.bindPlayerNameInput('confirmAssignedName');
+        $('confirmAssignedName').onclick = () => this.savePlayerName();
+        return;
+      }
       $('waitingPanel').innerHTML = `${timerHtml}<div class="waitingConfirmed waitingStateHero"><b>ESPERANDO SORTEO</b><div>Tus cartones están confirmados y reservados para vos.</div><div class="chosenList">${player.cards.map(card => `<span class="chosenBadge">Cartón ${esc(card.number)}</span>`).join('')}</div>${this.state.status === 'waiting' && !this.state.assignmentTimer?.selectionClosed ? '<button id="changeChoice" class="btn secondary" style="margin-top:10px">CAMBIAR CARTONES</button>' : ''}</div>`;
       if ($('changeChoice')) $('changeChoice').onclick = () => this.releaseChoice();
       return;
@@ -320,15 +332,68 @@ class PlayerApp {
     const offers = player.offeredCards || [], valid = new Set(offers.map(card => card.id));
     this.selectedOffers = new Set([...this.selectedOffers].filter(id => valid.has(id)));
     const ready = this.selectedOffers.size > 0 && this.selectedOffers.size <= player.allowedCardCount;
+    const canContinue = ready && (player.nameSet || this.validPlayerNameDraft());
     const confirmation = ready
-      ? '<div class="regulationBlock"><button id="downloadRules" class="btn secondary">DESCARGAR REGLAMENTO</button><button id="continueChoice" class="btn primary" style="margin:0">CONTINUAR</button><small>Al continuar, aceptás el reglamento interno.</small></div>'
+      ? `<div class="regulationBlock"><button id="downloadRules" class="btn secondary">DESCARGAR REGLAMENTO</button><button id="continueChoice" class="btn primary" style="margin:0" ${canContinue ? '' : 'disabled'}>CONTINUAR</button><small>Al continuar, aceptás el reglamento interno.</small></div>`
       : '<button id="continueChoice" class="btn primary" disabled>CONTINUAR</button>';
-    $('waitingPanel').innerHTML = `${timerHtml}<h2>Elegí hasta ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}</h2><div class="waitingLead">Podés renovar las opciones. Los cartones que ya elegiste se conservan.</div><div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="renewChoice" class="btn secondary">RENOVAR CARTONES</button></div>${confirmation}`;
+    $('waitingPanel').innerHTML = `${timerHtml}<h2>Elegí hasta ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}</h2><div class="waitingLead">Podés renovar las opciones. Los cartones que ya elegiste se conservan.</div>${nameSection}<div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="renewChoice" class="btn secondary">RENOVAR CARTONES</button></div>${confirmation}`;
+    this.bindPlayerNameInput('continueChoice');
     $('offerGrid').querySelectorAll('[data-offer]').forEach(button => button.onclick = () => this.toggleOffer(button.dataset.offer));
     $('clearChoice').onclick = () => this.clearReservations();
     $('renewChoice').onclick = () => this.renewOffers();
     $('continueChoice').onclick = () => this.confirmChoice();
     if ($('downloadRules')) $('downloadRules').onclick = () => this.downloadRules();
+  }
+
+  playerNameSectionHtml() {
+    if (this.state?.player?.nameSet) return '';
+    return `<div class="nameChoice"><label for="selectionPlayerName">TU NOMBRE O APODO</label><input id="selectionPlayerName" maxlength="20" autocomplete="nickname" inputmode="text" placeholder="Ej.: Facu" value="${esc(this.pendingPlayerName)}"><small>Se mostrará en tus cartones y en los resultados del sorteo.</small></div>`;
+  }
+
+  normalizedPlayerNameDraft() {
+    return String(this.pendingPlayerName || '').trim().replace(/\s+/g, ' ').slice(0, 20);
+  }
+
+  validPlayerNameDraft() {
+    const name = this.normalizedPlayerNameDraft();
+    return name.length >= 2 && !/^(jugador|player|invitado)(?:\s*[x#_-]?\s*\d*)?$/i.test(name);
+  }
+
+  bindPlayerNameInput(buttonId) {
+    const input = $('selectionPlayerName');
+    if (!input) return;
+    const update = () => {
+      this.pendingPlayerName = input.value;
+      const button = $(buttonId);
+      if (!button) return;
+      const cardsReady = buttonId === 'confirmAssignedName' || (this.selectedOffers.size > 0 && this.selectedOffers.size <= Number(this.state?.player?.allowedCardCount || 1));
+      button.disabled = !(cardsReady && this.validPlayerNameDraft());
+    };
+    input.addEventListener('input', update);
+    input.addEventListener('keydown', event => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      if (buttonId === 'confirmAssignedName') this.savePlayerName();
+      else this.confirmChoice();
+    });
+    update();
+  }
+
+  requireValidPlayerName() {
+    if (this.state?.player?.nameSet) return '';
+    const name = this.normalizedPlayerNameDraft();
+    if (name.length < 2) { this.showMessage('Escribí tu nombre o apodo antes de continuar.', 'error'); $('selectionPlayerName')?.focus(); return null; }
+    if (/^(jugador|player|invitado)(?:\s*[x#_-]?\s*\d*)?$/i.test(name)) { this.showMessage('Elegí un nombre o apodo propio. No podés continuar como “Jugador X”.', 'error'); $('selectionPlayerName')?.focus(); return null; }
+    return name;
+  }
+
+  async savePlayerName() {
+    const name = this.requireValidPlayerName();
+    if (name === null) return;
+    try {
+      this.applyState(await this.request('/api/player/name', { method:'POST', body:JSON.stringify({ name }) }));
+      this.pendingPlayerName = '';
+    } catch (error) { this.showMessage(error.message, 'error'); }
   }
 
   offerHtml(card) {
@@ -366,14 +431,18 @@ class PlayerApp {
     const selected = this.selectedOffers.size;
     const maximum = Number(this.state?.player?.allowedCardCount || 1);
     if (selected < 1 || selected > maximum) return;
+    const name = this.requireValidPlayerName();
+    if (name === null) return;
     if (!force && selected < maximum) {
       const remaining = maximum - selected;
       $('partialChoiceText').textContent = `Todavía podés elegir ${remaining} cartón${remaining === 1 ? '' : 'es'} más. ¿Seguro que querés continuar?`;
       $('partialChoiceOverlay').classList.add('show');
       return;
     }
-    try { this.applyState(await this.request('/api/player/choose', { method:'POST', body:JSON.stringify({ cardIds:[...this.selectedOffers] }) })); }
-    catch (error) { this.showMessage(error.message, 'error'); }
+    try {
+      this.applyState(await this.request('/api/player/choose', { method:'POST', body:JSON.stringify({ cardIds:[...this.selectedOffers], ...(name ? { name } : {}) }) }));
+      this.pendingPlayerName = '';
+    } catch (error) { this.showMessage(error.message, 'error'); }
   }
 
   async releaseChoice() {

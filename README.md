@@ -18,7 +18,7 @@ npm start
 
 - Generación aleatoria de hasta 250 cartones.
 - De 2 a 60 accesos de jugadores y hasta 4 cartones permitidos por jugador.
-- El administrador crea cupos y códigos; cada jugador escribe su propio nombre.
+- El administrador crea cupos y códigos; el enlace directo entra a la sala y cada jugador escribe su nombre al confirmar cartones.
 - Nombre obligatorio, no genérico y sin duplicados dentro de la sala.
 - El jugador puede confirmar menos cartones que el máximo habilitado.
 - Renovación de cartones ofrecidos conservando los ya elegidos.

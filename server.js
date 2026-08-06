@@ -1760,8 +1760,8 @@ function loginPlayer(payload) {
   const deviceId = String(payload?.deviceId || '').trim().slice(0, 120);
   const player = state.players.find(item => item.code === normalized);
   if (!player) throw new Error('Código incorrecto. Revisalo con el administrador.');
-  if (!player.nameSet) {
-    player.name = validatePlayerName(payload?.name, player.id);
+  if (!player.nameSet && normalizePlayerName(payload?.name)) {
+    player.name = validatePlayerName(payload.name, player.id);
     player.nameSet = true;
   }
   if (player.sessionToken && player.sessionDeviceId && deviceId && player.sessionDeviceId !== deviceId) {
@@ -1877,10 +1877,24 @@ function renewOffers(player) {
   return playerPayload(player);
 }
 
+function setPlayerName(player, payload) {
+  if (!state.active || !state.game) throw new Error('La sala no está activa.');
+  if (state.status !== 'waiting' && state.status !== 'starting') throw new Error('El nombre solo puede confirmarse antes de iniciar el sorteo.');
+  const name = validatePlayerName(payload?.name, player.id);
+  player.name = name;
+  player.nameSet = true;
+  updateCardDisplayNames();
+  logEvent('player_name_set', { playerId: player.id, playerName: name });
+  saveState();
+  broadcast();
+  return playerPayload(player);
+}
+
 function chooseCards(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
   if (!selectionIsOpen()) throw new Error('La elección de cartones ya está cerrada.');
   purgeExpiredReservations();
+  const selectedName = player.nameSet ? null : validatePlayerName(payload?.name, player.id);
   const selected = [...new Set((payload.cardIds || []).map(String))];
   if (selected.length < 1 || selected.length > player.allowedCardCount) throw new Error(`Podés elegir entre 1 y ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}.`);
   const offers = new Set(player.offeredCardIds || []);
@@ -1902,6 +1916,10 @@ function chooseCards(player, payload) {
     state.cardReservations[cardId] = { playerId: player.id, reservedAt: Date.now(), expiresAt: Date.now() + CARD_RESERVATION_TTL_MS };
   }
   releaseReservationsForPlayer(player, selected);
+  if (selectedName) {
+    player.name = selectedName;
+    player.nameSet = true;
+  }
   player.cardIds = selected;
   player.selectionConfirmed = true;
   player.offeredCardIds = [];
@@ -2836,6 +2854,7 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/state' && req.method === 'GET') return sendJson(res, 200, playerPayload(player));
         if (url.pathname === '/api/player/reserve' && req.method === 'POST') return sendJson(res, 200, reserveCard(player, await readJson(req)));
         if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
+        if (url.pathname === '/api/player/name' && req.method === 'POST') return sendJson(res, 200, setPlayerName(player, await readJson(req)));
         if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
         if (url.pathname === '/api/player/release' && req.method === 'POST') return sendJson(res, 200, releaseOwnSelection(player));
         if (url.pathname === '/api/player/mark' && req.method === 'POST') return sendJson(res, 200, markNumber(player, await readJson(req)));

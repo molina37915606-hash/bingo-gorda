@@ -49,7 +49,7 @@ class PlayerApp {
       { icon:'🧾', title:'Cambiar de cartón', text:'Usá las pestañas de cartones para pasar de uno a otro sin perder ninguna marca.' },
       { icon:'🔢', title:'Ver números', text:'El botón Ver números abre todos los números sorteados y también muestra el orden de salida.' },
       { icon:'🔊', title:'Sonido y avisos', text:'El parlante controla la voz y los sonidos. La campana controla los avisos visuales y la vibración.' },
-      { icon:'✓', title:'Automarcar', text:'Automarcar completa tus cartones con las bolillas oficiales. También podés marcar manualmente.' },
+      { icon:'✓', title:'Automarcar', text:'Automarcar completa tus cartones con las bolillas oficiales. El marcado manual solo está disponible con hasta 10 jugadores y 40 cartones activos.' },
       { icon:'🍀', title:'Cambiar mi suerte', text:'Durante la partida podés elegir otro presentador desde Mi suerte. Cambia solo la voz que escuchás en tu celular.' },
       { icon:'🏆', title:'Tenés que cantar', text:'Aunque el sistema marque solo o active una alarma, no avisa al administrador. Tocá el botón del premio correspondiente para enviar el reclamo.' },
       { icon:'📄', title:'Resultado oficial', text:'Cuando termine el sorteo aparecerá en el centro el botón Descargar resultados con el acta oficial.' },
@@ -62,6 +62,7 @@ class PlayerApp {
   }
 
   async init() {
+    this.injectChatUi();
     $('loginBtn').onclick = () => this.login();
     $('lastResultBtn').onclick = () => this.downloadLastPublicResult();
     $('accessCode').addEventListener('keydown', event => { if (event.key === 'Enter') this.login(); });
@@ -124,6 +125,54 @@ class PlayerApp {
 
     this.keepAliveTimer = setInterval(() => { if (this.state?.active) fetch('/api/ping', { cache:'no-store' }).catch(() => {}); }, 5 * 60 * 1000);
     this.assignmentClockTimer = setInterval(() => this.updateAssignmentCountdown(), 1000);
+  }
+
+  injectChatUi() {
+    if ($('playerChatDock')) return;
+    const style = document.createElement('style');
+    style.textContent = `
+      .playerChatDock{position:fixed;right:12px;bottom:12px;z-index:65}.playerChatToggle{border:0;border-radius:999px;padding:12px 16px;background:#5a167b;color:#fff;font-weight:900;box-shadow:0 10px 35px #0008}.playerChatPanel{display:none;width:min(360px,calc(100vw - 18px));height:min(520px,72vh);background:#11182a;border:1px solid #ffffff2d;border-radius:18px;overflow:hidden;box-shadow:0 25px 70px #000b}.playerChatPanel.show{display:grid;grid-template-rows:auto 1fr auto auto}.playerChatPanel header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:#5a167b;color:#fff}.playerChatPanel header button{border:0;background:transparent;color:#fff;font-size:24px}.playerChatMessages{overflow:auto;padding:11px;display:grid;gap:8px;background:#080d18}.playerChatMessage{padding:9px 10px;border-radius:11px;background:#19233a;color:#fff}.playerChatMessage.admin{background:#3b2454;border:1px solid #9867b2}.playerChatMessage small{display:flex;justify-content:space-between;gap:8px;color:#b7c1d5;margin-bottom:4px}.playerChatMessage p{margin:0;word-break:break-word}.playerChatPanel textarea{resize:none;min-height:58px;padding:10px;border:0;border-top:1px solid #ffffff20;background:#121b30;color:#fff}.playerChatSend{border:0;padding:12px;background:#ffca2f;color:#1b1405;font-weight:1000}.playerChatNotice{padding:8px 10px;background:#3f2c0a;color:#ffe39a;font-size:12px}.playerChatBadge:not(:empty){display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:999px;background:#e83e87;margin-left:5px}.day .playerChatPanel{background:#fff;border-color:#d8cde1}.day .playerChatMessages{background:#f4eff7}.day .playerChatMessage{background:#e6deed;color:#23182b}.day .playerChatPanel textarea{background:#fff;color:#23182b}
+      @media(max-width:700px){.playerChatDock{right:7px;bottom:7px}.playerChatPanel{height:68vh}}
+    `;
+    document.head.appendChild(style);
+    const dock = document.createElement('aside');
+    dock.id = 'playerChatDock'; dock.className = 'playerChatDock';
+    dock.innerHTML = `<button id="playerChatToggle" class="playerChatToggle">💬 CHAT <span id="playerChatBadge" class="playerChatBadge"></span></button><section id="playerChatPanel" class="playerChatPanel"><header><b>CHAT PÚBLICO</b><button id="playerChatClose">×</button></header><div id="playerChatMessages" class="playerChatMessages"></div><div id="playerChatNotice" class="playerChatNotice hidden"></div><textarea id="playerChatInput" maxlength="160" placeholder="Escribí un mensaje"></textarea><button id="playerChatSend" class="playerChatSend">ENVIAR</button></section>`;
+    document.body.appendChild(dock);
+    $('playerChatToggle').onclick = () => { $('playerChatPanel').classList.toggle('show'); $('playerChatBadge').textContent = ''; this.renderChat(); };
+    $('playerChatClose').onclick = () => $('playerChatPanel').classList.remove('show');
+    $('playerChatSend').onclick = () => this.sendChat();
+    $('playerChatInput').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); this.sendChat(); } });
+  }
+
+  chatTime(value) {
+    try { return new Date(value).toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', second:'2-digit' }); }
+    catch { return ''; }
+  }
+
+  renderChat(incoming = false) {
+    const dock = $('playerChatDock');
+    if (!dock) return;
+    dock.style.display = this.state?.active ? '' : 'none';
+    const chat = this.state?.chat || { messages: [] };
+    const host = $('playerChatMessages');
+    host.innerHTML = (chat.messages || []).map(message => `<article class="playerChatMessage ${message.role === 'admin' ? 'admin' : ''}"><small><b>${esc(message.name)}</b><span>${esc(this.chatTime(message.createdAt))}</span></small><p>${esc(message.text)}</p></article>`).join('') || '<div style="text-align:center;color:#aeb8cd;padding:25px">Todavía no hay mensajes.</div>';
+    if (incoming || $('playerChatPanel').classList.contains('show')) host.scrollTop = host.scrollHeight;
+    const blocked = chat.enabled === false || chat.locked || chat.muted;
+    $('playerChatInput').disabled = blocked;
+    $('playerChatSend').disabled = blocked;
+    const notice = $('playerChatNotice');
+    notice.classList.toggle('hidden', !blocked);
+    notice.textContent = chat.enabled === false ? 'El chat está deshabilitado.' : chat.muted ? 'El administrador silenció tu participación.' : chat.locked ? 'El chat está pausado temporalmente.' : '';
+    if (incoming && !$('playerChatPanel').classList.contains('show')) $('playerChatBadge').textContent = String(Math.min(99, Number($('playerChatBadge').textContent || 0) + 1));
+  }
+
+  async sendChat() {
+    const input = $('playerChatInput');
+    const text = String(input?.value || '').trim();
+    if (!text) return;
+    try { await this.request('/api/player/chat', { method:'POST', body:JSON.stringify({ text }) }); input.value = ''; }
+    catch (error) { alert(error.message); }
   }
 
   async loadPublicInfo() {
@@ -230,6 +279,21 @@ class PlayerApp {
       $('connectionMask').classList.remove('show');
       this.applyState(JSON.parse(event.data));
     });
+    this.events.addEventListener('chat', event => {
+      const message = JSON.parse(event.data);
+      this.state ||= {};
+      this.state.chat ||= { messages: [] };
+      this.state.chat.messages ||= [];
+      if (!this.state.chat.messages.some(item => item.id === message.id)) this.state.chat.messages.push(message);
+      this.state.chat.messages = this.state.chat.messages.slice(-100);
+      this.renderChat(true);
+    });
+    this.events.addEventListener('chat-control', event => {
+      const control = JSON.parse(event.data);
+      this.state ||= {};
+      this.state.chat = { ...(this.state.chat || {}), ...control };
+      this.renderChat();
+    });
     this.events.addEventListener('logout', () => this.logout());
     this.events.onerror = () => {
       $('connectionStatus').className = 'status off'; $('connectionStatus').textContent = 'SIN CONEXIÓN'; $('connectionMask').classList.add('show');
@@ -249,7 +313,7 @@ class PlayerApp {
     localStorage.setItem('bingoOnlineCard', this.activeCardId);
     if (!this.audioPreferenceLoaded) { this.audioEnabled = Boolean(data.roomSettings?.playerAudioDefault); this.audioPreferenceLoaded = true; localStorage.setItem('bingoPlayerSound', String(this.audioEnabled)); }
     $('loginView').classList.add('hidden'); $('gameView').classList.remove('hidden');
-    this.render(); this.renderPublicClaim(); this.handleOwnPrizeReadiness(); this.handleTestEvent(); this.handleSequence(previous);
+    this.render(); this.renderChat(); this.renderPublicClaim(); this.handleOwnPrizeReadiness(); this.handleTestEvent(); this.handleSequence(previous);
     if ($('drawnOverlay').classList.contains('show')) this.renderDrawnNumbers();
     if ($('winnerOverlay').classList.contains('show')) this.renderWinnerCard();
     const currentCount = data.game.drawn.length;
@@ -281,6 +345,8 @@ class PlayerApp {
     const presenter = PRESENTERS[id] || PRESENTERS.vero || { name:'Presentador', phrase:'Mucha suerte.' };
     $('presenterImage').src = `assets/${id}.png`; $('presenterName').textContent = `${presenter.name} te acompaña`; $('presenterPhrase').textContent = presenter.phrase;
     $('autoMarkToggle').classList.toggle('active', Boolean(this.state.player.autoMark));
+    $('autoMarkToggle').disabled = Boolean(this.state.player.autoMarkForced || this.state.markingPolicy?.automaticRequired);
+    $('autoMarkToggle').title = this.state.markingPolicy?.automaticRequired ? this.state.markingPolicy.reason : 'Activar o desactivar automarcado';
     this.renderAdminMessage();
   }
 

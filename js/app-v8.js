@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = 2026;
+const APP_VERSION = 202602;
 const STORAGE_SCOPE = '';
 const STORE_KEY = `bingoGordaV8Games${STORAGE_SCOPE}`;
 const CURRENT_KEY = `bingoGordaV8Current${STORAGE_SCOPE}`;
@@ -18,7 +18,8 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const escapeHtml = value => String(value ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-const uid = prefix => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const uid = prefix => `${prefix}-${crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`}`;
+const secureRandomInt = max => { if (!Number.isInteger(max) || max <= 0) return 0; const limit = Math.floor(0x100000000 / max) * max; const values = new Uint32Array(1); do { crypto.getRandomValues(values); } while (values[0] >= limit); return values[0] % max; };
 const memoryStorage = new Map();
 const storageGet = key => { try { return window.localStorage.getItem(key); } catch { return memoryStorage.has(key) ? memoryStorage.get(key) : null; } };
 const storageSet = (key, value) => { try { window.localStorage.setItem(key, String(value)); } catch { memoryStorage.set(key, String(value)); } };
@@ -124,7 +125,7 @@ const CardService = {
   sample(values, count) {
     const list = [...values];
     for (let i = list.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = secureRandomInt(i + 1);
       [list[i], list[j]] = [list[j], list[i]];
     }
     return list.slice(0, count).sort((a, b) => a - b);
@@ -152,21 +153,58 @@ const CardService = {
     const starts = [1,16,31,46,61];
     const grid = Array.from({ length: 5 }, () => Array(5).fill(null));
     for (let col = 0; col < 5; col++) {
-      const nums = this.sample(Array.from({ length: 15 }, (_, i) => starts[col] + i), 5);
-      for (let row = 0; row < 5; row++) grid[row][col] = nums[row];
+      const count = col === 2 ? 4 : 5;
+      const nums = this.sample(Array.from({ length: 15 }, (_, i) => starts[col] + i), count);
+      const rows = col === 2 ? [0,1,3,4] : [0,1,2,3,4];
+      rows.forEach((row, index) => { grid[row][col] = nums[index]; });
     }
     grid[2][2] = 'LIBRE';
     return grid;
   },
+  winningSignatures(grid, mode) {
+    const lines = [];
+    if (mode === 90) grid.forEach(row => lines.push(row.filter(Number.isFinite)));
+    else {
+      for (let row = 0; row < 5; row++) lines.push(grid[row].filter(Number.isFinite));
+      for (let col = 0; col < 5; col++) lines.push(grid.map(row => row[col]).filter(Number.isFinite));
+      lines.push(grid.map((row, index) => row[index]).filter(Number.isFinite));
+      lines.push(grid.map((row, index) => row[4 - index]).filter(Number.isFinite));
+    }
+    return lines.filter(line => line.length).map(line => line.slice().sort((a,b) => a-b).join(','));
+  },
+  sharedNumbers(left, right) {
+    const values = new Set(right.flat().filter(Number.isFinite));
+    return left.flat().filter(Number.isFinite).reduce((count, number) => count + (values.has(number) ? 1 : 0), 0);
+  },
+  diversityReport(grids, mode) {
+    let maximumShared = 0;
+    let repeatedWinningLines = 0;
+    const lineOwners = new Map();
+    grids.forEach((grid, index) => this.winningSignatures(grid, mode).forEach(signature => {
+      if (lineOwners.has(signature)) repeatedWinningLines += 1;
+      else lineOwners.set(signature, index);
+    }));
+    for (let left = 0; left < grids.length; left++) for (let right = left + 1; right < grids.length; right++) maximumShared = Math.max(maximumShared, this.sharedNumbers(grids[left], grids[right]));
+    return { total: grids.length, maximumShared, repeatedWinningLines, approved: repeatedWinningLines === 0 && maximumShared <= (mode === 75 ? 12 : 6) };
+  },
   generateMany(count, mode) {
-    const result = [], seen = new Set();
+    const result = [], seen = new Set(), winningLines = new Set();
+    const maxShared = mode === 75 ? 12 : 6;
     let guard = 0;
-    while (result.length < count && guard++ < 20000) {
+    const maxAttempts = Math.max(50000, count * 6000);
+    while (result.length < count && guard++ < maxAttempts) {
       const grid = mode === 90 ? this.generate90() : this.generate75();
       const key = JSON.stringify(grid);
-      if (!seen.has(key)) { seen.add(key); result.push(grid); }
+      if (seen.has(key)) continue;
+      const signatures = this.winningSignatures(grid, mode);
+      if (signatures.some(signature => winningLines.has(signature))) continue;
+      if (result.some(existing => this.sharedNumbers(existing, grid) > maxShared)) continue;
+      seen.add(key);
+      signatures.forEach(signature => winningLines.add(signature));
+      result.push(grid);
     }
-    if (result.length !== count) throw new Error('No se pudieron generar todos los cartones.');
+    if (result.length !== count) throw new Error(`No se pudieron generar ${count} cartones con la diversidad exigida. Probá nuevamente.`);
+    this.lastDiversityReport = this.diversityReport(result, mode);
     return result;
   },
   numbers(card) { return card.grid.flat().filter(value => typeof value === 'number'); },

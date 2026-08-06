@@ -33,6 +33,7 @@ const WORKSPACES_DIR = path.join(DATA_DIR, 'operadores');
 const PORT = Number(process.env.PORT || 3210);
 const HOST = '0.0.0.0';
 const ONLINE_MODE = process.env.RENDER === 'true' || process.env.ONLINE_MODE === 'true';
+const TEST_MODE = process.env.BINGO_TEST_MODE === 'true';
 const PUBLIC_URL = String(process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '').replace(/\/+$/, '');
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
 const MASTER_ADMIN_PASSWORD = String(process.env.MASTER_ADMIN_PASSWORD || ADMIN_PASSWORD || '');
@@ -48,13 +49,20 @@ const MIN_ASSIGNMENT_MINUTES = 1;
 const MAX_ASSIGNMENT_MINUTES = 30;
 const CARD_RESERVATION_TTL_MS = 2 * 60 * 1000;
 const ADMIN_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
-const CLAIM_QUEUE_WINDOW_MS = 3000;
+const CLAIM_QUEUE_WINDOW_MS = Math.max(100, Number(process.env.BINGO_CLAIM_WINDOW_MS || 3000));
 const TEST_EVENT_TTL_MS = 20 * 1000;
 const START_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_START_SEQUENCE_MS || 11_000));
 const RESUME_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_RESUME_SEQUENCE_MS || 5_000));
 const FINAL_BALLS_SEQUENCE_MS = Math.max(250, Number(process.env.BINGO_FINAL_BALLS_SEQUENCE_MS || 8_000));
 const MAX_TIE_WINNERS_PER_PRIZE = 4;
-const APP_PUBLIC_VERSION = '2026';
+const MANUAL_MARK_MAX_PLAYERS = 10;
+const MANUAL_MARK_MAX_CARDS = 40;
+const CHAT_MAX_MESSAGES = 100;
+const CHAT_MAX_LENGTH = 160;
+const CHAT_COOLDOWN_MS = 2000;
+const DEMO_TTL_MS = 30 * 60 * 1000;
+const DEMO_IDLE_TTL_MS = 15 * 60 * 1000;
+const APP_PUBLIC_VERSION = '2026.2';
 const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bingo'];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
@@ -203,7 +211,8 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
 
 function blankState() {
   return {
-    version: 2026,
+    version: 202602,
+    revision: 0,
     active: false,
     status: 'closed',
     roomCode: null,
@@ -240,6 +249,12 @@ function blankState() {
     pauseReason: null,
     deviceTransferRequests: [],
     testEvent: null,
+    drawOrder: [],
+    claimSequence: 0,
+    claimWindow: null,
+    testDrawOrderFixed: false,
+    chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} },
+    demo: null,
     game: null,
     players: [],
     cardReservations: {},
@@ -284,6 +299,18 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.showMercadoPago = merged.roomSettings.showMercadoPago !== false;
     merged.roomSettings.argentinaHint = merged.roomSettings.argentinaHint !== false;
     merged.roomSettings.broadcastToken = merged.roomSettings.broadcastToken ? String(merged.roomSettings.broadcastToken) : null;
+    merged.revision = Math.max(0, Number(parsed.revision) || 0);
+    merged.drawOrder = Array.isArray(parsed.drawOrder) ? uniqueNumbers(parsed.drawOrder) : [];
+    merged.claimSequence = Math.max(0, Number(parsed.claimSequence) || 0);
+    merged.claimWindow = parsed.claimWindow && typeof parsed.claimWindow === 'object' ? parsed.claimWindow : null;
+    merged.chat = {
+      enabled: parsed.chat?.enabled !== false,
+      locked: Boolean(parsed.chat?.locked),
+      messages: Array.isArray(parsed.chat?.messages) ? parsed.chat.messages.slice(-CHAT_MAX_MESSAGES) : [],
+      mutedPlayerIds: Array.isArray(parsed.chat?.mutedPlayerIds) ? [...new Set(parsed.chat.mutedPlayerIds.map(String))] : [],
+      lastSentAt: {}
+    };
+    merged.demo = parsed.demo && typeof parsed.demo === 'object' ? parsed.demo : null;
     merged.testEvent = parsed.testEvent && new Date(parsed.testEvent.expiresAt || 0).getTime() > Date.now() ? parsed.testEvent : null;
     merged.assignmentTimer.durationMinutes = Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(merged.assignmentTimer.durationMinutes) || 10));
     if (!['idle', 'running', 'paused', 'completed'].includes(merged.assignmentTimer.status)) merged.assignmentTimer.status = 'idle';
@@ -363,7 +390,10 @@ function ensureWorkspace(id = 'owner', operatorId = null, label = 'Administrador
     id: safe, operatorId, label, ...paths,
     state: loadState(paths.stateFile),
     sseClients: new Set(),
-    lastResultMeta: loadLastResultMeta(paths.resultMetaFile, paths.resultPdfFile)
+    lastResultMeta: loadLastResultMeta(paths.resultMetaFile, paths.resultPdfFile),
+    isDemo: safe.startsWith('demo_'),
+    expiresAt: safe.startsWith('demo_') ? Date.now() + DEMO_TTL_MS : null,
+    lastActivityAt: Date.now()
   };
   workspaces.set(safe, workspace);
   return workspace;
@@ -411,6 +441,7 @@ function publicLastResult() {
 
 function saveState() {
   const workspace = currentWorkspace();
+  state.revision = Math.max(0, Number(state.revision) || 0) + 1;
   state.updatedAt = nowIso();
   const temp = `${workspace.stateFile}.tmp`;
   fs.writeFileSync(temp, JSON.stringify(state, null, 2), 'utf8');
@@ -818,12 +849,10 @@ function autoAssignPendingPlayers(reason = 'timer') {
   const assigned = [];
 
   for (const player of pendingPlayers) {
-    const chosen = [...(preferredByPlayer.get(player.id) || [])];
-    while (chosen.length < player.allowedCardCount) {
-      const cardId = available.shift();
-      if (!cardId) throw new Error('No quedan cartones suficientes para completar la asignación automática.');
-      chosen.push(cardId);
-    }
+    const preferred = preferredByPlayer.get(player.id) || [];
+    const chosen = diverseCardSelection([...preferred, ...available], player.allowedCardCount, preferred);
+    if (chosen.length < player.allowedCardCount) throw new Error('No quedan cartones suficientemente diferentes para completar la asignación automática.');
+    available = available.filter(cardId => !chosen.includes(cardId));
     player.cardIds = chosen;
     player.selectionConfirmed = true;
     player.offeredCardIds = [];
@@ -917,6 +946,8 @@ function baseInfo() {
     publicUrl: PUBLIC_URL || null,
     playerUrl: PUBLIC_URL ? `${PUBLIC_URL}/jugador` : null,
     version: APP_PUBLIC_VERSION,
+    demo: Boolean(currentWorkspace().isDemo || state.demo),
+    revision: Number(state.revision) || 0,
     workspace: { id: currentWorkspace().id, operatorId: currentWorkspace().operatorId || null, label: currentWorkspace().label }
   };
 }
@@ -934,7 +965,8 @@ function broadcastPayload() {
   return {
     active: true, version: APP_PUBLIC_VERSION, status: state.status, pauseReason: state.pauseReason || null, roomCode: state.roomCode, round: state.round,
     playersTotal: state.players.length, playersReady: state.players.filter(player => player.selectionConfirmed).length, playersConnected: connectedPlayerIds().size,
-    roomSettings: state.roomSettings, transition: state.transition, publicClaims: publicClaimsPayload(),
+    roomSettings: state.roomSettings, transition: state.transition, publicClaims: publicClaimsPayload(), markingPolicy: markingPolicyPayload(),
+    chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES) },
     game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: state.game.presenter, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, total: state.game.mode },
     pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, createdAt: pendingClaim.createdAt } : null,
     latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, prizeNumber: latestConfirmed.prizeNumber || 1, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt } : null,
@@ -1001,6 +1033,8 @@ function adminPayload() {
     updatedAt: state.updatedAt,
     round: state.round,
     roomSettings: state.roomSettings,
+    markingPolicy: markingPolicyPayload(),
+    chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), mutedPlayerIds: state.chat?.mutedPlayerIds || [] },
     assignmentTimer: assignmentTimerPayload(),
     prizeStatus: prizeStatusPayload(),
     bingoConfirmed: prizeStatusPayload().bingo.closed,
@@ -1048,6 +1082,8 @@ function playerPayload(player) {
     startedAt: state.startedAt,
     endedAt: state.endedAt || null,
     roomSettings: state.roomSettings,
+    markingPolicy: markingPolicyPayload(),
+    chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), muted: (state.chat?.mutedPlayerIds || []).includes(player.id) },
     assignmentTimer: assignmentTimerPayload(),
     prizeStatus: prizeStatusPayload(),
     bingoConfirmed: prizeStatusPayload().bingo.closed,
@@ -1080,6 +1116,7 @@ function playerPayload(player) {
       cards,
       marks: player.marks || {},
       autoMark: Boolean(player.autoMark),
+      autoMarkForced: autoMarkRequired(),
       notices: (player.notices || []).slice(-10)
     }
   };
@@ -1149,15 +1186,338 @@ function broadcast() {
   }
 }
 
+
+
+function generateCard90Server() {
+  const ranges = [[1,9],[10,19],[20,29],[30,39],[40,49],[50,59],[60,69],[70,79],[80,90]];
+  for (let attempt = 0; attempt < 5000; attempt++) {
+    const grid = Array.from({ length: 3 }, () => Array(9).fill(null));
+    const counts = Array(9).fill(0);
+    for (let row = 0; row < 3; row++) {
+      for (const col of shuffle(Array.from({ length: 9 }, (_, index) => index)).slice(0, 5)) { grid[row][col] = 0; counts[col] += 1; }
+    }
+    if (!counts.every(Boolean)) continue;
+    for (let col = 0; col < 9; col++) {
+      const rows = [0,1,2].filter(row => grid[row][col] === 0);
+      const [minimum, maximum] = ranges[col];
+      const values = shuffle(Array.from({ length: maximum - minimum + 1 }, (_, index) => minimum + index)).slice(0, rows.length).sort((a,b) => a-b);
+      rows.forEach((row, index) => { grid[row][col] = values[index]; });
+    }
+    return grid;
+  }
+  throw new Error('No se pudo generar un cartón de 90 bolas.');
+}
+
+function generateCard75Server() {
+  const grid = Array.from({ length: 5 }, () => Array(5).fill(null));
+  const starts = [1,16,31,46,61];
+  for (let col = 0; col < 5; col++) {
+    const count = col === 2 ? 4 : 5;
+    const values = shuffle(Array.from({ length: 15 }, (_, index) => starts[col] + index)).slice(0, count).sort((a,b) => a-b);
+    const rows = col === 2 ? [0,1,3,4] : [0,1,2,3,4];
+    rows.forEach((row, index) => { grid[row][col] = values[index]; });
+  }
+  grid[2][2] = 'LIBRE';
+  return grid;
+}
+
+function generateDiverseCardsServer(count, mode, rules, maxSharedOverride = null) {
+  const cards = [];
+  const lineSignatures = new Set();
+  const maxShared = Number.isFinite(Number(maxSharedOverride)) ? Number(maxSharedOverride) : (Number(mode) === 75 ? 12 : 6);
+  let attempts = 0;
+  while (cards.length < count && attempts++ < count * 5000) {
+    const grid = Number(mode) === 75 ? generateCard75Server() : generateCard90Server();
+    const card = {
+      id: randomId('card'), number: String(cards.length + 1).padStart(3, '0'), name: `Cartón ${cards.length + 1}`,
+      originalName: `Cartón ${cards.length + 1}`, mode, source: 'generated', grid,
+      bets: { ambocabeza: mode === 90 && rules.ambocabeza !== false, line: rules.line !== false, doubleLine: mode === 75 && Boolean(rules.doubleLine), tripleLine: mode === 75 && Boolean(rules.tripleLine), corners: mode === 75 && Boolean(rules.corners), bingo: rules.bingo !== false }
+    };
+    const lines = cardWinningSignatures(card);
+    if (lines.some(signature => lineSignatures.has(signature))) continue;
+    if (cards.some(existing => sharedCardNumbers(existing, card) > maxShared || cardSignature(existing) === cardSignature(card))) continue;
+    cards.push(card);
+    lines.forEach(signature => lineSignatures.add(signature));
+  }
+  if (cards.length !== count) throw new Error('No se pudieron generar cartones suficientemente diferentes para la demostración.');
+  return cards;
+}
+
+function createDemoRoom(payload = {}) {
+  const mode = Number(payload.mode) === 75 ? 75 : 90;
+  const virtualPlayers = Math.max(2, Math.min(10, Number(payload.players) || 6));
+  const cardsPerPlayer = Math.max(1, Math.min(4, Number(payload.cardsPerPlayer) || 2));
+  const autoSeconds = Math.max(3, Math.min(20, Number(payload.autoSeconds) || 5));
+  const rules = mode === 75
+    ? { ambocabeza: false, line: true, doubleLine: true, tripleLine: true, corners: true, bingo: true }
+    : { ambocabeza: true, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true };
+  const count = virtualPlayers * cardsPerPlayer;
+  const cards = generateDiverseCardsServer(count, mode, rules, mode === 75 ? 9 : 4);
+  const game = {
+    id: randomId('demo_game'), number: 1, mode, rules, drawMode: 'automatic', autoSeconds, presenter: ['vero','vivi','josu','daia'].includes(payload.presenter) ? payload.presenter : 'vero',
+    theme: 'clasico', phase: 'READY', drawn: [], createdAt: nowIso(), updatedAt: nowIso(), cards
+  };
+  const players = Array.from({ length: virtualPlayers }, (_, index) => ({ allowedCardCount: cardsPerPlayer, cardIds: cards.slice(index * cardsPerPlayer, (index + 1) * cardsPerPlayer).map(card => card.id) }));
+  const workspace = ensureWorkspace(`demo_${randomCode(10).toLowerCase()}`);
+  workspace.isDemo = true;
+  workspace.expiresAt = Date.now() + DEMO_TTL_MS;
+  workspace.lastActivityAt = Date.now();
+  return workspaceContext.run(workspace, () => {
+    configureRoom({
+      game, players,
+      roomSettings: { playerAudioAllowed: true, playerAudioDefault: true, linePrizeCount: mode === 90 ? 2 : 1, allowSamePlayerSecondLine: true, tiePolicy: 'first_claim', gameType: 'test', prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 }, showMercadoPago: false, argentinaHint: true },
+      assignmentTimer: { enabled: false, durationMinutes: 10 }
+    });
+    state.demo = { active: true, label: 'DEMOSTRACIÓN — SIN VALIDEZ OFICIAL', createdAt: nowIso(), expiresAt: new Date(workspace.expiresAt).toISOString() };
+    state.players.forEach((player, index) => {
+      player.name = `Jugador virtual ${index + 1}`;
+      player.nameSet = true;
+      player.virtual = true;
+      player.autoMark = true;
+      syncAutoMarksForPlayer(player);
+    });
+    updateCardDisplayNames();
+    logEvent('demo_created', { virtualPlayers, cardsPerPlayer, mode, autoSeconds });
+    saveState();
+    const token = createAdminSession({ workspaceId: workspace.id, role: 'owner', hardExpiresAt: workspace.expiresAt });
+    return { token, workspaceId: workspace.id, roomCode: state.roomCode, expiresAt: new Date(workspace.expiresAt).toISOString(), adminUrl: '/admin?demo=1' };
+  });
+}
+
+function ensureChatState() {
+  state.chat ||= { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} };
+  state.chat.messages ||= [];
+  state.chat.mutedPlayerIds ||= [];
+  state.chat.lastSentAt ||= {};
+  return state.chat;
+}
+
+function chatControlPayload(player = null) {
+  const chat = ensureChatState();
+  return {
+    enabled: chat.enabled !== false,
+    locked: Boolean(chat.locked),
+    muted: player ? chat.mutedPlayerIds.includes(player.id) : false,
+    maxLength: CHAT_MAX_LENGTH,
+    cooldownMs: CHAT_COOLDOWN_MS
+  };
+}
+
+function emitChatEvent(event, data) {
+  for (const client of [...sseClients]) {
+    try { writeSse(client.res, event, data); }
+    catch { sseClients.delete(client); }
+  }
+}
+
+function appendChatMessage({ role, player = null, text }) {
+  const chat = ensureChatState();
+  const clean = String(text || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_LENGTH);
+  if (!clean) throw new Error('Escribí un mensaje.');
+  if (chat.enabled === false) throw new Error('El chat está deshabilitado.');
+  if (role === 'player') {
+    if (chat.locked) throw new Error('El administrador pausó el chat.');
+    if (chat.mutedPlayerIds.includes(player.id)) throw new Error('Tu participación en el chat está silenciada.');
+    const last = Number(chat.lastSentAt[player.id]) || 0;
+    if (Date.now() - last < CHAT_COOLDOWN_MS) throw new Error('Esperá dos segundos antes de enviar otro mensaje.');
+    chat.lastSentAt[player.id] = Date.now();
+  }
+  const message = {
+    id: randomId('chat'),
+    role,
+    playerId: player?.id || null,
+    name: role === 'admin' ? 'Administración' : playerDisplayName(player),
+    text: clean,
+    createdAt: nowIso()
+  };
+  chat.messages.push(message);
+  if (chat.messages.length > CHAT_MAX_MESSAGES) chat.messages.splice(0, chat.messages.length - CHAT_MAX_MESSAGES);
+  logEvent('chat_message', { messageId: message.id, role, playerId: message.playerId, length: clean.length });
+  emitChatEvent('chat', message);
+  return message;
+}
+
+function moderateChat(payload) {
+  const chat = ensureChatState();
+  const action = String(payload?.action || 'toggle').toLowerCase();
+  if (action === 'lock') chat.locked = true;
+  else if (action === 'unlock') chat.locked = false;
+  else if (action === 'disable') chat.enabled = false;
+  else if (action === 'enable') chat.enabled = true;
+  else if (action === 'clear') chat.messages = [];
+  else if (action === 'delete') chat.messages = chat.messages.filter(message => message.id !== String(payload.messageId || ''));
+  else if (action === 'mute') {
+    const playerId = String(payload.playerId || '');
+    if (playerId && !chat.mutedPlayerIds.includes(playerId)) chat.mutedPlayerIds.push(playerId);
+  } else if (action === 'unmute') chat.mutedPlayerIds = chat.mutedPlayerIds.filter(id => id !== String(payload.playerId || ''));
+  else throw new Error('Acción de moderación no válida.');
+  logEvent('chat_moderated', { action, playerId: payload?.playerId || null, messageId: payload?.messageId || null });
+  saveState();
+  emitChatEvent('chat-control', { ...chatControlPayload(), messages: chat.messages.slice(-CHAT_MAX_MESSAGES), mutedPlayerIds: chat.mutedPlayerIds });
+  return adminPayload();
+}
+
+function cardSignature(card) {
+  return cardNumbers(card).slice().sort((a, b) => a - b).join(',');
+}
+
+function cardWinningSignatures(card) {
+  return lineDefinitions(card)
+    .filter(line => line.values.length)
+    .map(line => line.values.slice().sort((a, b) => a - b).join(','));
+}
+
+function sharedCardNumbers(left, right) {
+  const rightNumbers = new Set(cardNumbers(right));
+  return cardNumbers(left).reduce((count, number) => count + (rightNumbers.has(number) ? 1 : 0), 0);
+}
+
+function validateCardStructure(card, expectedMode) {
+  const mode = Number(expectedMode) === 75 ? 75 : 90;
+  const label = card?.number || card?.id || 'sin número';
+  if (!card || !Array.isArray(card.grid)) throw new Error(`El cartón ${label} no tiene una cuadrícula válida.`);
+  const values = cardNumbers(card);
+  if (new Set(values).size !== values.length) throw new Error(`El cartón ${label} contiene números repetidos.`);
+  if (mode === 90) {
+    if (card.grid.length !== 3 || card.grid.some(row => !Array.isArray(row) || row.length !== 9)) throw new Error(`El cartón ${label} debe tener una cuadrícula de 3 × 9.`);
+    if (values.length !== 15) throw new Error(`El cartón ${label} debe contener exactamente 15 números.`);
+    for (let row = 0; row < 3; row++) {
+      if (card.grid[row].filter(Number.isFinite).length !== 5) throw new Error(`La fila ${row + 1} del cartón ${label} debe contener 5 números.`);
+    }
+    for (let col = 0; col < 9; col++) {
+      const column = card.grid.map(row => row[col]).filter(Number.isFinite);
+      if (!column.length) throw new Error(`La columna ${col + 1} del cartón ${label} está vacía.`);
+      const minimum = col === 0 ? 1 : col * 10;
+      const maximum = col === 8 ? 90 : col * 10 + 9;
+      if (column.some(number => number < minimum || number > maximum)) throw new Error(`El cartón ${label} tiene un número fuera de rango en la columna ${col + 1}.`);
+      if (column.some((number, index) => index > 0 && number <= column[index - 1])) throw new Error(`La columna ${col + 1} del cartón ${label} no está ordenada.`);
+    }
+  } else {
+    if (card.grid.length !== 5 || card.grid.some(row => !Array.isArray(row) || row.length !== 5)) throw new Error(`El cartón ${label} debe tener una cuadrícula de 5 × 5.`);
+    if (values.length !== 24) throw new Error(`El cartón ${label} debe contener exactamente 24 números y una casilla LIBRE.`);
+    if (card.grid?.[2]?.[2] !== 'LIBRE') throw new Error(`El cartón ${label} debe tener LIBRE en el centro.`);
+    const ranges = [[1, 15], [16, 30], [31, 45], [46, 60], [61, 75]];
+    for (let col = 0; col < 5; col++) {
+      const column = card.grid.map(row => row[col]).filter(Number.isFinite);
+      const expected = col === 2 ? 4 : 5;
+      if (column.length !== expected) throw new Error(`La columna ${'BINGO'[col]} del cartón ${label} debe contener ${expected} números.`);
+      if (column.some(number => number < ranges[col][0] || number > ranges[col][1])) throw new Error(`El cartón ${label} tiene un número fuera de rango en la columna ${'BINGO'[col]}.`);
+      if (column.some((number, index) => index > 0 && number <= column[index - 1])) throw new Error(`La columna ${'BINGO'[col]} del cartón ${label} no está ordenada.`);
+    }
+  }
+}
+
+function validateCardDiversity(cards, mode) {
+  const maxShared = Number(mode) === 75 ? 12 : 6;
+  const signatures = new Map();
+  const winning = new Map();
+  for (const card of cards) {
+    const signature = cardSignature(card);
+    if (signatures.has(signature)) throw new Error(`Los cartones ${signatures.get(signature)} y ${card.number} contienen exactamente los mismos números.`);
+    signatures.set(signature, card.number);
+    for (const lineSignature of cardWinningSignatures(card)) {
+      if (winning.has(lineSignature)) throw new Error(`Los cartones ${winning.get(lineSignature)} y ${card.number} comparten una línea ganadora idéntica.`);
+      winning.set(lineSignature, card.number);
+    }
+  }
+  for (let left = 0; left < cards.length; left++) {
+    for (let right = left + 1; right < cards.length; right++) {
+      const shared = sharedCardNumbers(cards[left], cards[right]);
+      if (shared > maxShared) throw new Error(`Los cartones ${cards[left].number} y ${cards[right].number} son demasiado parecidos: comparten ${shared} números; el máximo permitido es ${maxShared}.`);
+    }
+  }
+}
+
+function assertCardGroupDiversity(cards, mode, label = 'La selección') {
+  if (cards.length < 2) return;
+  const maxShared = Number(mode) === 75 ? 9 : 4;
+  for (let left = 0; left < cards.length; left++) {
+    for (let right = left + 1; right < cards.length; right++) {
+      const shared = sharedCardNumbers(cards[left], cards[right]);
+      if (shared > maxShared) throw new Error(`${label}: los cartones ${cards[left].number} y ${cards[right].number} son demasiado parecidos; comparten ${shared} números y el máximo es ${maxShared}.`);
+      const lines = new Set(cardWinningSignatures(cards[left]));
+      if (cardWinningSignatures(cards[right]).some(signature => lines.has(signature))) throw new Error(`${label}: los cartones ${cards[left].number} y ${cards[right].number} comparten una línea ganadora.`);
+    }
+  }
+}
+
+function assertPlayerCardDiversity(cardIds) {
+  if (!state.game || cardIds.length < 2) return;
+  const cards = cardIds.map(cardId => state.game.cards.find(card => card.id === cardId)).filter(Boolean);
+  assertCardGroupDiversity(cards, state.game.mode, 'Tu selección');
+}
+
+function diverseCardSelection(poolIds, count, preferredIds = []) {
+  const pool = [...new Set(poolIds.map(String))];
+  const chosen = [];
+  for (const preferred of preferredIds) {
+    if (!pool.includes(preferred)) continue;
+    try { assertPlayerCardDiversity([...chosen, preferred]); chosen.push(preferred); } catch {}
+    if (chosen.length >= count) return chosen;
+  }
+  for (const cardId of shuffle(pool.filter(id => !chosen.includes(id)))) {
+    try { assertPlayerCardDiversity([...chosen, cardId]); chosen.push(cardId); } catch { continue; }
+    if (chosen.length >= count) return chosen;
+  }
+  return chosen;
+}
+
+function activePlayerCount() {
+  return state.players.filter(player => player.selectionConfirmed).length;
+}
+
+function activeCardCount() {
+  return state.players.reduce((sum, player) => sum + (player.selectionConfirmed ? player.cardIds.length : 0), 0);
+}
+
+function autoMarkRequired() {
+  return activePlayerCount() > MANUAL_MARK_MAX_PLAYERS || activeCardCount() > MANUAL_MARK_MAX_CARDS;
+}
+
+function markingPolicyPayload() {
+  const required = autoMarkRequired();
+  return {
+    automaticRequired: required,
+    manualAllowed: !required,
+    playerLimit: MANUAL_MARK_MAX_PLAYERS,
+    cardLimit: MANUAL_MARK_MAX_CARDS,
+    activePlayers: activePlayerCount(),
+    activeCards: activeCardCount(),
+    reason: required ? `Automarcado obligatorio: hay más de ${MANUAL_MARK_MAX_PLAYERS} jugadores o más de ${MANUAL_MARK_MAX_CARDS} cartones activos.` : 'El jugador puede elegir marcado manual o automático.'
+  };
+}
+
+function enforceAutoMarkPolicy() {
+  if (!autoMarkRequired()) return false;
+  let changed = false;
+  for (const player of state.players) {
+    if (!player.autoMark) { player.autoMark = true; changed = true; }
+    syncAutoMarksForPlayer(player);
+  }
+  return changed;
+}
+
+function createSecureDrawOrder(mode, drawn = []) {
+  const prefix = uniqueNumbers(drawn).filter(number => number >= 1 && number <= mode);
+  const used = new Set(prefix);
+  return [...prefix, ...shuffle(Array.from({ length: mode }, (_, index) => index + 1).filter(number => !used.has(number)))];
+}
+
 function validateGame(game) {
   if (!game || !Array.isArray(game.cards)) throw new Error('No hay un juego válido para publicar.');
   if (game.cards.length < MIN_CARDS || game.cards.length > MAX_CARDS) throw new Error(`La sala online admite entre ${MIN_CARDS} y ${MAX_CARDS} cartones.`);
+  const mode = Number(game.mode) === 75 ? 75 : 90;
   const ids = new Set();
+  const numbers = new Set();
   for (const card of game.cards) {
-    if (!card.id || ids.has(card.id)) throw new Error('Hay cartones sin identificador o repetidos.');
-    ids.add(card.id);
-    if (!Array.isArray(card.grid)) throw new Error(`El cartón ${card.number || card.id} no tiene cuadrícula.`);
+    if (!card.id || ids.has(String(card.id))) throw new Error('Hay cartones sin identificador o repetidos.');
+    ids.add(String(card.id));
+    const cardNumber = String(card.number || '').trim();
+    if (!cardNumber || numbers.has(cardNumber.toLocaleLowerCase('es'))) throw new Error('Hay cartones sin número o con numeración repetida.');
+    numbers.add(cardNumber.toLocaleLowerCase('es'));
+    validateCardStructure(card, mode);
   }
+  validateCardDiversity(game.cards, mode);
 }
 
 function sanitizeGame(game) {
@@ -1184,6 +1544,7 @@ function sanitizeGame(game) {
     prizes: game.prizes ? deepCopy(game.prizes) : undefined,
     createdAt: game.createdAt || nowIso(),
     updatedAt: game.updatedAt || nowIso(),
+    integrity: game.integrity && typeof game.integrity === 'object' ? deepCopy(game.integrity) : undefined,
     cards: game.cards.map(card => ({
       id: String(card.id),
       number: String(card.number),
@@ -1215,6 +1576,7 @@ function validateAssignments(game, assignments) {
     const cardIds = [...new Set((raw.cardIds || []).map(String).filter(id => validCardIds.has(id)))];
     const allowedCardCount = Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(raw.allowedCardCount) || cardIds.length || 1));
     if (cardIds.length > allowedCardCount) throw new Error(`${slotLabel} tiene más cartones elegidos que los autorizados.`);
+    assertCardGroupDiversity(cardIds.map(cardId => game.cards.find(card => String(card.id) === cardId)).filter(Boolean), game.mode, slotLabel);
     for (const cardId of cardIds) {
       if (used.has(cardId)) throw new Error('Un cartón fue elegido por más de un jugador.');
       used.add(cardId);
@@ -1266,7 +1628,8 @@ function configureRoom(payload) {
   sanitizedGame.phase = 'READY';
   const requestedTimerMinutes = Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(payload.assignmentTimer?.durationMinutes) || 10));
   replaceCurrentState({
-    version: 2026,
+    version: 202602,
+    revision: 0,
     active: true,
     status: 'waiting',
     roomCode: randomCode(5),
@@ -1310,6 +1673,12 @@ function configureRoom(payload) {
     pauseReason: null,
     deviceTransferRequests: [],
     testEvent: null,
+    drawOrder: createSecureDrawOrder(sanitizedGame.mode),
+    claimSequence: 0,
+    claimWindow: null,
+    testDrawOrderFixed: false,
+    chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} },
+    demo: currentWorkspace().isDemo ? { active: true, label: 'DEMOSTRACIÓN — SIN VALIDEZ OFICIAL', createdAt: nowIso() } : null,
     game: sanitizedGame,
     players,
     cardReservations: {},
@@ -1318,6 +1687,7 @@ function configureRoom(payload) {
   });
   updateCardDisplayNames();
   refreshAllOffers();
+  enforceAutoMarkPolicy();
   logEvent('room_opened', { roomCode: state.roomCode, players: players.length, cards: payload.game.cards.length, status: 'waiting' });
   saveState();
   broadcast();
@@ -1326,65 +1696,121 @@ function configureRoom(payload) {
 
 function updateGame(game) {
   if (!state.active) throw new Error('No hay una sala online abierta.');
+  if (state.status !== 'waiting') throw new Error('La configuración, los cartones y las bolillas quedaron bloqueados al iniciar el sorteo.');
   validateGame(game);
-  const previousDrawn = state.game?.drawn || [];
-  const previousGameId = state.game?.id;
   const sanitized = sanitizeGame(game);
-  if (previousGameId !== sanitized.id) throw new Error('La sala pertenece a otra partida. Cerrala y volvé a abrirla.');
-  sanitized.presenter = state.game.presenter;
-  if (state.status === 'waiting' && sanitized.drawn.length > previousDrawn.length) {
-    throw new Error('La partida está en sala de espera. Presioná INICIAR SORTEO antes de sortear.');
-  }
-  if (state.status === 'finalizing' && JSON.stringify(sanitized.drawn) !== JSON.stringify(previousDrawn)) {
-    throw new Error('Se están retirando las últimas bolillas. Esperá el cierre automático.');
-  }
-  if (state.status === 'finished' && JSON.stringify(sanitized.drawn) !== JSON.stringify(previousDrawn)) {
-    throw new Error('El sorteo ya fue finalizado. No se pueden modificar las bolillas.');
-  }
-  const isNewRound = sanitized.drawn.length === 0 && previousDrawn.length > 0;
+  if (state.game?.id !== sanitized.id) throw new Error('La sala pertenece a otra partida. Cerrala y volvé a abrirla.');
+  if (sanitized.drawn.length) throw new Error('Las bolillas solo pueden ser extraídas por el servidor.');
   state.game = sanitized;
-  if (state.status === 'waiting') state.game.phase = 'READY';
-  if (isNewRound) {
-    state.round += 1;
-    state.status = 'waiting';
-    state.startedAt = null;
-    state.endedAt = null;
-    state.claims = [];
-    state.assignmentTimer = {
-      ...(state.assignmentTimer || blankState().assignmentTimer),
-      status: 'idle',
-      startedAt: null,
-      endsAt: null,
-      remainingMs: (Number(state.assignmentTimer?.durationMinutes) || 10) * 60 * 1000,
-      completedAt: null
-    };
-    state.cardReservations = {};
-    for (const player of state.players) {
-      player.reservedCardIds = [];
-      player.marks = Object.fromEntries(player.cardIds.map(cardId => [cardId, []]));
-      player.notices = [];
-    }
-    logEvent('new_round', { round: state.round, status: 'waiting' });
-  } else if (sanitized.drawn.length > previousDrawn.length) {
-    const added = sanitized.drawn.filter(number => !previousDrawn.includes(number));
-    for (const number of added) logEvent('ball_drawn', { number, position: sanitized.drawn.indexOf(number) + 1 });
-  } else if (sanitized.drawn.length < previousDrawn.length) {
-    const removed = previousDrawn.filter(number => !sanitized.drawn.includes(number));
-    for (const number of removed) logEvent('ball_undone', { number });
+  state.game.drawn = [];
+  state.game.phase = 'READY';
+  state.drawOrder = createSecureDrawOrder(state.game.mode);
+  state.claims = [];
+  state.claimSequence = 0;
+  state.claimWindow = null;
+  for (const player of state.players) {
+    player.cardIds = (player.cardIds || []).filter(cardId => state.game.cards.some(card => card.id === cardId));
+    player.selectionConfirmed = player.cardIds.length > 0;
+    player.marks = Object.fromEntries(player.cardIds.map(cardId => [cardId, []]));
   }
-  syncAllAutoMarks();
+  enforceAutoMarkPolicy();
   updateCardDisplayNames();
-  if (state.game.drawn.length >= state.game.mode && !state.claims.some(claim => claim.status === 'pending') && state.status !== 'finished') {
+  refreshAllOffers();
+  logEvent('waiting_game_updated', { cards: state.game.cards.length, mode: state.game.mode });
+  saveState();
+  broadcast();
+  return adminPayload();
+}
+
+const automaticDrawTimers = new Map();
+
+function clearAutomaticDrawTimer(workspace = currentWorkspace()) {
+  const timer = automaticDrawTimers.get(workspace.id);
+  if (timer) clearTimeout(timer);
+  automaticDrawTimers.delete(workspace.id);
+}
+
+function scheduleAutomaticDraw() {
+  const workspace = currentWorkspace();
+  clearAutomaticDrawTimer(workspace);
+  if (!state.active || state.status !== 'playing' || state.game?.drawMode !== 'automatic') return;
+  const delay = Math.max(3, Math.min(60, Number(state.game.autoSeconds) || 6)) * 1000;
+  const timer = setTimeout(() => workspaceContext.run(workspace, () => {
+    try { drawNextBall('automatic'); }
+    catch (error) { console.error(`No se pudo extraer una bolilla automática en ${workspace.id}:`, error.message); }
+  }), delay);
+  automaticDrawTimers.set(workspace.id, timer);
+}
+
+function maybeCreateDemoClaim() {
+  if (!currentWorkspace().isDemo || state.status !== 'playing') return false;
+  const types = Number(state.game.mode) === 75 ? ['corners', 'line', 'doubleLine', 'tripleLine', 'bingo'] : ['ambo', 'line', 'bingo'];
+  for (const type of types) {
+    if (!isPrizeEnabled(type) || prizeStatusPayload()[type]?.closed) continue;
+    for (const player of state.players) {
+      if (!player.virtual) continue;
+      for (const cardId of player.cardIds || []) {
+        const card = state.game.cards.find(item => item.id === cardId);
+        if (!card || state.claims.some(claim => claim.cardId === cardId && claim.type === type && ['pending', 'confirmed'].includes(claim.status))) continue;
+        const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
+        const valid = { ambo: analysis.hasAmbo, line: analysis.hasLine, doubleLine: analysis.hasDoubleLine, tripleLine: analysis.hasTripleLine, corners: analysis.hasCorners, bingo: analysis.hasBingo }[type];
+        if (valid) { createClaim(player, { cardId, type, simulated: true }); return true; }
+      }
+    }
+  }
+  return false;
+}
+
+function drawNextBall(source = 'manual') {
+  if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
+  if (state.status !== 'playing') throw new Error('La partida no está habilitada para extraer una bolilla.');
+  if (state.claims.some(claim => claim.status === 'pending')) throw new Error('Hay reclamos pendientes de resolución.');
+  clearAutomaticDrawTimer();
+  if (!Array.isArray(state.drawOrder) || state.drawOrder.length !== state.game.mode || state.drawOrder.some((number, index, all) => all.indexOf(number) !== index)) {
+    state.drawOrder = createSecureDrawOrder(state.game.mode, state.game.drawn);
+    logEvent('draw_order_recovered', { drawn: state.game.drawn.length });
+  }
+  const number = state.drawOrder[state.game.drawn.length];
+  if (!Number.isFinite(number)) throw new Error('Ya no quedan bolillas por extraer.');
+  state.game.drawn.push(number);
+  state.game.phase = state.game.drawMode === 'automatic' ? 'DRAWING' : 'READY';
+  logEvent('ball_drawn', { number, position: state.game.drawn.length, source, drawRevision: Number(state.revision) + 1 });
+  syncAllAutoMarks();
+  if (maybeCreateDemoClaim()) return adminPayload();
+  if (state.game.drawn.length >= state.game.mode) {
     state.status = 'finished';
     state.pauseReason = null;
     state.endedAt = nowIso();
     state.game.phase = 'ROUND_END';
-    state.transition = null;
     logEvent('game_finished', { round: state.round, balls: state.game.drawn.length, automatic: true });
     archiveCurrentResults();
   }
   saveState();
   broadcast();
+  if (state.status === 'playing') scheduleAutomaticDraw();
+  return adminPayload();
+}
+
+function setTestDrawOrder(payload = {}) {
+  if (!TEST_MODE) throw new Error('Esta función solo está disponible durante pruebas automáticas.');
+  if (!state.active || !state.game || state.status !== 'waiting') throw new Error('El orden de prueba solo puede fijarse en la sala de espera.');
+  const prefix = uniqueNumbers(payload.sequence || []).filter(number => number >= 1 && number <= state.game.mode);
+  state.drawOrder = createSecureDrawOrder(state.game.mode, prefix);
+  state.testDrawOrderFixed = true;
+  logEvent('test_draw_order_set', { prefix });
+  saveState();
+  return adminPayload();
+}
+
+function updateDrawSettings(payload = {}) {
+  if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
+  const nextSeconds = Math.max(3, Math.min(60, Number(payload.autoSeconds ?? state.game.autoSeconds) || 6));
+  state.game.autoSeconds = nextSeconds;
+  if (state.status === 'waiting' && ['manual', 'automatic'].includes(payload.drawMode)) state.game.drawMode = payload.drawMode;
+  logEvent('draw_settings_updated', { drawMode: state.game.drawMode, autoSeconds: state.game.autoSeconds });
+  saveState();
+  broadcast();
+  if (state.status === 'playing') scheduleAutomaticDraw();
   return adminPayload();
 }
 
@@ -1411,7 +1837,8 @@ function completeTransition() {
   const type = state.transition.type;
   if (type === 'final-balls') {
     const existing = new Set(state.game.drawn || []);
-    const remaining = shuffle(Array.from({ length: state.game.mode }, (_, index) => index + 1).filter(number => !existing.has(number)));
+    if (!Array.isArray(state.drawOrder) || state.drawOrder.length !== state.game.mode) state.drawOrder = createSecureDrawOrder(state.game.mode, state.game.drawn);
+    const remaining = state.drawOrder.filter(number => !existing.has(number));
     for (const number of remaining) {
       state.game.drawn.push(number);
       logEvent('ball_drawn', { number, position: state.game.drawn.length, finalVerification: true });
@@ -1438,6 +1865,7 @@ function completeTransition() {
   state.transition = null;
   saveState();
   broadcast();
+  if (state.status === 'playing') scheduleAutomaticDraw();
 }
 
 function startRoom() {
@@ -1446,6 +1874,17 @@ function startRoom() {
   const preflight = preflightPayload();
   if (!preflight.ok) throw new Error(preflight.errors[0] || 'La sala todavía no está lista para iniciar.');
   if (state.game.drawn.length) throw new Error('La ronda ya contiene bolillas. Reiniciala antes de empezar.');
+  enforceAutoMarkPolicy();
+  if (!(TEST_MODE && state.testDrawOrderFixed && Array.isArray(state.drawOrder) && state.drawOrder.length === state.game.mode)) {
+    state.drawOrder = createSecureDrawOrder(state.game.mode);
+  }
+  state.testDrawOrderFixed = false;
+  const lockedConfiguration = {
+    gameId: state.game.id, mode: state.game.mode, rules: state.game.rules, cards: state.game.cards,
+    roomSettings: { linePrizeCount: state.roomSettings.linePrizeCount, allowSamePlayerSecondLine: state.roomSettings.allowSamePlayerSecondLine, tiePolicy: state.roomSettings.tiePolicy, gameType: state.roomSettings.gameType, prizeAmounts: state.roomSettings.prizeAmounts },
+    markingPolicy: markingPolicyPayload()
+  };
+  state.game.integrity = { lockedAt: nowIso(), configurationSha256: crypto.createHash('sha256').update(JSON.stringify(lockedConfiguration)).digest('hex'), drawOrderCommitment: crypto.createHash('sha256').update(state.drawOrder.join(',')).digest('hex') };
   state.cardReservations = {};
   for (const player of state.players) player.reservedCardIds = [];
   state.assignmentTimer = {
@@ -1473,6 +1912,7 @@ function pauseRoom() {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'playing') throw new Error('La partida solo se puede pausar mientras está en juego.');
   clearWorkspaceTransitionTimer();
+  clearAutomaticDrawTimer();
   state.status = 'paused';
   state.pauseReason = 'manual';
   state.transition = null;
@@ -1485,6 +1925,7 @@ function pauseRoom() {
 function resumeRoom(payload = {}) {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'paused') throw new Error('La partida no está pausada.');
+  clearAutomaticDrawTimer();
   const mode = payload.mode === 'manual' ? 'manual' : payload.mode === 'automatic' ? 'automatic' : state.game.drawMode;
   state.game.drawMode = mode;
   const startedAt = nowIso();
@@ -1499,6 +1940,7 @@ function resumeRoom(payload = {}) {
 
 function updateRoomSettings(payload) {
   if (!state.active) throw new Error('No hay una sala abierta.');
+  if (state.status !== 'waiting' && (payload.prizeAmounts || payload.gameType || payload.linePrizeCount !== undefined || payload.allowSamePlayerSecondLine !== undefined || payload.tiePolicy)) throw new Error('Los premios y reglas quedaron bloqueados al iniciar el sorteo.');
   state.roomSettings.playerAudioAllowed = payload.playerAudioAllowed !== false;
   state.roomSettings.playerAudioDefault = Boolean(payload.playerAudioDefault);
   if (state.status === 'waiting') {
@@ -1617,6 +2059,7 @@ function archiveCurrentResults() {
 }
 
 function finishRoom() {
+  clearAutomaticDrawTimer();
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status === 'finished') return adminPayload();
   if (!['playing', 'paused', 'finalizing'].includes(state.status)) throw new Error('El sorteo todavía no comenzó.');
@@ -1692,10 +2135,11 @@ function assignCardsToPlayer(payload) {
       chosen.push(card.id);
     }
   } else {
-    const available = shuffle(state.game.cards.map(card => card.id).filter(cardId => !occupied.has(cardId)));
-    chosen = [...currentIds, ...available.filter(id => !currentIds.has(id))].slice(0, player.allowedCardCount);
-    if (chosen.length < player.allowedCardCount) throw new Error('No quedan cartones suficientes para completar la asignación.');
+    const available = state.game.cards.map(card => card.id).filter(cardId => !occupied.has(cardId));
+    chosen = diverseCardSelection(available, player.allowedCardCount, [...currentIds]);
+    if (chosen.length < player.allowedCardCount) throw new Error('No quedan cartones suficientemente diferentes para completar la asignación.');
   }
+  assertPlayerCardDiversity(chosen);
   releaseReservationsForPlayer(player);
   player.cardIds = chosen;
   player.selectionConfirmed = true;
@@ -1703,6 +2147,7 @@ function assignCardsToPlayer(payload) {
   player.reservedCardIds = [];
   player.marks = Object.fromEntries(chosen.map(cardId => [cardId, []]));
   syncAutoMarksForPlayer(player);
+  enforceAutoMarkPolicy();
   updateCardDisplayNames();
   refreshAllOffers();
   logEvent('admin_player_cards_assigned', { playerId: player.id, playerName: playerDisplayName(player), cardIds: chosen });
@@ -1738,6 +2183,8 @@ function newRoomState() {
 }
 
 function closeRoom() {
+  clearAutomaticDrawTimer();
+  clearWorkspaceTransitionTimer();
   logEvent('room_closed');
   state.active = false;
   state.status = 'closed';
@@ -1772,7 +2219,12 @@ function restoreBackup(payload) {
     }
     return {
       id: String(rawPlayer.id || randomId('player')),
-      name: String(rawPlayer.name || `Jugador ${index + 1}`).slice(0, 80),
+      name: normalizePlayerName(rawPlayer.name || ''),
+      nameSet: rawPlayer.nameSet === undefined ? Boolean(normalizePlayerName(rawPlayer.name || '')) : Boolean(rawPlayer.nameSet),
+      slotNumber: Math.max(1, Number(rawPlayer.slotNumber) || index + 1),
+      slotLabel: String(rawPlayer.slotLabel || `Acceso ${index + 1}`).slice(0, 80),
+      personalPresenter: PLAYER_PRESENTERS.has(rawPlayer.personalPresenter) ? rawPlayer.personalPresenter : null,
+      virtual: Boolean(rawPlayer.virtual),
       code,
       allowedCardCount,
       cardIds,
@@ -1787,7 +2239,8 @@ function restoreBackup(payload) {
     };
   });
   replaceCurrentState({
-    version: 23,
+    version: 202602,
+    revision: Math.max(0, Number(raw.revision) || 0),
     active: true,
     status: ['waiting', 'starting', 'playing', 'verifying', 'paused', 'resuming', 'finalizing', 'finished'].includes(raw.status) ? raw.status : (raw.game.drawn?.length ? 'playing' : 'waiting'),
     roomCode: String(raw.roomCode || randomCode(5)).slice(0, 12),
@@ -1802,6 +2255,11 @@ function restoreBackup(payload) {
     transition: raw.transition || null,
     pauseReason: raw.pauseReason || null,
     deviceTransferRequests: [],
+    drawOrder: Array.isArray(raw.drawOrder) && raw.drawOrder.length === Number(raw.game.mode) ? uniqueNumbers(raw.drawOrder) : createSecureDrawOrder(Number(raw.game.mode) === 75 ? 75 : 90, raw.game.drawn || []),
+    claimSequence: Math.max(0, Number(raw.claimSequence) || 0),
+    claimWindow: raw.claimWindow && typeof raw.claimWindow === 'object' ? raw.claimWindow : null,
+    chat: { enabled: raw.chat?.enabled !== false, locked: Boolean(raw.chat?.locked), messages: Array.isArray(raw.chat?.messages) ? raw.chat.messages.slice(-CHAT_MAX_MESSAGES) : [], mutedPlayerIds: Array.isArray(raw.chat?.mutedPlayerIds) ? raw.chat.mutedPlayerIds.map(String) : [], lastSentAt: {} },
+    demo: raw.demo && typeof raw.demo === 'object' ? raw.demo : null,
     adminMessage: raw.adminMessage && String(raw.adminMessage.text || '').trim()
       ? {
           id: String(raw.adminMessage.id || randomId('msg')),
@@ -1812,16 +2270,18 @@ function restoreBackup(payload) {
     game: sanitizeGame(raw.game),
     players,
     cardReservations: {},
-    claims: Array.isArray(raw.claims) ? raw.claims.slice(-100) : [],
+    claims: Array.isArray(raw.claims) ? raw.claims.slice(-500) : [],
     eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.slice(-2000) : []
   });
   state.roomSettings.tiePolicy = state.roomSettings.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim';
+  enforceAutoMarkPolicy();
   updateCardDisplayNames();
   refreshAllOffers();
   logEvent('backup_restored', { players: players.length, cards: state.game.cards.length, status: state.status });
   saveState();
   broadcast();
   scheduleTransition();
+  if (state.status === 'playing') scheduleAutomaticDraw();
   return adminPayload();
 }
 
@@ -1988,6 +2448,7 @@ function chooseCards(player, payload) {
     }
     state.cardReservations[cardId] = { playerId: player.id, reservedAt: Date.now(), expiresAt: Date.now() + CARD_RESERVATION_TTL_MS };
   }
+  assertPlayerCardDiversity(selected);
   releaseReservationsForPlayer(player, selected);
   if (selectedName) {
     player.name = selectedName;
@@ -2000,6 +2461,7 @@ function chooseCards(player, payload) {
   for (const cardId of selected) delete state.cardReservations[cardId];
   player.marks = Object.fromEntries(selected.map(cardId => [cardId, []]));
   syncAutoMarksForPlayer(player);
+  enforceAutoMarkPolicy();
   updateCardDisplayNames();
   refreshAllOffers();
   logEvent('cards_selected', { playerId: player.id, playerName: playerDisplayName(player), cardIds: selected });
@@ -2027,6 +2489,7 @@ function releaseOwnSelection(player) {
 function markNumber(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
   if (state.status !== 'playing') throw new Error('La partida todavía no comenzó.');
+  if (autoMarkRequired()) throw new Error(markingPolicyPayload().reason);
   if (player.autoMark) throw new Error('El marcado automático está activado. Desactivalo para marcar manualmente.');
   const cardId = String(payload.cardId || '');
   const card = state.game.cards.find(item => item.id === cardId);
@@ -2045,9 +2508,10 @@ function markNumber(player, payload) {
 
 function setAutoMark(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
-  player.autoMark = Boolean(payload.enabled);
+  if (autoMarkRequired() && payload.enabled === false) throw new Error(markingPolicyPayload().reason);
+  player.autoMark = autoMarkRequired() ? true : Boolean(payload.enabled);
   if (player.autoMark) syncAutoMarksForPlayer(player);
-  logEvent('player_automark_changed', { playerId: player.id, playerName: playerDisplayName(player), enabled: player.autoMark });
+  logEvent('player_automark_changed', { playerId: player.id, playerName: playerDisplayName(player), enabled: player.autoMark, forced: autoMarkRequired() });
   saveState();
   broadcast();
   return playerPayload(player);
@@ -2066,64 +2530,84 @@ function setPlayerPresenter(player, payload) {
 
 function createClaim(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
-  if (state.status !== 'playing') throw new Error('La partida todavía no comenzó o ya finalizó.');
   const requested = String(payload.type || '');
   const type = PRIZE_TYPES.includes(requested) ? requested : 'line';
+  const nowMs = Date.now();
+  const existingWindow = state.claimWindow;
+  const windowOpen = state.status === 'verifying' && existingWindow && nowMs <= Number(existingWindow.expiresAtMs) && existingWindow.type === type && Number(existingWindow.drawnCount) === state.game.drawn.length;
+  if (state.status !== 'playing' && !windowOpen) throw new Error('La partida todavía no comenzó, ya finalizó o la ventana de reclamos se cerró.');
   const cardId = String(payload.cardId || '');
   const card = state.game.cards.find(item => item.id === cardId);
   if (!card || !player.cardIds.includes(cardId)) throw new Error('Ese cartón no pertenece al jugador.');
   if (!isPrizeEnabled(type)) throw new Error(`El premio ${prizeLabelFor(type)} no está habilitado en esta partida.`);
   const betName = claimBetName(type);
   if (card.bets?.[betName] === false) throw new Error(`Este cartón no participa por ${prizeLabelFor(type)}.`);
-
   const prizes = prizeStatusPayload();
   const prize = prizes[type];
   if (!prize || prize.closed) throw new Error(`El premio ${prizeLabelFor(type)} ya fue entregado o no está habilitado.`);
-  const pendingClaims = state.claims.filter(claim => claim.status === 'pending');
-  let tieWith = null;
-  if (pendingClaims.length) {
-    const first = pendingClaims[0];
-    const sameBallWindow = state.roomSettings.tiePolicy === 'same_ball' && first.type === type &&
-      first.drawnAtClaim?.length === state.game.drawn.length &&
-      Number(first.drawnAtClaim?.at(-1)) === Number(state.game.drawn.at(-1)) &&
-      Date.now() - new Date(first.createdAt).getTime() <= CLAIM_QUEUE_WINDOW_MS;
-    if (!sameBallWindow) throw new Error('Ya hay un reclamo siendo revisado. Esperá la decisión del administrador.');
-    const tieGroupId = first.tieGroupId || first.id;
-    const tieGroupSize = state.claims.filter(claim => claim.type === type && ['pending', 'confirmed'].includes(claim.status) && (claim.tieGroupId || claim.id) === tieGroupId).length;
-    if (tieGroupSize >= MAX_TIE_WINNERS_PER_PRIZE) throw new Error(`El máximo es de ${MAX_TIE_WINNERS_PER_PRIZE} ganadores simultáneos por premio.`);
-    tieWith = first;
-  }
-  if (state.claims.some(claim => claim.type === type && claim.cardId === cardId && claim.status === 'confirmed')) throw new Error(`Ese cartón ya ganó ${prizeLabelFor(type)}.`);
+  if (state.claims.some(claim => claim.type === type && claim.cardId === cardId && ['pending', 'confirmed'].includes(claim.status))) throw new Error(`Ese cartón ya reclamó ${prizeLabelFor(type)}.`);
   if (type === 'line' && Number(state.game.mode) === 90 && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(claim => claim.playerId === player.id)) {
     throw new Error('Este jugador ya ganó una línea y la sala no permite que gane la segunda.');
   }
 
+  if (!existingWindow || !windowOpen) {
+    state.claimWindow = {
+      id: randomId('claim_window'),
+      type,
+      openedAt: nowIso(),
+      openedAtMs: nowMs,
+      expiresAtMs: nowMs + CLAIM_QUEUE_WINDOW_MS,
+      drawnCount: state.game.drawn.length,
+      lastBall: state.game.drawn.at(-1) ?? null
+    };
+  }
+  const window = state.claimWindow;
+  const windowClaims = state.claims.filter(claim => claim.claimWindowId === window.id);
+  if (windowClaims.length >= 20) throw new Error('Se alcanzó el máximo de alertas simultáneas para esta verificación.');
+
   const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
-  const validity = {
-    ambo: analysis.hasAmbo,
-    line: analysis.hasLine,
-    doubleLine: analysis.hasDoubleLine,
-    tripleLine: analysis.hasTripleLine,
-    corners: analysis.hasCorners,
-    bingo: analysis.hasBingo
-  };
+  const validity = { ambo: analysis.hasAmbo, line: analysis.hasLine, doubleLine: analysis.hasDoubleLine, tripleLine: analysis.hasTripleLine, corners: analysis.hasCorners, bingo: analysis.hasBingo };
   const valid = Boolean(validity[type]);
-  const prizeNumber = type === 'line' && Number(state.game.mode) === 90
-    ? (tieWith ? Number(tieWith.prizeNumber || (prize.awarded + 1)) : prize.awarded + 1)
-    : 1;
-  const prizeLabel = prizeLabelFor(type, prizeNumber, state.game.mode);
+  state.claimSequence = Math.max(0, Number(state.claimSequence) || 0) + 1;
+  const sequence = state.claimSequence;
+  const receivedAt = nowIso();
+  const priorSamePrize = state.claims.filter(claim => claim.type === type && claim.claimWindowId === window.id);
+  const firstReceivedMs = priorSamePrize.length ? Math.min(...priorSamePrize.map(claim => Number(claim.receivedEpochMs) || nowMs)) : nowMs;
+  const prizeNumber = type === 'line' && Number(state.game.mode) === 90 ? prize.awarded + 1 : 1;
   const claim = {
-    id: randomId('claim'), type, prizeNumber, prizeLabel,
+    id: randomId('claim'), type, prizeNumber, prizeLabel: prizeLabelFor(type, prizeNumber, state.game.mode),
     playerId: player.id, playerName: playerDisplayName(player), cardId, cardNumber: card.number,
-    createdAt: nowIso(), status: 'pending', officialValid: valid,
+    createdAt: receivedAt, receivedAt, receivedEpochMs: nowMs, receivedSequence: sequence,
+    receivedMonotonicNs: process.hrtime.bigint().toString(), deltaFromFirstMs: Math.max(0, nowMs - firstReceivedMs),
+    claimWindowId: window.id, status: 'pending', officialValid: valid, simulated: Boolean(payload.simulated),
     drawnAtClaim: [...state.game.drawn], playerMarksAtClaim: [...(player.marks?.[cardId] || [])], comparison: analysis,
-    tieGroupId: tieWith ? (tieWith.tieGroupId || tieWith.id) : null
+    tieGroupId: state.roomSettings.tiePolicy === 'same_ball' ? window.id : null
   };
   state.claims.push(claim);
-  clearWorkspaceTransitionTimer();
-  state.status = 'verifying'; state.pauseReason = 'claim'; state.transition = null; state.game.phase = 'REVIEWING_WINNER';
-  logEvent('claim_created', { claimId: claim.id, type, prizeNumber, playerId: player.id, cardId, officialValid: valid });
-  saveState(); broadcast(); return claim;
+  if (state.status === 'playing') {
+    clearWorkspaceTransitionTimer();
+    clearAutomaticDrawTimer();
+    state.status = 'verifying';
+    state.pauseReason = 'claim';
+    state.transition = null;
+    state.game.phase = 'REVIEWING_WINNER';
+  }
+  logEvent('claim_created', { claimId: claim.id, type, prizeNumber, playerId: player.id, cardId, officialValid: valid, receivedSequence: sequence, deltaFromFirstMs: claim.deltaFromFirstMs, simulated: claim.simulated });
+  saveState();
+  broadcast();
+  return claim;
+}
+
+function addClaimNotice(claim, resolution, textOverride = '') {
+  const player = state.players.find(item => item.id === claim.playerId);
+  if (!player) return;
+  player.notices ||= [];
+  const label = claim.prizeLabel || prizeLabelFor(claim.type, claim.prizeNumber, state.game.mode);
+  player.notices.push({
+    id: randomId('notice'), at: nowIso(), type: 'claim_result', claimId: claim.id, claimType: claim.type,
+    prizeNumber: claim.prizeNumber || 1, cardNumber: claim.cardNumber, result: resolution, officialValid: claim.officialValid,
+    text: textOverride || (resolution === 'confirmed' ? `${label} confirmado en el cartón ${claim.cardNumber}.` : `${label} rechazado en el cartón ${claim.cardNumber}.`)
+  });
 }
 
 function resolveClaim(payload) {
@@ -2131,48 +2615,76 @@ function resolveClaim(payload) {
   if (!claim) throw new Error('No se encontró el reclamo.');
   if (claim.status !== 'pending') return claim;
   const resolution = payload.resolution === 'confirmed' ? 'confirmed' : 'rejected';
+  const activeWindow = state.claimWindow && claim.claimWindowId === state.claimWindow.id ? state.claimWindow : null;
+  if (activeWindow && Date.now() < Number(activeWindow.expiresAtMs || 0)) {
+    const remainingMs = Math.max(1, Number(activeWindow.expiresAtMs) - Date.now());
+    throw new Error(`La ventana de auditoría sigue abierta. Esperá ${remainingMs} ms para registrar todas las alertas simultáneas.`);
+  }
 
   if (resolution === 'confirmed') {
     if (!claim.officialValid) throw new Error('El sistema determinó que el reclamo no es válido.');
     const prizes = prizeStatusPayload();
     const current = prizes[claim.type];
-    const confirmedTie = claim.tieGroupId && confirmedClaims(claim.type).find(item => (item.tieGroupId || item.id) === claim.tieGroupId);
-    if (confirmedTie) {
-      const tieWinners = confirmedClaims(claim.type).filter(item => (item.tieGroupId || item.id) === claim.tieGroupId && Number(item.prizeNumber || 1) === Number(confirmedTie.prizeNumber || 1));
-      if (tieWinners.length >= MAX_TIE_WINNERS_PER_PRIZE) throw new Error(`El máximo es de ${MAX_TIE_WINNERS_PER_PRIZE} ganadores simultáneos por premio.`);
+    const sameWindow = state.claims.filter(item => item.claimWindowId === claim.claimWindowId && item.type === claim.type);
+    if (state.roomSettings.tiePolicy !== 'same_ball') {
+      const earlierValid = sameWindow
+        .filter(item => item.officialValid && item.status !== 'rejected' && Number(item.receivedSequence) < Number(claim.receivedSequence))
+        .sort((a, b) => Number(a.receivedSequence) - Number(b.receivedSequence))[0];
+      if (earlierValid) throw new Error(`Primero debe resolverse el reclamo #${earlierValid.receivedSequence}, recibido antes por el servidor.`);
+      if (current.closed) throw new Error(`El premio ${prizeLabelFor(claim.type, claim.prizeNumber)} ya fue entregado.`);
+    } else {
+      const confirmedInWindow = sameWindow.filter(item => item.status === 'confirmed');
+      if (confirmedInWindow.length >= MAX_TIE_WINNERS_PER_PRIZE) throw new Error(`El máximo es de ${MAX_TIE_WINNERS_PER_PRIZE} ganadores simultáneos por premio.`);
+      if (current.closed && !confirmedInWindow.length) throw new Error(`El premio ${prizeLabelFor(claim.type, claim.prizeNumber)} ya fue entregado.`);
     }
-    if (current.closed && !confirmedTie) throw new Error(`El premio ${prizeLabelFor(claim.type, claim.prizeNumber)} ya fue entregado.`);
     if (claim.type === 'line' && Number(state.game.mode) === 90 && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(item => item.playerId === claim.playerId)) {
       throw new Error('Este jugador ya ganó una línea y no está habilitado para ganar la segunda.');
     }
     if (confirmedClaims(claim.type).some(item => item.cardId === claim.cardId)) throw new Error('Ese cartón ya recibió este premio.');
-    claim.prizeNumber = claim.type === 'line' && Number(state.game.mode) === 90
-      ? (confirmedTie ? Number(confirmedTie.prizeNumber || claim.prizeNumber || 1) : current.awarded + 1)
-      : 1;
+    claim.prizeNumber = claim.type === 'line' && Number(state.game.mode) === 90 ? current.awarded + 1 : 1;
     claim.prizeLabel = prizeLabelFor(claim.type, claim.prizeNumber, state.game.mode);
   }
 
   claim.status = resolution;
   claim.resolvedAt = nowIso();
   claim.adminNote = String(payload.note || '').slice(0, 240);
-  const player = state.players.find(item => item.id === claim.playerId);
-  if (player) {
-    player.notices ||= [];
-    const label = claim.prizeLabel || prizeLabelFor(claim.type, claim.prizeNumber, state.game.mode);
-    player.notices.push({
-      id: randomId('notice'), at: nowIso(), type: 'claim_result', claimId: claim.id, claimType: claim.type,
-      prizeNumber: claim.prizeNumber || 1, cardNumber: claim.cardNumber, result: resolution, officialValid: claim.officialValid,
-      text: resolution === 'confirmed' ? `${label} confirmado en el cartón ${claim.cardNumber}.` : `${label} rechazado en el cartón ${claim.cardNumber}.`
-    });
+  claim.resolutionReason = resolution === 'confirmed' ? 'first_valid_received' : (claim.officialValid ? 'rejected_by_admin' : 'invalid_card');
+  addClaimNotice(claim, resolution);
+
+  if (resolution === 'confirmed' && state.roomSettings.tiePolicy !== 'same_ball') {
+    for (const later of state.claims.filter(item => item.status === 'pending' && item.claimWindowId === claim.claimWindowId && item.type === claim.type)) {
+      later.status = 'rejected';
+      later.resolvedAt = nowIso();
+      later.resolutionReason = later.officialValid ? 'valid_but_received_later' : 'invalid_card';
+      later.adminNote = later.officialValid ? `Reclamo válido recibido ${later.deltaFromFirstMs} ms después del ganador.` : 'Reclamo inválido registrado durante la misma ventana.';
+      addClaimNotice(later, 'rejected', later.officialValid ? `${later.prizeLabel} válido, pero recibido después del reclamo ganador.` : `${later.prizeLabel} rechazado: el cartón no estaba completo.`);
+      logEvent('claim_resolved', { claimId: later.id, resolution: 'rejected', reason: later.resolutionReason, receivedSequence: later.receivedSequence });
+    }
   }
-  logEvent('claim_resolved', { claimId: claim.id, resolution, prizeNumber: claim.prizeNumber || 1, officialValid: claim.officialValid });
-  clearWorkspaceTransitionTimer(); state.transition = null; state.pauseReason = 'claim';
-  if (resolution === 'confirmed' && claim.type === 'bingo') {
-    const startedAt = nowIso(); state.status = 'finalizing'; state.game.phase = 'BINGO_CONFIRMED';
+
+  logEvent('claim_resolved', { claimId: claim.id, resolution, prizeNumber: claim.prizeNumber || 1, officialValid: claim.officialValid, receivedSequence: claim.receivedSequence, reason: claim.resolutionReason });
+  clearWorkspaceTransitionTimer();
+  clearAutomaticDrawTimer();
+  state.transition = null;
+  state.pauseReason = 'claim';
+  const stillPending = state.claims.some(item => item.status === 'pending');
+  if (stillPending) {
+    state.status = 'verifying';
+    state.game.phase = 'REVIEWING_WINNER';
+  } else if (resolution === 'confirmed' && claim.type === 'bingo') {
+    const startedAt = nowIso();
+    state.status = 'finalizing';
+    state.game.phase = 'BINGO_CONFIRMED';
     state.transition = { id: randomId('transition'), type: 'final-balls', startedAt, endsAt: new Date(Date.now() + FINAL_BALLS_SEQUENCE_MS).toISOString() };
     logEvent('bingo_confirmed_final_extraction', { claimId: claim.id, cardId: claim.cardId, cardNumber: claim.cardNumber });
-  } else { state.status = 'paused'; state.game.phase = 'PAUSED'; }
-  saveState(); broadcast(); if (state.status === 'finalizing') scheduleTransition(); return claim;
+  } else {
+    state.status = 'paused';
+    state.game.phase = 'PAUSED';
+  }
+  saveState();
+  broadcast();
+  if (state.status === 'finalizing') scheduleTransition();
+  return claim;
 }
 
 
@@ -2189,6 +2701,24 @@ function officialBallRows() {
   });
 }
 
+function claimAuditRowsFor(claim) {
+  return state.claims
+    .filter(item => item.type === claim.type && item.claimWindowId && item.claimWindowId === claim.claimWindowId)
+    .sort((a, b) => Number(a.receivedSequence || 0) - Number(b.receivedSequence || 0))
+    .map(item => ({
+      id: item.id,
+      sequence: Number(item.receivedSequence) || null,
+      playerName: item.playerName,
+      cardNumber: item.cardNumber,
+      receivedAt: item.receivedAt || item.createdAt || null,
+      deltaMs: Number(item.deltaFromFirstMs) || 0,
+      officialValid: Boolean(item.officialValid),
+      status: item.status,
+      resolutionReason: item.resolutionReason || null,
+      winner: item.id === claim.id
+    }));
+}
+
 function winnerDetails(claim) {
   const card = state.game?.cards?.find(item => item.id === claim.cardId) || null;
   const drawnAtClaim = Array.isArray(claim.drawnAtClaim) ? claim.drawnAtClaim : [];
@@ -2200,7 +2730,10 @@ function winnerDetails(claim) {
     playerName: claim.playerName,
     cardId: claim.cardId,
     cardNumber: claim.cardNumber,
-    claimedAt: claim.createdAt || null,
+    claimedAt: claim.receivedAt || claim.createdAt || null,
+    receivedSequence: Number(claim.receivedSequence) || null,
+    deltaFromFirstMs: Number(claim.deltaFromFirstMs) || 0,
+    claimAlerts: claimAuditRowsFor(claim),
     confirmedAt: claim.resolvedAt || null,
     ballOrder: drawnAtClaim.length || null,
     ballNumber: drawnAtClaim.at(-1) ?? null,
@@ -2241,6 +2774,12 @@ function actaPayload() {
       selectionConfirmed: player.selectionConfirmed
     })),
     winners: claims.map(winnerDetails),
+    claimAlerts: state.claims.slice().sort((a, b) => Number(a.receivedSequence || 0) - Number(b.receivedSequence || 0)).map(claim => ({
+      sequence: Number(claim.receivedSequence) || null, type: claim.type, prizeLabel: claim.prizeLabel, playerName: claim.playerName, cardNumber: claim.cardNumber, receivedAt: claim.receivedAt || claim.createdAt || null, deltaMs: Number(claim.deltaFromFirstMs) || 0, officialValid: Boolean(claim.officialValid), status: claim.status, resolutionReason: claim.resolutionReason || null
+    })),
+    integrity: state.game.integrity || null,
+    demo: Boolean(state.demo || currentWorkspace().isDemo),
+    markingPolicy: markingPolicyPayload(),
     categories: Object.fromEntries(Object.entries(categories).map(([key, category]) => [key, { ...category, status: !category.enabled ? 'not_drawn' : category.winners.length ? 'confirmed' : 'no_confirmed_winner' }]))
   };
 }
@@ -2284,6 +2823,20 @@ function formatLocalTime(value) {
   }
 }
 
+function formatLocalTimeMs(value) {
+  if (!value) return '—';
+  try {
+    return new Intl.DateTimeFormat('es-AR', {
+      timeZone: BINGO_TIMEZONE,
+      hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3,
+      hour12: false
+    }).format(new Date(value));
+  } catch {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : `${formatLocalTime(value)}.${String(date.getMilliseconds()).padStart(3, '0')}`;
+  }
+}
+
 function formatDuration(startedAt, endedAt) {
   if (!startedAt || !endedAt) return '—';
   const total = Math.max(0, Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000));
@@ -2313,8 +2866,12 @@ function actaCsv() {
     ...Object.values(acta.categories).map(category => [category.label, !category.enabled ? 'No sorteada' : category.winners.length ? `${category.winners.length} ganador(es)` : 'Sin ganador confirmado']),
     [],
     ['GANADORES'],
-    ['PREMIO', 'JUGADOR', 'CARTÓN', 'CANTADO', 'BOLILLA'],
-    ...acta.winners.map(winner => [winner.prizeLabel, winner.playerName, winner.cardNumber, formatLocalTimestamp(winner.claimedAt), winner.ballNumber]),
+    ['PREMIO', 'JUGADOR', 'CARTÓN', 'HORA SERVIDOR', 'SECUENCIA', 'BOLILLA'],
+    ...acta.winners.map(winner => [winner.prizeLabel, winner.playerName, winner.cardNumber, formatLocalTimeMs(winner.claimedAt), winner.receivedSequence, winner.ballNumber]),
+    [],
+    ['TODAS LAS ALERTAS DE PREMIOS'],
+    ['SECUENCIA', 'PREMIO', 'JUGADOR', 'CARTÓN', 'HORA SERVIDOR', 'DIFERENCIA MS', 'VALIDACIÓN', 'RESULTADO'],
+    ...acta.claimAlerts.map(alert => [alert.sequence, alert.prizeLabel, alert.playerName, alert.cardNumber, formatLocalTimeMs(alert.receivedAt), alert.deltaMs, alert.officialValid ? 'VÁLIDO' : 'INVÁLIDO', alert.status === 'confirmed' ? 'GANADOR' : alert.resolutionReason || alert.status]),
     [],
     ['JUGADORES Y CARTONES'],
     ['JUGADOR', 'CÓDIGO', 'CARTONES ASIGNADOS', 'CANTIDAD'],
@@ -2433,7 +2990,7 @@ function buildResultsPdf() {
   rect(19, 10, 70, 70, COLORS.white, '#F2D3E2', 1);
   image(24, 15, 60, 60);
   text('RESULTADOS OFICIALES DEL SORTEO', 101, 18, 20, { bold: true, color: COLORS.white, maxWidth: 390 });
-  text('BINGO GORDA 2026', 101, 47, 11, { bold: true, color: '#F7DDF0' });
+  text(acta.demo ? 'DEMOSTRACIÓN - SIN VALIDEZ OFICIAL' : 'BINGO GORDA 2026.2', 101, 47, 11, { bold: true, color: '#F7DDF0' });
   text(`Sala ${acta.roomCode}  ·  Juego ${acta.gameNumber}  ·  Bingo ${acta.mode}`, 101, 65, 8.5, { color: '#E8D7EE' });
 
   const metaX = 510;
@@ -2546,23 +3103,43 @@ function buildResultsPdf() {
     const nameSize = compact ? 6 : 7.3;
     const metaSize = compact ? 4.8 : 5.8;
     text(winner.playerName || 'Jugador', x + 6, y + 5, nameSize, { bold: true, color: COLORS.ink, maxWidth: width - 12 });
-    text(`Cartón ${winner.cardNumber} · Cantado ${formatLocalTime(winner.claimedAt)}`, x + 6, y + 17, metaSize, { color: COLORS.muted, maxWidth: width - 12 });
-    const ballText = winner.ballOrder ? `Tras bolilla ${winner.ballNumber} (salida ${winner.ballOrder})` : 'Momento de canto no disponible';
+    text(`Cartón ${winner.cardNumber} · ${formatLocalTimeMs(winner.claimedAt)} · #${winner.receivedSequence || '—'}`, x + 6, y + 17, metaSize, { color: COLORS.muted, maxWidth: width - 12 });
+    const ballText = winner.ballOrder ? `Bolilla ${winner.ballNumber} (salida ${winner.ballOrder})` : 'Momento de canto no disponible';
     text(ballText, x + 6, y + 27, metaSize, { color: winner.type === 'bingo' ? COLORS.pink : COLORS.purple2, bold: true, maxWidth: width - 12 });
-    if (winner.winningLineLabel && !compact) text(winner.winningLineLabel, x + width - 6, y + 27, 5.3, { color: COLORS.muted, align: 'right', maxWidth: width * .42 });
+    const audit = Array.isArray(winner.claimAlerts) ? winner.claimAlerts : [];
+    const otherAlerts = audit.filter(item => !item.winner);
+    const auditWidth = !compact && width >= 120 && otherAlerts.length ? Math.min(58, width * .38) : 0;
+    const compactAuditHeight = compact && otherAlerts.length ? Math.min(42, 15 + Math.min(3, otherAlerts.length) * 9) : 0;
+    if (auditWidth) {
+      rect(x + width - auditWidth - 4, y + 37, auditWidth, Math.max(28, height - 42), '#FBF7FC', '#D9CBE2', .5);
+      text('OTRAS ALERTAS', x + width - auditWidth / 2 - 4, y + 41, 4.7, { bold: true, color: COLORS.purple2, align: 'center' });
+      otherAlerts.slice(0, 4).forEach((item, index) => {
+        const result = item.officialValid ? `+${item.deltaMs} ms` : 'INVÁLIDO';
+        text(`#${item.sequence} ${formatLocalTimeMs(item.receivedAt)}`, x + width - auditWidth, y + 52 + index * 15, 4.2, { color: COLORS.ink, maxWidth: auditWidth - 7 });
+        text(`${item.cardNumber} · ${result}`, x + width - auditWidth, y + 58 + index * 15, 4.0, { color: item.officialValid ? COLORS.purple2 : COLORS.red, maxWidth: auditWidth - 7 });
+      });
+    } else if (compactAuditHeight) {
+      const ay = y + height - compactAuditHeight - 4;
+      rect(x + 5, ay, width - 10, compactAuditHeight, '#FBF7FC', '#D9CBE2', .5);
+      text('OTRAS ALERTAS RECIBIDAS', x + width / 2, ay + 3, 4.5, { bold: true, color: COLORS.purple2, align: 'center', maxWidth: width - 16 });
+      otherAlerts.slice(0, 3).forEach((item, index) => {
+        const result = item.officialValid ? `+${item.deltaMs} ms · VÁLIDA POSTERIOR` : 'INVÁLIDA';
+        text(`#${item.sequence} · ${formatLocalTimeMs(item.receivedAt)} · Cartón ${item.cardNumber} · ${result}`, x + 9, ay + 12 + index * 9, 4.1, { color: item.officialValid ? COLORS.purple2 : COLORS.red, maxWidth: width - 18 });
+      });
+    }
 
     const grid = Array.isArray(winner.grid) ? winner.grid : [];
     const rowCount = Number(winner.mode) === 75 ? 5 : 3;
     const colCount = Number(winner.mode) === 75 ? 5 : 9;
     const gridTop = y + (compact ? 37 : 39);
-    const gridBottomSpace = 5;
+    const gridBottomSpace = 5 + compactAuditHeight;
     const maxGridH = Math.max(18, height - (gridTop - y) - gridBottomSpace);
-    const maxGridW = width - 12;
+    const maxGridW = width - 12 - auditWidth;
     const cellW = Math.min(maxGridW / colCount, (Number(winner.mode) === 75 ? maxGridH / rowCount * 1.12 : maxGridH / rowCount * 1.55));
     const cellH = Math.min(maxGridH / rowCount, Number(winner.mode) === 75 ? cellW : cellW * .64);
     const actualW = cellW * colCount;
     const actualH = cellH * rowCount;
-    const gx = x + (width - actualW) / 2;
+    const gx = x + 6 + Math.max(0, (maxGridW - actualW) / 2);
     const gy = gridTop + Math.max(0, (maxGridH - actualH) / 2);
     const winning = new Set((winner.winningNumbers || []).map(Number));
     const drawn = new Set((state.game?.drawn || []).map(Number));
@@ -2620,7 +3197,7 @@ function buildResultsPdf() {
   });
 
   text(`Documento oficial generado al cerrar el sorteo · Sala ${acta.roomCode} · Ronda ${acta.round}`, 24, 582, 5.8, { color: COLORS.muted });
-  text('BINGO GORDA 2026', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
+  text(acta.demo ? 'DEMO' : 'BINGO GORDA 2026.2', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
 
   const stream = commands.join('\n');
   const logoPath = path.join(ROOT, 'assets', 'logo-pdf.jpg');
@@ -2708,7 +3285,8 @@ function serveFile(res, filePath) {
     path.join(ROOT, 'admin-principal.html'),
     path.join(ROOT, 'transmision.html'),
     path.join(ROOT, 'reglamento.html'),
-    path.join(ROOT, 'reglamento.pdf')
+    path.join(ROOT, 'reglamento.pdf'),
+    path.join(ROOT, 'demo.html')
   ]);
   const allowed = allowedHtml.has(normalized) || normalized.startsWith(assetRoot) || normalized.startsWith(jsRoot);
   if (!allowed) return sendJson(res, 403, { error: 'Acceso denegado.' });
@@ -2778,6 +3356,7 @@ async function handleMasterApi(req, res, url) {
 }
 
 async function dispatchAdminApi(req, res, url, session) {
+  currentWorkspace().lastActivityAt = Date.now();
   if (url.pathname === '/api/admin/state' && req.method === 'GET') return sendJson(res, 200, adminPayload());
   if (url.pathname === '/api/admin/configure' && req.method === 'POST') {
     const payload = await readJson(req);
@@ -2788,6 +3367,9 @@ async function dispatchAdminApi(req, res, url, session) {
     return sendJson(res, 200, newRoomState());
   }
   if (url.pathname === '/api/admin/game' && req.method === 'POST') return sendJson(res, 200, updateGame((await readJson(req)).game));
+  if (url.pathname === '/api/admin/draw' && req.method === 'POST') return sendJson(res, 200, drawNextBall((await readJson(req)).source || 'manual'));
+  if (url.pathname === '/api/admin/draw-settings' && req.method === 'POST') return sendJson(res, 200, updateDrawSettings(await readJson(req)));
+  if (url.pathname === '/api/admin/test/draw-order' && req.method === 'POST') return sendJson(res, 200, setTestDrawOrder(await readJson(req)));
   if (url.pathname === '/api/admin/start' && req.method === 'POST') return sendJson(res, 200, startRoom());
   if (url.pathname === '/api/admin/pause' && req.method === 'POST') return sendJson(res, 200, pauseRoom());
   if (url.pathname === '/api/admin/resume' && req.method === 'POST') return sendJson(res, 200, resumeRoom(await readJson(req)));
@@ -2796,6 +3378,8 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/assignment-timer' && req.method === 'POST') return sendJson(res, 200, controlAssignmentTimer(await readJson(req)));
   if (url.pathname === '/api/admin/settings' && req.method === 'POST') return sendJson(res, 200, updateRoomSettings(await readJson(req)));
   if (url.pathname === '/api/admin/message' && req.method === 'POST') return sendJson(res, 200, updateAdminMessage(await readJson(req)));
+  if (url.pathname === '/api/admin/chat' && req.method === 'POST') return sendJson(res, 200, appendChatMessage({ role: 'admin', text: (await readJson(req)).text }));
+  if (url.pathname === '/api/admin/chat/moderate' && req.method === 'POST') return sendJson(res, 200, moderateChat(await readJson(req)));
   if (url.pathname === '/api/admin/release-selection' && req.method === 'POST') return sendJson(res, 200, releasePlayerSelection(await readJson(req)));
   if (url.pathname === '/api/admin/assign-player' && req.method === 'POST') return sendJson(res, 200, assignCardsToPlayer(await readJson(req)));
   if (url.pathname === '/api/admin/test-event' && req.method === 'POST') return sendJson(res, 200, sendTestEvent(await readJson(req)));
@@ -2815,6 +3399,11 @@ async function handleApi(req, res, url) {
   try {
     if (url.pathname.startsWith('/api/master/')) return await handleMasterApi(req, res, url);
     if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso(), version: APP_PUBLIC_VERSION });
+
+    if (url.pathname === '/api/demo/create' && req.method === 'POST') {
+      if (!consumeRate(req, 'demo-create', 5, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Se alcanzó el límite de demostraciones. Probá más tarde.' });
+      return sendJson(res, 200, createDemoRoom(await readJson(req)));
+    }
 
     if (url.pathname === '/api/admin/login' && req.method === 'POST') {
       if (!consumeRate(req, 'admin-login', 30, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
@@ -2866,7 +3455,7 @@ async function handleApi(req, res, url) {
     }
 
     if (url.pathname === '/api/player/login' && req.method === 'POST') {
-      if (!consumeRate(req, 'player-login', 60, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
+      if (!consumeRate(req, 'player-login', 180, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
       const payload = await readJson(req);
       const workspace = findWorkspaceByRoomCode(payload.roomCode);
       if (!workspace) throw new Error('No se encontró esa sala.');
@@ -2889,6 +3478,7 @@ async function handleApi(req, res, url) {
       const workspace = findWorkspaceByPlayerToken(token);
       if (!workspace) return sendJson(res, 401, { error: 'La sesión no es válida. Volvé a ingresar con tu código.' });
       return await workspaceContext.run(workspace, async () => {
+        currentWorkspace().lastActivityAt = Date.now();
         const player = playerByToken(token);
         if (!player) return sendJson(res, 401, { error: 'La sesión no es válida.' });
         if (url.pathname === '/api/player/state' && req.method === 'GET') return sendJson(res, 200, playerPayload(player));
@@ -2901,6 +3491,10 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/automark' && req.method === 'POST') return sendJson(res, 200, setAutoMark(player, await readJson(req)));
         if (url.pathname === '/api/player/presenter' && req.method === 'POST') return sendJson(res, 200, setPlayerPresenter(player, await readJson(req)));
         if (url.pathname === '/api/player/claim' && req.method === 'POST') return sendJson(res, 200, createClaim(player, await readJson(req)));
+        if (url.pathname === '/api/player/chat' && req.method === 'POST') {
+          if (!consumeRate(req, `chat-${player.id}`, 30, 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados mensajes. Esperá un momento.' });
+          return sendJson(res, 200, appendChatMessage({ role: 'player', player, text: (await readJson(req)).text }));
+        }
         return sendJson(res, 404, { error: 'Acción de jugador no encontrada.' });
       });
     }
@@ -2931,6 +3525,7 @@ function handleEvents(req, res, url) {
   } else return sendJson(res, 400, { error: 'Rol inválido.' });
   if (!workspace) return sendJson(res, 401, { error: 'Acceso inválido.' });
   return workspaceContext.run(workspace, () => {
+    currentWorkspace().lastActivityAt = Date.now();
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive', 'X-Accel-Buffering': 'no', 'X-Content-Type-Options': 'nosniff'
@@ -2961,6 +3556,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/admin-principal' || url.pathname === '/admin-principal/') return serveFile(res, path.join(ROOT, 'admin-principal.html'));
   if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'ABRIR_EL_BINGO_DE_LA_GORDA.html'));
+  if (url.pathname === '/demo' || url.pathname === '/demo/') return serveFile(res, path.join(ROOT, 'demo.html'));
   if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return sendJson(res, 404, { error: 'Los accesos temporales están deshabilitados.' });
   if (/^\/transmision\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'transmision.html'));
   if (url.pathname === '/jugador' || url.pathname === '/jugador/') return serveFile(res, path.join(ROOT, 'jugador.html'));
@@ -2984,7 +3580,12 @@ setInterval(() => {
   const now = Date.now();
   for (const [token, session] of adminSessions) if (!session || session.expiresAt <= now) adminSessions.delete(token);
   for (const [token, expiresAt] of masterSessions) if (expiresAt <= now) masterSessions.delete(token);
-  for (const workspace of workspaces.values()) {
+  for (const workspace of [...workspaces.values()]) {
+    if (workspace.isDemo && ((workspace.expiresAt && workspace.expiresAt <= now) || (workspace.lastActivityAt && now - workspace.lastActivityAt > DEMO_IDLE_TTL_MS))) {
+      clearAutomaticDrawTimer(workspace); clearWorkspaceTransitionTimer(workspace); workspaces.delete(workspace.id);
+      try { fs.rmSync(path.dirname(workspace.stateFile), { recursive: true, force: true }); } catch {}
+      continue;
+    }
     workspaceContext.run(workspace, () => {
       if (state.active && state.status === 'waiting' && purgeExpiredReservations()) {
         refreshAllOffers(); saveState(); broadcast();

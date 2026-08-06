@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Demostración · El Bingo de la Gorda</title>
+<style>
+:root{font-family:Inter,system-ui,sans-serif;color:#fff;background:#090b18}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:22px;background:radial-gradient(circle at 15% 10%,#5a167b66,transparent 40%),radial-gradient(circle at 85% 85%,#e83e8740,transparent 38%),#090b18}.shell{width:min(920px,100%);display:grid;grid-template-columns:.8fr 1.2fr;background:#11172a;border:1px solid #ffffff25;border-radius:28px;overflow:hidden;box-shadow:0 30px 90px #000a}.brand{padding:34px;background:linear-gradient(145deg,#5a167b,#831b69);display:flex;flex-direction:column;justify-content:space-between}.brand img{width:150px;max-width:70%;filter:drop-shadow(0 10px 25px #0005)}h1{font-size:clamp(30px,5vw,54px);line-height:.95;margin:28px 0 14px}.brand p{color:#f3dced;line-height:1.55}.tag{display:inline-flex;align-self:flex-start;background:#ffca2f;color:#231505;padding:8px 11px;border-radius:999px;font-weight:1000;font-size:12px}.form{padding:34px;display:grid;gap:18px}.form h2{margin:0;font-size:28px}.form>p{margin:0;color:#b9c2d7;line-height:1.5}.grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}label{display:grid;gap:7px;color:#dbe2f0;font-weight:800}select,input{width:100%;padding:13px;border-radius:12px;border:1px solid #ffffff2a;background:#0b1020;color:#fff;font-size:16px}button{border:0;border-radius:14px;padding:15px;background:#ffca2f;color:#221605;font-size:17px;font-weight:1000;cursor:pointer}button:disabled{opacity:.55;cursor:wait}.notice{padding:13px;border-radius:13px;background:#182742;border:1px solid #375a8e;color:#dcecff;line-height:1.45}.error{padding:12px;border-radius:12px;background:#561b2a;border:1px solid #ba405c;color:#ffdce5}.fine{color:#8f9bb2;font-size:12px;line-height:1.5}@media(max-width:720px){.shell{grid-template-columns:1fr}.brand{padding:25px}.brand img{width:105px}h1{font-size:38px}.form{padding:25px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="shell">
+<section class="brand"><div><span class="tag">MODO DEMOSTRACIÓN</span><h1>Probá el bingo completo</h1><p>La sala es temporal, usa jugadores virtuales y no tiene validez oficial ni premios reales.</p></div><img src="/assets/logo.png" alt="El Bingo de la Gorda"></section>
+<form class="form" id="demoForm">
+<div><h2>Configurá tu prueba</h2><p>Se crearán cartones diferentes, automarcado, reclamos simulados y bolillero automático controlado por el servidor.</p></div>
+<div class="grid">
+<label>Modalidad<select id="mode"><option value="90">Bingo de 90 bolas</option><option value="75">Bingo de 75 bolas</option></select></label>
+<label>Presentadora<select id="presenter"><option value="vero">Vero</option><option value="vivi">Vivi</option><option value="josu">Josu</option><option value="daia">Daia</option></select></label>
+<label>Jugadores virtuales<input id="players" type="number" min="2" max="10" value="6"></label>
+<label>Cartones por jugador<input id="cards" type="number" min="1" max="4" value="2"></label>
+<label>Segundos por bolilla<input id="seconds" type="number" min="3" max="20" value="5"></label>
+</div>
+<div class="notice">La demostración dura hasta 30 minutos y se elimina automáticamente. El PDF resultante llevará la marca “DEMOSTRACIÓN - SIN VALIDEZ OFICIAL”.</div>
+<div id="error"></div>
+<button id="start" type="submit">CREAR DEMOSTRACIÓN</button>
+<div class="fine">Al ingresar podrás iniciar, pausar, reanudar, verificar reclamos y descargar el acta como en una sala real.</div>
+</form>
+</main>
+<script>
+const form=document.getElementById('demoForm'),button=document.getElementById('start'),error=document.getElementById('error');
+form.addEventListener('submit',async event=>{event.preventDefault();error.innerHTML='';button.disabled=true;button.textContent='CREANDO SALA…';try{const response=await fetch('/api/demo/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:Number(document.getElementById('mode').value),presenter:document.getElementById('presenter').value,players:Number(document.getElementById('players').value),cardsPerPlayer:Number(document.getElementById('cards').value),autoSeconds:Number(document.getElementById('seconds').value)})});const data=await response.json();if(!response.ok)throw new Error(data.error||'No se pudo crear la demostración.');sessionStorage.setItem('bingoOnlineAdminToken:owner',data.token);location.href=data.adminUrl||'/admin?demo=1';}catch(e){error.innerHTML=`<div class="error">${String(e.message).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>`;button.disabled=false;button.textContent='CREAR DEMOSTRACIÓN';}});
+</script>
+</body>
+</html>

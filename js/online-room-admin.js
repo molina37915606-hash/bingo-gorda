@@ -25,6 +25,7 @@ class LocalRoomAdmin {
     this.originalStartAutomatic = app.startAutomatic.bind(app);
     this.originalToggleAutomatic = app.toggleAutomatic.bind(app);
     this.originalProcessSpecificBall = app.processSpecificBall.bind(app);
+    this.originalUpdateAutoSeconds = app.updateAutoSeconds.bind(app);
     this.originalRenderRanking = app.renderRanking.bind(app);
     this.originalCardNames = new Map();
     this.originalCardNamesGameId = null;
@@ -53,30 +54,54 @@ class LocalRoomAdmin {
       this.scheduleSync();
       return result;
     };
-    this.app.requestDraw = (...args) => {
-      if (this.active && this.serverState?.status !== 'playing') {
-        alert(this.serverState?.status === 'finished' ? 'El sorteo ya fue finalizado.' : this.serverState?.status === 'finalizing' ? 'Se están retirando las últimas bolillas.' : 'El sorteo no está habilitado para extraer una bolilla ahora.');
-        return false;
-      }
-      return this.originalRequestDraw(...args);
+    this.app.requestDraw = (source = 'manual') => {
+      if (!this.active) return this.originalRequestDraw(source);
+      return this.drawServerBall(source);
     };
     this.app.processSpecificBall = (...args) => {
-      if (this.active && this.serverState?.status !== 'playing') return false;
+      if (this.active) return false;
       return this.originalProcessSpecificBall(...args);
     };
     this.app.startAutomatic = (...args) => {
-      if (this.active && this.serverState?.status !== 'playing') return;
-      return this.originalStartAutomatic(...args);
+      if (!this.active) return this.originalStartAutomatic(...args);
+      this.app.autoRunning = this.serverState?.status === 'playing' && this.app.game?.drawMode === 'automatic';
+      this.app.renderAutoControls();
     };
     this.app.toggleAutomatic = (...args) => {
       if (this.active) return this.toggleRoomPause();
       return this.originalToggleAutomatic(...args);
+    };
+    this.app.updateAutoSeconds = value => {
+      const result = this.originalUpdateAutoSeconds(value);
+      if (this.active) this.updateServerDrawSettings({ autoSeconds: Number(this.app.game?.autoSeconds) || 6 });
+      return result;
     };
     this.app.exitGame = () => {
       if (this.active && !confirm('La sala online seguirá abierta aunque salgas del juego. ¿Continuar?')) return;
       this.originalExitGame();
     };
     this.app.renderRanking = () => this.renderParticipatingRanking();
+  }
+
+  async drawServerBall(source = 'manual') {
+    if (!this.active) return this.originalRequestDraw(source);
+    if (this.serverState?.status !== 'playing') {
+      alert(this.serverState?.status === 'finished' ? 'El sorteo ya fue finalizado.' : this.serverState?.status === 'finalizing' ? 'Se están retirando las últimas bolillas.' : 'El sorteo no está habilitado para extraer una bolilla ahora.');
+      return false;
+    }
+    try {
+      const data = await this.request('/api/admin/draw', { method:'POST', body:JSON.stringify({ source }) });
+      this.applyState(data);
+      return true;
+    } catch (error) {
+      alert(error.message);
+      return false;
+    }
+  }
+
+  async updateServerDrawSettings(payload) {
+    try { this.applyState(await this.request('/api/admin/draw-settings', { method:'POST', body:JSON.stringify(payload) })); }
+    catch (error) { console.error('No se pudo actualizar el bolillero:', error); }
   }
 
   injectUi() {
@@ -117,6 +142,15 @@ class LocalRoomAdmin {
           </div>
         </div>
       </section>
+      <aside id="adminChatDock" class="adminChatDock">
+        <button id="adminChatToggle" class="adminChatToggle">💬 CHAT <span id="adminChatBadge"></span></button>
+        <section id="adminChatPanel" class="adminChatPanel">
+          <header><b>CHAT PÚBLICO</b><button id="adminChatClose">×</button></header>
+          <div id="adminChatMessages" class="adminChatMessages"></div>
+          <textarea id="adminChatInput" maxlength="160" placeholder="Mensaje oficial para todos"></textarea>
+          <div class="adminChatActions"><button id="adminChatSend" class="primary">ENVIAR</button><button id="adminChatLock" class="secondary">PAUSAR CHAT</button><button id="adminChatClear" class="secondary">LIMPIAR</button></div>
+        </section>
+      </aside>
       <input id="localBackupFile" type="file" accept="application/json,.json" hidden>
       <div id="localCopyToast" class="localCopyToast">Enlace copiado</div>`;
     document.body.append(...shell.children);
@@ -137,6 +171,12 @@ class LocalRoomAdmin {
     $('onlineAdminLoginBtn').onclick = () => this.loginAdmin();
     $('onlineAdminPassword').addEventListener('keydown', event => { if (event.key === 'Enter') this.loginAdmin(); });
     $('localBackupFile').onchange = event => this.restoreBackupFile(event.target.files?.[0]);
+    $('adminChatToggle').onclick = () => { $('adminChatPanel').classList.toggle('show'); this.renderAdminChat(); };
+    $('adminChatClose').onclick = () => $('adminChatPanel').classList.remove('show');
+    $('adminChatSend').onclick = () => this.sendAdminChat();
+    $('adminChatInput').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); this.sendAdminChat(); } });
+    $('adminChatLock').onclick = () => this.moderateAdminChat(this.serverState?.chat?.locked ? 'unlock' : 'lock');
+    $('adminChatClear').onclick = () => { if (confirm('¿Borrar el historial visible del chat?')) this.moderateAdminChat('clear'); };
   }
 
   injectStyles() {
@@ -178,7 +218,8 @@ class LocalRoomAdmin {
       .localTimerBox{padding:15px;border-radius:15px;background:#172341;border:1px solid #46649d;margin-top:14px}.localTimerTop{display:flex;justify-content:space-between;align-items:center;gap:12px}.localCountdown{font:1000 34px Consolas,monospace;color:#ffcf3f}.localTimerActions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.localTimerActions button{border:0;border-radius:9px;padding:9px 11px;font-weight:900;cursor:pointer;background:#283958;color:#fff}.localTimerActions .primary{background:#ffca2f;color:#211600}.localTimerActions .danger{background:#8b2434}
       .localPrizeBar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.localPrizeItem{padding:12px;border-radius:13px;background:#0b1121;border:1px solid #ffffff1f}.localPrizeItem b{display:block;color:#ffcf3f;font-size:18px}.localPrizeItem.closed{background:#26303e;color:#b9c0cc}.localPrizeItem.closed b{color:#b9c0cc}
       .localActaWrap{max-height:48vh;overflow:auto;border:1px solid #ffffff1f;border-radius:12px;margin-top:10px}.localActa{width:100%;border-collapse:collapse}.localActa th,.localActa td{padding:9px;border-bottom:1px solid #ffffff17;text-align:left}.localActa th{position:sticky;top:0;background:#17223d}.localFinishedBox{padding:16px;border-radius:15px;background:#392912;border:1px solid #b58a31;margin-top:14px}
-      @media(max-width:760px){.localGrid2,.localCompare,.localPrizeBar{grid-template-columns:1fr}.localPlayerRow{grid-template-columns:1fr}.localSummary{grid-template-columns:1fr 1fr}.localMonitor{font-size:12px}.localMonitor th,.localMonitor td{padding:7px 5px}.localTimerTop{align-items:flex-start;flex-direction:column}}
+      .adminChatDock{position:fixed;right:16px;bottom:16px;z-index:75}.adminChatToggle{border:0;border-radius:999px;padding:12px 17px;background:#5a167b;color:#fff;font-weight:900;box-shadow:0 10px 35px #0008;cursor:pointer}.adminChatPanel{display:none;width:min(370px,calc(100vw - 24px));height:min(540px,75vh);background:#10172b;border:1px solid #ffffff2b;border-radius:18px;overflow:hidden;box-shadow:0 25px 70px #000b}.adminChatPanel.show{display:grid;grid-template-rows:auto 1fr auto auto}.adminChatPanel header{display:flex;justify-content:space-between;align-items:center;padding:13px 15px;background:#5a167b}.adminChatPanel header button{border:0;background:transparent;color:#fff;font-size:24px;cursor:pointer}.adminChatMessages{overflow:auto;padding:12px;display:grid;gap:8px;background:#080d19}.adminChatMessage{padding:9px 10px;border-radius:11px;background:#17213a;border:1px solid #ffffff18}.adminChatMessage.admin{background:#33204b;border-color:#8d52aa}.adminChatMessage small{display:flex;justify-content:space-between;gap:8px;color:#a9b7d3;margin-bottom:4px}.adminChatMessage p{margin:0;word-break:break-word}.adminChatMessage button{border:0;border-radius:7px;padding:3px 6px;background:#5f1723;color:#fff;font-size:10px;cursor:pointer}.adminChatPanel textarea{resize:none;min-height:58px;padding:10px;border:0;border-top:1px solid #ffffff20;background:#111a2f;color:#fff}.adminChatActions{display:flex;gap:7px;padding:9px;background:#111a2f}.adminChatActions button{flex:1;border:0;border-radius:9px;padding:9px;font-weight:900;cursor:pointer}.adminChatBadge:not(:empty){display:inline-grid;place-items:center;min-width:20px;height:20px;margin-left:5px;border-radius:999px;background:#e83e87}.adminChatMuted{opacity:.65}
+      @media(max-width:760px){.localGrid2,.localCompare,.localPrizeBar{grid-template-columns:1fr}.localPlayerRow{grid-template-columns:1fr}.localSummary{grid-template-columns:1fr 1fr}.localMonitor{font-size:12px}.localMonitor th,.localMonitor td{padding:7px 5px}.localTimerTop{align-items:flex-start;flex-direction:column}.adminChatDock{right:8px;bottom:8px}}
     `;
     document.head.appendChild(style);
 
@@ -273,6 +314,21 @@ class LocalRoomAdmin {
       this.applyState(data);
       this.handlePendingClaims(data.claims || []);
     });
+    this.eventSource.addEventListener('chat', event => {
+      const message = JSON.parse(event.data);
+      this.serverState ||= {};
+      this.serverState.chat ||= { messages: [] };
+      this.serverState.chat.messages ||= [];
+      if (!this.serverState.chat.messages.some(item => item.id === message.id)) this.serverState.chat.messages.push(message);
+      this.serverState.chat.messages = this.serverState.chat.messages.slice(-100);
+      this.renderAdminChat(true);
+    });
+    this.eventSource.addEventListener('chat-control', event => {
+      const control = JSON.parse(event.data);
+      this.serverState ||= {};
+      this.serverState.chat = { ...(this.serverState.chat || {}), ...control };
+      this.renderAdminChat();
+    });
     this.eventSource.addEventListener('logout', () => { this.adminToken = ''; sessionStorage.removeItem(this.sessionKey); this.showAdminLogin('La sesión venció. Volvé a ingresar.'); });
     this.eventSource.onerror = () => {
       $('localRoomBtn').textContent = '⚠ SERVIDOR DESCONECTADO';
@@ -283,12 +339,22 @@ class LocalRoomAdmin {
 
   applyState(data) {
     const previousStatus = this.serverState?.status || this.lastRoomStatus;
+    const previousDrawn = [...(this.app.game?.drawn || [])];
     this.serverState = data;
     this.active = Boolean(data.active);
+    if (data.active && data.game && (!this.app.game || data.game.id !== this.app.game.id)) this.restoreClientGame(data.game);
     if (this.app.game && data.game?.id === this.app.game.id) {
       this.app.game.drawn = [...(data.game.drawn || [])];
       this.app.game.autoSeconds = Number(data.game.autoSeconds) || this.app.game.autoSeconds;
       this.app.game.drawMode = data.game.drawMode || this.app.game.drawMode;
+      this.app.game.rules = data.game.rules || this.app.game.rules;
+      this.app.game.cards = data.game.cards || this.app.game.cards;
+      if (this.app.game.drawn.length !== previousDrawn.length || this.app.game.drawn.at(-1) !== previousDrawn.at(-1)) {
+        this.app.renderGame();
+        this.app.animateLastBall?.();
+        const newBall = this.app.game.drawn.at(-1);
+        if (this.app.game.drawn.length > previousDrawn.length && Number.isFinite(newBall)) setTimeout(() => this.app.voice?.speakBall(newBall), 120);
+      }
     }
     this.syncParticipantNames(data);
     const button = $('localRoomBtn');
@@ -308,6 +374,7 @@ class LocalRoomAdmin {
       this.app.renderAutoControls();
     }
     this.renderBolilleroResumeControls();
+    this.renderAdminChat();
     if ($('localRoomModal')?.classList.contains('show')) this.renderMainModal();
   }
 
@@ -354,10 +421,9 @@ class LocalRoomAdmin {
       return;
     }
     if (current === 'playing') {
-      this.app.setPhase(this.app.game?.drawMode === 'automatic' ? window.BingoV8Engine.PHASE.DRAWING : window.BingoV8Engine.PHASE.READY);
-      if (['starting','resuming'].includes(previous) && this.app.game?.drawMode === 'automatic' && !this.app.autoRunning) {
-        this.sequenceTimers.push(setTimeout(() => this.originalStartAutomatic(), 500));
-      }
+      this.app.autoRunning = this.app.game?.drawMode === 'automatic';
+      this.app.setPhase(this.app.autoRunning ? window.BingoV8Engine.PHASE.DRAWING : window.BingoV8Engine.PHASE.READY);
+      this.app.renderAutoControls();
     }
   }
 
@@ -632,6 +698,45 @@ class LocalRoomAdmin {
     }
   }
 
+  chatTime(value) {
+    try { return new Date(value).toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', second:'2-digit' }); }
+    catch { return ''; }
+  }
+
+  renderAdminChat(incoming = false) {
+    const panel = $('adminChatMessages');
+    if (!panel) return;
+    const chat = this.serverState?.chat || { messages: [] };
+    const messages = chat.messages || [];
+    panel.innerHTML = messages.map(message => {
+      const muted = (chat.mutedPlayerIds || []).includes(message.playerId);
+      return `<article class="adminChatMessage ${message.role === 'admin' ? 'admin' : ''} ${muted ? 'adminChatMuted' : ''}"><small><b>${esc(message.name)}</b><span>${esc(this.chatTime(message.createdAt))}</span></small><p>${esc(message.text)}</p>${message.playerId ? `<div style="margin-top:6px"><button data-chat-mute="${esc(message.playerId)}" data-muted="${muted ? '1' : '0'}">${muted ? 'REHABILITAR' : 'SILENCIAR'}</button> <button data-chat-delete="${esc(message.id)}">BORRAR</button></div>` : ''}</article>`;
+    }).join('') || '<div style="color:#a9b7d3;text-align:center;padding:25px">Todavía no hay mensajes.</div>';
+    panel.querySelectorAll('[data-chat-mute]').forEach(button => button.onclick = () => this.moderateAdminChat(button.dataset.muted === '1' ? 'unmute' : 'mute', { playerId:button.dataset.chatMute }));
+    panel.querySelectorAll('[data-chat-delete]').forEach(button => button.onclick = () => this.moderateAdminChat('delete', { messageId:button.dataset.chatDelete }));
+    if (incoming || $('adminChatPanel')?.classList.contains('show')) panel.scrollTop = panel.scrollHeight;
+    if ($('adminChatLock')) $('adminChatLock').textContent = chat.locked ? 'HABILITAR CHAT' : 'PAUSAR CHAT';
+    if ($('adminChatBadge')) $('adminChatBadge').textContent = $('adminChatPanel')?.classList.contains('show') ? '' : (incoming ? '1' : '');
+    if ($('adminChatToggle')) $('adminChatToggle').style.display = this.active ? '' : 'none';
+  }
+
+  async sendAdminChat() {
+    const input = $('adminChatInput');
+    const text = String(input?.value || '').trim();
+    if (!text) return;
+    try {
+      await this.request('/api/admin/chat', { method:'POST', body:JSON.stringify({ text }) });
+      input.value = '';
+    } catch (error) { alert(error.message); }
+  }
+
+  async moderateAdminChat(action, extra = {}) {
+    try {
+      const data = await this.request('/api/admin/chat/moderate', { method:'POST', body:JSON.stringify({ action, ...extra }) });
+      this.applyState(data);
+    } catch (error) { alert(error.message); }
+  }
+
   presenterInfo(id) {
     const profiles = {
       vero: { name: 'Vero', phrase: 'Revisá bien tus cartones y mucha suerte.' },
@@ -666,7 +771,6 @@ class LocalRoomAdmin {
     if (status === 'playing') {
       try {
         this.app.stopAutomatic(false);
-        await this.syncGameNow();
         this.applyState(await this.request('/api/admin/pause', { method: 'POST', body: '{}' }));
       } catch (error) { alert(error.message); }
       return;
@@ -678,7 +782,7 @@ class LocalRoomAdmin {
   }
 
   async syncGameNow() {
-    if (!this.active || !this.app.game || !['playing','paused'].includes(this.serverState?.status)) return;
+    if (!this.active || !this.app.game || this.serverState?.status !== 'waiting') return;
     const data = await this.request('/api/admin/game', { method: 'POST', body: JSON.stringify({ game: this.serializeGame() }) });
     this.serverState = data;
   }
@@ -1116,13 +1220,13 @@ class LocalRoomAdmin {
   }
 
   scheduleSync() {
-    if (!this.active || !this.app.game) return;
+    if (!this.active || !this.app.game || this.serverState?.status !== 'waiting') return;
     clearTimeout(this.syncTimer);
     this.syncTimer = setTimeout(() => this.syncGame(), 80);
   }
 
   async syncGame() {
-    if (!this.active || !this.app.game || !['playing','paused'].includes(this.serverState?.status)) return;
+    if (!this.active || !this.app.game || this.serverState?.status !== 'waiting') return;
     try {
       const data = await this.request('/api/admin/game', { method: 'POST', body: JSON.stringify({ game: this.serializeGame() }) });
       this.applyState(data);
@@ -1285,7 +1389,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const app = window.__BINGO_V8__;
     if (!app) return;
     const version = $('versionBadge');
-    if (version) version.textContent = 'BINGO GORDA 2026';
+    if (version) version.textContent = 'BINGO GORDA 2026.2';
     new LocalRoomAdmin(app).init().catch(error => console.error('No se inició la sala online:', error));
   }, 0);
 });

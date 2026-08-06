@@ -1,10 +1,40 @@
-BINGO GORDA 2026
+BINGO GORDA 2026.2 - CAMBIOS
 
-- Nueva identidad de versión y carpeta.
-- 90 bolas conserva AmboCabeza, Primera línea, Segunda línea y Bingo.
-- 75 bolas incorpora Línea, Doble línea, Triple línea, 4 esquinas y Bingo como premios independientes.
-- Doble y Triple línea se validan dentro del mismo cartón.
-- Nuevos botones de reclamo, panel de verificación, transmisión y acta final.
-- Nuevas placas transparentes y placa de reclamo rechazado con lenguaje visual de error.
-- Cartones de 75 compactados para evitar desplazamiento horizontal en computadora.
-- Reglamento actualizado y pruebas automáticas ampliadas.
+INTEGRIDAD
+- Bolillero generado por el servidor mediante aleatoriedad criptográfica.
+- Compromiso SHA-256 del orden y hash de la configuración inicial.
+- Reglas, premios, cartones y bolillas bloqueados después del inicio.
+- Validación completa de cartones en el servidor.
+
+CARTONES
+- 75 bolas: columna N corregida para elegir cuatro números de forma directa.
+- 75 bolas: máximo 12 números compartidos entre cartones generales.
+- 90 bolas: máximo 6 números compartidos entre cartones generales.
+- Sin líneas ganadoras idénticas.
+- Control más estricto entre los cartones de un mismo jugador.
+
+ESCALA
+- Hasta 60 jugadores y 250 cartones.
+- Marcado manual permitido solo con hasta 10 jugadores y 40 cartones.
+- En salas mayores se activa automarcado obligatorio.
+
+CHAT
+- Chat público separado del estado completo del juego.
+- Máximo 160 caracteres, espera de 2 segundos y 100 mensajes de historial.
+- Bloqueo, silencio, borrado y limpieza desde administración.
+
+RECLAMOS Y ACTAS
+- Hora del servidor con milisegundos.
+- Secuencia oficial de recepción.
+- Ventana de auditoría de 3 segundos.
+- El primer reclamo válido recibido por el servidor obtiene el premio.
+- PDF y CSV con todas las alertas de la misma ventana.
+
+DEMOSTRACIÓN
+- Ruta pública /demo.
+- Sala aislada y temporal.
+- Jugadores virtuales, automarcado y bolillero automático.
+- Acta marcada DEMOSTRACIÓN - SIN VALIDEZ OFICIAL.
+
+RECUPERACIÓN
+- Restauración completa de nombres, cupos, presentador, cartones, reclamos, chat y orden de bolillas.

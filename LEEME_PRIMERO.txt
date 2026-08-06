@@ -1,10 +1,23 @@
-BINGO GORDA 2026
+BINGO GORDA 2026.2
 
 1. Abrí PROBAR_EN_ESTA_PC.bat o ejecutá npm start.
 2. Ingresá al panel principal con la clave configurada.
-3. Elegí 75 o 90 bolas y configurá los premios antes de abrir la sala.
+3. Para una prueba sin jugadores reales, abrí /demo o tocá PROBAR UNA DEMOSTRACIÓN.
+4. Elegí 75 o 90 bolas y configurá premios, cartones y participantes antes de iniciar.
+
+LÍMITES
+- Hasta 60 jugadores.
+- Hasta 4 cartones por jugador.
+- Hasta 250 cartones.
+- Más de 10 jugadores o más de 40 cartones: automarcado obligatorio.
+
+AUDITORÍA
+- Las bolillas se extraen en el servidor.
+- La configuración queda bloqueada al comenzar.
+- Gana el primer reclamo válido recibido por el servidor.
+- El acta registra milisegundos, secuencia y otras alertas simultáneas.
 
 75 bolas: Línea, Doble línea, Triple línea, 4 esquinas y Bingo.
 90 bolas: AmboCabeza, Primera línea, Segunda línea y Bingo.
 
-El cartón de 75 está adaptado para entrar completo en pantallas de computadora y celular.
+Antes de publicar, configurá un volumen persistente para BINGO_DATA_DIR.

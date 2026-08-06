@@ -1,0 +1,22 @@
+BINGO DE LA GORDA - PRUEBAS AUTOMÁTICAS
+
+Ejecutar:
+  npm test
+
+Resultados esperados:
+  PRUEBAS BINGO DE LA GORDA: OK
+  PRUEBAS NUEVAS BINGO DE LA GORDA: OK
+
+Cobertura principal:
+- Generación de 25 a 250 cartones en 75 y 90 bolas.
+- Límites de similitud y patrones ganadores.
+- Sala de prueba iniciada con 2, 9 y 10 jugadores.
+- Cierre del ingreso al alcanzar 10 jugadores o al iniciar.
+- Reingreso mediante el mismo dispositivo.
+- Sala oficial con códigos individuales.
+- Minijuego y clasificación por mejor racha.
+- Chat, moderación y ráfaga de 60 mensajes.
+- Reclamos simultáneos con milisegundos y secuencia.
+- Transmisión con cartones destacados.
+- Respaldos, restauración, acta PDF y CSV.
+- Escala de 60 jugadores y 240 cartones.

@@ -1,42 +1,28 @@
-# BINGO GORDA 2026.4
+# BINGO DE LA GORDA
 
-Aplicación web de bingo de 75 y 90 bolas con servidor Node.js, acceso de jugadores, transmisión, chat público, actas auditables y demostración jugable.
+Aplicación web para partidas de bingo de 75 y 90 bolas. Incluye panel administrativo, acceso móvil de jugadores, chat, transmisión, salas de prueba por enlace, salas oficiales con códigos individuales, minijuego de espera y actas auditables.
 
-## Pantalla del jugador 2026.4
+## Crear una sala
 
-La interfaz móvil muestra un cartón grande por vez y permite cambiar entre los cartones mediante pestañas o un gesto lateral. Mantiene la paleta original del juego, moderniza el encabezado BINGO y usa a La Gorda en la casilla central LIBRE de los cartones de 75 bolas.
+Abrí `http://localhost:3210/admin` y elegí:
 
-La barra superior incluye accesos compactos a:
+- **Sala de prueba:** enlace abierto, de 2 a 10 jugadores, entre 1 y 4 cartones por persona.
+- **Sala oficial:** jugadores y cartones controlados mediante códigos individuales.
 
-- Ajustes esenciales.
-- Tema día/noche.
-- Guía rápida.
-- Pantalla completa.
-
-La pantalla completa abarca toda la aplicación y no oculta el chat, los ajustes ni los paneles. El chat incluye un menú cerrado de ocho emojis: 😀 😂 😭 👏 ❤️ 🍀 🎱 🎉.
-
-Una pestaña lateral permite consultar ganadores confirmados y números salidos. Los números se presentan ordenados de menor a mayor; en 75 bolas se agrupan por B, I, N, G y O. Al terminar la partida, el acta PDF puede verse dentro del juego y también descargarse.
-
-## Demostración para jugadores
-
-Abrí `/demo` y elegí:
-
-- Bingo de 75 o 90 bolas.
-- Dos o tres rivales IA.
-- Entre uno y cuatro cartones propios.
-- Intervalo de 2, 4, 6 u 8 segundos.
-
-El servidor crea cartones aleatorios y diferentes para todos. Zoe, Mateo y Owen reciben dos cartones cada uno. El visitante entra directamente como jugador, con automarcado obligatorio, y debe reclamar manualmente antes que las IA.
+La configuración simplificada permite elegir modalidad, premios, cantador, voz, intervalo, cantidad de cartones en pasos de 25, minijuego y transmisión opcional.
 
 ## Funciones principales
 
 - Bolillero criptográfico controlado por el servidor.
-- Cartones de 75 y 90 bolas con validación y diversidad.
+- Generación de 25 a 250 cartones en pasos de 25.
+- Validación y límites de similitud para cartones de 75 y 90 bolas.
 - Hasta 60 jugadores, 4 cartones por jugador y 250 cartones activos.
-- Automarcado obligatorio con más de 10 jugadores o más de 40 cartones.
+- Automarcado obligatorio por encima de 10 jugadores o 40 cartones.
+- Reclamos registrados con hora, milisegundos y secuencia de recepción.
 - Chat público con moderación.
-- Reclamos auditados con milisegundos y secuencia de recepción.
-- Actas PDF y CSV.
+- Sala de espera con Mayor/Menor o Rojo/Negro.
+- Transmisión con chat y cuatro cartones destacados.
+- Actas PDF y CSV consultables desde el juego.
 - Copias de seguridad y recuperación.
 
 ## Ejecutar localmente
@@ -45,11 +31,12 @@ El servidor crea cartones aleatorios y diferentes para todos. Zoe, Mateo y Owen 
 npm start
 ```
 
-Luego abrí:
+Rutas principales:
 
-- Panel principal: `http://localhost:3210/admin-principal`
+- Administrador: `http://localhost:3210/admin`
 - Jugadores: `http://localhost:3210/jugador`
 - Demostración: `http://localhost:3210/demo`
+- Panel avanzado de importación: `http://localhost:3210/admin-avanzado`
 
 ## Pruebas
 

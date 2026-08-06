@@ -1,0 +1,44 @@
+BINGO DE LA GORDA - CAMBIOS PRINCIPALES
+
+ADMINISTRACIÓN
+- Home con CREAR SALA y CONTINUAR.
+- Configuración de sala en una sola pantalla.
+- Sala de prueba por enlace, hasta 10 jugadores y 40 cartones.
+- Sala oficial con códigos individuales y de 1 a 4 cartones por jugador.
+- Modalidad, premios, cantador, voz, intervalo, minijuego y transmisión en un mismo menú.
+- Generación de 25 a 250 cartones, en pasos de 25.
+- Importación PDF plegada en el panel avanzado.
+- Sin carga manual ni vista previa masiva en el flujo simplificado.
+
+SALA DE ESPERA
+- Ingreso abierto para pruebas mediante nombre y cantidad de cartones.
+- Inicio siempre controlado por el administrador.
+- Minijuegos Rojo/Negro y Mayor/Menor, sin límite de tiempo: la ronda continúa hasta fallar.
+- Naipes personalizados de BINGO DE LA GORDA y clasificación por mejor racha.
+
+PANEL DE SORTEO
+- Consola compacta con bolilla actual, últimas bolillas, pausa, extracción inmediata e intervalo.
+- Tema día/noche, sonido y pantalla completa mediante iconos.
+- Reclamos dentro de la misma pantalla; no hay botones administrativos de premios.
+- Lista de conectados, chat, eliminación de mensajes y bloqueo individual.
+- Panel plegable de números, ganadores y eventos.
+
+TRANSMISIÓN
+- Uso opcional.
+- Chat público en pantalla.
+- Hasta cuatro cartones destacados con nombre del propietario y progreso.
+- Reclamos y ganadores destacados automáticamente.
+
+JUGADORES
+- Un cartón grande por pestaña en celular.
+- Chat plegable con ocho emojis.
+- Números salidos ordenados numéricamente.
+- Ganadores anteriores y cartones premiados consultables.
+- Acta PDF visible dentro de la aplicación.
+
+BASE TÉCNICA
+- Bolillero criptográfico del servidor.
+- Validación y diversidad de cartones.
+- Auditoría de reclamos con milisegundos y secuencia.
+- Automarcado obligatorio por encima de 10 jugadores o 40 cartones.
+- Prueba de escala con 60 jugadores y 240 cartones.

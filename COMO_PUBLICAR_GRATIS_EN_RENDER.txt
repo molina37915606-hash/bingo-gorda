@@ -1,4 +1,4 @@
-PUBLICAR BINGO GORDA 2026 EN RENDER
+PUBLICAR BINGO DE LA GORDA EN RENDER
 
 - Runtime: Node
 - Build command: npm install

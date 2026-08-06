@@ -1,13 +1,13 @@
 {
-  "name": "bingo-gorda-2026",
-  "version": "2026.4.0",
+  "name": "bingo-de-la-gorda",
+  "version": "1.0.0",
   "private": true,
-  "description": "BINGO GORDA 2026.4: bingo de 75 y 90 bolas con bolillero de servidor, chat, demostración y actas auditables.",
+  "description": "BINGO DE LA GORDA: bingo de 75 y 90 bolas con salas de prueba y oficiales, chat, transmisión, minijuego y actas auditables.",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/bingo-2026-smoke.js"
+    "test": "node tests/bingo-2026-smoke.js && node tests/bingo-de-la-gorda-nueva.js"
   }
 }

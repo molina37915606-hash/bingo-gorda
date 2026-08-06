@@ -1,12 +1,13 @@
-BINGO GORDA 2026.4
+BINGO DE LA GORDA
 
-1. Para probar en esta computadora, ejecutá PROBAR_EN_ESTA_PC.bat o npm start.
-2. Abrí http://localhost:3210/admin-principal para administrar partidas reales.
-3. Abrí http://localhost:3210/demo para probar la experiencia directa del jugador.
-4. En celular se muestra un cartón grande por vez; cambiá entre cartones con las pestañas o deslizando lateralmente.
-5. La barra superior contiene ajustes, tema día/noche, ayuda y pantalla completa.
-6. La flecha lateral abre ganadores anteriores y números salidos ordenados numéricamente.
-7. Al finalizar, el acta PDF se puede ver dentro del juego sin descargarla.
-8. La demostración permite elegir modalidad, rivales IA, cartones propios y velocidad.
+1. Ejecutá PROBAR_EN_ESTA_PC.bat o npm start.
+2. Abrí http://localhost:3210/admin-principal.
+3. Elegí CREAR SALA o CONTINUAR.
+4. Las salas de prueba se comparten mediante un enlace y aceptan hasta 10 jugadores.
+5. Las salas oficiales usan códigos individuales para jugadores con pago confirmado.
+6. El panel de sorteo reúne bolillero, reclamos, conectados y chat en una sola pantalla.
+7. La transmisión es opcional y puede mostrar chat y cuatro cartones destacados.
+8. El minijuego de espera no afecta el bingo ni los premios.
+9. Ejecutá npm test antes de publicar cambios.
 
 IMPORTANTE: en producción configurá BINGO_DATA_DIR sobre almacenamiento persistente.

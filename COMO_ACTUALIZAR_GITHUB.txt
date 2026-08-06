@@ -1,8 +1,8 @@
-ACTUALIZAR GITHUB CON BINGO GORDA 2026
+ACTUALIZAR GITHUB CON BINGO DE LA GORDA
 
-1. Descomprimí BINGO_GORDA_2026.zip.
-2. Reemplazá los archivos del repositorio por el contenido de la carpeta BINGO GORDA 2026.
+1. Descomprimí BINGO_DE_LA_GORDA.zip.
+2. Reemplazá los archivos del repositorio por el contenido de la carpeta BINGO DE LA GORDA.
 3. Conservá en Render las variables MASTER_ADMIN_PASSWORD, PUBLIC_URL y BINGO_DATA_DIR.
 4. Subí los cambios y verificá que la acción automática de pruebas termine correctamente.
 
-Etiqueta sugerida: bingo-gorda-2026.4
+Etiqueta sugerida: bingo-de-la-gorda

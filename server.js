@@ -66,7 +66,7 @@ const DEMO_CLAIM_WINDOW_MS = 1600;
 const DEMO_START_SEQUENCE_MS = 3200;
 const DEMO_RESUME_SEQUENCE_MS = 1400;
 const DEMO_FINAL_SEQUENCE_MS = 2600;
-const APP_PUBLIC_VERSION = '2026.4';
+const APP_PUBLIC_VERSION = 'BINGO DE LA GORDA';
 const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bingo'];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
@@ -237,7 +237,12 @@ function blankState() {
       whatsapp: '',
       showMercadoPago: true,
       argentinaHint: true,
-      broadcastToken: null
+      broadcastToken: null,
+      roomType: 'official',
+      joinOpen: false,
+      maxOpenPlayers: 10,
+      presenterVoiceGender: 'female',
+      transmission: { enabled: false, showChat: true, showCards: true, showNames: true, showProgress: true, rotationSeconds: 30 }
     },
     assignmentTimer: {
       enabled: false,
@@ -259,6 +264,7 @@ function blankState() {
     testDrawOrderFixed: false,
     chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} },
     demo: null,
+    waitingGame: { type: 'none', leaderboard: [] },
     game: null,
     players: [],
     cardReservations: {},
@@ -303,6 +309,12 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.showMercadoPago = merged.roomSettings.showMercadoPago !== false;
     merged.roomSettings.argentinaHint = merged.roomSettings.argentinaHint !== false;
     merged.roomSettings.broadcastToken = merged.roomSettings.broadcastToken ? String(merged.roomSettings.broadcastToken) : null;
+    merged.roomSettings.roomType = merged.roomSettings.roomType === 'test' ? 'test' : 'official';
+    merged.roomSettings.joinOpen = Boolean(merged.roomSettings.joinOpen);
+    merged.roomSettings.maxOpenPlayers = Math.max(2, Math.min(10, Number(merged.roomSettings.maxOpenPlayers) || 10));
+    merged.roomSettings.presenterVoiceGender = merged.roomSettings.presenterVoiceGender === 'male' ? 'male' : 'female';
+    merged.roomSettings.transmission = { enabled: Boolean(merged.roomSettings.transmission?.enabled), showChat: merged.roomSettings.transmission?.showChat !== false, showCards: merged.roomSettings.transmission?.showCards !== false, showNames: merged.roomSettings.transmission?.showNames !== false, showProgress: merged.roomSettings.transmission?.showProgress !== false, rotationSeconds: [20,30,60].includes(Number(merged.roomSettings.transmission?.rotationSeconds)) ? Number(merged.roomSettings.transmission.rotationSeconds) : 30 };
+    merged.waitingGame = { type: ['red_black','higher_lower'].includes(parsed.waitingGame?.type) ? parsed.waitingGame.type : 'none', leaderboard: Array.isArray(parsed.waitingGame?.leaderboard) ? parsed.waitingGame.leaderboard.slice(0, 60) : [] };
     merged.revision = Math.max(0, Number(parsed.revision) || 0);
     merged.drawOrder = Array.isArray(parsed.drawOrder) ? uniqueNumbers(parsed.drawOrder) : [];
     merged.claimSequence = Math.max(0, Number(parsed.claimSequence) || 0);
@@ -404,7 +416,7 @@ function ensureWorkspace(id = 'owner', operatorId = null, label = 'Administrador
 }
 
 const ownerWorkspace = ensureWorkspace('owner');
-// Los operadores temporales están deshabilitados en BINGO GORDA 2026.
+// Los operadores temporales están deshabilitados en BINGO DE LA GORDA.
 
 function currentWorkspace() { return workspaceContext.getStore() || ownerWorkspace; }
 function replaceCurrentState(next) { currentWorkspace().state = next; }
@@ -984,6 +996,7 @@ function broadcastPayload() {
     game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: state.game.presenter, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, total: state.game.mode },
     pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, createdAt: pendingClaim.createdAt } : null,
     latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, prizeNumber: latestConfirmed.prizeNumber || 1, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt } : null,
+    highlightedCards: highlightedBroadcastCards(),
     updatedAt: state.updatedAt
   };
 }
@@ -1047,6 +1060,7 @@ function adminPayload() {
     updatedAt: state.updatedAt,
     round: state.round,
     roomSettings: state.roomSettings,
+    waitingGame: waitingGamePayload(),
     markingPolicy: markingPolicyPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), mutedPlayerIds: state.chat?.mutedPlayerIds || [] },
     assignmentTimer: assignmentTimerPayload(),
@@ -1058,6 +1072,7 @@ function adminPayload() {
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
     accessContext: currentAccessContext(),
     broadcastUrl: state.roomSettings?.broadcastToken ? `${PUBLIC_URL || `http://localhost:${PORT}`}/transmision/${encodeURIComponent(state.roomSettings.broadcastToken)}` : null,
+    joinUrl: state.roomSettings?.roomType === 'test' && state.roomCode ? `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode)}&prueba=1` : `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode || '')}`,
     lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`),
     localUrl: `http://localhost:${PORT}`,
     game: state.game,
@@ -1078,6 +1093,7 @@ function adminPayload() {
     })),
     cardStatus,
     claims: state.claims.slice(-100),
+    claimWindow: state.claimWindow ? { ...state.claimWindow } : null,
     eventLog: state.eventLog.slice(-1000)
   };
 }
@@ -1096,6 +1112,7 @@ function playerPayload(player) {
     startedAt: state.startedAt,
     endedAt: state.endedAt || null,
     roomSettings: state.roomSettings,
+    waitingGame: waitingGamePayload(),
     markingPolicy: markingPolicyPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), muted: (state.chat?.mutedPlayerIds || []).includes(player.id) },
     assignmentTimer: assignmentTimerPayload(),
@@ -1245,7 +1262,7 @@ function generateCard75Server() {
 function generateDiverseCardsServer(count, mode, rules, maxSharedOverride = null) {
   const cards = [];
   const lineSignatures = new Set();
-  const maxShared = Number.isFinite(Number(maxSharedOverride)) ? Number(maxSharedOverride) : (Number(mode) === 75 ? 12 : 6);
+  const maxShared = maxSharedOverride !== null && maxSharedOverride !== undefined && Number.isFinite(Number(maxSharedOverride)) ? Number(maxSharedOverride) : (Number(mode) === 75 ? 12 : 6);
   let attempts = 0;
   while (cards.length < count && attempts++ < count * 5000) {
     const grid = Number(mode) === 75 ? generateCard75Server() : generateCard90Server();
@@ -1260,8 +1277,233 @@ function generateDiverseCardsServer(count, mode, rules, maxSharedOverride = null
     cards.push(card);
     lines.forEach(signature => lineSignatures.add(signature));
   }
-  if (cards.length !== count) throw new Error('No se pudieron generar cartones suficientemente diferentes para la demostración.');
+  if (cards.length !== count) throw new Error(`No se pudieron generar cartones suficientemente diferentes: ${cards.length}/${count} tras ${attempts} intentos (máximo compartido ${maxShared}).`);
   return cards;
+}
+
+
+function normalizedGeneratedCount(value) {
+  const number = Math.max(25, Math.min(250, Number(value) || 250));
+  return Math.max(25, Math.min(250, Math.round(number / 25) * 25));
+}
+
+function roomRulesFor(mode, raw = {}) {
+  const is75 = Number(mode) === 75;
+  return {
+    ambocabeza: !is75 && Boolean(raw.ambocabeza),
+    line: raw.line !== false,
+    doubleLine: is75 && Boolean(raw.doubleLine),
+    tripleLine: is75 && Boolean(raw.tripleLine),
+    corners: is75 && Boolean(raw.corners),
+    bingo: raw.bingo !== false
+  };
+}
+
+function createGeneratedGame(payload = {}) {
+  const mode = Number(payload.mode) === 75 ? 75 : 90;
+  const rules = roomRulesFor(mode, payload.rules || {});
+  const count = normalizedGeneratedCount(payload.cardCount);
+  const cards = generateDiverseCardsServer(count, mode, rules);
+  return {
+    id: randomId('game'), number: 1, mode, rules,
+    drawMode: payload.drawMode === 'manual' ? 'manual' : 'automatic',
+    autoSeconds: Math.max(2, Math.min(60, Number(payload.autoSeconds) || 6)),
+    presenter: PLAYER_PRESENTERS.has(String(payload.presenter || '')) ? String(payload.presenter) : 'vero',
+    theme: 'clasico', phase: 'READY', drawn: [], createdAt: nowIso(), updatedAt: nowIso(), cards
+  };
+}
+
+function emptyRoomPlayer({ name = '', cardIds = [], allowedCardCount = 1, code = '', deviceId = '', openJoin = false } = {}) {
+  const playerId = randomId('player');
+  return {
+    id: playerId,
+    name: normalizePlayerName(name),
+    nameSet: Boolean(normalizePlayerName(name)),
+    slotNumber: state.players?.length ? state.players.length + 1 : 1,
+    slotLabel: normalizePlayerName(name) || `Acceso ${(state.players?.length || 0) + 1}`,
+    personalPresenter: state.game?.presenter || 'vero',
+    code: code || randomCode(7),
+    allowedCardCount: Math.max(1, Math.min(4, Number(allowedCardCount) || 1)),
+    cardIds: [...cardIds],
+    selectionConfirmed: cardIds.length > 0,
+    offeredCardIds: [], reservedCardIds: [],
+    sessionToken: openJoin ? randomId('session') : null,
+    sessionDeviceId: openJoin ? String(deviceId || '') : '',
+    openJoinDeviceId: openJoin ? String(deviceId || '') : '',
+    marks: Object.fromEntries(cardIds.map(cardId => [cardId, []])),
+    autoMark: true,
+    notices: [],
+    paymentStatus: openJoin ? 'not_applicable' : 'confirmed',
+    codeStatus: openJoin ? 'link' : 'generated'
+  };
+}
+
+function availableUnassignedCards() {
+  const used = new Set(state.players.flatMap(player => player.cardIds || []));
+  return (state.game?.cards || []).filter(card => !used.has(card.id));
+}
+
+function chooseDiverseCardsForPlayer(count, mode) {
+  const pool = shuffle(availableUnassignedCards());
+  const selected = [];
+  const strict = Number(mode) === 75 ? 9 : 4;
+  for (const card of pool) {
+    if (selected.every(existing => sharedCardNumbers(existing, card) <= strict)) selected.push(card);
+    if (selected.length >= count) return selected;
+  }
+  // The generated pool already respects the global diversity rule. This fallback
+  // chooses the best remaining cards rather than failing a paid or test room.
+  const remaining = pool.filter(card => !selected.includes(card));
+  while (selected.length < count && remaining.length) {
+    remaining.sort((a, b) => Math.max(0, ...selected.map(x => sharedCardNumbers(x, a))) - Math.max(0, ...selected.map(x => sharedCardNumbers(x, b))));
+    selected.push(remaining.shift());
+  }
+  if (selected.length !== count) throw new Error('No quedan suficientes cartones disponibles.');
+  return selected;
+}
+
+function waitingGamePayload() {
+  const game = state.waitingGame || { type: 'none', leaderboard: [] };
+  return {
+    type: ['red_black','higher_lower'].includes(game.type) ? game.type : 'none',
+    leaderboard: (game.leaderboard || []).slice().sort((a,b) => Number(b.bestScore || 0) - Number(a.bestScore || 0)).slice(0, 10)
+  };
+}
+
+function createSimpleRoom(payload = {}) {
+  const game = createGeneratedGame(payload);
+  const roomType = payload.roomType === 'test' ? 'test' : 'official';
+  replaceCurrentState({
+    ...blankState(), revision: 0, active: true, status: 'waiting', roomCode: randomCode(5), createdAt: nowIso(), updatedAt: nowIso(), round: 1,
+    roomSettings: {
+      ...blankState().roomSettings,
+      playerAudioAllowed: true, playerAudioDefault: true,
+      linePrizeCount: Number(game.mode) === 90 ? 2 : 1,
+      allowSamePlayerSecondLine: true, tiePolicy: 'first_claim', gameType: roomType === 'test' ? 'test' : 'real',
+      roomType, joinOpen: roomType === 'test', maxOpenPlayers: 10,
+      presenterVoiceGender: payload.presenterVoiceGender === 'male' ? 'male' : 'female',
+      broadcastToken: randomId('live'),
+      transmission: { enabled: Boolean(payload.transmission?.enabled), showChat: payload.transmission?.showChat !== false, showCards: payload.transmission?.showCards !== false, showNames: payload.transmission?.showNames !== false, showProgress: payload.transmission?.showProgress !== false, rotationSeconds: [20,30,60].includes(Number(payload.transmission?.rotationSeconds)) ? Number(payload.transmission.rotationSeconds) : 30 }
+    },
+    waitingGame: { type: ['red_black','higher_lower'].includes(payload.waitingGame) ? payload.waitingGame : 'none', leaderboard: [] },
+    drawOrder: createSecureDrawOrder(game.mode), game, players: [], cardReservations: {}, claims: [], eventLog: [],
+    chat: { enabled: payload.chatEnabled !== false, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} }
+  });
+  logEvent('simple_room_created', { roomType, mode: game.mode, cards: game.cards.length });
+  saveState(); broadcast();
+  return adminPayload();
+}
+
+function openJoinPlayer(payload = {}) {
+  if (!state.active || !state.game || state.roomSettings?.roomType !== 'test') throw new Error('Este enlace no corresponde a una sala de prueba abierta.');
+  const deviceId = String(payload.deviceId || '').slice(0, 120);
+  if (!deviceId) throw new Error('No se pudo identificar este dispositivo.');
+  const returning = state.players.find(player => player.openJoinDeviceId === deviceId);
+  if (returning) {
+    returning.sessionToken = randomId('session'); returning.sessionDeviceId = deviceId; returning.lastLoginAt = nowIso();
+    saveState(); broadcast();
+    return { token: returning.sessionToken, state: playerPayload(returning), returning: true };
+  }
+  if (!state.roomSettings.joinOpen || state.status !== 'waiting') throw new Error('El ingreso a esta sala ya está cerrado.');
+  if (state.players.length >= 10) throw new Error('La sala ya alcanzó el límite de 10 jugadores.');
+  const name = validatePlayerName(payload.name);
+  const cardCount = Math.max(1, Math.min(4, Number(payload.cardCount) || 2));
+  const activeCards = state.players.reduce((total, player) => total + (player.cardIds || []).length, 0);
+  if (activeCards + cardCount > 40) throw new Error('La sala alcanzó el límite de 40 cartones activos.');
+  const chosen = chooseDiverseCardsForPlayer(cardCount, state.game.mode);
+  const player = emptyRoomPlayer({ name, cardIds: chosen.map(card => card.id), allowedCardCount: cardCount, deviceId, openJoin: true });
+  player.slotNumber = state.players.length + 1; player.slotLabel = name;
+  state.players.push(player);
+  if (state.players.length >= 10) state.roomSettings.joinOpen = false;
+  syncAutoMarksForPlayer(player); enforceAutoMarkPolicy(); updateCardDisplayNames();
+  logEvent('open_player_joined', { playerId: player.id, playerName: name, cards: cardCount });
+  saveState(); broadcast();
+  return { token: player.sessionToken, state: playerPayload(player), returning: false };
+}
+
+function addOfficialPlayer(payload = {}) {
+  if (!state.active || !state.game || state.roomSettings?.roomType !== 'official' || state.status !== 'waiting') throw new Error('La sala oficial no está disponible para agregar jugadores.');
+  if (state.players.length >= MAX_PLAYERS) throw new Error(`La sala admite hasta ${MAX_PLAYERS} jugadores.`);
+  const name = validatePlayerName(payload.name);
+  const cardCount = Math.max(1, Math.min(4, Number(payload.cardCount) || 1));
+  const activeCards = state.players.reduce((total, player) => total + (player.cardIds || []).length, 0);
+  if (activeCards + cardCount > MAX_ACTIVE_CARDS) throw new Error(`La sala admite hasta ${MAX_ACTIVE_CARDS} cartones activos.`);
+  const chosen = chooseDiverseCardsForPlayer(cardCount, state.game.mode);
+  let code; do { code = randomCode(7); } while (state.players.some(player => player.code === code));
+  const player = emptyRoomPlayer({ name, cardIds: chosen.map(card => card.id), allowedCardCount: cardCount, code });
+  player.slotNumber = state.players.length + 1; player.slotLabel = name; player.autoMark = true;
+  state.players.push(player); syncAutoMarksForPlayer(player); enforceAutoMarkPolicy(); updateCardDisplayNames();
+  logEvent('official_player_added', { playerId: player.id, playerName: name, cards: cardCount, paymentStatus: 'confirmed' });
+  saveState(); broadcast();
+  return { state: adminPayload(), player: { id: player.id, name, code: player.code, cardNumbers: chosen.map(card => card.number), cardCount } };
+}
+
+function removeRoomPlayer(payload = {}) {
+  if (!state.active || state.status !== 'waiting') throw new Error('Solo se puede quitar un jugador antes de iniciar.');
+  const id = String(payload.playerId || '');
+  const player = state.players.find(item => item.id === id);
+  if (!player) throw new Error('No se encontró el jugador.');
+  state.players = state.players.filter(item => item.id !== id);
+  state.roomSettings.joinOpen = state.roomSettings.roomType === 'test' && state.players.length < 10;
+  updateCardDisplayNames(); enforceAutoMarkPolicy();
+  logEvent('player_removed', { playerId: id, playerName: playerDisplayName(player) });
+  saveState(); broadcast(); return adminPayload();
+}
+
+function updateJoinOpen(payload = {}) {
+  if (!state.active || state.status !== 'waiting' || state.roomSettings?.roomType !== 'test') throw new Error('El ingreso solo se controla en una sala de prueba en espera.');
+  const open = Boolean(payload.open);
+  if (open && state.players.length >= 10) throw new Error('La sala ya está completa.');
+  state.roomSettings.joinOpen = open;
+  logEvent(open ? 'join_opened' : 'join_closed'); saveState(); broadcast(); return adminPayload();
+}
+
+function submitWaitingGameScore(player, payload = {}) {
+  if (!state.active || state.status !== 'waiting') throw new Error('El minijuego solo está disponible en la sala de espera.');
+  if (!['red_black','higher_lower'].includes(state.waitingGame?.type)) throw new Error('No hay un minijuego activo.');
+  const score = Math.max(0, Math.min(9999, Math.floor(Number(payload.score) || 0)));
+  state.waitingGame ||= { type: 'none', leaderboard: [] };
+  state.waitingGame.leaderboard ||= [];
+  const entry = state.waitingGame.leaderboard.find(item => item.playerId === player.id);
+  if (entry) { entry.bestScore = Math.max(Number(entry.bestScore) || 0, score); entry.name = playerDisplayName(player); entry.updatedAt = nowIso(); }
+  else state.waitingGame.leaderboard.push({ playerId: player.id, name: playerDisplayName(player), bestScore: score, updatedAt: nowIso() });
+  saveState(); broadcast(); return playerPayload(player);
+}
+
+function highlightedBroadcastCards() {
+  if (!state.game || state.roomSettings?.transmission?.showCards === false) return [];
+  const connected = connectedPlayerIds();
+  const rows = [];
+  for (const player of state.players) for (const cardId of player.cardIds || []) {
+    const card = state.game.cards.find(item => item.id === cardId); if (!card) continue;
+    const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
+    const score = analysis.hasBingo ? -100 : Math.min(analysis.bingoMissing ?? 99, analysis.lineMissing ?? 99);
+    rows.push({ playerId: player.id, playerName: playerDisplayName(player), connected: connected.has(player.id), cardId, cardNumber: card.number, grid: card.grid, mode: card.mode, score, lineMissing: analysis.lineMissing, bingoMissing: analysis.bingoMissing, marked: analysis.officialMarked || [] });
+  }
+  return rows.sort((a,b) => a.score - b.score || a.bingoMissing - b.bingoMissing || String(a.cardNumber).localeCompare(String(b.cardNumber))).slice(0, 4);
+}
+
+
+function partitionDiverseCardGroups(pool, sizes, mode) {
+  const strict = Number(mode) === 75 ? 9 : 4;
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const remaining = shuffle(pool);
+    const groups = [];
+    let ok = true;
+    for (const size of sizes) {
+      const group = [];
+      for (let index = 0; index < remaining.length && group.length < size; ) {
+        const card = remaining[index];
+        if (group.every(existing => sharedCardNumbers(existing, card) <= strict)) {
+          group.push(card); remaining.splice(index, 1);
+        } else index++;
+      }
+      if (group.length !== size) { ok = false; break; }
+      groups.push(group);
+    }
+    if (ok) return groups;
+  }
+  throw new Error('No se pudo formar una combinación suficientemente diversa para los jugadores.');
 }
 
 function createDemoRoom(payload = {}) {
@@ -1276,7 +1518,9 @@ function createDemoRoom(payload = {}) {
     : { ambocabeza: true, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true };
   const aiNames = ['Zoe', 'Mateo', 'Owen'].slice(0, aiCount);
   const totalCards = playerCardCount + aiCount * 2;
-  const cards = generateDiverseCardsServer(totalCards, mode, rules, mode === 75 ? 9 : 4);
+  const pool = generateDiverseCardsServer(Math.max(25, totalCards), mode, rules);
+  const groups = partitionDiverseCardGroups(pool, [playerCardCount, ...Array(aiCount).fill(2)], mode);
+  const cards = groups.flat().map((card, index) => ({ ...card, number: String(index + 1).padStart(3, '0'), name: `Cartón ${index + 1}`, originalName: `Cartón ${index + 1}` }));
   const game = {
     id: randomId('demo_game'), number: 1, mode, rules, drawMode: 'automatic', autoSeconds,
     presenter: ['vero','vivi','josu','daia'].includes(payload.presenter) ? payload.presenter : 'vero',
@@ -1732,7 +1976,12 @@ function configureRoom(payload) {
       whatsapp: String(payload.roomSettings?.whatsapp || '').slice(0, 40),
       showMercadoPago: payload.roomSettings?.showMercadoPago !== false,
       argentinaHint: payload.roomSettings?.argentinaHint !== false,
-      broadcastToken: randomId('live')
+      broadcastToken: randomId('live'),
+      roomType: payload.roomSettings?.roomType === 'test' ? 'test' : 'official',
+      joinOpen: Boolean(payload.roomSettings?.joinOpen),
+      maxOpenPlayers: Math.max(2, Math.min(10, Number(payload.roomSettings?.maxOpenPlayers) || 10)),
+      presenterVoiceGender: payload.roomSettings?.presenterVoiceGender === 'male' ? 'male' : 'female',
+      transmission: { enabled: Boolean(payload.roomSettings?.transmission?.enabled), showChat: payload.roomSettings?.transmission?.showChat !== false, showCards: payload.roomSettings?.transmission?.showCards !== false, showNames: payload.roomSettings?.transmission?.showNames !== false, showProgress: payload.roomSettings?.transmission?.showProgress !== false, rotationSeconds: [20,30,60].includes(Number(payload.roomSettings?.transmission?.rotationSeconds)) ? Number(payload.roomSettings.transmission.rotationSeconds) : 30 }
     },
     assignmentTimer: {
       enabled: Boolean(payload.assignmentTimer?.enabled),
@@ -1754,6 +2003,7 @@ function configureRoom(payload) {
     testDrawOrderFixed: false,
     chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} },
     demo: currentWorkspace().isDemo ? { active: true, label: 'DEMOSTRACIÓN — SIN VALIDEZ OFICIAL', createdAt: nowIso() } : null,
+    waitingGame: { type: ['red_black','higher_lower'].includes(payload.waitingGame?.type) ? payload.waitingGame.type : 'none', leaderboard: [] },
     game: sanitizedGame,
     players,
     cardReservations: {},
@@ -2051,6 +2301,7 @@ function completeTransition() {
 }
 
 function startRoom() {
+  if (state.roomSettings) state.roomSettings.joinOpen = false;
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'waiting') return adminPayload();
   const preflight = preflightPayload();
@@ -3173,7 +3424,7 @@ function buildResultsPdf() {
   rect(19, 10, 70, 70, COLORS.white, '#F2D3E2', 1);
   image(24, 15, 60, 60);
   text('RESULTADOS OFICIALES DEL SORTEO', 101, 18, 20, { bold: true, color: COLORS.white, maxWidth: 390 });
-  text(acta.demo ? 'DEMOSTRACIÓN - SIN VALIDEZ OFICIAL' : 'BINGO GORDA 2026.4', 101, 47, 11, { bold: true, color: '#F7DDF0' });
+  text(acta.demo ? 'DEMOSTRACIÓN - SIN VALIDEZ OFICIAL' : 'BINGO DE LA GORDA', 101, 47, 11, { bold: true, color: '#F7DDF0' });
   text(`Sala ${acta.roomCode}  ·  Juego ${acta.gameNumber}  ·  Bingo ${acta.mode}`, 101, 65, 8.5, { color: '#E8D7EE' });
 
   const metaX = 510;
@@ -3380,7 +3631,7 @@ function buildResultsPdf() {
   });
 
   text(`Documento oficial generado al cerrar el sorteo · Sala ${acta.roomCode} · Ronda ${acta.round}`, 24, 582, 5.8, { color: COLORS.muted });
-  text(acta.demo ? 'DEMO' : 'BINGO GORDA 2026.4', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
+  text(acta.demo ? 'DEMO' : 'BINGO DE LA GORDA', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
 
   const stream = commands.join('\n');
   const logoPath = path.join(ROOT, 'assets', 'logo-pdf.jpg');
@@ -3541,6 +3792,10 @@ async function handleMasterApi(req, res, url) {
 async function dispatchAdminApi(req, res, url, session) {
   currentWorkspace().lastActivityAt = Date.now();
   if (url.pathname === '/api/admin/state' && req.method === 'GET') return sendJson(res, 200, adminPayload());
+  if (url.pathname === '/api/admin/create-simple-room' && req.method === 'POST') return sendJson(res, 200, createSimpleRoom(await readJson(req)));
+  if (url.pathname === '/api/admin/add-official-player' && req.method === 'POST') return sendJson(res, 200, addOfficialPlayer(await readJson(req)));
+  if (url.pathname === '/api/admin/remove-player' && req.method === 'POST') return sendJson(res, 200, removeRoomPlayer(await readJson(req)));
+  if (url.pathname === '/api/admin/join-open' && req.method === 'POST') return sendJson(res, 200, updateJoinOpen(await readJson(req)));
   if (url.pathname === '/api/admin/configure' && req.method === 'POST') {
     const payload = await readJson(req);
     return sendJson(res, 200, configureRoom(payload));
@@ -3637,6 +3892,12 @@ async function handleApi(req, res, url) {
       return workspaceContext.run(workspace, () => sendJson(res, 200, broadcastPayload()));
     }
 
+    if (url.pathname === '/api/player/open-join' && req.method === 'POST') {
+      if (!consumeRate(req, 'open-join', 40, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
+      const payload = await readJson(req); const workspace = findWorkspaceByRoomCode(payload.roomCode);
+      if (!workspace) throw new Error('No se encontró esa sala.');
+      return workspaceContext.run(workspace, () => sendJson(res, 200, openJoinPlayer(payload)));
+    }
     if (url.pathname === '/api/player/login' && req.method === 'POST') {
       if (!consumeRate(req, 'player-login', 180, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
       const payload = await readJson(req);
@@ -3674,6 +3935,7 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/automark' && req.method === 'POST') return sendJson(res, 200, setAutoMark(player, await readJson(req)));
         if (url.pathname === '/api/player/presenter' && req.method === 'POST') return sendJson(res, 200, setPlayerPresenter(player, await readJson(req)));
         if (url.pathname === '/api/player/claim' && req.method === 'POST') return sendJson(res, 200, createClaim(player, await readJson(req)));
+        if (url.pathname === '/api/player/waiting-game/score' && req.method === 'POST') return sendJson(res, 200, submitWaitingGameScore(player, await readJson(req)));
         if (url.pathname === '/api/player/chat' && req.method === 'POST') {
           if (!consumeRate(req, `chat-${player.id}`, 30, 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados mensajes. Esperá un momento.' });
           return sendJson(res, 200, appendChatMessage({ role: 'player', player, text: (await readJson(req)).text }));
@@ -3739,6 +4001,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/admin-principal' || url.pathname === '/admin-principal/') return serveFile(res, path.join(ROOT, 'admin-principal.html'));
   if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'ABRIR_EL_BINGO_DE_LA_GORDA.html'));
+  if (url.pathname === '/admin-avanzado.html') return serveFile(res, path.join(ROOT, 'admin-avanzado.html'));
   if (url.pathname === '/demo' || url.pathname === '/demo/') return serveFile(res, path.join(ROOT, 'demo.html'));
   if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return sendJson(res, 404, { error: 'Los accesos temporales están deshabilitados.' });
   if (/^\/transmision\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'transmision.html'));
@@ -3784,7 +4047,7 @@ setInterval(() => {
 for (const workspace of workspaces.values()) workspaceContext.run(workspace, () => scheduleTransition());
 
 server.listen(PORT, HOST, () => {
-  console.log('\nBINGO GORDA 2026');
+  console.log('\nBINGO DE LA GORDA');
   const base = PUBLIC_URL || `http://localhost:${PORT}`;
   console.log(`Panel principal: ${base}/admin-principal`);
   console.log(`Administrador propio: ${base}/admin`);

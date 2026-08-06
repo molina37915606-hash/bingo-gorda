@@ -48,6 +48,9 @@ class PlayerApp {
     this.drawerTab = 'winners';
     this.selectedWinnerId = '';
     this.resultsViewerUrl = '';
+    this.openJoinMode = false;
+    this.openJoinCardCount = 2;
+    this.waitingMini = { score: 0, best: 0, current: null, next: null, ended: false };
     this.ticketTouchStartX = null;
     this.guideSteps = [
       { icon:'🧾', title:'Tus cartones', text:'Usá las pestañas para cambiar de cartón. Las marcas oficiales se conservan en todos.' },
@@ -69,6 +72,8 @@ class PlayerApp {
     $('loginBtn').onclick = () => this.login();
     $('lastResultBtn').onclick = () => this.downloadLastPublicResult();
     $('accessCode').addEventListener('keydown', event => { if (event.key === 'Enter') this.login(); });
+    $('openJoinName')?.addEventListener('keydown', event => { if (event.key === 'Enter') this.login(); });
+    $('openJoinCardCount')?.querySelectorAll('[data-count]').forEach(button => button.onclick = () => { this.openJoinCardCount = Number(button.dataset.count) || 2; $('openJoinCardCount').querySelectorAll('[data-count]').forEach(item => item.classList.toggle('active', item === button)); });
     $('claimAmbo').onclick = () => this.claim('ambo');
     $('claimCorners').onclick = () => this.claim('corners');
     $('claimLine').onclick = () => this.claim('line');
@@ -148,6 +153,13 @@ class PlayerApp {
     const params = new URLSearchParams(location.search);
     const directCode = String(params.get('acceso') || params.get('codigo') || params.get('code') || '').trim().toUpperCase();
     const roomCode = String(params.get('sala') || '').trim().toUpperCase();
+    this.openJoinMode = params.get('prueba') === '1' && Boolean(roomCode);
+    if (this.openJoinMode) {
+      $('codeLoginFields')?.classList.add('hidden');
+      $('openJoinFields')?.classList.add('show');
+      $('loginIntro').textContent = 'Escribí tu nombre, elegí tus cartones y entrá directamente a la sala de prueba.';
+      $('loginBtn').textContent = 'ENTRAR A LA SALA';
+    }
     if (directCode) {
       $('accessCode').value = directCode;
       await this.login(directCode, roomCode);
@@ -413,11 +425,14 @@ class PlayerApp {
     const queryRoom = String(new URLSearchParams(location.search).get('sala') || '').trim().toUpperCase();
     const roomCode = String(roomOverride || queryRoom).trim().toUpperCase();
     $('loginError').innerHTML = '';
-    if (code.length < 4) return $('loginError').innerHTML = '<div class="error">Escribí el código completo.</div>';
+    if (!this.openJoinMode && code.length < 4) return $('loginError').innerHTML = '<div class="error">Escribí el código completo.</div>';
+    if (this.openJoinMode && String($('openJoinName')?.value || '').trim().length < 2) return $('loginError').innerHTML = '<div class="error">Escribí tu nombre o apodo.</div>';
     try {
       $('loginBtn').disabled = true;
       $('loginBtn').textContent = 'INGRESANDO…';
-      const data = await this.request('/api/player/login', { method:'POST', body:JSON.stringify({ code, roomCode, deviceId:this.deviceId }) });
+      const data = this.openJoinMode
+        ? await this.request('/api/player/open-join', { method:'POST', body:JSON.stringify({ roomCode, name:$('openJoinName').value, cardCount:this.openJoinCardCount, deviceId:this.deviceId }) })
+        : await this.request('/api/player/login', { method:'POST', body:JSON.stringify({ code, roomCode, deviceId:this.deviceId }) });
       this.acceptLogin(data);
     } catch (error) {
       if (error.status === 409 && error.data?.conflict) {
@@ -609,8 +624,10 @@ class PlayerApp {
         $('confirmAssignedName').onclick = () => this.savePlayerName();
         return;
       }
-      $('waitingPanel').innerHTML = `${timerHtml}<div class="waitingConfirmed waitingStateHero"><b>ESPERANDO SORTEO</b><div>Tus cartones están confirmados y reservados para vos.</div><div class="chosenList">${player.cards.map(card => `<span class="chosenBadge">Cartón ${esc(card.number)}</span>`).join('')}</div>${this.state.status === 'waiting' && !this.state.assignmentTimer?.selectionClosed ? '<button id="changeChoice" class="btn secondary" style="margin-top:10px">CAMBIAR CARTONES</button>' : ''}</div>`;
+      const canChange = this.state.roomSettings?.roomType !== 'test' && this.state.status === 'waiting' && !this.state.assignmentTimer?.selectionClosed;
+      $('waitingPanel').innerHTML = `${timerHtml}<div class="waitingConfirmed waitingStateHero"><b>ESPERANDO SORTEO</b><div>Tus cartones están confirmados y reservados para vos.</div><div class="chosenList">${player.cards.map(card => `<span class="chosenBadge">Cartón ${esc(card.number)}</span>`).join('')}</div>${canChange ? '<button id="changeChoice" class="btn secondary" style="margin-top:10px">CAMBIAR CARTONES</button>' : ''}</div>${this.waitingMiniGameHtml()}`;
       if ($('changeChoice')) $('changeChoice').onclick = () => this.releaseChoice();
+      this.bindWaitingMiniGame();
       return;
     }
     const offers = player.offeredCards || [], valid = new Set(offers.map(card => card.id));
@@ -628,6 +645,79 @@ class PlayerApp {
     $('continueChoice').onclick = () => this.confirmChoice();
     if ($('readRules')) $('readRules').onclick = () => window.open('/reglamento.html', '_blank', 'noopener,noreferrer');
     if ($('downloadRules')) $('downloadRules').onclick = () => this.downloadRules();
+  }
+
+  waitingMiniGameHtml() {
+    const type = this.state?.waitingGame?.type || 'none';
+    if (!['red_black','higher_lower'].includes(type)) return '';
+    const title = type === 'red_black' ? 'ROJO O NEGRO' : 'MAYOR O MENOR';
+    const leaders = this.state.waitingGame?.leaderboard || [];
+    return `<section class="waitMiniGame"><h3>${title}</h3><div class="muted">Jugá hasta equivocarte. Podés volver a empezar todas las veces que quieras. No afecta el bingo.</div><div class="miniGameLayout"><div id="miniPlayingCard" class="playingCard back"></div><div class="miniGameControls"><div class="miniScore">Racha: <span id="miniScore">${this.waitingMini.score}</span> · Mejor: <span id="miniBest">${Math.max(this.waitingMini.best, Number(leaders.find(x=>x.playerId===this.state.player.id)?.bestScore)||0)}</span></div><div id="miniResult" class="miniResult">${type === 'red_black' ? 'Elegí el color de la próxima carta.' : 'Primero revelá una carta para comenzar.'}</div><div id="miniChoices" class="miniGameChoices">${type === 'red_black' ? '<button class="redChoice" data-mini="red">ROJO</button><button class="blackChoice" data-mini="black">NEGRO</button>' : '<button class="higherChoice" data-mini="higher">MAYOR</button><button class="lowerChoice" data-mini="lower">MENOR</button>'}</div><button id="miniRestart" class="btn secondary hidden" type="button">VOLVER A JUGAR</button></div></div><div class="miniLeaderboard"><b>Mejores rachas:</b> ${leaders.length ? leaders.map((item,index)=>`${index+1}. ${esc(item.name)} ${Number(item.bestScore)||0}`).join(' · ') : 'todavía no hay puntajes'}</div></section>`;
+  }
+
+  randomMiniCard() {
+    const suits = [{key:'heart',symbol:'♥',color:'red',face:'corazon'},{key:'diamond',symbol:'♦',color:'red',face:'diamante'},{key:'spade',symbol:'♠',color:'black',face:'pica'},{key:'club',symbol:'♣',color:'black',face:'trebol'}];
+    const suit = suits[Math.floor(Math.random()*suits.length)];
+    const value = 1 + Math.floor(Math.random()*13);
+    return { ...suit, value, rank: value===1?'A':value===11?'J':value===12?'Q':value===13?'K':String(value) };
+  }
+
+  showMiniCard(card, hidden = false) {
+    const host = $('miniPlayingCard'); if (!host) return;
+    if (hidden || !card) { host.className='playingCard back'; host.style.backgroundImage=''; host.innerHTML=''; return; }
+    host.className='playingCard'; host.style.backgroundImage=`url('/assets/cards/${card.face}.webp')`;
+    host.innerHTML=`<div class="cardIndex top ${card.color}">${esc(card.rank)}<small>${card.symbol}</small></div><div class="cardIndex bottom ${card.color}">${esc(card.rank)}<small>${card.symbol}</small></div>`;
+  }
+
+  bindWaitingMiniGame() {
+    const type = this.state?.waitingGame?.type;
+    if (!['red_black','higher_lower'].includes(type) || !$('miniChoices')) return;
+    if (type === 'higher_lower' && !this.waitingMini.current && !this.waitingMini.ended) {
+      this.waitingMini.current = this.randomMiniCard(); this.showMiniCard(this.waitingMini.current);
+      $('miniResult').textContent = `Carta actual: ${this.waitingMini.current.rank}${this.waitingMini.current.symbol}. ¿La próxima será mayor o menor?`;
+    } else if (this.waitingMini.current && !this.waitingMini.ended) this.showMiniCard(this.waitingMini.current);
+    $('miniChoices').querySelectorAll('[data-mini]').forEach(button => button.onclick = () => this.playWaitingMini(button.dataset.mini));
+    if ($('miniRestart')) $('miniRestart').onclick = () => this.restartWaitingMini();
+  }
+
+  async playWaitingMini(choice) {
+    if (this.waitingMini.ended) return;
+    const type = this.state?.waitingGame?.type;
+    const next = this.randomMiniCard();
+    let correct = false, tie = false;
+    if (type === 'red_black') correct = choice === next.color;
+    else {
+      const current = this.waitingMini.current || this.randomMiniCard(); this.waitingMini.current = current;
+      tie = next.value === current.value;
+      correct = tie || (choice === 'higher' ? next.value > current.value : next.value < current.value);
+    }
+    this.showMiniCard(next);
+    if (tie) {
+      $('miniResult').textContent = `Empate: salió ${next.rank}${next.symbol}. La racha sigue igual.`;
+      this.waitingMini.current = next;
+      return setTimeout(() => { if (this.state?.status === 'waiting') { this.showMiniCard(next); $('miniResult').textContent = `Carta actual: ${next.rank}${next.symbol}. Elegí mayor o menor.`; } }, 650);
+    }
+    if (correct) {
+      this.waitingMini.score += 1; this.waitingMini.best = Math.max(this.waitingMini.best, this.waitingMini.score); this.waitingMini.current = next;
+      $('miniScore').textContent = this.waitingMini.score; $('miniBest').textContent = this.waitingMini.best;
+      $('miniResult').textContent = `¡Correcto! Salió ${next.rank}${next.symbol}. Seguí jugando.`;
+      this.submitWaitingScore(this.waitingMini.best);
+    } else {
+      this.waitingMini.ended = true; this.waitingMini.current = next;
+      $('miniResult').innerHTML = `Te equivocaste: salió <b>${next.rank}${next.symbol}</b>. Racha final: <b>${this.waitingMini.score}</b>.`;
+      $('miniChoices').classList.add('hidden'); $('miniRestart').classList.remove('hidden');
+      this.submitWaitingScore(this.waitingMini.score);
+    }
+  }
+
+  restartWaitingMini() {
+    this.waitingMini.score = 0; this.waitingMini.ended = false; this.waitingMini.current = null;
+    this.renderWaiting();
+  }
+
+  async submitWaitingScore(score) {
+    try { const data = await this.request('/api/player/waiting-game/score', { method:'POST', body:JSON.stringify({ score }) }); this.state.waitingGame = data.waitingGame; }
+    catch {}
   }
 
   playerNameSectionHtml() {

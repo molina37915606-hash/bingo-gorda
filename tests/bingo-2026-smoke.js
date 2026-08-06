@@ -181,7 +181,7 @@ async function drawMany(adminHeaders, count) {
     await waitForServer();
 
     let result = await json('/healthz');
-    assert.equal(result.data.version, '2026.4');
+    assert.equal(result.data.version, 'BINGO DE LA GORDA');
     const demoHtml = await (await fetch(base + '/demo')).text();
     assert(demoHtml.includes('Jugá una partida real y rápida'));
     assert(demoHtml.includes('CREAR Y COMENZAR PARTIDA'));
@@ -328,7 +328,7 @@ async function drawMany(adminHeaders, count) {
     assert.equal(state.game.drawn.length, 75);
 
     const acta = (await json('/api/admin/acta', { headers: adminHeaders })).data;
-    assert.equal(acta.version, '2026.4');
+    assert.equal(acta.version, 'BINGO DE LA GORDA');
     assert.equal(acta.categories.bingo.status, 'confirmed');
     const bingoWinner = acta.categories.bingo.winners[0];
     assert.equal(bingoWinner.receivedSequence, bingo1.data.receivedSequence);
@@ -440,7 +440,7 @@ async function drawMany(adminHeaders, count) {
     assert.equal(state.chat.messages.length, 60);
     controllers.forEach(controller => controller.abort());
 
-    console.log('PRUEBAS BINGO GORDA 2026.4: OK');
+    console.log('PRUEBAS BINGO DE LA GORDA: OK');
   } catch (error) {
     console.error(error);
     console.error(logs);

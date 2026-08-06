@@ -1,10 +1,12 @@
-BINGO GORDA 2026.3
+BINGO GORDA 2026.4
 
 1. Para probar en esta computadora, ejecutá PROBAR_EN_ESTA_PC.bat o npm start.
 2. Abrí http://localhost:3210/admin-principal para administrar partidas reales.
-3. Abrí http://localhost:3210/demo para la demostración directa de jugadores.
-4. En la demo, elegí modalidad, rivales IA, tus cartones y velocidad. La partida empieza sola.
-5. Zoe, Mateo y Owen reciben dos cartones cada uno; el visitante puede usar de uno a cuatro.
-6. La demostración no usa dinero real y se elimina automáticamente.
+3. Abrí http://localhost:3210/demo para probar la experiencia directa del jugador.
+4. En celular se muestra un cartón grande por vez; cambiá entre cartones con las pestañas o deslizando lateralmente.
+5. La barra superior contiene ajustes, tema día/noche, ayuda y pantalla completa.
+6. La flecha lateral abre ganadores anteriores y números salidos ordenados numéricamente.
+7. Al finalizar, el acta PDF se puede ver dentro del juego sin descargarla.
+8. La demostración permite elegir modalidad, rivales IA, cartones propios y velocidad.
 
 IMPORTANTE: en producción configurá BINGO_DATA_DIR sobre almacenamiento persistente.

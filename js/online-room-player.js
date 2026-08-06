@@ -20,8 +20,10 @@ class PlayerApp {
     this.phrases = Scripts.PhraseEngine ? new Scripts.PhraseEngine() : { ball:(id,n)=>`Número ${n}`, event:()=>'' };
     this.audioPreferenceLoaded = localStorage.getItem('bingoPlayerSound') !== null;
     this.audioEnabled = localStorage.getItem('bingoPlayerSound') !== 'false';
+    this.voiceEnabled = localStorage.getItem('bingoPlayerVoice') !== 'false';
     this.alertsEnabled = localStorage.getItem('bingoPlayerAlerts') !== 'false';
-    this.audioVolume = .92;
+    this.audioVolume = Math.max(0, Math.min(1, Number(localStorage.getItem('bingoPlayerVolume') ?? .92)));
+    this.largeNumbers = localStorage.getItem('bingoPlayerLargeNumbers') === 'true';
     this.lastPublicClaimKey = '';
     this.lastAdminMessageId = '';
     this.lastTestEventId = '';
@@ -43,17 +45,17 @@ class PlayerApp {
     this.guideStep = 0;
     this.finalOverlayDismissedFor = '';
     this.roomClosedShown = false;
+    this.drawerTab = 'winners';
+    this.selectedWinnerId = '';
+    this.resultsViewerUrl = '';
+    this.ticketTouchStartX = null;
     this.guideSteps = [
-      { icon:'☀️', title:'Tema claro o nocturno', text:'Tocá el icono del sol o la luna para cambiar la apariencia de la pantalla cuando quieras.' },
-      { icon:'👤', title:'Tu nombre y la sala', text:'En la parte superior aparecen tu nombre, el número de sala, el número de juego y la modalidad.' },
-      { icon:'🧾', title:'Cambiar de cartón', text:'Usá las pestañas de cartones para pasar de uno a otro sin perder ninguna marca.' },
-      { icon:'🔢', title:'Ver números', text:'El botón Ver números abre todos los números sorteados y también muestra el orden de salida.' },
-      { icon:'🔊', title:'Sonido y avisos', text:'El parlante controla la voz y los sonidos. La campana controla los avisos visuales y la vibración.' },
-      { icon:'✓', title:'Automarcar', text:'Automarcar completa tus cartones con las bolillas oficiales. El marcado manual solo está disponible con hasta 10 jugadores y 40 cartones activos.' },
-      { icon:'🍀', title:'Cambiar mi suerte', text:'Durante la partida podés elegir otro presentador desde Mi suerte. Cambia solo la voz que escuchás en tu celular.' },
-      { icon:'🏆', title:'Tenés que cantar', text:'Aunque el sistema marque solo o active una alarma, no avisa al administrador. Tocá el botón del premio correspondiente para enviar el reclamo.' },
-      { icon:'📄', title:'Resultado oficial', text:'Cuando termine el sorteo aparecerá en el centro el botón Descargar resultados con el acta oficial.' },
-      { icon:'⚠️', title:'Recordatorio importante', text:'Marcar no es cantar. El reclamo solo es válido cuando tocás manualmente el botón del premio.' }
+      { icon:'🧾', title:'Tus cartones', text:'Usá las pestañas para cambiar de cartón. Las marcas oficiales se conservan en todos.' },
+      { icon:'⚙', title:'Ajustes', text:'Desde la tuerca podés controlar sonido, voz, tamaño de números, automarcado y tu cantador de la suerte.' },
+      { icon:'›', title:'Ganadores y números', text:'La flecha lateral muestra los premios confirmados y los números salidos ordenados de menor a mayor.' },
+      { icon:'💬', title:'Chat público', text:'El chat incluye mensajes breves y ocho emojis clásicos. No tapa los botones de reclamo.' },
+      { icon:'🏆', title:'Tenés que cantar', text:'Aunque el sistema marque solo, el premio se reclama tocando manualmente el botón correspondiente.' },
+      { icon:'📄', title:'Acta oficial', text:'Al terminar la partida podés ver el PDF completo dentro del juego y descargarlo solo si lo necesitás.' }
     ];
   }
 
@@ -75,8 +77,13 @@ class PlayerApp {
     $('claimBingo').onclick = () => this.claim('bingo');
     $('logoutBtn').onclick = () => this.logout();
     $('themeToggle').onclick = () => this.toggleTheme();
+    $('settingsToggle').onclick = () => this.openSettings();
+    $('settingsClose').onclick = () => this.closeSettings();
+    $('settingsOverlay').addEventListener('click', event => { if (event.target === $('settingsOverlay')) this.closeSettings(); });
     $('soundToggle').onclick = () => this.setAudioEnabled(!this.audioEnabled);
-    $('alertsToggle').onclick = () => this.setAlertsEnabled(!this.alertsEnabled);
+    $('voiceToggle').onclick = () => this.setVoiceEnabled(!this.voiceEnabled);
+    $('volumeRange').oninput = event => this.setVolume(Number(event.target.value) / 100);
+    $('numberSizeToggle').onclick = () => this.setLargeNumbers(!this.largeNumbers);
     $('autoMarkToggle').onclick = () => this.setAutoMark(!Boolean(this.state?.player?.autoMark));
     $('changeLuckBtn').onclick = () => this.openPresenterChoice();
     $('helpBtn').onclick = () => this.openGuide(true);
@@ -87,31 +94,53 @@ class PlayerApp {
     $('guideNextBtn').onclick = () => { if (this.guideStep >= this.guideSteps.length - 1) this.closeGuide(); else { this.guideStep++; this.renderGuideStep(); } };
     $('requestTransferBtn').onclick = () => this.requestDeviceTransfer();
     $('cancelTransferBtn').onclick = () => this.closeTransfer();
-    $('showDrawnBtn').onclick = () => this.openDrawnNumbers();
-    $('closeDrawnBtn').onclick = () => this.closeModal('drawnOverlay');
-    $('showWinnerBtn').onclick = () => this.openWinnerCard();
-    $('resultsBtn').onclick = () => this.downloadResults();
+    $('showDrawnBtn').onclick = () => this.openInfoDrawer('numbers');
+    $('showWinnerBtn').onclick = () => this.openInfoDrawer('winners');
+    $('resultsBtn').onclick = () => this.openResultsViewer();
+    $('finalViewBtn').onclick = () => this.openResultsViewer();
     $('finalDownloadBtn').onclick = () => this.downloadResults();
     $('finalBackBtn').onclick = () => this.backToFinalCards();
+    $('drawerViewResultsBtn').onclick = () => this.openResultsViewer();
+    $('drawerDownloadResultsBtn').onclick = () => this.downloadResults();
+    $('resultsViewerClose').onclick = () => this.closeResultsViewer();
+    $('resultsViewerDownloadBtn').onclick = () => this.downloadResults();
+    $('resultsOpenTabBtn').onclick = () => this.openResultsInNewTab();
+    $('resultsViewerOverlay').addEventListener('click', event => { if (event.target === $('resultsViewerOverlay')) this.closeResultsViewer(); });
+    $('infoDrawerToggle').onclick = () => this.toggleInfoDrawer();
+    $('infoDrawerClose').onclick = () => this.closeInfoDrawer();
+    $('infoDrawerBackdrop').onclick = () => this.closeInfoDrawer();
+    $('drawerWinnersTab').onclick = () => this.setDrawerTab('winners');
+    $('drawerNumbersTab').onclick = () => this.setDrawerTab('numbers');
     $('partialKeepChoosingBtn').onclick = () => this.closeModal('partialChoiceOverlay');
     $('partialContinueBtn').onclick = () => { this.closeModal('partialChoiceOverlay'); this.confirmChoice(true); };
     $('closePresenterChoiceBtn').onclick = () => this.closeModal('presenterChoiceOverlay');
     $('roomClosedBtn').onclick = () => this.logout(true);
     $('closeWinnerBtn').onclick = () => this.closeModal('winnerOverlay');
-    $('fullScreenBtn').onclick = () => this.setFocusMode(true);
-    $('exitFocusBtn').onclick = () => this.setFocusMode(false);
-    ['drawnOverlay','winnerOverlay','partialChoiceOverlay','presenterChoiceOverlay'].forEach(id => $(id).addEventListener('click', event => { if (event.target === $(id)) this.closeModal(id); }));
+    $('fullScreenBtn').onclick = () => this.setFocusMode(!this.focusMode);
+    ['winnerOverlay','partialChoiceOverlay','presenterChoiceOverlay'].forEach(id => $(id)?.addEventListener('click', event => { if (event.target === $(id)) this.closeModal(id); }));
+    $('ticketPanel').addEventListener('touchstart', event => this.beginTicketSwipe(event), { passive:true });
+    $('ticketPanel').addEventListener('touchend', event => this.endTicketSwipe(event), { passive:true });
     document.addEventListener('keydown', event => {
       if (event.key !== 'Escape') return;
-      this.closeModal('drawnOverlay'); this.closeModal('winnerOverlay'); this.closeModal('partialChoiceOverlay'); this.closeModal('presenterChoiceOverlay'); this.closeGuide();
+      if ($('resultsViewerOverlay').classList.contains('show')) return this.closeResultsViewer();
+      if ($('settingsOverlay').classList.contains('show')) return this.closeSettings();
+      if ($('infoDrawer').classList.contains('show')) return this.closeInfoDrawer();
+      if ($('playerChatPanel')?.classList.contains('show')) return this.closeChat();
+      this.closeModal('winnerOverlay'); this.closeModal('partialChoiceOverlay'); this.closeModal('presenterChoiceOverlay'); this.closeGuide();
       if (this.focusMode) this.setFocusMode(false);
     });
     document.addEventListener('fullscreenchange', () => {
-      if (!document.fullscreenElement && this.fullscreenApiActive) {
-        this.fullscreenApiActive = false; this.focusMode = false; document.body.classList.remove('focusMode');
+      if (!document.fullscreenElement) {
+        this.fullscreenApiActive = false;
+        this.focusMode = false;
+        document.body.classList.remove('focusMode');
       }
+      this.updateFullscreenButton();
     });
-    this.applyTheme(); this.updateQuickTools();
+    this.applyTheme();
+    this.setLargeNumbers(this.largeNumbers, false);
+    this.setVolume(this.audioVolume, false);
+    this.updateQuickTools();
     await this.loadPublicInfo();
     this.refreshVoices();
     if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => this.refreshVoices();
@@ -132,7 +161,7 @@ class PlayerApp {
     if ($('demoPlayerBanner')) return;
     const style = document.createElement('style');
     style.textContent = `
-      .demoPlayerBanner{display:none;margin:0 0 14px;padding:12px 14px;border-radius:15px;background:linear-gradient(135deg,#4b1764,#7e1f73);border:1px solid #d79de6;color:#fff;box-shadow:0 12px 34px #0005}.demoPlayerBanner.show{display:grid;gap:9px}.demoPlayerBannerTop{display:flex;justify-content:space-between;align-items:center;gap:12px}.demoPlayerBanner strong{font-size:14px;letter-spacing:.04em}.demoPlayerBanner small{color:#f2dff5}.demoParticipants{display:flex;flex-wrap:wrap;gap:7px}.demoParticipant{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;background:#ffffff14;border:1px solid #ffffff22;font-size:12px;font-weight:800}.demoParticipant.you{background:#ffca2f;color:#241805;border-color:#ffdf78}.demoAiTag{font-size:9px;padding:2px 5px;border-radius:999px;background:#17243a;color:#d9ebff}.day .demoPlayerBanner{background:linear-gradient(135deg,#efe1f3,#f6e8f2);color:#32153d;border-color:#b98ac4}.day .demoPlayerBanner small{color:#6f4e75}.day .demoParticipant{background:#fff8;border-color:#80588a33}.day .demoParticipant.you{background:#ffca2f;color:#241805}
+      .demoPlayerBanner{display:none;margin:0 0 14px;padding:12px 14px;border-radius:15px;background:linear-gradient(135deg,#4b1764,#7e1f73);border:1px solid #d79de6;color:#fff;box-shadow:0 12px 34px #0005}.demoPlayerBanner.show{display:grid;gap:9px}.demoPlayerBannerTop{display:flex;justify-content:space-between;align-items:center;gap:12px}.demoPlayerBanner strong{font-size:14px;letter-spacing:.04em}.demoPlayerBanner small{color:#f2dff5}.demoParticipants{display:flex;flex-wrap:wrap;gap:7px}.demoParticipant{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;background:#ffffff14;border:1px solid #ffffff22;font-size:12px;font-weight:800}.demoParticipant.you{background:#ffca2f;color:#241805;border-color:#ffdf78}.demoAiTag{font-size:9px;padding:2px 5px;border-radius:999px;background:#17243a;color:#d9ebff}html[data-theme="day"] .demoPlayerBanner{background:linear-gradient(135deg,#efe1f3,#f6e8f2);color:#32153d;border-color:#b98ac4}html[data-theme="day"] .demoPlayerBanner small{color:#6f4e75}html[data-theme="day"] .demoParticipant{background:#fff8;border-color:#80588a33}html[data-theme="day"] .demoParticipant.you{background:#ffca2f;color:#241805}
     `;
     document.head.appendChild(style);
     const host = $('gameView') || document.body;
@@ -159,18 +188,45 @@ class PlayerApp {
     if ($('playerChatDock')) return;
     const style = document.createElement('style');
     style.textContent = `
-      .playerChatDock{position:fixed;right:12px;bottom:12px;z-index:65}.playerChatToggle{border:0;border-radius:999px;padding:12px 16px;background:#5a167b;color:#fff;font-weight:900;box-shadow:0 10px 35px #0008}.playerChatPanel{display:none;width:min(360px,calc(100vw - 18px));height:min(520px,72vh);background:#11182a;border:1px solid #ffffff2d;border-radius:18px;overflow:hidden;box-shadow:0 25px 70px #000b}.playerChatPanel.show{display:grid;grid-template-rows:auto 1fr auto auto}.playerChatPanel header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:#5a167b;color:#fff}.playerChatPanel header button{border:0;background:transparent;color:#fff;font-size:24px}.playerChatMessages{overflow:auto;padding:11px;display:grid;gap:8px;background:#080d18}.playerChatMessage{padding:9px 10px;border-radius:11px;background:#19233a;color:#fff}.playerChatMessage.admin{background:#3b2454;border:1px solid #9867b2}.playerChatMessage small{display:flex;justify-content:space-between;gap:8px;color:#b7c1d5;margin-bottom:4px}.playerChatMessage p{margin:0;word-break:break-word}.playerChatPanel textarea{resize:none;min-height:58px;padding:10px;border:0;border-top:1px solid #ffffff20;background:#121b30;color:#fff}.playerChatSend{border:0;padding:12px;background:#ffca2f;color:#1b1405;font-weight:1000}.playerChatNotice{padding:8px 10px;background:#3f2c0a;color:#ffe39a;font-size:12px}.playerChatBadge:not(:empty){display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:999px;background:#e83e87;margin-left:5px}.day .playerChatPanel{background:#fff;border-color:#d8cde1}.day .playerChatMessages{background:#f4eff7}.day .playerChatMessage{background:#e6deed;color:#23182b}.day .playerChatPanel textarea{background:#fff;color:#23182b}
-      @media(max-width:700px){.playerChatDock{right:7px;bottom:7px}.playerChatPanel{height:68vh}}
+      .playerChatDock{position:fixed;right:9px;bottom:9px;z-index:105}.playerChatToggle{min-height:44px;border:0;border-radius:999px;padding:10px 14px;background:#5a167b;color:#fff;font-weight:1000;box-shadow:0 10px 35px #0008}.playerChatPanel{display:none;position:fixed;left:50%;bottom:8px;transform:translateX(-50%);width:min(520px,calc(100vw - 16px));height:min(570px,76dvh);background:var(--panel);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 25px 70px #000b}.playerChatPanel.show{display:grid;grid-template-rows:auto 1fr auto auto}.playerChatPanel header{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;background:#5a167b;color:#fff}.playerChatPanel header button{border:0;background:transparent;color:#fff;font-size:24px}.playerChatMessages{overflow:auto;padding:10px;display:grid;align-content:start;gap:8px;background:var(--panel3)}.playerChatMessage{padding:9px 10px;border-radius:11px;background:var(--panel2);color:var(--text);border:1px solid var(--border)}.playerChatMessage.admin{background:#3b2454;color:#fff;border-color:#9867b2}.playerChatMessage small{display:flex;justify-content:space-between;gap:8px;color:var(--muted);margin-bottom:4px}.playerChatMessage.admin small{color:#e3cdeb}.playerChatMessage p{margin:0;word-break:break-word}.playerChatComposer{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:end;border-top:1px solid var(--border);background:var(--panel)}.playerChatEmojiButton{width:46px;height:52px;border:0;background:var(--panel2);color:var(--text);font-size:22px}.playerChatPanel textarea{resize:none;min-height:52px;max-height:94px;padding:10px;border:0;background:var(--panel);color:var(--text);outline:none}.playerChatSend{height:52px;border:0;padding:0 14px;background:#ffca2f;color:#1b1405;font-weight:1000}.playerChatNotice{padding:8px 10px;background:#3f2c0a;color:#ffe39a;font-size:12px}.playerEmojiMenu{display:none;grid-template-columns:repeat(8,1fr);gap:4px;padding:8px;border-top:1px solid var(--border);background:var(--panel2)}.playerEmojiMenu.show{display:grid}.playerEmojiMenu button{height:38px;border:1px solid var(--border);border-radius:9px;background:var(--panel3);font-size:21px}.playerChatBadge:not(:empty){display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:999px;background:#e83e87;margin-left:5px}.playerChatToggle:focus-visible,.playerEmojiMenu button:focus-visible{outline:3px solid #ffca2f;outline-offset:2px}
+      @media(max-width:620px){.playerChatDock{right:7px;bottom:7px}.playerChatPanel{bottom:0;width:100%;height:min(650px,78dvh);border-radius:20px 20px 0 0}.playerEmojiMenu{grid-template-columns:repeat(4,1fr)}}
     `;
     document.head.appendChild(style);
     const dock = document.createElement('aside');
     dock.id = 'playerChatDock'; dock.className = 'playerChatDock';
-    dock.innerHTML = `<button id="playerChatToggle" class="playerChatToggle">💬 CHAT <span id="playerChatBadge" class="playerChatBadge"></span></button><section id="playerChatPanel" class="playerChatPanel"><header><b>CHAT PÚBLICO</b><button id="playerChatClose">×</button></header><div id="playerChatMessages" class="playerChatMessages"></div><div id="playerChatNotice" class="playerChatNotice hidden"></div><textarea id="playerChatInput" maxlength="160" placeholder="Escribí un mensaje"></textarea><button id="playerChatSend" class="playerChatSend">ENVIAR</button></section>`;
+    dock.innerHTML = `<button id="playerChatToggle" class="playerChatToggle" type="button">💬 CHAT <span id="playerChatBadge" class="playerChatBadge"></span></button><section id="playerChatPanel" class="playerChatPanel" aria-label="Chat público"><header><b>CHAT PÚBLICO</b><button id="playerChatClose" type="button" aria-label="Cerrar">×</button></header><div id="playerChatMessages" class="playerChatMessages"></div><div id="playerChatNotice" class="playerChatNotice hidden"></div><div id="playerEmojiMenu" class="playerEmojiMenu" aria-label="Emojis"><button type="button" data-emoji="😀">😀</button><button type="button" data-emoji="😂">😂</button><button type="button" data-emoji="😭">😭</button><button type="button" data-emoji="👏">👏</button><button type="button" data-emoji="❤️">❤️</button><button type="button" data-emoji="🍀">🍀</button><button type="button" data-emoji="🎱">🎱</button><button type="button" data-emoji="🎉">🎉</button></div><div class="playerChatComposer"><button id="playerChatEmojiButton" class="playerChatEmojiButton" type="button" aria-label="Elegir emoji">☺</button><textarea id="playerChatInput" maxlength="160" placeholder="Escribí un mensaje"></textarea><button id="playerChatSend" class="playerChatSend" type="button">ENVIAR</button></div></section>`;
     document.body.appendChild(dock);
-    $('playerChatToggle').onclick = () => { $('playerChatPanel').classList.toggle('show'); $('playerChatBadge').textContent = ''; this.renderChat(); };
-    $('playerChatClose').onclick = () => $('playerChatPanel').classList.remove('show');
+    $('playerChatToggle').onclick = () => {
+      const opening = !$('playerChatPanel').classList.contains('show');
+      if (opening) this.closeOtherPanels('chat');
+      $('playerChatPanel').classList.toggle('show', opening);
+      $('playerChatBadge').textContent = '';
+      this.renderChat();
+      if (opening) setTimeout(() => $('playerChatInput').focus({ preventScroll:true }), 80);
+    };
+    $('playerChatClose').onclick = () => this.closeChat();
+    $('playerChatEmojiButton').onclick = () => $('playerEmojiMenu').classList.toggle('show');
+    $('playerEmojiMenu').querySelectorAll('[data-emoji]').forEach(button => button.onclick = () => this.insertChatEmoji(button.dataset.emoji));
     $('playerChatSend').onclick = () => this.sendChat();
     $('playerChatInput').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); this.sendChat(); } });
+  }
+
+  closeChat() {
+    $('playerChatPanel')?.classList.remove('show');
+    $('playerEmojiMenu')?.classList.remove('show');
+  }
+
+  insertChatEmoji(emoji) {
+    const input = $('playerChatInput');
+    if (!input || input.disabled) return;
+    const allowed = ['😀','😂','😭','👏','❤️','🍀','🎱','🎉'];
+    const used = allowed.reduce((total, item) => total + (input.value.split(item).length - 1), 0);
+    if (used >= 4) return this.showMessage('Podés agregar hasta 4 emojis del menú por mensaje.', 'error');
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    input.value = `${input.value.slice(0,start)}${emoji}${input.value.slice(end)}`.slice(0,160);
+    const next = Math.min(input.value.length, start + emoji.length);
+    input.focus(); input.setSelectionRange(next,next);
   }
 
   chatTime(value) {
@@ -189,6 +245,7 @@ class PlayerApp {
     const blocked = chat.enabled === false || chat.locked || chat.muted;
     $('playerChatInput').disabled = blocked;
     $('playerChatSend').disabled = blocked;
+    $('playerChatEmojiButton').disabled = blocked;
     const notice = $('playerChatNotice');
     notice.classList.toggle('hidden', !blocked);
     notice.textContent = chat.enabled === false ? 'El chat está deshabilitado.' : chat.muted ? 'El administrador silenció tu participación.' : chat.locked ? 'El chat está pausado temporalmente.' : '';
@@ -199,8 +256,136 @@ class PlayerApp {
     const input = $('playerChatInput');
     const text = String(input?.value || '').trim();
     if (!text) return;
-    try { await this.request('/api/player/chat', { method:'POST', body:JSON.stringify({ text }) }); input.value = ''; }
-    catch (error) { alert(error.message); }
+    try { await this.request('/api/player/chat', { method:'POST', body:JSON.stringify({ text }) }); input.value = ''; $('playerEmojiMenu').classList.remove('show'); }
+    catch (error) { this.showMessage(error.message, 'error'); }
+  }
+
+
+  closeOtherPanels(except = '') {
+    if (except !== 'chat') this.closeChat();
+    if (except !== 'settings') this.closeSettings();
+    if (except !== 'info') this.closeInfoDrawer();
+  }
+
+  openSettings() {
+    this.closeOtherPanels('settings');
+    this.updateQuickTools();
+    $('settingsOverlay').classList.add('show');
+  }
+
+  closeSettings() { $('settingsOverlay')?.classList.remove('show'); }
+
+  openInfoDrawer(tab = this.drawerTab) {
+    if (!this.state?.active) return;
+    this.closeOtherPanels('info');
+    this.setDrawerTab(tab);
+    $('infoDrawer').classList.add('show');
+    $('infoDrawer').setAttribute('aria-hidden', 'false');
+    $('infoDrawerBackdrop').classList.add('show');
+    $('infoDrawerToggle').textContent = '‹';
+  }
+
+  closeInfoDrawer() {
+    $('infoDrawer')?.classList.remove('show');
+    $('infoDrawer')?.setAttribute('aria-hidden', 'true');
+    $('infoDrawerBackdrop')?.classList.remove('show');
+    if ($('infoDrawerToggle')) $('infoDrawerToggle').textContent = '›';
+  }
+
+  toggleInfoDrawer() {
+    if ($('infoDrawer').classList.contains('show')) this.closeInfoDrawer();
+    else this.openInfoDrawer(this.drawerTab);
+  }
+
+  setDrawerTab(tab) {
+    this.drawerTab = tab === 'numbers' ? 'numbers' : 'winners';
+    $('drawerWinnersTab').classList.toggle('active', this.drawerTab === 'winners');
+    $('drawerNumbersTab').classList.toggle('active', this.drawerTab === 'numbers');
+    $('drawerWinnersPanel').classList.toggle('hidden', this.drawerTab !== 'winners');
+    $('drawerNumbersPanel').classList.toggle('hidden', this.drawerTab !== 'numbers');
+    this.renderInfoDrawer();
+  }
+
+  renderInfoDrawer() {
+    if (!this.state?.active) return;
+    $('drawerSummary').textContent = `Sala ${this.state.roomCode} · ${this.state.game.drawn.length} de ${this.state.game.mode} bolillas`;
+    this.renderWinnersHistory();
+    this.renderSortedNumbers();
+    $('drawerResultActions').classList.toggle('hidden', this.state.status !== 'finished');
+  }
+
+  confirmedWinners() {
+    return (this.state?.publicClaims || []).filter(claim => claim.status === 'confirmed' && claim.winningCard);
+  }
+
+  renderWinnersHistory() {
+    const host = $('drawerWinnersPanel');
+    const winners = this.confirmedWinners();
+    if (!winners.length) {
+      host.innerHTML = '<div class="emptyDrawer">Todavía no hay premios confirmados.</div>';
+      return;
+    }
+    host.innerHTML = winners.map(claim => `<article class="winnerHistoryItem"><header><div><h3>${esc(String(claim.prizeLabel || this.claimLabel(claim.type)).toUpperCase())}</h3><p>${esc(claim.playerName)} · Cartón ${esc(claim.cardNumber)}</p></div><small>${esc(this.chatTime(claim.resolvedAt || claim.createdAt))}</small></header><button type="button" data-winner-id="${esc(claim.id)}">VER CARTÓN GANADOR</button></article>`).join('');
+    host.querySelectorAll('[data-winner-id]').forEach(button => button.onclick = () => this.openWinnerCard(button.dataset.winnerId));
+  }
+
+  renderSortedNumbers() {
+    const host = $('drawerNumbersPanel');
+    const drawn = [...(this.state?.game?.drawn || [])].sort((a,b) => a-b);
+    const last = Number(this.state?.game?.lastBall);
+    if (!drawn.length) {
+      host.innerHTML = '<div class="emptyDrawer">Todavía no salió ninguna bolilla.</div>';
+      return;
+    }
+    const chips = numbers => `<div class="sortedNumbers">${numbers.map(number => `<span class="${number === last ? 'last' : ''}">${String(number).padStart(2,'0')}</span>`).join('')}</div>`;
+    if (Number(this.state.game.mode) === 75) {
+      const groups = [['B',1,15],['I',16,30],['N',31,45],['G',46,60],['O',61,75]];
+      host.innerHTML = `<div class="drawGroups">${groups.map(([letter,min,max]) => `<div class="drawGroup"><strong>${letter}</strong>${chips(drawn.filter(number => number >= min && number <= max))}</div>`).join('')}</div>`;
+    } else host.innerHTML = chips(drawn);
+  }
+
+  resultsUrl() {
+    return this.state?.roomCode ? `/api/results.pdf?sala=${encodeURIComponent(this.state.roomCode)}` : '';
+  }
+
+  openResultsViewer() {
+    if (this.state?.status !== 'finished') return this.showMessage('El acta estará disponible cuando finalice la partida.', 'error');
+    this.closeOtherPanels();
+    this.resultsViewerUrl = this.resultsUrl();
+    $('resultsViewerFrame').src = this.resultsViewerUrl;
+    $('resultsViewerOverlay').classList.add('show');
+  }
+
+  closeResultsViewer() {
+    $('resultsViewerOverlay')?.classList.remove('show');
+    if ($('resultsViewerFrame')) $('resultsViewerFrame').src = 'about:blank';
+  }
+
+  openResultsInNewTab() {
+    const url = this.resultsViewerUrl || this.resultsUrl();
+    if (url) window.open(url, '_blank', 'noopener');
+  }
+
+  beginTicketSwipe(event) {
+    const touch = event.changedTouches?.[0];
+    if (!touch || event.target.closest('button.cell')) return;
+    this.ticketTouchStartX = touch.clientX;
+  }
+
+  endTicketSwipe(event) {
+    const touch = event.changedTouches?.[0];
+    if (this.ticketTouchStartX == null || !touch) return;
+    const delta = touch.clientX - this.ticketTouchStartX;
+    this.ticketTouchStartX = null;
+    if (Math.abs(delta) < 55) return;
+    const cards = this.state?.player?.cards || [];
+    const index = cards.findIndex(card => card.id === this.activeCardId);
+    if (index < 0 || cards.length < 2) return;
+    const next = delta < 0 ? Math.min(cards.length - 1, index + 1) : Math.max(0, index - 1);
+    if (next === index) return;
+    this.activeCardId = cards[next].id;
+    localStorage.setItem('bingoOnlineCard', this.activeCardId);
+    this.renderTabs(); this.renderTicket();
   }
 
   async loadPublicInfo() {
@@ -341,9 +526,10 @@ class PlayerApp {
     localStorage.setItem('bingoOnlineCard', this.activeCardId);
     if (!this.audioPreferenceLoaded) { this.audioEnabled = Boolean(data.roomSettings?.playerAudioDefault); this.audioPreferenceLoaded = true; localStorage.setItem('bingoPlayerSound', String(this.audioEnabled)); }
     $('loginView').classList.add('hidden'); $('gameView').classList.remove('hidden');
-    this.render(); this.renderDemoUi(); this.renderChat(); this.renderPublicClaim(); this.handleOwnPrizeReadiness(); this.handleTestEvent(); this.handleSequence(previous);
-    if ($('drawnOverlay').classList.contains('show')) this.renderDrawnNumbers();
-    if ($('winnerOverlay').classList.contains('show')) this.renderWinnerCard();
+    document.body.classList.add('playerLogged');
+    $('infoDrawerToggle').classList.remove('hidden');
+    this.render(); this.renderDemoUi(); this.renderChat(); this.renderPublicClaim(); this.handleOwnPrizeReadiness(); this.handleTestEvent(); this.handleSequence(previous); this.renderInfoDrawer();
+    if ($('winnerOverlay').classList.contains('show')) this.renderWinnerCard(this.selectedWinnerId);
     const currentCount = data.game.drawn.length;
     if (previousCount !== undefined && data.status === 'playing' && currentCount > previousCount && data.game.lastBall != null) this.speakBall(data.game.lastBall);
     if (!previousConfirmed && data.player.selectionConfirmed) this.showGreetingOnce();
@@ -361,7 +547,7 @@ class PlayerApp {
     if (data.status === 'waiting' || data.status === 'starting') this.renderWaiting(); else this.renderPlaying();
     if (data.status !== 'finished') { this.finalOverlayDismissedFor = ''; $('finalResultsOverlay').classList.remove('show'); }
     else $('finalResultsOverlay').classList.toggle('show', this.finalOverlayDismissedFor !== data.roomCode);
-    this.renderNotice(); this.updateQuickTools();
+    this.renderNotice(); this.updateQuickTools(); this.renderInfoDrawer();
   }
 
   personalPresenterId() {
@@ -375,6 +561,7 @@ class PlayerApp {
     $('autoMarkToggle').classList.toggle('active', Boolean(this.state.player.autoMark));
     $('autoMarkToggle').disabled = Boolean(this.state.player.autoMarkForced || this.state.markingPolicy?.automaticRequired);
     $('autoMarkToggle').title = this.state.markingPolicy?.automaticRequired ? this.state.markingPolicy.reason : 'Activar o desactivar automarcado';
+    $('autoMarkHint').textContent = this.state.markingPolicy?.automaticRequired ? this.state.markingPolicy.reason : 'Marca las bolillas oficiales';
     this.renderAdminMessage();
   }
 
@@ -559,24 +746,24 @@ class PlayerApp {
   }
 
   showGreetingOnce() {
-    if (this.state?.demo?.active) return;
+    if (!this.state) return;
     const key = `bingoGreeting:${this.state.roomCode}:${this.state.player.id}`;
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, '1');
-    setTimeout(() => this.openGuide(false), 250);
   }
 
-  openGuide(manual = false) {
+  openGuide(manual = true) {
     if (!this.state) return;
+    this.closeOtherPanels();
     const id = this.personalPresenterId(), profile = PRESENTERS[id] || PRESENTERS.vero;
     $('guidePresenter').src = `assets/${id}.png`;
-    $('guideGreeting').textContent = manual ? 'Guía rápida de la sala' : `Hola, soy ${profile.name}`;
-    $('guideIntro').textContent = manual ? 'Repasá cómo usar las funciones principales.' : 'Enseguida arranca el sorteo. ¿Necesitás una guía?';
-    $('guideQuestion').classList.toggle('hidden', manual);
-    $('guideSteps').classList.toggle('hidden', !manual);
+    $('guideGreeting').textContent = 'Guía rápida';
+    $('guideIntro').textContent = 'Lo esencial para jugar sin llenar la pantalla de controles.';
+    $('guideQuestion').classList.add('hidden');
+    $('guideSteps').classList.remove('hidden');
     $('guideOverlay').classList.add('show');
-    if (manual) { this.guideStep = 0; this.renderGuideStep(); }
-    else this.speak(profile.greeting || `Hola, soy ${profile.name}. ¿Necesitás una guía?`, true);
+    this.guideStep = 0;
+    this.renderGuideStep();
   }
 
   startGuide() { $('guideQuestion').classList.add('hidden'); $('guideSteps').classList.remove('hidden'); this.guideStep = 0; this.renderGuideStep(); }
@@ -590,19 +777,26 @@ class PlayerApp {
   renderPlaying() {
     $('waitingPanel').classList.add('hidden'); $('playPanel').classList.remove('hidden');
     const drawn = this.state.game.drawn || [];
-    $('lastBall').textContent = this.state.game.lastBall ?? '—'; $('ballCount').textContent = `${drawn.length} de ${this.state.game.mode} sorteadas`;
+    const last = this.state.game.lastBall;
+    if (last == null) $('lastBall').textContent = '—';
+    else if (Number(this.state.game.mode) === 75) {
+      const letter = last <= 15 ? 'B' : last <= 30 ? 'I' : last <= 45 ? 'N' : last <= 60 ? 'G' : 'O';
+      $('lastBall').innerHTML = `<span class="ballLetter">${letter}</span><strong>${last}</strong>`;
+    } else $('lastBall').innerHTML = `<strong>${last}</strong>`;
+    $('ballCount').textContent = `${drawn.length} de ${this.state.game.mode} sorteadas`;
     $('recent').innerHTML = [...drawn].reverse().slice(0,7).map(number => `<i>${number}</i>`).join('');
     $('resultsBtn').disabled = this.state.status !== 'finished'; $('showWinnerBtn').disabled = !this.latestConfirmedWinner();
-    this.renderTabs(); this.renderTicket();
+    this.renderTabs(); this.renderTicket(); this.renderInfoDrawer();
   }
 
   renderTabs() {
     const cards = this.state.player.cards || [];
-    $('cardTabs').innerHTML = cards.map(card => {
+    $('cardTabs').innerHTML = cards.map((card,index) => {
       const ready = this.readinessFor(card.id);
       const anyIntermediate = ready?.tripleLineEligible || ready?.doubleLineEligible || ready?.cornersEligible || ready?.lineEligible || ready?.amboEligible;
       const cls = [card.id === this.activeCardId ? 'active' : '', ready?.bingoEligible ? 'readyBingo' : anyIntermediate ? 'readyLine' : ''].filter(Boolean).join(' ');
-      return `<button data-card="${esc(card.id)}" class="${cls}">CARTÓN ${esc(card.number)}</button>`;
+      const alert = ready?.bingoEligible ? ' · BINGO' : anyIntermediate ? ' · PREMIO' : '';
+      return `<button type="button" role="tab" aria-selected="${card.id === this.activeCardId}" data-card="${esc(card.id)}" class="${cls}">C${index+1} · ${esc(card.number)}${alert}</button>`;
     }).join('');
     $('cardTabs').querySelectorAll('button').forEach(button => button.onclick = () => { this.activeCardId = button.dataset.card; localStorage.setItem('bingoOnlineCard', this.activeCardId); this.renderTabs(); this.renderTicket(); });
   }
@@ -628,10 +822,11 @@ class PlayerApp {
     $('ticketPanel').classList.toggle('mode75Card', Number(card?.mode) === 75);
     if (!card) { $('ticketPanel').innerHTML = '<div class="error">No hay un cartón elegido.</div>'; allButtons.forEach(button => button.disabled = true); return; }
     const marks = new Set((this.state.player.marks?.[card.id] || []).map(Number)), auto = Boolean(this.state.player.autoMark), locked = this.state.status !== 'playing';
-    const cells = card.grid.flat().map(value => value === null ? '<div class="cell blank">·</div>' : value === 'LIBRE' ? '<div class="cell free">LIBRE</div>' : `<button class="cell number ${marks.has(value) ? 'marked' : ''}" data-number="${value}" ${auto || locked ? 'disabled' : ''}>${value}</button>`).join('');
+    const cells = card.grid.flat().map(value => value === null ? '<div class="cell blank">·</div>' : value === 'LIBRE' ? '<div class="cell free"><img src="assets/celebrations/la-gorda-festejando.png" alt="La Gorda"><span>LIBRE</span></div>' : `<button class="cell number ${marks.has(value) ? 'marked' : ''}" data-number="${value}" ${auto || locked ? 'disabled' : ''}>${value}</button>`).join('');
     const readyInfo = this.readinessFor(card.id);
     const progress = Number(card.mode) === 75 ? ` · ${readyInfo?.lineCount || 0} líneas completas` : '';
-    $('ticketPanel').innerHTML = `<div class="ticketHead"><div><b>Cartón ${esc(card.number)}</b><br><small>${esc(this.state.player.name)}</small></div><small>${marks.size} marcados${progress} · ${auto ? 'AUTO' : 'MANUAL'}</small></div><div class="grid mode${card.mode}">${cells}</div>`;
+    const bingoHead = Number(card.mode) === 75 ? '<div class="bingoLetters" aria-hidden="true"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>' : '';
+    $('ticketPanel').innerHTML = `<div class="ticketHead"><div class="ticketMetaMain"><span class="ticketNumberBadge">${esc(card.number)}</span><div><b>Tu cartón</b><br><small>${esc(this.state.player.name)}</small></div></div><small class="ticketHeadStatus">${marks.size} marcados${progress}<br>${auto ? 'AUTOMÁTICO' : 'MANUAL'}</small></div>${bingoHead}<div class="grid mode${card.mode}">${cells}</div>`;
     if (!auto && !locked) $('ticketPanel').querySelectorAll('[data-number]').forEach(button => button.onclick = () => this.toggleMark(card.id, Number(button.dataset.number), !button.classList.contains('marked')));
 
     const prizes = this.state.prizeStatus || {}, pending = (this.state.publicClaims || []).some(claim => claim.status === 'pending');
@@ -683,7 +878,9 @@ class PlayerApp {
     [$('claimAmbo'),$('claimCorners'),$('claimLine'),$('claimDoubleLine'),$('claimTripleLine'),$('claimBingo')].forEach(button => button.disabled = true);
     try {
       const claim = await this.request('/api/player/claim', { method:'POST', body:JSON.stringify({ cardId:card.id, type }) });
-      this.showMessage(`${label} enviado. El administrador ya recibió el aviso.`, 'notice');
+      const receiptTime = claim.receivedAt ? new Date(claim.receivedAt).toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', second:'2-digit', fractionalSecondDigits:3 }) : '';
+      const receipt = claim.receivedSequence ? ` · Recepción #${claim.receivedSequence}` : '';
+      this.showMessage(`${label} recibido${receipt}${receiptTime ? ` · ${receiptTime}` : ''}.`, 'notice');
       if (!claim.officialValid) this.showMessage(`El control oficial todavía no detecta ${label}.`, 'error');
     } catch (error) { this.showMessage(error.message, 'error'); }
     finally { this.renderTicket(); }
@@ -778,7 +975,7 @@ class PlayerApp {
     return spanish.find(voice => /female|femen|mujer|sofia|paulina|paloma|ximena|laura|lucia|maria|camila|valentina/i.test(voice.name)) || spanish[0] || this.voices[0];
   }
   speak(text, priority = false) {
-    if (!this.audioEnabled || this.state?.roomSettings?.playerAudioAllowed === false || !window.speechSynthesis || !text) return;
+    if (!this.voiceEnabled || this.state?.roomSettings?.playerAudioAllowed === false || !window.speechSynthesis || !text) return;
     const id = this.personalPresenterId(), profile = PRESENTERS[id] || { rate:1,pitch:1 };
     const utterance = new SpeechSynthesisUtterance(text), voice = this.preferredVoice(id);
     if (voice) { utterance.voice = voice; utterance.lang = voice.lang; } else utterance.lang = 'es-AR';
@@ -790,6 +987,7 @@ class PlayerApp {
 
   openPresenterChoice() {
     if (!this.state) return;
+    this.closeSettings();
     const current = this.personalPresenterId();
     $('presenterChoices').innerHTML = Object.entries(PRESENTERS).map(([id, profile]) => `<button class="presenterChoice ${id === current ? 'active' : ''}" data-presenter="${esc(id)}"><img src="assets/${esc(id)}.png" alt="${esc(profile.name)}"><span>${esc(profile.name)}<br><small>Cambiar mi suerte</small></span></button>`).join('');
     $('presenterChoices').querySelectorAll('[data-presenter]').forEach(button => button.onclick = () => this.changePresenter(button.dataset.presenter));
@@ -806,9 +1004,51 @@ class PlayerApp {
     } catch (error) { this.showMessage(error.message, 'error'); }
   }
 
-  setAudioEnabled(enabled) { this.audioEnabled = Boolean(enabled); localStorage.setItem('bingoPlayerSound', String(this.audioEnabled)); this.updateQuickTools(); if (this.audioEnabled && this.state) this.speak((PRESENTERS[this.personalPresenterId()] || PRESENTERS.vero).preview, true); }
+  setAudioEnabled(enabled) {
+    this.audioEnabled = Boolean(enabled);
+    localStorage.setItem('bingoPlayerSound', String(this.audioEnabled));
+    this.updateQuickTools();
+    if (this.audioEnabled) this.playAlertSound('line');
+  }
+
+  setVoiceEnabled(enabled) {
+    this.voiceEnabled = Boolean(enabled);
+    localStorage.setItem('bingoPlayerVoice', String(this.voiceEnabled));
+    if (!this.voiceEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
+    this.updateQuickTools();
+    if (this.voiceEnabled && this.state) this.speak((PRESENTERS[this.personalPresenterId()] || PRESENTERS.vero).preview, true);
+  }
+
+  setVolume(value, persist = true) {
+    this.audioVolume = Math.max(0, Math.min(1, Number(value) || 0));
+    if (persist) localStorage.setItem('bingoPlayerVolume', String(this.audioVolume));
+    if ($('volumeRange')) $('volumeRange').value = String(Math.round(this.audioVolume * 100));
+    if ($('volumeValue')) $('volumeValue').textContent = `${Math.round(this.audioVolume * 100)}%`;
+  }
+
+  setLargeNumbers(enabled, persist = true) {
+    this.largeNumbers = Boolean(enabled);
+    if (persist) localStorage.setItem('bingoPlayerLargeNumbers', String(this.largeNumbers));
+    document.body.classList.toggle('largeNumbers', this.largeNumbers);
+    this.updateQuickTools();
+  }
+
   setAlertsEnabled(enabled) { this.alertsEnabled = Boolean(enabled); localStorage.setItem('bingoPlayerAlerts', String(this.alertsEnabled)); this.updateQuickTools(); }
-  updateQuickTools() { $('soundToggle')?.classList.toggle('active', this.audioEnabled); $('alertsToggle')?.classList.toggle('active', this.alertsEnabled); $('autoMarkToggle')?.classList.toggle('active', Boolean(this.state?.player?.autoMark)); }
+
+  updateQuickTools() {
+    const update = (id, active, on, off) => {
+      const button = $(id); if (!button) return;
+      button.classList.toggle('active', Boolean(active));
+      button.setAttribute('aria-pressed', String(Boolean(active)));
+      button.textContent = active ? on : off;
+    };
+    update('soundToggle', this.audioEnabled, 'ACTIVADOS', 'DESACTIVADOS');
+    update('voiceToggle', this.voiceEnabled, 'ACTIVADA', 'DESACTIVADA');
+    update('numberSizeToggle', this.largeNumbers, 'GRANDES', 'NORMAL');
+    update('autoMarkToggle', Boolean(this.state?.player?.autoMark), 'ACTIVADO', 'DESACTIVADO');
+    $('alertsToggle')?.classList.toggle('active', this.alertsEnabled);
+    this.setVolume(this.audioVolume, false);
+  }
 
   renderPublicClaim() {
     const claim = (this.state?.publicClaims || []).at(-1); if (!claim) return;
@@ -847,11 +1087,11 @@ class PlayerApp {
   }
 
   playAlertSound(kind) {
-    if (!this.audioEnabled) return;
+    if (!this.audioEnabled || this.audioVolume <= 0) return;
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext; if (!AudioCtx) return; const ctx = new AudioCtx();
       const seq = kind === 'bingo' || kind === 'confirmed' ? [523,659,784,1047] : kind === 'rejected' ? [330,247] : [660,880];
-      seq.forEach((frequency,index) => { const osc=ctx.createOscillator(), gain=ctx.createGain(), start=ctx.currentTime+index*.13; osc.frequency.value=frequency; gain.gain.setValueAtTime(.0001,start); gain.gain.exponentialRampToValueAtTime(.13,start+.025); gain.gain.exponentialRampToValueAtTime(.0001,start+.18); osc.connect(gain).connect(ctx.destination); osc.start(start); osc.stop(start+.2); });
+      seq.forEach((frequency,index) => { const osc=ctx.createOscillator(), gain=ctx.createGain(), start=ctx.currentTime+index*.13; osc.frequency.value=frequency; gain.gain.setValueAtTime(.0001,start); gain.gain.exponentialRampToValueAtTime(Math.max(.001,.13*this.audioVolume),start+.025); gain.gain.exponentialRampToValueAtTime(.0001,start+.18); osc.connect(gain).connect(ctx.destination); osc.start(start); osc.stop(start+.2); });
       setTimeout(() => ctx.close().catch(()=>{}), 1200);
     } catch {}
   }
@@ -863,20 +1103,22 @@ class PlayerApp {
     this.showClaimOverlay({ kind:event.type, icon:'🔔', title:`PRUEBA DE ${String(event.type).toUpperCase()}`, text:event.text || 'Prueba del administrador.', duration:4200 }); this.playAlertSound(event.type);
   }
 
-  latestConfirmedWinner() { return [...(this.state?.publicClaims || [])].reverse().find(claim => claim.status === 'confirmed' && claim.winningCard) || null; }
-  openDrawnNumbers() { this.renderDrawnNumbers(); $('drawnOverlay').classList.add('show'); }
-  renderDrawnNumbers() {
-    const drawn = this.state?.game?.drawn || [], set = new Set(drawn);
-    $('drawnSummary').textContent = `${drawn.length} de ${this.state?.game?.mode || 90} números`;
-    $('drawBoard').innerHTML = Array.from({ length:this.state?.game?.mode || 90 },(_,i)=>i+1).map(number => `<div class="drawNumber ${set.has(number)?'drawn':''}">${number}</div>`).join('');
-    $('drawOrder').innerHTML = drawn.map((number,index)=>`<span>${index+1}. <b>${number}</b></span>`).join('');
+  latestConfirmedWinner() { return [...this.confirmedWinners()].reverse()[0] || null; }
+  openDrawnNumbers() { this.openInfoDrawer('numbers'); }
+  renderDrawnNumbers() { this.renderSortedNumbers(); }
+  openWinnerCard(claimId = '') {
+    this.selectedWinnerId = claimId || this.latestConfirmedWinner()?.id || '';
+    this.renderWinnerCard(this.selectedWinnerId);
+    $('winnerOverlay').classList.add('show');
   }
-  openWinnerCard() { this.renderWinnerCard(); $('winnerOverlay').classList.add('show'); }
-  renderWinnerCard() {
-    const claim = this.latestConfirmedWinner(); if (!claim?.winningCard) return $('winnerContent').innerHTML = '<div class="notice">Todavía no hay un ganador confirmado.</div>';
+  renderWinnerCard(claimId = '') {
+    const claim = this.confirmedWinners().find(item => item.id === claimId) || this.latestConfirmedWinner();
+    if (!claim?.winningCard) return $('winnerContent').innerHTML = '<div class="notice">Todavía no hay un ganador confirmado.</div>';
+    this.selectedWinnerId = claim.id;
     const card=claim.winningCard, official=new Set((claim.officialMarked||[]).map(Number)), winning=new Set((claim.winningNumbers||[]).map(Number));
     const cells=card.grid.flat().map(value=>value===null?'<div class="winnerCell blank">·</div>':value==='LIBRE'?`<div class="winnerCell free${claim.type==='bingo'?' winning':''}">LIBRE</div>`:`<div class="winnerCell ${official.has(value)?'official':''} ${winning.has(value)?'winning':''}">${value}</div>`).join('');
-    $('winnerContent').innerHTML=`<div class="winnerSummary"><b>${esc(String(claim.prizeLabel||'PREMIO').toUpperCase())} CONFIRMADO</b><br>${esc(claim.playerName)} · Cartón ${esc(claim.cardNumber)}</div><div class="winnerGrid mode${card.mode}">${cells}</div>`;
+    const resolved = claim.resolvedAt || claim.createdAt;
+    $('winnerContent').innerHTML=`<div class="winnerSummary"><b>${esc(String(claim.prizeLabel||'PREMIO').toUpperCase())} CONFIRMADO</b><br>${esc(claim.playerName)} · Cartón ${esc(claim.cardNumber)}<br><small>${esc(this.chatTime(resolved))}</small></div><div class="winnerGrid mode${card.mode}">${cells}</div>`;
   }
 
   async downloadResults() { if (this.state?.status !== 'finished') return; this.downloadFile(`/api/results.pdf?sala=${encodeURIComponent(this.state.roomCode)}`, `Resultados_Bingo_${this.state.roomCode}.pdf`); }
@@ -912,15 +1154,37 @@ class PlayerApp {
   closeModal(id) { $(id)?.classList.remove('show'); }
 
   toggleTheme() { this.theme=this.theme==='day'?'night':'day'; localStorage.setItem('bingoPlayerTheme',this.theme); this.applyTheme(); }
-  applyTheme() { document.documentElement.dataset.theme=this.theme; $('themeToggle').textContent=this.theme==='day'?'🌙':'☀️'; }
+  applyTheme() {
+    document.documentElement.dataset.theme=this.theme;
+    $('themeToggle').textContent=this.theme==='day'?'☾':'☀';
+    $('themeToggle').title=this.theme==='day'?'Activar modo nocturno':'Activar modo claro';
+  }
+
+  updateFullscreenButton() {
+    const button = $('fullScreenBtn'); if (!button) return;
+    button.textContent = '⛶';
+    button.classList.toggle('active', this.focusMode);
+    button.title = this.focusMode ? 'Salir de pantalla completa' : 'Pantalla completa';
+    button.setAttribute('aria-label', button.title);
+  }
+
   async setFocusMode(enabled) {
-    this.focusMode=Boolean(enabled); document.body.classList.toggle('focusMode',this.focusMode);
-    if(this.focusMode){try{if(document.documentElement.requestFullscreen&&!document.fullscreenElement){await document.documentElement.requestFullscreen();this.fullscreenApiActive=true;}}catch{} window.scrollTo({top:0});return;}
-    if(document.fullscreenElement&&document.exitFullscreen)try{await document.exitFullscreen();}catch{} this.fullscreenApiActive=false;
+    this.focusMode=Boolean(enabled);
+    document.body.classList.toggle('focusMode',this.focusMode);
+    this.updateFullscreenButton();
+    if(this.focusMode){
+      try{if(document.documentElement.requestFullscreen&&!document.fullscreenElement){await document.documentElement.requestFullscreen();this.fullscreenApiActive=true;}}catch{}
+      window.scrollTo({top:0});
+      return;
+    }
+    if(document.fullscreenElement&&document.exitFullscreen)try{await document.exitFullscreen();}catch{}
+    this.fullscreenApiActive=false;
+    this.updateFullscreenButton();
   }
 
   logout(reload=true) {
-    this.events?.close(); clearInterval(this.sequenceTimer); this.setFocusMode(false); this.token=''; this.state=null; this.roomClosedShown=false; localStorage.removeItem('bingoOnlineToken'); localStorage.removeItem('bingoOnlineCard');
+    this.events?.close(); clearInterval(this.sequenceTimer); this.setFocusMode(false); this.closeOtherPanels(); this.closeResultsViewer(); this.token=''; this.state=null; this.roomClosedShown=false; localStorage.removeItem('bingoOnlineToken'); localStorage.removeItem('bingoOnlineCard');
+    document.body.classList.remove('playerLogged'); $('infoDrawerToggle').classList.add('hidden');
     if(reload) location.reload(); else { $('gameView').classList.add('hidden'); $('loginView').classList.remove('hidden'); }
   }
 }

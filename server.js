@@ -66,7 +66,7 @@ const DEMO_CLAIM_WINDOW_MS = 1600;
 const DEMO_START_SEQUENCE_MS = 3200;
 const DEMO_RESUME_SEQUENCE_MS = 1400;
 const DEMO_FINAL_SEQUENCE_MS = 2600;
-const APP_PUBLIC_VERSION = '2026.3';
+const APP_PUBLIC_VERSION = '2026.4';
 const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bingo'];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
@@ -900,31 +900,41 @@ function processAssignmentDeadline() {
 }
 
 function publicClaimsPayload() {
-  return state.claims.slice(-10).map(claim => {
-    const payload = {
-      id: claim.id,
-      type: claim.type,
-      playerName: claim.playerName,
-      cardNumber: claim.cardNumber,
-      createdAt: claim.createdAt,
-      status: claim.status,
-      resolvedAt: claim.resolvedAt || null,
-      prizeNumber: claim.prizeNumber || 1,
-      prizeLabel: claim.prizeLabel || prizeLabelFor(claim.type, claim.prizeNumber, state.game?.mode)
-    };
-    if (claim.status === 'confirmed') {
-      const card = state.game?.cards?.find(item => item.id === claim.cardId);
-      if (card) {
-        const details = winningDetailsForClaim(claim);
-        payload.winningCard = { id: card.id, number: card.number, name: card.name, mode: card.mode, grid: card.grid, bets: card.bets };
-        payload.drawnAtClaim = claim.drawnAtClaim || [];
-        payload.officialMarked = claim.comparison?.officialMarked || cardNumbers(card).filter(number => payload.drawnAtClaim.includes(number));
-        payload.winningNumbers = winningNumbersForClaim(claim, card);
-        payload.winningLineLabel = details.map(detail => detail.label).join(' · ') || null;
+  const selected = new Map();
+  for (const claim of state.claims.filter(item => item.status === 'confirmed')) selected.set(claim.id, claim);
+  for (const claim of state.claims.slice(-10)) selected.set(claim.id, claim);
+  return [...selected.values()]
+    .sort((left, right) => Number(left.receivedSequence || 0) - Number(right.receivedSequence || 0))
+    .map(claim => {
+      const payload = {
+        id: claim.id,
+        type: claim.type,
+        playerName: claim.playerName,
+        cardNumber: claim.cardNumber,
+        createdAt: claim.createdAt,
+        receivedAt: claim.receivedAt || claim.createdAt,
+        receivedSequence: claim.receivedSequence || null,
+        deltaFromFirstMs: Number(claim.deltaFromFirstMs) || 0,
+        officialValid: Boolean(claim.officialValid),
+        status: claim.status,
+        resolvedAt: claim.resolvedAt || null,
+        resolutionReason: claim.resolutionReason || null,
+        prizeNumber: claim.prizeNumber || 1,
+        prizeLabel: claim.prizeLabel || prizeLabelFor(claim.type, claim.prizeNumber, state.game?.mode)
+      };
+      if (claim.status === 'confirmed') {
+        const card = state.game?.cards?.find(item => item.id === claim.cardId);
+        if (card) {
+          const details = winningDetailsForClaim(claim);
+          payload.winningCard = { id: card.id, number: card.number, name: card.name, mode: card.mode, grid: card.grid, bets: card.bets };
+          payload.drawnAtClaim = claim.drawnAtClaim || [];
+          payload.officialMarked = claim.comparison?.officialMarked || cardNumbers(card).filter(number => payload.drawnAtClaim.includes(number));
+          payload.winningNumbers = winningNumbersForClaim(claim, card);
+          payload.winningLineLabel = details.map(detail => detail.label).join(' · ') || null;
+        }
       }
-    }
-    return payload;
-  });
+      return payload;
+    });
 }
 
 function claimStateForCard(cardId, type) {
@@ -3163,7 +3173,7 @@ function buildResultsPdf() {
   rect(19, 10, 70, 70, COLORS.white, '#F2D3E2', 1);
   image(24, 15, 60, 60);
   text('RESULTADOS OFICIALES DEL SORTEO', 101, 18, 20, { bold: true, color: COLORS.white, maxWidth: 390 });
-  text(acta.demo ? 'DEMOSTRACIÓN - SIN VALIDEZ OFICIAL' : 'BINGO GORDA 2026.3', 101, 47, 11, { bold: true, color: '#F7DDF0' });
+  text(acta.demo ? 'DEMOSTRACIÓN - SIN VALIDEZ OFICIAL' : 'BINGO GORDA 2026.4', 101, 47, 11, { bold: true, color: '#F7DDF0' });
   text(`Sala ${acta.roomCode}  ·  Juego ${acta.gameNumber}  ·  Bingo ${acta.mode}`, 101, 65, 8.5, { color: '#E8D7EE' });
 
   const metaX = 510;
@@ -3370,7 +3380,7 @@ function buildResultsPdf() {
   });
 
   text(`Documento oficial generado al cerrar el sorteo · Sala ${acta.roomCode} · Ronda ${acta.round}`, 24, 582, 5.8, { color: COLORS.muted });
-  text(acta.demo ? 'DEMO' : 'BINGO GORDA 2026.3', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
+  text(acta.demo ? 'DEMO' : 'BINGO GORDA 2026.4', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
 
   const stream = commands.join('\n');
   const logoPath = path.join(ROOT, 'assets', 'logo-pdf.jpg');

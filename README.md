@@ -1,6 +1,21 @@
-# BINGO GORDA 2026.3
+# BINGO GORDA 2026.4
 
 Aplicación web de bingo de 75 y 90 bolas con servidor Node.js, acceso de jugadores, transmisión, chat público, actas auditables y demostración jugable.
+
+## Pantalla del jugador 2026.4
+
+La interfaz móvil muestra un cartón grande por vez y permite cambiar entre los cartones mediante pestañas o un gesto lateral. Mantiene la paleta original del juego, moderniza el encabezado BINGO y usa a La Gorda en la casilla central LIBRE de los cartones de 75 bolas.
+
+La barra superior incluye accesos compactos a:
+
+- Ajustes esenciales.
+- Tema día/noche.
+- Guía rápida.
+- Pantalla completa.
+
+La pantalla completa abarca toda la aplicación y no oculta el chat, los ajustes ni los paneles. El chat incluye un menú cerrado de ocho emojis: 😀 😂 😭 👏 ❤️ 🍀 🎱 🎉.
+
+Una pestaña lateral permite consultar ganadores confirmados y números salidos. Los números se presentan ordenados de menor a mayor; en 75 bolas se agrupan por B, I, N, G y O. Al terminar la partida, el acta PDF puede verse dentro del juego y también descargarse.
 
 ## Demostración para jugadores
 
@@ -12,8 +27,6 @@ Abrí `/demo` y elegí:
 - Intervalo de 2, 4, 6 u 8 segundos.
 
 El servidor crea cartones aleatorios y diferentes para todos. Zoe, Mateo y Owen reciben dos cartones cada uno. El visitante entra directamente como jugador, con automarcado obligatorio, y debe reclamar manualmente antes que las IA.
-
-Los reclamos de la demostración se validan automáticamente. La partida se reanuda sin panel administrativo y termina con el mismo registro temporal y secuencial usado por el sistema real.
 
 ## Funciones principales
 

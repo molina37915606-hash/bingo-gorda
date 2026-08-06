@@ -11,8 +11,8 @@ const { spawn } = require('child_process');
 const root = path.resolve(__dirname, '..');
 const port = 47000 + Math.floor(Math.random() * 500);
 const base = `http://127.0.0.1:${port}`;
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-gorda-2026-3-'));
-const password = 'clave-prueba-2026-3';
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-gorda-2026-4-'));
+const password = 'clave-prueba-2026-4';
 const child = spawn(process.execPath, ['server.js'], {
   cwd: root,
   env: {
@@ -181,11 +181,20 @@ async function drawMany(adminHeaders, count) {
     await waitForServer();
 
     let result = await json('/healthz');
-    assert.equal(result.data.version, '2026.3');
+    assert.equal(result.data.version, '2026.4');
     const demoHtml = await (await fetch(base + '/demo')).text();
     assert(demoHtml.includes('Jugá una partida real y rápida'));
     assert(demoHtml.includes('CREAR Y COMENZAR PARTIDA'));
     assert(demoHtml.includes('Zoe, Mateo y Owen'));
+    const playerHtml = await (await fetch(base + '/jugador')).text();
+    assert(playerHtml.includes('id="settingsToggle"'));
+    assert(playerHtml.includes('id="infoDrawer"'));
+    assert(playerHtml.includes('id="resultsViewerOverlay"'));
+    assert(playerHtml.includes('id="voiceToggle"'));
+    assert(playerHtml.includes('VER ACTA COMPLETA'));
+    const playerJs = await (await fetch(base + '/js/online-room-player.js')).text();
+    for (const emoji of ['😀','😂','😭','👏','❤️','🍀','🎱','🎉']) assert(playerJs.includes(`data-emoji="${emoji}"`));
+    assert(playerJs.includes('renderSortedNumbers'));
 
     result = await json('/api/master/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password })
@@ -319,7 +328,7 @@ async function drawMany(adminHeaders, count) {
     assert.equal(state.game.drawn.length, 75);
 
     const acta = (await json('/api/admin/acta', { headers: adminHeaders })).data;
-    assert.equal(acta.version, '2026.3');
+    assert.equal(acta.version, '2026.4');
     assert.equal(acta.categories.bingo.status, 'confirmed');
     const bingoWinner = acta.categories.bingo.winners[0];
     assert.equal(bingoWinner.receivedSequence, bingo1.data.receivedSequence);
@@ -431,7 +440,7 @@ async function drawMany(adminHeaders, count) {
     assert.equal(state.chat.messages.length, 60);
     controllers.forEach(controller => controller.abort());
 
-    console.log('PRUEBAS BINGO GORDA 2026.3: OK');
+    console.log('PRUEBAS BINGO GORDA 2026.4: OK');
   } catch (error) {
     console.error(error);
     console.error(logs);

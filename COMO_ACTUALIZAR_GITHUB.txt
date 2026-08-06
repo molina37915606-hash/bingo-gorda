@@ -5,4 +5,4 @@ ACTUALIZAR GITHUB CON BINGO GORDA 2026
 3. Conservá en Render las variables MASTER_ADMIN_PASSWORD, PUBLIC_URL y BINGO_DATA_DIR.
 4. Subí los cambios y verificá que la acción automática de pruebas termine correctamente.
 
-Etiqueta sugerida: bingo-gorda-2026.3
+Etiqueta sugerida: bingo-gorda-2026.4

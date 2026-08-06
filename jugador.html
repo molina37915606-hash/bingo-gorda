@@ -46,11 +46,27 @@ html[data-theme="day"]{--bg:#edf2f8;--bg2:#dfe7f1;--panel:#ffffff;--panel2:#edf3
 .focusMode .ticketCard.mode75Card .grid.mode75 .cell{aspect-ratio:1.42;font-size:clamp(24px,4vw,35px)}
 @media(max-height:800px) and (min-width:621px){.ticketCard.mode75Card{width:min(420px,100%)}.ticketCard.mode75Card .grid.mode75 .cell{font-size:24px}.ballArea{grid-template-columns:76px 1fr}.lastBall{width:76px;height:76px;font-size:35px}}
 @media(max-width:620px){.ticketCard.mode75Card{width:min(390px,100%)}.ticketCard.mode75Card .grid.mode75 .cell{aspect-ratio:1.28;font-size:clamp(18px,5.4vw,27px)}.claimBar{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+
+/* BINGO GORDA 2026.4 · primera etapa visual del jugador */
+.playerTopbar{position:sticky;top:5px;z-index:35;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:8px 9px;margin-bottom:7px;border-radius:14px;backdrop-filter:blur(12px)}
+.topIdentity{display:flex;min-width:0;align-items:center;gap:8px}.topIdentity img{width:38px;height:38px;object-fit:contain;flex:0 0 auto}.topIdentity>div{min-width:0}.topIdentity .playerName{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.topIdentity small{display:block;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.topActions{display:flex;gap:4px}.topActions .iconBtn{width:38px;height:38px;border-radius:10px;font-size:19px;padding:0}.topActions #helpBtn{font-family:Arial,sans-serif;font-size:20px}.topActions .iconBtn.active{border-color:var(--gold);box-shadow:0 0 0 2px #ffca2f35}.playerTopbar .status{width:12px;height:12px;padding:0;border:0;font-size:0;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 20%,transparent)}.playerTopbar .status.on{color:#2ee59d;background:#159c69}.playerTopbar .status.off{color:#ff728a;background:#d62f50}.playerTopbar .status.wait{color:#ffd45c;background:#b67a0b}
+.standaloneMessage{margin:8px 2px 6px}.drawCard{padding:10px 12px}.drawCard .ballArea{grid-template-columns:82px minmax(0,1fr)}.drawCard .lastBall{width:82px;height:82px;font-size:38px}.lastBall .ballLetter{display:block;font-size:15px;line-height:1;margin-right:3px;align-self:center}.lastBall strong{font-size:inherit;line-height:1}.lastBall{gap:2px}.drawCard .lastMeta b{font-size:13px;letter-spacing:.05em}.drawCard .recent{flex-wrap:nowrap;overflow:hidden}.drawCard .recent i{flex:0 0 30px;width:30px;height:30px;font-size:12px}
+.tabs{scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tabs button{position:relative;min-width:92px;padding:9px 7px;border-radius:10px;background:var(--panel);transition:transform .14s,border-color .14s,background .14s}.tabs button.active{background:var(--panel2);border-color:#b58ae8;color:var(--text);box-shadow:inset 0 -3px 0 #9c54e8}.tabs button.active::after{content:"";position:absolute;left:26%;right:26%;bottom:2px;height:2px;border-radius:99px;background:var(--gold)}
+.ticketCard{border-radius:16px}.ticketHead{align-items:center}.ticketHead .ticketMetaMain{display:flex;align-items:center;gap:8px}.ticketNumberBadge{display:inline-grid;place-items:center;min-width:42px;height:30px;padding:0 8px;border-radius:9px;background:#6f32ad;color:#fff;font-size:14px;font-weight:1000}.ticketHeadStatus{text-align:right}.bingoLetters{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:0 0 5px}.bingoLetters span{display:grid;place-items:center;height:32px;border-radius:8px;background:linear-gradient(180deg,#9148d5,#5f239a);border:1px solid #cda6ef;color:#fff;font:1000 20px/1 "Arial Black",Impact,system-ui,sans-serif;letter-spacing:.04em;text-shadow:0 2px 0 #3a0f65;box-shadow:inset 0 -3px 0 #3e146d}
+.cell.free{position:relative;overflow:hidden;padding:0;background:linear-gradient(145deg,#5a1f88,#8e4abb);border-color:#d6b1ef}.cell.free img{width:100%;height:100%;object-fit:cover;object-position:center 28%;filter:saturate(.95) contrast(1.04)}.cell.free span{position:absolute;left:2px;right:2px;bottom:2px;padding:2px 1px;border-radius:4px;background:#170622d9;color:#fff;font-size:clamp(7px,2vw,11px);font-weight:1000;letter-spacing:.08em;text-shadow:0 1px 1px #000}
+.largeNumbers .grid.mode75 .cell{font-size:clamp(25px,7.2vw,39px)}.largeNumbers .grid.mode90 .cell{font-size:clamp(19px,5.4vw,29px)}
+.sheetOverlay{position:fixed;inset:0;z-index:150;display:none;align-items:flex-end;justify-content:center;background:var(--overlay);padding:10px}.sheetOverlay.show{display:flex}.settingsSheet{width:min(520px,100%);max-height:88vh;overflow:auto;padding:14px;border:1px solid var(--border);border-radius:22px 22px 14px 14px;background:var(--panel);box-shadow:0 -20px 65px #0009}.sheetHead,.drawerHead{display:flex;justify-content:space-between;align-items:center;gap:10px}.sheetHead h2{margin:0}.sheetHead small,.drawerHead small{display:block;color:var(--muted);margin-top:2px}.settingsPresenter{display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;gap:10px;margin:13px 0 6px;padding:10px;border-radius:14px;background:var(--panel2);border:1px solid var(--border)}.settingsPresenter img{width:52px;height:52px;border-radius:12px;object-fit:cover}.settingsPresenter b,.settingsPresenter small{display:block}.settingsPresenter small{color:var(--muted);margin-top:2px}.smallAction{min-height:38px;border:1px solid var(--border);border-radius:10px;background:var(--panel3);color:var(--text);font-size:11px;font-weight:1000;padding:6px 10px}.settingRow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 2px;border-bottom:1px solid var(--border)}.settingRow b,.settingRow small{display:block}.settingRow small{color:var(--muted);font-size:11px;margin-top:3px}.switchButton{min-width:98px;min-height:39px;border:1px solid var(--border);border-radius:999px;background:var(--panel3);color:var(--muted);font-size:10px;font-weight:1000;padding:7px 11px}.switchButton.active{background:#1a704f;color:#dcfff0;border-color:#35b880}.switchButton:disabled{opacity:.55}.settingRange{display:block;padding:13px 2px;border-bottom:1px solid var(--border)}.settingRange span{display:flex;justify-content:space-between;gap:10px}.settingRange output{color:var(--gold);font-weight:1000}.settingRange input{width:100%;margin-top:10px}
+.infoDrawerToggle{position:fixed;left:0;top:49%;z-index:92;width:29px;height:62px;border:1px solid var(--border);border-left:0;border-radius:0 13px 13px 0;background:#6f32ad;color:#fff;font-size:30px;line-height:1;box-shadow:8px 8px 28px #0007}.drawerBackdrop{position:fixed;inset:0;z-index:89;display:none;background:#0008}.drawerBackdrop.show{display:block}.infoDrawer{position:fixed;left:0;top:0;bottom:0;z-index:95;width:min(430px,92vw);padding:12px;transform:translateX(-104%);transition:transform .22s ease;background:var(--panel);border-right:1px solid var(--border);box-shadow:25px 0 70px #000b;overflow:auto}.infoDrawer.show{transform:translateX(0)}.drawerHead{padding:4px 1px 11px}.drawerHead b{font-size:13px}.drawerTabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;position:sticky;top:-12px;z-index:2;padding:8px 0;background:var(--panel)}.drawerTabs button{min-height:42px;border:1px solid var(--border);border-radius:10px;background:var(--panel3);color:var(--muted);font-size:11px;font-weight:1000}.drawerTabs button.active{background:#6f32ad;color:#fff;border-color:#c69ce9}.drawerPanel{display:grid;gap:9px;padding:4px 0 12px}.winnerHistoryItem{padding:11px;border:1px solid var(--border);border-radius:13px;background:var(--panel2)}.winnerHistoryItem header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}.winnerHistoryItem h3{margin:0;font-size:14px}.winnerHistoryItem p{margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.4}.winnerHistoryItem button{margin-top:9px;width:100%;min-height:38px;border:1px solid var(--border);border-radius:9px;background:var(--panel3);color:var(--text);font-weight:1000}.emptyDrawer{padding:28px 12px;text-align:center;color:var(--muted);border:1px dashed var(--border);border-radius:14px}.drawGroups{display:grid;gap:10px}.drawGroup{display:grid;grid-template-columns:30px 1fr;gap:8px;align-items:start}.drawGroup>strong{display:grid;place-items:center;height:30px;border-radius:8px;background:#6f32ad;color:#fff}.sortedNumbers{display:flex;flex-wrap:wrap;gap:5px}.sortedNumbers span{display:grid;place-items:center;min-width:31px;height:31px;padding:0 5px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);font-weight:1000;font-size:13px}.sortedNumbers span.last{background:var(--gold);color:var(--goldText);border-color:#fff1a3;box-shadow:0 0 0 2px #ffca2f44}.drawerResultActions{display:grid;gap:7px;padding:11px 0 2px;border-top:1px solid var(--border)}.drawerResultActions .btn{margin:0}
+.resultsViewerOverlay{position:fixed;inset:0;z-index:170;display:none;background:var(--overlay);padding:8px}.resultsViewerOverlay.show{display:flex}.resultsViewerCard{display:grid;grid-template-rows:auto 1fr;width:min(1100px,100%);height:calc(100dvh - 16px);margin:auto;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:var(--panel);box-shadow:0 25px 90px #000c}.resultsViewerCard>header{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 11px;border-bottom:1px solid var(--border)}.resultsViewerCard h2{font-size:16px;margin:0}.resultsViewerCard small{color:var(--muted)}.resultsViewerButtons{display:flex;gap:5px}.resultsViewerButtons .iconBtn{width:38px;height:38px}.resultsViewerCard iframe{width:100%;height:100%;border:0;background:#d7d7d7}
+.playerLogged #loginBrand{display:none}.focusMode{overflow:auto}.focusMode .playerTopbar{display:grid!important;top:0;border-radius:0}.focusMode .wrap{width:100%;padding:3px 5px 18px}.focusMode #playPanel{padding-top:0}.focusMode .ticketCard,.focusMode .tabs,.focusMode .claimBar{width:min(900px,100%)}.focusMode .viewTools,.focusMode .fullscreenExit{display:none!important}.focusMode .footerNote,.focusMode .logout{display:none!important}
+@media(max-width:620px){.wrap{padding:5px 5px 22px}.playerTopbar{grid-template-columns:minmax(0,1fr) 12px auto;padding:6px}.topIdentity img{width:33px;height:33px}.topIdentity .playerName{font-size:13px}.topIdentity small{font-size:8px}.topActions{gap:2px}.topActions .iconBtn{width:34px;height:34px;font-size:17px}.drawCard{padding:8px}.drawCard .ballArea{grid-template-columns:70px minmax(0,1fr);gap:8px}.drawCard .lastBall{width:70px;height:70px;font-size:34px}.drawCard .recent i{flex-basis:27px;width:27px;height:27px}.tabs{margin-top:6px}.tabs button{min-width:76px;font-size:10px;padding:8px 4px}.ticketHead{margin-bottom:6px}.ticketHead b{font-size:14px}.ticketHead small{font-size:9px}.ticketNumberBadge{min-width:38px;height:27px;font-size:12px}.bingoLetters{gap:3px;margin-bottom:3px}.bingoLetters span{height:27px;font-size:17px;border-radius:6px}.ticketCard.mode75Card .grid.mode75 .cell{aspect-ratio:1.28}.cell.free span{font-size:7px}.infoDrawerToggle{height:54px;width:26px;font-size:26px}.settingsSheet{padding:12px}.resultsViewerOverlay{padding:0}.resultsViewerCard{height:100dvh;border-radius:0}.resultsViewerCard>header{padding:7px}.resultsViewerCard h2{font-size:13px}.resultsViewerCard small{font-size:9px}.resultsViewerButtons .iconBtn{width:34px;height:34px}}
+
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="brand"><img src="assets/logo.png" alt="Logo"><div><h1>El Bingo de la Gorda</h1><small>Sala online para jugadores</small></div></div>
+<div id="playerAppShell" class="wrap">
+  <div id="loginBrand" class="brand"><img src="assets/logo.png" alt="Logo"><div><h1>El Bingo de la Gorda</h1><small>Sala online para jugadores</small></div></div>
 
   <section id="loginView" class="card login">
     <h2 style="margin:0">Ingresar a la partida</h2>
@@ -63,30 +79,29 @@ html[data-theme="day"]{--bg:#edf2f8;--bg2:#dfe7f1;--panel:#ffffff;--panel2:#edf3
   </section>
 
   <main id="gameView" class="hidden">
-    <section class="card topSummary compactTop">
-      <div class="top"><div class="identity"><div id="playerName" class="playerName">Jugador</div><small id="roomInfo"></small></div><span id="connectionStatus" class="status off">CONECTANDO</span><button id="themeToggle" class="iconBtn compactTheme" aria-label="Cambiar modo día o noche" title="Cambiar modo día o noche">☀️</button></div>
-    </section>
-
-    <section class="card presenter compactPresenter">
-      <img id="presenterImage" src="assets/vero.png" alt="Presentador">
-      <div class="presenterText"><h2 id="presenterName">Vero</h2><p id="presenterPhrase">Mucha suerte.</p></div>
-      <div class="quickTools compactTools">
-        <button id="soundToggle" class="quickIcon active" type="button" aria-label="Activar o silenciar sonido"><span>🔊</span><small>SONIDO</small></button>
-        <button id="alertsToggle" class="quickIcon active" type="button" aria-label="Activar o silenciar avisos"><span>🔔</span><small>AVISOS</small></button>
-        <button id="autoMarkToggle" class="quickIcon" type="button" aria-label="Activar o desactivar automarcado"><span>✓</span><small>AUTOMARCAR</small></button>
-        <button id="changeLuckBtn" class="quickIcon active" type="button" aria-label="Cambiar mi suerte"><span>🍀</span><small>MI SUERTE</small></button><button id="helpBtn" class="quickIcon" type="button" aria-label="Mostrar guía"><span>?</span><small>GUÍA</small></button>
+    <header class="playerTopbar card">
+      <div class="topIdentity">
+        <img src="assets/logo.png" alt="La Gorda">
+        <div><div id="playerName" class="playerName">Jugador</div><small id="roomInfo"></small></div>
       </div>
-      <div id="adminSpeechBubble" class="adminSpeechBubble hidden"><b id="adminSpeechAuthor">Mensaje del presentador:</b><span id="adminSpeechText"></span></div>
-    </section>
+      <span id="connectionStatus" class="status off" title="Estado de conexión">CONECTANDO</span>
+      <nav class="topActions" aria-label="Controles de pantalla">
+        <button id="settingsToggle" class="iconBtn" type="button" aria-label="Abrir ajustes" title="Ajustes">⚙</button>
+        <button id="themeToggle" class="iconBtn" type="button" aria-label="Cambiar modo día o noche" title="Cambiar modo día o noche">☀</button>
+        <button id="helpBtn" class="iconBtn" type="button" aria-label="Abrir guía" title="Ayuda">?</button>
+        <button id="fullScreenBtn" class="iconBtn" type="button" aria-label="Activar pantalla completa" title="Pantalla completa">⛶</button>
+      </nav>
+    </header>
+
+    <div id="adminSpeechBubble" class="adminSpeechBubble standaloneMessage hidden"><b id="adminSpeechAuthor">Mensaje del presentador:</b><span id="adminSpeechText"></span></div>
 
     <section id="waitingPanel" class="card waiting"></section>
 
     <section id="playPanel" class="hidden">
-      <section class="card ticketCard">
+      <section class="card ticketCard drawCard">
         <div class="ballArea"><div id="lastBall" class="lastBall">—</div><div class="lastMeta"><b>ÚLTIMA BOLILLA</b><span id="ballCount" class="muted">0 sorteadas</span><div id="recent" class="recent"></div></div></div>
-        <div class="viewTools"><button id="showDrawnBtn" type="button">🔢 VER NÚMEROS</button><button id="fullScreenBtn" type="button">⛶ PANTALLA COMPLETA</button><button id="showWinnerBtn" type="button" disabled>🏆 VER GANADOR</button><button id="resultsBtn" type="button" disabled>📄 RESULTADOS</button></div>
       </section>
-      <div id="cardTabs" class="tabs"></div>
+      <div id="cardTabs" class="tabs" role="tablist" aria-label="Tus cartones"></div>
       <section id="ticketPanel" class="card ticketCard"></section>
       <div id="claimBar" class="claimBar"><button id="claimAmbo" class="claimAmbo">CANTAR AMBOCABEZA</button><button id="claimCorners" class="claimCorners">CANTAR 4 ESQUINAS</button><button id="claimLine" class="claimLine">CANTAR LÍNEA</button><button id="claimDoubleLine" class="claimDoubleLine">CANTAR DOBLE LÍNEA</button><button id="claimTripleLine" class="claimTripleLine">CANTAR TRIPLE LÍNEA</button><button id="claimBingo" class="claimBingo">CANTAR BINGO</button></div>
     </section>
@@ -94,26 +109,51 @@ html[data-theme="day"]{--bg:#edf2f8;--bg2:#dfe7f1;--panel:#ffffff;--panel2:#edf3
     <div id="playerNotice"></div>
     <button id="logoutBtn" class="logout">Salir de esta sala</button>
     <div class="footerNote">Con hasta 10 jugadores y 40 cartones podés elegir marcado manual o automático. En salas mayores, el automarcado es obligatorio.</div>
+
+    <div class="legacyControls hidden" aria-hidden="true"><button id="showDrawnBtn"></button><button id="showWinnerBtn"></button><button id="resultsBtn"></button><button id="alertsToggle"></button><button id="exitFocusBtn"></button></div>
   </main>
 </div>
-<button id="exitFocusBtn" class="fullscreenExit" type="button">SALIR DE PANTALLA COMPLETA</button>
+
+<button id="infoDrawerToggle" class="infoDrawerToggle hidden" type="button" aria-label="Abrir ganadores y números salidos" title="Ganadores y números salidos">›</button>
+<div id="infoDrawerBackdrop" class="drawerBackdrop"></div>
+<aside id="infoDrawer" class="infoDrawer" aria-hidden="true">
+  <header class="drawerHead"><div><b>INFORMACIÓN DE LA PARTIDA</b><small id="drawerSummary"></small></div><button id="infoDrawerClose" class="closeBtn" type="button" aria-label="Cerrar">×</button></header>
+  <nav class="drawerTabs"><button id="drawerWinnersTab" class="active" type="button">GANADORES</button><button id="drawerNumbersTab" type="button">NÚMEROS SALIDOS</button></nav>
+  <div id="drawerWinnersPanel" class="drawerPanel"></div>
+  <div id="drawerNumbersPanel" class="drawerPanel hidden"></div>
+  <div id="drawerResultActions" class="drawerResultActions hidden"><button id="drawerViewResultsBtn" class="btn primary" type="button">VER ACTA COMPLETA</button><button id="drawerDownloadResultsBtn" class="btn secondary" type="button">DESCARGAR PDF</button></div>
+</aside>
+
+<div id="settingsOverlay" class="sheetOverlay" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <section class="settingsSheet">
+    <header class="sheetHead"><div><h2 id="settingsTitle">Ajustes</h2><small>Preferencias de este dispositivo</small></div><button id="settingsClose" class="closeBtn" type="button" aria-label="Cerrar">×</button></header>
+    <div class="settingsPresenter"><img id="presenterImage" src="assets/vero.png" alt="Cantador"><div><b id="presenterName">Vero</b><small id="presenterPhrase">Mucha suerte.</small></div><button id="changeLuckBtn" class="smallAction" type="button">CAMBIAR</button></div>
+    <div class="settingRow"><div><b>Sonidos del juego</b><small>Alertas y confirmaciones</small></div><button id="soundToggle" class="switchButton" type="button" aria-pressed="true">ACTIVADO</button></div>
+    <div class="settingRow"><div><b>Voz del cantador</b><small>Canto automático de bolillas</small></div><button id="voiceToggle" class="switchButton" type="button" aria-pressed="true">ACTIVADA</button></div>
+    <label class="settingRange"><span><b>Volumen</b><output id="volumeValue">92%</output></span><input id="volumeRange" type="range" min="0" max="100" step="1" value="92"></label>
+    <div class="settingRow"><div><b>Números grandes</b><small>Aumenta el tamaño dentro del cartón</small></div><button id="numberSizeToggle" class="switchButton" type="button" aria-pressed="false">NORMAL</button></div>
+    <div class="settingRow"><div><b>Marcado automático</b><small id="autoMarkHint">Marca las bolillas oficiales</small></div><button id="autoMarkToggle" class="switchButton" type="button" aria-pressed="false">DESACTIVADO</button></div>
+  </section>
+</div>
+
 <div id="connectionMask" class="connectionMask"><div><b>Se perdió la conexión con la sala.</b><br><span class="muted">No cierres esta página. Se reconectará automáticamente.</span></div></div>
 <div id="publicClaimOverlay" class="claimOverlay"><div id="publicClaimPopup" class="claimPopup"><img id="publicClaimBadge" class="claimBadge" alt="Premio"><img id="publicClaimMascot" class="claimMascot" src="assets/celebrations/la-gorda-festejando.png" alt="La Gorda festejando"><div id="publicClaimIcon" class="claimIcon">🎉</div><h2 id="publicClaimTitle"></h2><p id="publicClaimText"></p><div id="publicClaimConfetti" class="claimConfetti"></div></div></div>
 
-<div id="drawnOverlay" class="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="drawnTitle">
-  <section class="modalPanel"><header class="modalHead"><div><h2 id="drawnTitle">Números sorteados</h2><small id="drawnSummary" class="muted"></small></div><button id="closeDrawnBtn" class="closeBtn" type="button" aria-label="Cerrar">×</button></header><div id="drawBoard" class="drawBoard"></div><h3>Orden de salida</h3><div id="drawOrder" class="drawOrder"></div></section>
-</div>
 <div id="winnerOverlay" class="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="winnerTitle">
   <section class="modalPanel"><header class="modalHead"><h2 id="winnerTitle">Cartón ganador</h2><button id="closeWinnerBtn" class="closeBtn" type="button" aria-label="Cerrar">×</button></header><div id="winnerContent"></div></section>
 </div>
 
 <div id="sequenceOverlay" class="sequenceOverlay"><div class="sequenceCard"><img id="sequencePresenter" src="assets/vero.png" alt="Presentador"><h2 id="sequenceTitle"></h2><p id="sequenceText"></p><strong id="sequenceCount"></strong></div></div>
-<div id="guideOverlay" class="modalOverlay"><section class="guidePanel"><button id="closeGuideBtn" class="closeBtn" type="button">×</button><img id="guidePresenter" src="assets/vero.png" alt="Presentador"><h2 id="guideGreeting">¿Necesitás una guía?</h2><p id="guideIntro"></p><div id="guideQuestion" class="guideActions"><button id="guideYesBtn" class="btn primary" type="button">SÍ, MOSTRAR GUÍA</button><button id="guideNoBtn" class="btn secondary" type="button">NO, GRACIAS</button></div><div id="guideSteps" class="hidden"><div id="guideStepContent"></div><div class="guideNav"><button id="guidePrevBtn" class="btn secondary" type="button">ATRÁS</button><button id="guideNextBtn" class="btn primary" type="button">SIGUIENTE</button></div></div></section></div>
-<div id="finalResultsOverlay" class="finalResultsOverlay"><section class="finalResultsCard"><img src="assets/celebrations/sorteo-finalizado.png" alt="Sorteo finalizado"><h2>RESULTADO OFICIAL DISPONIBLE</h2><p>Descargá el orden completo de bolillas y todos los cartones ganadores confirmados.</p><div class="finalResultsActions"><button id="finalDownloadBtn" class="btn primary" type="button">DESCARGAR RESULTADOS</button><button id="finalBackBtn" class="btn secondary" type="button">VOLVER A MIS CARTONES</button></div></section></div>
+<div id="guideOverlay" class="modalOverlay"><section class="guidePanel"><button id="closeGuideBtn" class="closeBtn" type="button">×</button><img id="guidePresenter" src="assets/vero.png" alt="Presentador"><h2 id="guideGreeting">Guía rápida</h2><p id="guideIntro"></p><div id="guideQuestion" class="guideActions hidden"><button id="guideYesBtn" class="btn primary" type="button">SÍ, MOSTRAR GUÍA</button><button id="guideNoBtn" class="btn secondary" type="button">NO, GRACIAS</button></div><div id="guideSteps"><div id="guideStepContent"></div><div class="guideNav"><button id="guidePrevBtn" class="btn secondary" type="button">ATRÁS</button><button id="guideNextBtn" class="btn primary" type="button">SIGUIENTE</button></div></div></section></div>
+
+<div id="resultsViewerOverlay" class="resultsViewerOverlay" role="dialog" aria-modal="true" aria-labelledby="resultsViewerTitle">
+  <section class="resultsViewerCard"><header><div><h2 id="resultsViewerTitle">Acta oficial de resultados</h2><small>Podés verla sin descargarla</small></div><div class="resultsViewerButtons"><button id="resultsOpenTabBtn" class="iconBtn" type="button" title="Abrir en otra pestaña">↗</button><button id="resultsViewerDownloadBtn" class="iconBtn" type="button" title="Descargar PDF">⇩</button><button id="resultsViewerClose" class="closeBtn" type="button" aria-label="Cerrar">×</button></div></header><iframe id="resultsViewerFrame" title="Acta oficial de resultados"></iframe></section>
+</div>
+
+<div id="finalResultsOverlay" class="finalResultsOverlay"><section class="finalResultsCard"><img src="assets/celebrations/sorteo-finalizado.png" alt="Sorteo finalizado"><h2>RESULTADO OFICIAL DISPONIBLE</h2><p>Consultá el acta completa dentro del juego o descargala para conservarla.</p><div class="finalResultsActions"><button id="finalViewBtn" class="btn primary" type="button">VER ACTA COMPLETA</button><button id="finalDownloadBtn" class="btn secondary" type="button">DESCARGAR PDF</button><button id="finalBackBtn" class="btn secondary" type="button">VOLVER A MIS CARTONES</button></div></section></div>
 <div id="partialChoiceOverlay" class="modalOverlay"><section class="guidePanel"><h2>¿CONTINUAR CON ESTOS CARTONES?</h2><p id="partialChoiceText" class="choiceConfirmText"></p><div class="guideActions"><button id="partialKeepChoosingBtn" class="btn secondary" type="button">SEGUIR ELIGIENDO</button><button id="partialContinueBtn" class="btn primary" type="button">CONTINUAR CON MIS CARTONES</button></div></section></div>
-<div id="presenterChoiceOverlay" class="modalOverlay"><section class="guidePanel"><button id="closePresenterChoiceBtn" class="closeBtn" type="button">×</button><h2>CAMBIAR MI SUERTE</h2><p>Elegí quién te acompaña. El cambio afecta solo a tu celular.</p><div id="presenterChoices" class="presenterChoices"></div></section></div>
+<div id="presenterChoiceOverlay" class="modalOverlay"><section class="guidePanel"><button id="closePresenterChoiceBtn" class="closeBtn" type="button">×</button><h2>TU CANTADOR DE LA SUERTE</h2><p>Elegí quién te acompaña. El cambio afecta solo a tu dispositivo.</p><div id="presenterChoices" class="presenterChoices"></div></section></div>
 <div id="roomClosedOverlay" class="modalOverlay"><section class="roomClosedCard"><h2>SALA FINALIZADA</h2><p>El administrador cerró la sala. Gracias por participar.</p><button id="roomClosedBtn" class="btn primary" type="button">VOLVER AL INICIO</button></section></div>
 <div id="transferOverlay" class="modalOverlay"><section class="guidePanel"><h2>Cambio de dispositivo</h2><p id="transferText">Tu sesión está activa en otro dispositivo.</p><button id="requestTransferBtn" class="btn primary" type="button">SOLICITAR CAMBIO DE DISPOSITIVO</button><button id="cancelTransferBtn" class="btn secondary" type="button" style="width:100%;margin-top:8px">CANCELAR</button><div id="transferStatus"></div></section></div>
-<script src="js/presenter-scripts.js?v=2026"></script><script src="js/online-room-player.js?v=2026"></script>
+<script src="js/presenter-scripts.js?v=2026.4"></script><script src="js/online-room-player.js?v=2026.4"></script>
 </body>
-</html>

@@ -1,4 +1,4 @@
-PUBLICAR BINGO DE LA GORDA EN RENDER
+PUBLICAR LA GORDA - BINGO ONLINE EN RENDER
 
 - Runtime: Node
 - Build command: npm install

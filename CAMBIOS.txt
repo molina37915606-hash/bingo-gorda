@@ -1,61 +1,44 @@
-BINGO DE LA GORDA - CAMBIOS PRINCIPALES
+LA GORDA - BINGO ONLINE - CAMBIOS PRINCIPALES
+
+IDENTIDAD Y LIMPIEZA
+- Nuevo nombre visible: LA GORDA - BINGO ONLINE.
+- Administrador simplificado en admin.html.
+- Se retiraron dos scripts antiguos que no se cargaban, un enlace roto a un importador inexistente y recursos gráficos sin referencias.
+- Se conservaron respaldo, restauración, auditoría, recuperación y pruebas de escala.
 
 ADMINISTRACIÓN
 - Home con CREAR SALA y CONTINUAR.
 - Configuración de sala en una sola pantalla.
 - Sala de prueba por enlace, hasta 10 jugadores y 40 cartones.
 - Sala oficial con códigos individuales y de 1 a 4 cartones por jugador.
-- Modalidad, premios, cantador, voz, intervalo y transmisión en un mismo menú. Los minijuegos ya no requieren configuración administrativa.
+- Modalidad, premios, cantador, voz, intervalo y transmisión en un mismo menú.
 - Generación de 25 a 250 cartones, en pasos de 25.
-- Importación PDF plegada en el panel avanzado.
-- Sin carga manual ni vista previa masiva en el flujo simplificado.
+- Consola compacta con bolilla actual, últimas bolillas, pausa, extracción inmediata e intervalo.
+- En Bingo 75, la bolilla grande muestra una letra gruesa y el número en blanco con alto contraste.
+- Cada bolilla nueva tiene una animación breve, desactivable mediante la preferencia de reducción de movimiento.
+- Los reclamos se resuelven desde un panel flotante sin ocultar la bolilla actual.
+- Confirmar y rechazar se habilitan automáticamente al cerrar la ventana de auditoría.
 
 SALA DE ESPERA
-- Ingreso abierto para pruebas mediante nombre y cantidad de cartones.
-- Después del ingreso se muestran 10 vistas previas; el jugador puede recargar, reservar y confirmar los cartones elegidos.
-- Si el administrador inicia mientras una selección está pendiente, el sistema conserva las reservas y completa automáticamente la cantidad solicitada.
-- Inicio siempre controlado por el administrador.
-- Minijuegos Rojo/Negro y Mayor/Menor siempre activos, sin límite de tiempo y con cambio libre entre ambos: la ronda continúa hasta fallar.
-- Naipes personalizados de BINGO DE LA GORDA y clasificación por mejor racha.
+- Los minijuegos Rojo/Negro y Mayor/Menor están siempre activos.
+- El jugador puede alternar entre ambos y cada juego conserva su clasificación.
+- En salas de prueba se muestran 10 vistas previas de cartones.
+- El jugador puede recargar, reservar y confirmar los cartones elegidos.
+- Si el administrador inicia con una selección pendiente, el sistema completa automáticamente los cartones faltantes.
 
-PANEL DE SORTEO
-- Consola compacta con bolilla actual, últimas bolillas, pausa, extracción inmediata e intervalo.
-- Tema día/noche, sonido y pantalla completa mediante iconos.
-- Reclamos dentro de la misma pantalla; no hay botones administrativos de premios.
-- Lista de conectados, chat, eliminación de mensajes y bloqueo individual.
-- Panel plegable de números, ganadores y eventos.
+CHAT
+- Ocho stickers SVG grandes, modernos y animados.
+- Los mensajes siguen guardando los emojis Unicode originales para conservar compatibilidad.
+- El mismo set se usa en jugador, administrador y transmisión.
 
-TRANSMISIÓN
-- Uso opcional.
-- Chat público en pantalla.
-- Hasta cuatro cartones destacados con nombre del propietario y progreso.
-- Reclamos y ganadores destacados automáticamente.
-
-JUGADORES
-- Un cartón grande por pestaña en celular.
-- Chat plegable con ocho emojis.
-- Números salidos ordenados numéricamente.
-- Ganadores anteriores y cartones premiados consultables.
-- Acta PDF visible dentro de la aplicación.
+RESULTADOS
+- VER ACTA abre una vista previa interna del PDF.
+- La vista previa se entrega como PDF inline y permite abrir en otra pestaña o descargar.
+- DESCARGAR PDF conserva la descarga directa.
+- Actas PDF y CSV auditables con secuencia y milisegundos de los reclamos.
 
 BASE TÉCNICA
-- Bolillero criptográfico del servidor.
+- Bolillero criptográfico controlado por el servidor.
 - Validación y diversidad de cartones.
-- Auditoría de reclamos con milisegundos y secuencia.
 - Automarcado obligatorio por encima de 10 jugadores o 40 cartones.
 - Prueba de escala con 60 jugadores y 240 cartones.
-
-CORRECCIÓN DEL MINIJUEGO
-- El botón “Volver a jugar” permanece visible después de perder, incluso cuando el servidor actualiza la clasificación.
-- Las elecciones quedan correctamente bloqueadas al terminar una ronda.
-- Se evita el doble toque mientras se revela una carta.
-- La carta y el mensaje de resultado se conservan al actualizar la sala de espera.
-- Se agregó una prueba automática específica de la interfaz del minijuego.
-
-
-SELECCIÓN DE CARTONES Y MINIJUEGOS SIEMPRE ACTIVOS
-- Se eliminó el selector administrativo de minijuego.
-- Cada jugador puede alternar entre ambos juegos durante toda la espera.
-- Las clasificaciones se guardan por separado para cada minijuego.
-- Las salas de prueba muestran 10 cartones disponibles y permiten recargarlos sin perder las reservas.
-- El inicio administrativo completa automáticamente las elecciones pendientes.

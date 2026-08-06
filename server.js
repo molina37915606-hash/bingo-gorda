@@ -28,7 +28,7 @@ if (fs.existsSync(LOCAL_ENV_FILE)) {
 const ROOT = __dirname;
 const DATA_DIR = process.env.BINGO_DATA_DIR ? path.resolve(process.env.BINGO_DATA_DIR) : path.join(ROOT, 'data');
 const OWNER_STATE_FILE = path.join(DATA_DIR, 'sala-online.json');
-const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma-2026.json');
+const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma.json');
 const WORKSPACES_DIR = path.join(DATA_DIR, 'operadores');
 const PORT = Number(process.env.PORT || 3210);
 const HOST = '0.0.0.0';
@@ -66,7 +66,7 @@ const DEMO_CLAIM_WINDOW_MS = 1600;
 const DEMO_START_SEQUENCE_MS = 3200;
 const DEMO_RESUME_SEQUENCE_MS = 1400;
 const DEMO_FINAL_SEQUENCE_MS = 2600;
-const APP_PUBLIC_VERSION = 'BINGO DE LA GORDA';
+const APP_PUBLIC_VERSION = 'LA GORDA - BINGO ONLINE';
 const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bingo'];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
@@ -428,7 +428,7 @@ function ensureWorkspace(id = 'owner', operatorId = null, label = 'Administrador
 }
 
 const ownerWorkspace = ensureWorkspace('owner');
-// Los operadores temporales están deshabilitados en BINGO DE LA GORDA.
+// Los operadores temporales están deshabilitados en LA GORDA - BINGO ONLINE.
 
 function currentWorkspace() { return workspaceContext.getStore() || ownerWorkspace; }
 function replaceCurrentState(next) { currentWorkspace().state = next; }
@@ -462,7 +462,7 @@ function publicLastResult() {
   return {
     roomCode: meta.roomCode, gameNumber: meta.gameNumber || null, round: meta.round || 1,
     startedAt: meta.startedAt || null, endedAt: meta.endedAt || null, savedAt: meta.savedAt || null,
-    filename: meta.filename || `Resultados_Bingo_Sala_${meta.roomCode}.pdf`,
+    filename: meta.filename || `LA_GORDA_BINGO_ONLINE_Resultados_Sala_${meta.roomCode}.pdf`,
     downloadUrl: `/api/results.pdf?sala=${encodeURIComponent(meta.roomCode)}`
   };
 }
@@ -3320,7 +3320,7 @@ function formatDuration(startedAt, endedAt) {
 function actaCsv() {
   const acta = actaPayload();
   const lines = [
-    ['EL BINGO DE LA GORDA - RESULTADOS'],
+    ['LA GORDA - BINGO ONLINE - RESULTADOS'],
     ['Sala', acta.roomCode],
     ['Juego', acta.gameNumber],
     ['Ronda', acta.round],
@@ -3355,7 +3355,7 @@ function actaCsv() {
 function participantsCsv() {
   const acta = actaPayload();
   const lines = [
-    ['EL BINGO DE LA GORDA - JUGADORES Y CARTONES'],
+    ['LA GORDA - BINGO ONLINE - JUGADORES Y CARTONES'],
     ['Sala', acta.roomCode],
     ['Juego', acta.gameNumber],
     ['Jugadores', acta.totalPlayers],
@@ -3461,7 +3461,7 @@ function buildResultsPdf() {
   rect(19, 10, 70, 70, COLORS.white, '#F2D3E2', 1);
   image(24, 15, 60, 60);
   text('RESULTADOS OFICIALES DEL SORTEO', 101, 18, 20, { bold: true, color: COLORS.white, maxWidth: 390 });
-  text(acta.demo ? 'DEMOSTRACIÓN - SIN VALIDEZ OFICIAL' : 'BINGO DE LA GORDA', 101, 47, 11, { bold: true, color: '#F7DDF0' });
+  text(acta.demo ? 'DEMOSTRACIÓN - SIN VALIDEZ OFICIAL' : 'LA GORDA - BINGO ONLINE', 101, 47, 11, { bold: true, color: '#F7DDF0' });
   text(`Sala ${acta.roomCode}  ·  Juego ${acta.gameNumber}  ·  Bingo ${acta.mode}`, 101, 65, 8.5, { color: '#E8D7EE' });
 
   const metaX = 510;
@@ -3668,7 +3668,7 @@ function buildResultsPdf() {
   });
 
   text(`Documento oficial generado al cerrar el sorteo · Sala ${acta.roomCode} · Ronda ${acta.round}`, 24, 582, 5.8, { color: COLORS.muted });
-  text(acta.demo ? 'DEMO' : 'BINGO DE LA GORDA', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
+  text(acta.demo ? 'DEMO' : 'LA GORDA - BINGO ONLINE', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
 
   const stream = commands.join('\n');
   const logoPath = path.join(ROOT, 'assets', 'logo-pdf.jpg');
@@ -3715,18 +3715,19 @@ function buildResultsPdf() {
 
 function resultsFilename() {
   const date = (state.startedAt || nowIso()).slice(0, 10);
-  return `Resultados_Bingo_${date}_Sala_${state.roomCode || 'sala'}.pdf`;
+  return `LA_GORDA_BINGO_ONLINE_Resultados_${date}_Sala_${state.roomCode || 'sala'}.pdf`;
 }
 
 function actaPdf() {
   return buildResultsPdf();
 }
 
-function sendBuffer(res, status, buffer, contentType, filename) {
+function sendBuffer(res, status, buffer, contentType, filename, disposition = 'attachment') {
+  const safeDisposition = disposition === 'inline' ? 'inline' : 'attachment';
   res.writeHead(status, {
     'Content-Type': contentType,
     'Content-Length': buffer.length,
-    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Content-Disposition': `${safeDisposition}; filename="${filename}"`,
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff'
   });
@@ -3751,7 +3752,7 @@ function serveFile(res, filePath) {
   const assetRoot = `${path.join(ROOT, 'assets')}${path.sep}`;
   const jsRoot = `${path.join(ROOT, 'js')}${path.sep}`;
   const allowedHtml = new Set([
-    path.join(ROOT, 'ABRIR_EL_BINGO_DE_LA_GORDA.html'),
+    path.join(ROOT, 'admin.html'),
     path.join(ROOT, 'jugador.html'),
     path.join(ROOT, 'admin-principal.html'),
     path.join(ROOT, 'transmision.html'),
@@ -3860,9 +3861,9 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/test-event' && req.method === 'POST') return sendJson(res, 200, sendTestEvent(await readJson(req)));
   if (url.pathname === '/api/admin/resolve' && req.method === 'POST') return sendJson(res, 200, resolveClaim(await readJson(req)));
   if (url.pathname === '/api/admin/acta' && req.method === 'GET') return sendJson(res, 200, actaPayload());
-  if (url.pathname === '/api/admin/acta.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(actaCsv(), 'utf8'), 'text/csv; charset=utf-8', `Bingo_Acta_${state.roomCode || 'sala'}.csv`);
-  if (url.pathname === '/api/admin/participants.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(participantsCsv(), 'utf8'), 'text/csv; charset=utf-8', `Bingo_Jugadores_${state.roomCode || 'sala'}.csv`);
-  if (url.pathname === '/api/admin/acta.pdf' && req.method === 'GET') return sendBuffer(res, 200, actaPdf(), 'application/pdf', `Bingo_Acta_${state.roomCode || 'sala'}.pdf`);
+  if (url.pathname === '/api/admin/acta.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(actaCsv(), 'utf8'), 'text/csv; charset=utf-8', `LA_GORDA_Acta_${state.roomCode || 'sala'}.csv`);
+  if (url.pathname === '/api/admin/participants.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(participantsCsv(), 'utf8'), 'text/csv; charset=utf-8', `LA_GORDA_Jugadores_${state.roomCode || 'sala'}.csv`);
+  if (url.pathname === '/api/admin/acta.pdf' && req.method === 'GET') return sendBuffer(res, 200, actaPdf(), 'application/pdf', `LA_GORDA_Acta_${state.roomCode || 'sala'}.pdf`);
   if (url.pathname === '/api/admin/backup' && req.method === 'GET') return sendJson(res, 200, backupPayload());
   if (url.pathname === '/api/admin/restore' && req.method === 'POST') return sendJson(res, 200, restoreBackup(await readJson(req)));
   if (url.pathname === '/api/admin/close' && req.method === 'POST') { closeRoom(); return sendJson(res, 200, { ok: true }); }
@@ -3907,6 +3908,7 @@ async function handleApi(req, res, url) {
 
     if (url.pathname === '/api/results.pdf' && req.method === 'GET') {
       const requestedRoom = String(url.searchParams.get('sala') || '').trim().toUpperCase();
+      const disposition = url.searchParams.get('preview') === '1' ? 'inline' : 'attachment';
       let workspace = requestedRoom ? findWorkspaceByRoomCode(requestedRoom) : ownerWorkspace;
       if (!workspace && requestedRoom) workspace = [...workspaces.values()].find(item => String(item.lastResultMeta?.roomCode || '').toUpperCase() === requestedRoom) || null;
       if (!workspace) throw new Error('No se encontró un resultado finalizado para esa sala.');
@@ -3914,10 +3916,10 @@ async function handleApi(req, res, url) {
         const meta = currentWorkspace().lastResultMeta;
         if (requestedRoom && String(state.roomCode || '').toUpperCase() === requestedRoom && state.active && state.game) {
           if (state.status !== 'finished') throw new Error('Los resultados estarán disponibles cuando finalice el sorteo.');
-          return sendBuffer(res, 200, buildResultsPdf(), 'application/pdf', resultsFilename());
+          return sendBuffer(res, 200, buildResultsPdf(), 'application/pdf', resultsFilename(), disposition);
         }
         if (meta && fs.existsSync(currentWorkspace().resultPdfFile) && (!requestedRoom || String(meta.roomCode).toUpperCase() === requestedRoom)) {
-          return sendBuffer(res, 200, fs.readFileSync(currentWorkspace().resultPdfFile), 'application/pdf', meta.filename || 'Resultados_Bingo.pdf');
+          return sendBuffer(res, 200, fs.readFileSync(currentWorkspace().resultPdfFile), 'application/pdf', meta.filename || 'LA_GORDA_BINGO_ONLINE_Resultados.pdf', disposition);
         }
         throw new Error('No hay un sorteo finalizado disponible.');
       });
@@ -4037,8 +4039,7 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
   if (url.pathname === '/admin-principal' || url.pathname === '/admin-principal/') return serveFile(res, path.join(ROOT, 'admin-principal.html'));
-  if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'ABRIR_EL_BINGO_DE_LA_GORDA.html'));
-  if (url.pathname === '/admin-avanzado.html') return serveFile(res, path.join(ROOT, 'admin-avanzado.html'));
+  if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'admin.html'));
   if (url.pathname === '/demo' || url.pathname === '/demo/') return serveFile(res, path.join(ROOT, 'demo.html'));
   if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return sendJson(res, 404, { error: 'Los accesos temporales están deshabilitados.' });
   if (/^\/transmision\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'transmision.html'));
@@ -4084,7 +4085,7 @@ setInterval(() => {
 for (const workspace of workspaces.values()) workspaceContext.run(workspace, () => scheduleTransition());
 
 server.listen(PORT, HOST, () => {
-  console.log('\nBINGO DE LA GORDA');
+  console.log('\nLA GORDA - BINGO ONLINE');
   const base = PUBLIC_URL || `http://localhost:${PORT}`;
   console.log(`Panel principal: ${base}/admin-principal`);
   console.log(`Administrador propio: ${base}/admin`);

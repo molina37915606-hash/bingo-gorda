@@ -1,13 +1,13 @@
 {
-  "name": "bingo-de-la-gorda",
+  "name": "la-gorda-bingo-online",
   "version": "1.0.0",
   "private": true,
-  "description": "BINGO DE LA GORDA: bingo de 75 y 90 bolas con salas de prueba y oficiales, chat, transmisión, minijuego y actas auditables.",
+  "description": "LA GORDA - BINGO ONLINE: bingo de 75 y 90 bolas con salas de prueba y oficiales, selección de cartones, chat, transmisión, minijuegos y actas auditables.",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/bingo-2026-smoke.js && node tests/bingo-de-la-gorda-nueva.js && node tests/minijuego-ui.js"
+    "test": "node tests/core-smoke.js && node tests/online-flows.js && node tests/waiting-games-ui.js && node tests/animated-stickers.js"
   }
 }

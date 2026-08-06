@@ -1,26 +1,23 @@
-BINGO DE LA GORDA - PRUEBAS AUTOMÁTICAS
+LA GORDA - BINGO ONLINE - PRUEBAS AUTOMÁTICAS
 
 Ejecutar:
   npm test
 
 Resultados esperados:
-  PRUEBAS BINGO DE LA GORDA: OK
-  PRUEBAS NUEVAS BINGO DE LA GORDA: OK
+  PRUEBAS LA GORDA - BINGO ONLINE: OK
+  PRUEBAS NUEVAS LA GORDA - BINGO ONLINE: OK
   PRUEBA UI MINIJUEGO: OK
+  PRUEBA STICKERS ANIMADOS: OK
 
 Cobertura principal:
 - Generación de 25 a 250 cartones en 75 y 90 bolas.
-- Límites de similitud y patrones ganadores.
-- Sala de prueba iniciada con 2, 9 y 10 jugadores.
-- Cierre del ingreso al alcanzar 10 jugadores o al iniciar.
-- Reingreso mediante el mismo dispositivo.
-- Sala oficial con códigos individuales.
-- Ambos minijuegos siempre activos, cambio entre juegos y clasificaciones independientes.
-- Chat, moderación y ráfaga de 60 mensajes.
-- Reclamos simultáneos con milisegundos y secuencia.
-- Transmisión con cartones destacados.
-- Respaldos, restauración, acta PDF y CSV.
-- Escala de 60 jugadores y 240 cartones.
-- Reinicio del minijuego después de perder y después de actualizar la clasificación.
-- Diez vistas previas de cartones, recarga conservando reservas y confirmación manual.
-- Asignación automática al iniciar con elecciones pendientes o parciales.
+- Sala de prueba y sala oficial.
+- Selección de cartones y asignación automática pendiente.
+- Ambos minijuegos, cambio entre juegos y clasificaciones independientes.
+- Chat, moderación y stickers animados.
+- Reclamos simultáneos, confirmación, rechazo y ventana de auditoría.
+- Bolilla grande del administrador con número visible.
+- Acta PDF en modo vista previa inline y descarga attachment.
+- Respaldos, restauración, PDF y CSV.
+- Transmisión y prueba de escala con 60 jugadores y 240 cartones.
+- Verificación de que scripts, rutas y recursos retirados no vuelvan a servirse.

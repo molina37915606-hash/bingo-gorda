@@ -26,6 +26,7 @@ class PlayerApp {
     this.largeNumbers = localStorage.getItem('bingoPlayerLargeNumbers') === 'true';
     this.lastPublicClaimKey = '';
     this.lastAdminMessageId = '';
+    this.seenChatMessageIds = new Set();
     this.lastTestEventId = '';
     this.lastPrizeReadyKey = '';
     this.lastTransitionKey = '';
@@ -59,7 +60,7 @@ class PlayerApp {
       { icon:'🧾', title:'Tus cartones', text:'Usá las pestañas para cambiar de cartón. Las marcas oficiales se conservan en todos.' },
       { icon:'⚙', title:'Ajustes', text:'Desde la tuerca podés controlar sonido, voz, tamaño de números, automarcado y tu cantador de la suerte.' },
       { icon:'›', title:'Ganadores y números', text:'La flecha lateral muestra los premios confirmados y los números salidos ordenados de menor a mayor.' },
-      { icon:'💬', title:'Chat público', text:'El chat incluye mensajes breves y ocho emojis clásicos. No tapa los botones de reclamo.' },
+      { icon:'💬', title:'Chat público', text:'El chat incluye mensajes breves y ocho stickers grandes con animaciones propias. No tapa los botones de reclamo.' },
       { icon:'🏆', title:'Tenés que cantar', text:'Aunque el sistema marque solo, el premio se reclama tocando manualmente el botón correspondiente.' },
       { icon:'📄', title:'Acta oficial', text:'Al terminar la partida podés ver el PDF completo dentro del juego y descargarlo solo si lo necesitás.' }
     ];
@@ -203,13 +204,25 @@ class PlayerApp {
     if ($('playerChatDock')) return;
     const style = document.createElement('style');
     style.textContent = `
-      .playerChatDock{position:fixed;right:9px;bottom:9px;z-index:105}.playerChatToggle{min-height:44px;border:0;border-radius:999px;padding:10px 14px;background:#5a167b;color:#fff;font-weight:1000;box-shadow:0 10px 35px #0008}.playerChatPanel{display:none;position:fixed;left:50%;bottom:8px;transform:translateX(-50%);width:min(520px,calc(100vw - 16px));height:min(570px,76dvh);background:var(--panel);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 25px 70px #000b}.playerChatPanel.show{display:grid;grid-template-rows:auto 1fr auto auto}.playerChatPanel header{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;background:#5a167b;color:#fff}.playerChatPanel header button{border:0;background:transparent;color:#fff;font-size:24px}.playerChatMessages{overflow:auto;padding:10px;display:grid;align-content:start;gap:8px;background:var(--panel3)}.playerChatMessage{padding:9px 10px;border-radius:11px;background:var(--panel2);color:var(--text);border:1px solid var(--border)}.playerChatMessage.admin{background:#3b2454;color:#fff;border-color:#9867b2}.playerChatMessage small{display:flex;justify-content:space-between;gap:8px;color:var(--muted);margin-bottom:4px}.playerChatMessage.admin small{color:#e3cdeb}.playerChatMessage p{margin:0;word-break:break-word}.playerChatComposer{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:end;border-top:1px solid var(--border);background:var(--panel)}.playerChatEmojiButton{width:46px;height:52px;border:0;background:var(--panel2);color:var(--text);font-size:22px}.playerChatPanel textarea{resize:none;min-height:52px;max-height:94px;padding:10px;border:0;background:var(--panel);color:var(--text);outline:none}.playerChatSend{height:52px;border:0;padding:0 14px;background:#ffca2f;color:#1b1405;font-weight:1000}.playerChatNotice{padding:8px 10px;background:#3f2c0a;color:#ffe39a;font-size:12px}.playerEmojiMenu{display:none;grid-template-columns:repeat(8,1fr);gap:4px;padding:8px;border-top:1px solid var(--border);background:var(--panel2)}.playerEmojiMenu.show{display:grid}.playerEmojiMenu button{height:38px;border:1px solid var(--border);border-radius:9px;background:var(--panel3);font-size:21px}.playerChatBadge:not(:empty){display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:999px;background:#e83e87;margin-left:5px}.playerChatToggle:focus-visible,.playerEmojiMenu button:focus-visible{outline:3px solid #ffca2f;outline-offset:2px}
-      @media(max-width:620px){.playerChatDock{right:7px;bottom:7px}.playerChatPanel{bottom:0;width:100%;height:min(650px,78dvh);border-radius:20px 20px 0 0}.playerEmojiMenu{grid-template-columns:repeat(4,1fr)}}
+      .playerChatDock{position:fixed;right:9px;bottom:9px;z-index:105}.playerChatToggle{min-height:44px;border:0;border-radius:999px;padding:10px 14px;background:#5a167b;color:#fff;font-weight:1000;box-shadow:0 10px 35px #0008}.playerChatPanel{display:none;position:fixed;left:50%;bottom:8px;transform:translateX(-50%);width:min(520px,calc(100vw - 16px));height:min(570px,76dvh);background:var(--panel);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 25px 70px #000b}.playerChatPanel.show{display:grid;grid-template-rows:auto 1fr auto auto}.playerChatPanel header{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;background:#5a167b;color:#fff}.playerChatPanel header button{border:0;background:transparent;color:#fff;font-size:24px}.playerChatMessages{overflow:auto;padding:10px;display:grid;align-content:start;gap:8px;background:var(--panel3)}.playerChatMessage{padding:9px 10px;border-radius:11px;background:var(--panel2);color:var(--text);border:1px solid var(--border)}.playerChatMessage.admin{background:#3b2454;color:#fff;border-color:#9867b2}.playerChatMessage small{display:flex;justify-content:space-between;gap:8px;color:var(--muted);margin-bottom:4px}.playerChatMessage.admin small{color:#e3cdeb}.playerChatMessage p{margin:0;word-break:break-word}.playerChatComposer{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:end;border-top:1px solid var(--border);background:var(--panel)}.playerChatEmojiButton{width:46px;height:52px;border:0;background:var(--panel2);color:var(--text);font-size:22px}.playerChatPanel textarea{resize:none;min-height:52px;max-height:94px;padding:10px;border:0;background:var(--panel);color:var(--text);outline:none}.playerChatSend{height:52px;border:0;padding:0 14px;background:#ffca2f;color:#1b1405;font-weight:1000}.playerChatNotice{padding:8px 10px;background:#3f2c0a;color:#ffe39a;font-size:12px}.playerEmojiMenu{display:none;grid-template-columns:repeat(8,1fr);gap:4px;padding:8px;border-top:1px solid var(--border);background:var(--panel2)}.playerEmojiMenu.show{display:grid}.playerEmojiMenu button{height:70px;border:1px solid var(--border);border-radius:13px;background:var(--panel3);transition:transform .16s ease,background .16s ease}.playerEmojiMenu button:active{transform:scale(.94)}.playerChatEmojiButton .bingoSticker{width:32px;height:32px;margin:0}.playerChatMessage p.stickerOnly{padding:2px 0}.playerChatBadge:not(:empty){display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:999px;background:#e83e87;margin-left:5px}.playerChatToggle:focus-visible,.playerEmojiMenu button:focus-visible{outline:3px solid #ffca2f;outline-offset:2px}
+      @media(max-width:620px){.playerChatDock{right:7px;bottom:7px}.playerChatPanel{bottom:0;width:100%;height:min(650px,78dvh);border-radius:20px 20px 0 0}.playerEmojiMenu{grid-template-columns:repeat(4,1fr)}.playerEmojiMenu button{height:64px}}
     `;
     document.head.appendChild(style);
     const dock = document.createElement('aside');
     dock.id = 'playerChatDock'; dock.className = 'playerChatDock';
-    dock.innerHTML = `<button id="playerChatToggle" class="playerChatToggle" type="button">💬 CHAT <span id="playerChatBadge" class="playerChatBadge"></span></button><section id="playerChatPanel" class="playerChatPanel" aria-label="Chat público"><header><b>CHAT PÚBLICO</b><button id="playerChatClose" type="button" aria-label="Cerrar">×</button></header><div id="playerChatMessages" class="playerChatMessages"></div><div id="playerChatNotice" class="playerChatNotice hidden"></div><div id="playerEmojiMenu" class="playerEmojiMenu" aria-label="Emojis"><button type="button" data-emoji="😀">😀</button><button type="button" data-emoji="😂">😂</button><button type="button" data-emoji="😭">😭</button><button type="button" data-emoji="👏">👏</button><button type="button" data-emoji="❤️">❤️</button><button type="button" data-emoji="🍀">🍀</button><button type="button" data-emoji="🎱">🎱</button><button type="button" data-emoji="🎉">🎉</button></div><div class="playerChatComposer"><button id="playerChatEmojiButton" class="playerChatEmojiButton" type="button" aria-label="Elegir emoji">☺</button><textarea id="playerChatInput" maxlength="160" placeholder="Escribí un mensaje"></textarea><button id="playerChatSend" class="playerChatSend" type="button">ENVIAR</button></div></section>`;
+    const stickers = window.BingoEmojiStickers;
+    const emojiButtons = [
+      `<button class="stickerMenuButton" type="button" data-emoji="😀" aria-label="Alegría">${stickers?.icon('😀', { className:'stickerMenuIcon' }) || '😀'}</button>`,
+      `<button class="stickerMenuButton" type="button" data-emoji="😂" aria-label="Risa">${stickers?.icon('😂', { className:'stickerMenuIcon' }) || '😂'}</button>`,
+      `<button class="stickerMenuButton" type="button" data-emoji="😭" aria-label="Llanto">${stickers?.icon('😭', { className:'stickerMenuIcon' }) || '😭'}</button>`,
+      `<button class="stickerMenuButton" type="button" data-emoji="👏" aria-label="Aplausos">${stickers?.icon('👏', { className:'stickerMenuIcon' }) || '👏'}</button>`,
+      `<button class="stickerMenuButton" type="button" data-emoji="❤️" aria-label="Corazón">${stickers?.icon('❤️', { className:'stickerMenuIcon' }) || '❤️'}</button>`,
+      `<button class="stickerMenuButton" type="button" data-emoji="🍀" aria-label="Suerte">${stickers?.icon('🍀', { className:'stickerMenuIcon' }) || '🍀'}</button>`,
+      `<button class="stickerMenuButton" type="button" data-emoji="🎱" aria-label="Bolilla">${stickers?.icon('🎱', { className:'stickerMenuIcon' }) || '🎱'}</button>`,
+      `<button class="stickerMenuButton" type="button" data-emoji="🎉" aria-label="Fiesta">${stickers?.icon('🎉', { className:'stickerMenuIcon' }) || '🎉'}</button>`
+    ].join('');
+    const composerIcon = stickers?.icon('😀', { className:'stickerComposerIcon' }) || '☺';
+    dock.innerHTML = `<button id="playerChatToggle" class="playerChatToggle" type="button">💬 CHAT <span id="playerChatBadge" class="playerChatBadge"></span></button><section id="playerChatPanel" class="playerChatPanel" aria-label="Chat público"><header><b>CHAT PÚBLICO</b><button id="playerChatClose" type="button" aria-label="Cerrar">×</button></header><div id="playerChatMessages" class="playerChatMessages"></div><div id="playerChatNotice" class="playerChatNotice hidden"></div><div id="playerEmojiMenu" class="playerEmojiMenu" aria-label="Stickers animados">${emojiButtons}</div><div class="playerChatComposer"><button id="playerChatEmojiButton" class="playerChatEmojiButton" type="button" aria-label="Elegir sticker">${composerIcon}</button><textarea id="playerChatInput" maxlength="160" placeholder="Escribí un mensaje"></textarea><button id="playerChatSend" class="playerChatSend" type="button">ENVIAR</button></div></section>`;
     document.body.appendChild(dock);
     $('playerChatToggle').onclick = () => {
       const opening = !$('playerChatPanel').classList.contains('show');
@@ -221,7 +234,7 @@ class PlayerApp {
     };
     $('playerChatClose').onclick = () => this.closeChat();
     $('playerChatEmojiButton').onclick = () => $('playerEmojiMenu').classList.toggle('show');
-    $('playerEmojiMenu').querySelectorAll('[data-emoji]').forEach(button => button.onclick = () => this.insertChatEmoji(button.dataset.emoji));
+    $('playerEmojiMenu').querySelectorAll('[data-emoji]').forEach(button => button.onclick = () => { const sticker=button.querySelector('.bingoSticker'); if(sticker){sticker.classList.remove('preview');void sticker.offsetWidth;sticker.classList.add('preview');setTimeout(()=>sticker.classList.remove('preview'),850)} this.insertChatEmoji(button.dataset.emoji); });
     $('playerChatSend').onclick = () => this.sendChat();
     $('playerChatInput').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); this.sendChat(); } });
   }
@@ -255,7 +268,16 @@ class PlayerApp {
     dock.style.display = this.state?.active ? '' : 'none';
     const chat = this.state?.chat || { messages: [] };
     const host = $('playerChatMessages');
-    host.innerHTML = (chat.messages || []).map(message => `<article class="playerChatMessage ${message.role === 'admin' ? 'admin' : ''}"><small><b>${esc(message.name)}</b><span>${esc(this.chatTime(message.createdAt))}</span></small><p>${esc(message.text)}</p></article>`).join('') || '<div style="text-align:center;color:#aeb8cd;padding:25px">Todavía no hay mensajes.</div>';
+    const stickers = window.BingoEmojiStickers;
+    const messages = chat.messages || [];
+    const freshIds = new Set(messages.filter(message => !this.seenChatMessageIds.has(message.id)).map(message => message.id));
+    host.innerHTML = messages.map(message => {
+      const animate = Boolean(incoming && freshIds.has(message.id));
+      const body = stickers ? stickers.renderText(message.text, { animate }) : esc(message.text);
+      const only = stickers?.isStickerOnly(message.text) ? ' stickerOnly' : '';
+      return `<article class="playerChatMessage ${message.role === 'admin' ? 'admin' : ''}"><small><b>${esc(message.name)}</b><span>${esc(this.chatTime(message.createdAt))}</span></small><p class="${only.trim()}">${body}</p></article>`;
+    }).join('') || '<div style="text-align:center;color:#aeb8cd;padding:25px">Todavía no hay mensajes.</div>';
+    messages.forEach(message => this.seenChatMessageIds.add(message.id));
     if (incoming || $('playerChatPanel').classList.contains('show')) host.scrollTop = host.scrollHeight;
     const blocked = chat.enabled === false || chat.locked || chat.muted;
     $('playerChatInput').disabled = blocked;
@@ -905,7 +927,7 @@ class PlayerApp {
       const response = await fetch('/reglamento.pdf', { cache:'no-store' });
       if (!response.ok) throw new Error('El reglamento todavía no fue cargado. Se incorporará antes de publicar la partida.');
       const blob = await response.blob(), link = document.createElement('a');
-      link.href = URL.createObjectURL(blob); link.download = 'Reglamento_El_Bingo_de_la_Gorda.pdf'; document.body.appendChild(link); link.click(); link.remove();
+      link.href = URL.createObjectURL(blob); link.download = 'Reglamento_LA_GORDA_BINGO_ONLINE.pdf'; document.body.appendChild(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     } catch (error) { this.showMessage(error.message, 'error'); }
   }
@@ -1297,8 +1319,8 @@ class PlayerApp {
     $('winnerContent').innerHTML=`<div class="winnerSummary"><b>${esc(String(claim.prizeLabel||'PREMIO').toUpperCase())} CONFIRMADO</b><br>${esc(claim.playerName)} · Cartón ${esc(claim.cardNumber)}<br><small>${esc(this.chatTime(resolved))}</small></div><div class="winnerGrid mode${card.mode}">${cells}</div>`;
   }
 
-  async downloadResults() { if (this.state?.status !== 'finished') return; this.downloadFile(`/api/results.pdf?sala=${encodeURIComponent(this.state.roomCode)}`, `Resultados_Bingo_${this.state.roomCode}.pdf`); }
-  async downloadLastPublicResult() { if (this.lastResult?.roomCode) this.downloadFile(`/api/results.pdf?sala=${encodeURIComponent(this.lastResult.roomCode)}`, this.lastResult.filename || 'Resultados_Bingo.pdf'); }
+  async downloadResults() { if (this.state?.status !== 'finished') return; this.downloadFile(`/api/results.pdf?sala=${encodeURIComponent(this.state.roomCode)}`, `LA_GORDA_BINGO_ONLINE_Resultados_${this.state.roomCode}.pdf`); }
+  async downloadLastPublicResult() { if (this.lastResult?.roomCode) this.downloadFile(`/api/results.pdf?sala=${encodeURIComponent(this.lastResult.roomCode)}`, this.lastResult.filename || 'LA_GORDA_BINGO_ONLINE_Resultados.pdf'); }
   async downloadFile(url, filename) {
     try { const response=await fetch(url,{cache:'no-store'}); if(!response.ok) throw new Error((await response.json().catch(()=>({}))).error||'No se pudo descargar.'); const blob=await response.blob(),link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=filename;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(link.href),1000); }
     catch(error){ this.showMessage(error.message,'error'); }

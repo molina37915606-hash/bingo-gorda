@@ -1,4 +1,4 @@
-# BINGO DE LA GORDA
+# LA GORDA - BINGO ONLINE
 
 Aplicación web para partidas de bingo de 75 y 90 bolas. Incluye panel administrativo, acceso móvil de jugadores, chat, transmisión, salas de prueba por enlace, salas oficiales con códigos individuales, minijuego de espera y actas auditables.
 
@@ -23,8 +23,10 @@ La configuración simplificada permite elegir modalidad, premios, cantador, voz,
 - Sala de espera con Mayor/Menor y Rojo/Negro siempre activos, con cambio libre entre ambos.
 - En salas de prueba, el jugador ve 10 cartones, puede recargarlos y elegir los suyos. Si el administrador inicia antes de la confirmación, la asignación se completa automáticamente.
 - Transmisión con chat y cuatro cartones destacados.
-- Actas PDF y CSV consultables desde el juego.
+- Actas PDF y CSV consultables desde el juego, con vista previa interna y descarga separada.
 - Copias de seguridad y recuperación.
+- Bolilla administrativa con número de alto contraste, color por columna y animación breve.
+- Código y recursos huérfanos retirados sin eliminar funciones de auditoría o recuperación.
 
 ## Ejecutar localmente
 
@@ -37,7 +39,6 @@ Rutas principales:
 - Administrador: `http://localhost:3210/admin`
 - Jugadores: `http://localhost:3210/jugador`
 - Demostración: `http://localhost:3210/demo`
-- Panel avanzado de importación: `http://localhost:3210/admin-avanzado`
 
 ## Pruebas
 
@@ -46,3 +47,7 @@ npm test
 ```
 
 Para producción, configurá almacenamiento persistente mediante `BINGO_DATA_DIR`.
+## Stickers animados del chat
+
+El chat transforma los ocho emojis permitidos en SVG propios, modernos y escalables. El selector muestra una vista previa animada, los mensajes nuevos se animan una sola vez y el texto almacenado conserva los emojis Unicode originales para mantener compatibilidad. El mismo aspecto se usa en jugador, administrador y transmisión.
+

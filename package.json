@@ -8,6 +8,6 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/bingo-2026-smoke.js && node tests/bingo-de-la-gorda-nueva.js"
+    "test": "node tests/bingo-2026-smoke.js && node tests/bingo-de-la-gorda-nueva.js && node tests/minijuego-ui.js"
   }
 }

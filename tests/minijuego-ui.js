@@ -1,0 +1,76 @@
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+const path = require('path');
+
+class ClassList {
+  constructor(initial = []) { this.values = new Set(initial); }
+  add(...names) { names.forEach(name => this.values.add(name)); }
+  remove(...names) { names.forEach(name => this.values.delete(name)); }
+  toggle(name, force) {
+    if (force === undefined) force = !this.values.has(name);
+    force ? this.values.add(name) : this.values.delete(name);
+    return force;
+  }
+  contains(name) { return this.values.has(name); }
+}
+
+function element(classes = []) {
+  return {
+    className: '', classList: new ClassList(classes), style: {}, innerHTML: '', textContent: '', disabled: false,
+    querySelectorAll() { return []; }
+  };
+}
+
+const elements = {
+  miniPlayingCard: element(['playingCard', 'back']),
+  miniResult: element(), miniScore: element(), miniBest: element(),
+  miniRestart: element(['hidden']), miniChoices: element()
+};
+const choiceButtons = [{ disabled:false }, { disabled:false }];
+elements.miniChoices.querySelectorAll = () => choiceButtons;
+
+const storage = new Map();
+const context = {
+  console,
+  setTimeout: callback => { callback(); return 1; }, clearTimeout() {}, setInterval() { return 1; }, clearInterval() {},
+  crypto: { randomUUID: () => 'test-device' },
+  localStorage: { getItem:key => storage.has(key) ? storage.get(key) : null, setItem:(key,value)=>storage.set(key,String(value)), removeItem:key=>storage.delete(key) },
+  sessionStorage: { getItem:()=>null, setItem() {}, removeItem() {} },
+  document: { getElementById:id => elements[id] || null, body:{ classList:new ClassList() }, documentElement:{} },
+  location: { search:'', reload() {} }, history:{ replaceState() {} }, navigator:{}, EventSource:function(){}, fetch:async()=>({ok:true,json:async()=>({})}),
+  window: { BingoPresenterScripts:{}, addEventListener() {}, scrollTo() {}, open() {} }
+};
+context.window.window = context.window;
+context.window.document = context.document;
+context.globalThis = context;
+
+const sourcePath = path.join(__dirname, '..', 'js', 'online-room-player.js');
+let source = fs.readFileSync(sourcePath, 'utf8');
+source = source.replace("window.addEventListener('DOMContentLoaded', () => new PlayerApp().init());", 'globalThis.PlayerApp = PlayerApp;');
+vm.runInNewContext(source, context, { filename:'online-room-player.js' });
+const app = new context.PlayerApp();
+app.state = { status:'waiting', waitingGame:{type:'red_black', leaderboard:[]}, player:{id:'p1'} };
+app.submitWaitingScore = async () => {};
+app.randomMiniCard = () => ({ key:'spade', symbol:'♠', color:'black', face:'pica', value:13, rank:'K' });
+
+(async () => {
+  await app.playWaitingMini('red');
+  assert.equal(app.waitingMini.ended, true, 'La ronda debe terminar al fallar.');
+  assert(elements.miniChoices.classList.contains('hidden'), 'Las elecciones deben ocultarse al fallar.');
+  assert(!elements.miniRestart.classList.contains('hidden'), 'Volver a jugar debe quedar visible.');
+
+  const rebuilt = app.waitingMiniGameHtml();
+  assert(rebuilt.includes('miniGameChoices hidden'), 'La reconstrucción por SSE debe conservar las elecciones ocultas.');
+  assert(/id="miniRestart" class="btn secondary"/.test(rebuilt), 'La reconstrucción por SSE debe conservar Volver a jugar visible.');
+  assert(rebuilt.includes('Te equivocaste'), 'La reconstrucción debe conservar el resultado de la ronda.');
+
+  let rendered = false;
+  app.renderWaiting = () => { rendered = true; };
+  app.restartWaitingMini();
+  assert.equal(app.waitingMini.ended, false);
+  assert.equal(app.waitingMini.score, 0);
+  assert(rendered, 'Volver a jugar debe reconstruir una ronda nueva.');
+  console.log('PRUEBA UI MINIJUEGO: OK');
+})().catch(error => { console.error(error); process.exitCode = 1; });

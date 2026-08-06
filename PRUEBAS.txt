@@ -6,6 +6,7 @@ Ejecutar:
 Resultados esperados:
   PRUEBAS BINGO DE LA GORDA: OK
   PRUEBAS NUEVAS BINGO DE LA GORDA: OK
+  PRUEBA UI MINIJUEGO: OK
 
 Cobertura principal:
 - Generación de 25 a 250 cartones en 75 y 90 bolas.
@@ -20,3 +21,4 @@ Cobertura principal:
 - Transmisión con cartones destacados.
 - Respaldos, restauración, acta PDF y CSV.
 - Escala de 60 jugadores y 240 cartones.
+- Reinicio del minijuego después de perder y después de actualizar la clasificación.

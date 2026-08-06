@@ -42,3 +42,10 @@ BASE TÉCNICA
 - Auditoría de reclamos con milisegundos y secuencia.
 - Automarcado obligatorio por encima de 10 jugadores o 40 cartones.
 - Prueba de escala con 60 jugadores y 240 cartones.
+
+CORRECCIÓN DEL MINIJUEGO
+- El botón “Volver a jugar” permanece visible después de perder, incluso cuando el servidor actualiza la clasificación.
+- Las elecciones quedan correctamente bloqueadas al terminar una ronda.
+- Se evita el doble toque mientras se revela una carta.
+- La carta y el mensaje de resultado se conservan al actualizar la sala de espera.
+- Se agregó una prueba automática específica de la interfaz del minijuego.

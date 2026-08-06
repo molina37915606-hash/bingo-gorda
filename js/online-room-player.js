@@ -50,7 +50,7 @@ class PlayerApp {
     this.resultsViewerUrl = '';
     this.openJoinMode = false;
     this.openJoinCardCount = 2;
-    this.waitingMini = { score: 0, best: 0, current: null, next: null, ended: false };
+    this.waitingMini = { score: 0, best: 0, current: null, ended: false, busy: false, message: '' };
     this.ticketTouchStartX = null;
     this.guideSteps = [
       { icon:'🧾', title:'Tus cartones', text:'Usá las pestañas para cambiar de cartón. Las marcas oficiales se conservan en todos.' },
@@ -652,7 +652,17 @@ class PlayerApp {
     if (!['red_black','higher_lower'].includes(type)) return '';
     const title = type === 'red_black' ? 'ROJO O NEGRO' : 'MAYOR O MENOR';
     const leaders = this.state.waitingGame?.leaderboard || [];
-    return `<section class="waitMiniGame"><h3>${title}</h3><div class="muted">Jugá hasta equivocarte. Podés volver a empezar todas las veces que quieras. No afecta el bingo.</div><div class="miniGameLayout"><div id="miniPlayingCard" class="playingCard back"></div><div class="miniGameControls"><div class="miniScore">Racha: <span id="miniScore">${this.waitingMini.score}</span> · Mejor: <span id="miniBest">${Math.max(this.waitingMini.best, Number(leaders.find(x=>x.playerId===this.state.player.id)?.bestScore)||0)}</span></div><div id="miniResult" class="miniResult">${type === 'red_black' ? 'Elegí el color de la próxima carta.' : 'Primero revelá una carta para comenzar.'}</div><div id="miniChoices" class="miniGameChoices">${type === 'red_black' ? '<button class="redChoice" data-mini="red">ROJO</button><button class="blackChoice" data-mini="black">NEGRO</button>' : '<button class="higherChoice" data-mini="higher">MAYOR</button><button class="lowerChoice" data-mini="lower">MENOR</button>'}</div><button id="miniRestart" class="btn secondary hidden" type="button">VOLVER A JUGAR</button></div></div><div class="miniLeaderboard"><b>Mejores rachas:</b> ${leaders.length ? leaders.map((item,index)=>`${index+1}. ${esc(item.name)} ${Number(item.bestScore)||0}`).join(' · ') : 'todavía no hay puntajes'}</div></section>`;
+    const serverBest = Number(leaders.find(item => item.playerId === this.state.player.id)?.bestScore) || 0;
+    const best = Math.max(this.waitingMini.best, serverBest);
+    const defaultMessage = type === 'red_black'
+      ? 'Elegí el color de la próxima carta.'
+      : this.waitingMini.current
+        ? `Carta actual: ${this.waitingMini.current.rank}${this.waitingMini.current.symbol}. ¿La próxima será mayor o menor?`
+        : 'Preparando la primera carta…';
+    const result = this.waitingMini.message || defaultMessage;
+    const choicesClass = `miniGameChoices${this.waitingMini.ended ? ' hidden' : ''}`;
+    const restartClass = `btn secondary${this.waitingMini.ended ? '' : ' hidden'}`;
+    return `<section class="waitMiniGame"><h3>${title}</h3><div class="muted">Jugá hasta equivocarte. Podés volver a empezar todas las veces que quieras. No afecta el bingo.</div><div class="miniGameLayout"><div id="miniPlayingCard" class="playingCard back"></div><div class="miniGameControls"><div class="miniScore">Racha: <span id="miniScore">${this.waitingMini.score}</span> · Mejor: <span id="miniBest">${best}</span></div><div id="miniResult" class="miniResult">${result}</div><div id="miniChoices" class="${choicesClass}">${type === 'red_black' ? '<button type="button" class="redChoice" data-mini="red">ROJO</button><button type="button" class="blackChoice" data-mini="black">NEGRO</button>' : '<button type="button" class="higherChoice" data-mini="higher">MAYOR</button><button type="button" class="lowerChoice" data-mini="lower">MENOR</button>'}</div><button id="miniRestart" class="${restartClass}" type="button">VOLVER A JUGAR</button></div></div><div class="miniLeaderboard"><b>Mejores rachas:</b> ${leaders.length ? leaders.map((item,index)=>`${index+1}. ${esc(item.name)} ${Number(item.bestScore)||0}`).join(' · ') : 'todavía no hay puntajes'}</div></section>`;
   }
 
   randomMiniCard() {
@@ -669,20 +679,33 @@ class PlayerApp {
     host.innerHTML=`<div class="cardIndex top ${card.color}">${esc(card.rank)}<small>${card.symbol}</small></div><div class="cardIndex bottom ${card.color}">${esc(card.rank)}<small>${card.symbol}</small></div>`;
   }
 
+  setWaitingMiniButtonsDisabled(disabled) {
+    $('miniChoices')?.querySelectorAll('[data-mini]').forEach(button => { button.disabled = Boolean(disabled); });
+  }
+
   bindWaitingMiniGame() {
     const type = this.state?.waitingGame?.type;
     if (!['red_black','higher_lower'].includes(type) || !$('miniChoices')) return;
     if (type === 'higher_lower' && !this.waitingMini.current && !this.waitingMini.ended) {
-      this.waitingMini.current = this.randomMiniCard(); this.showMiniCard(this.waitingMini.current);
-      $('miniResult').textContent = `Carta actual: ${this.waitingMini.current.rank}${this.waitingMini.current.symbol}. ¿La próxima será mayor o menor?`;
-    } else if (this.waitingMini.current && !this.waitingMini.ended) this.showMiniCard(this.waitingMini.current);
+      this.waitingMini.current = this.randomMiniCard();
+      this.waitingMini.message = `Carta actual: ${this.waitingMini.current.rank}${this.waitingMini.current.symbol}. ¿La próxima será mayor o menor?`;
+    }
+    if (this.waitingMini.current) this.showMiniCard(this.waitingMini.current);
+    else this.showMiniCard(null, true);
+    if ($('miniResult')) $('miniResult').textContent = this.waitingMini.message || (type === 'red_black' ? 'Elegí el color de la próxima carta.' : `Carta actual: ${this.waitingMini.current.rank}${this.waitingMini.current.symbol}. ¿La próxima será mayor o menor?`);
+    $('miniChoices').classList.toggle('hidden', this.waitingMini.ended);
+    $('miniRestart')?.classList.toggle('hidden', !this.waitingMini.ended);
+    this.setWaitingMiniButtonsDisabled(this.waitingMini.busy);
     $('miniChoices').querySelectorAll('[data-mini]').forEach(button => button.onclick = () => this.playWaitingMini(button.dataset.mini));
     if ($('miniRestart')) $('miniRestart').onclick = () => this.restartWaitingMini();
   }
 
   async playWaitingMini(choice) {
-    if (this.waitingMini.ended) return;
+    if (this.waitingMini.ended || this.waitingMini.busy) return;
     const type = this.state?.waitingGame?.type;
+    if (!['red_black','higher_lower'].includes(type)) return;
+    this.waitingMini.busy = true;
+    this.setWaitingMiniButtonsDisabled(true);
     const next = this.randomMiniCard();
     let correct = false, tie = false;
     if (type === 'red_black') correct = choice === next.color;
@@ -693,31 +716,55 @@ class PlayerApp {
     }
     this.showMiniCard(next);
     if (tie) {
-      $('miniResult').textContent = `Empate: salió ${next.rank}${next.symbol}. La racha sigue igual.`;
       this.waitingMini.current = next;
-      return setTimeout(() => { if (this.state?.status === 'waiting') { this.showMiniCard(next); $('miniResult').textContent = `Carta actual: ${next.rank}${next.symbol}. Elegí mayor o menor.`; } }, 650);
+      this.waitingMini.message = `Empate: salió ${next.rank}${next.symbol}. La racha sigue igual.`;
+      $('miniResult').textContent = this.waitingMini.message;
+      await new Promise(resolve => setTimeout(resolve, 500));
+      this.waitingMini.message = `Carta actual: ${next.rank}${next.symbol}. Elegí mayor o menor.`;
+      if (this.state?.status === 'waiting' && $('miniResult')) $('miniResult').textContent = this.waitingMini.message;
+      this.waitingMini.busy = false;
+      this.setWaitingMiniButtonsDisabled(false);
+      return;
     }
     if (correct) {
-      this.waitingMini.score += 1; this.waitingMini.best = Math.max(this.waitingMini.best, this.waitingMini.score); this.waitingMini.current = next;
-      $('miniScore').textContent = this.waitingMini.score; $('miniBest').textContent = this.waitingMini.best;
-      $('miniResult').textContent = `¡Correcto! Salió ${next.rank}${next.symbol}. Seguí jugando.`;
+      this.waitingMini.score += 1;
+      this.waitingMini.best = Math.max(this.waitingMini.best, this.waitingMini.score);
+      this.waitingMini.current = next;
+      this.waitingMini.message = type === 'red_black'
+        ? `¡Correcto! Salió ${next.rank}${next.symbol}. Elegí otra vez.`
+        : `¡Correcto! Salió ${next.rank}${next.symbol}. Elegí mayor o menor.`;
+      $('miniScore').textContent = this.waitingMini.score;
+      $('miniBest').textContent = this.waitingMini.best;
+      $('miniResult').textContent = this.waitingMini.message;
+      this.waitingMini.busy = false;
+      this.setWaitingMiniButtonsDisabled(false);
       this.submitWaitingScore(this.waitingMini.best);
-    } else {
-      this.waitingMini.ended = true; this.waitingMini.current = next;
-      $('miniResult').innerHTML = `Te equivocaste: salió <b>${next.rank}${next.symbol}</b>. Racha final: <b>${this.waitingMini.score}</b>.`;
-      $('miniChoices').classList.add('hidden'); $('miniRestart').classList.remove('hidden');
-      this.submitWaitingScore(this.waitingMini.score);
+      return;
     }
+    this.waitingMini.ended = true;
+    this.waitingMini.current = next;
+    this.waitingMini.message = `Te equivocaste: salió ${next.rank}${next.symbol}. Racha final: ${this.waitingMini.score}.`;
+    $('miniResult').innerHTML = `Te equivocaste: salió <b>${next.rank}${next.symbol}</b>. Racha final: <b>${this.waitingMini.score}</b>.`;
+    $('miniChoices').classList.add('hidden');
+    $('miniRestart').classList.remove('hidden');
+    this.waitingMini.busy = false;
+    this.submitWaitingScore(this.waitingMini.score);
   }
 
   restartWaitingMini() {
-    this.waitingMini.score = 0; this.waitingMini.ended = false; this.waitingMini.current = null;
+    this.waitingMini.score = 0;
+    this.waitingMini.ended = false;
+    this.waitingMini.busy = false;
+    this.waitingMini.current = null;
+    this.waitingMini.message = this.state?.waitingGame?.type === 'red_black' ? 'Elegí el color de la próxima carta.' : '';
     this.renderWaiting();
   }
 
   async submitWaitingScore(score) {
-    try { const data = await this.request('/api/player/waiting-game/score', { method:'POST', body:JSON.stringify({ score }) }); this.state.waitingGame = data.waitingGame; }
-    catch {}
+    try {
+      const data = await this.request('/api/player/waiting-game/score', { method:'POST', body:JSON.stringify({ score }) });
+      if (data.waitingGame) this.state.waitingGame = data.waitingGame;
+    } catch {}
   }
 
   playerNameSectionHtml() {
@@ -868,13 +915,20 @@ class PlayerApp {
     $('waitingPanel').classList.add('hidden'); $('playPanel').classList.remove('hidden');
     const drawn = this.state.game.drawn || [];
     const last = this.state.game.lastBall;
-    if (last == null) $('lastBall').textContent = '—';
+    const ballHost = $('lastBall');
+    ballHost.className = 'lastBall';
+    if (last == null) ballHost.textContent = '—';
     else if (Number(this.state.game.mode) === 75) {
-      const letter = last <= 15 ? 'B' : last <= 30 ? 'I' : last <= 45 ? 'N' : last <= 60 ? 'G' : 'O';
-      $('lastBall').innerHTML = `<span class="ballLetter">${letter}</span><strong>${last}</strong>`;
-    } else $('lastBall').innerHTML = `<strong>${last}</strong>`;
+      const info = this.ballInfo75(last);
+      ballHost.classList.add(info.className);
+      ballHost.innerHTML = `<span class="ballLetter">${info.letter}</span><strong>${last}</strong>`;
+    } else ballHost.innerHTML = `<strong>${last}</strong>`;
     $('ballCount').textContent = `${drawn.length} de ${this.state.game.mode} sorteadas`;
-    $('recent').innerHTML = [...drawn].reverse().slice(0,7).map(number => `<i>${number}</i>`).join('');
+    $('recent').innerHTML = [...drawn].reverse().slice(0,7).map(number => {
+      if (Number(this.state.game.mode) !== 75) return `<i>${number}</i>`;
+      const info = this.ballInfo75(number);
+      return `<i class="${info.className}" title="${info.letter} ${number}">${number}</i>`;
+    }).join('');
     $('resultsBtn').disabled = this.state.status !== 'finished'; $('showWinnerBtn').disabled = !this.latestConfirmedWinner();
     this.renderTabs(); this.renderTicket(); this.renderInfoDrawer();
   }
@@ -893,6 +947,10 @@ class PlayerApp {
 
   readinessFor(cardId) { return (this.state?.readiness || []).find(item => item.cardId === cardId) || null; }
   eligibleCard(type) { const key = `${type}Eligible`; return (this.state?.readiness || []).find(item => item[key]) || null; }
+  ballInfo75(number) {
+    const letter = number <= 15 ? 'B' : number <= 30 ? 'I' : number <= 45 ? 'N' : number <= 60 ? 'G' : 'O';
+    return { letter, className: `bingo-col-${letter.toLowerCase()}` };
+  }
   claimLabel(type) {
     if (type === 'ambo') return 'AMBOCABEZA';
     if (type === 'corners') return '4 ESQUINAS';
@@ -915,7 +973,7 @@ class PlayerApp {
     const cells = card.grid.flat().map(value => value === null ? '<div class="cell blank">·</div>' : value === 'LIBRE' ? '<div class="cell free"><img src="assets/celebrations/la-gorda-festejando.png" alt="La Gorda"><span>LIBRE</span></div>' : `<button class="cell number ${marks.has(value) ? 'marked' : ''}" data-number="${value}" ${auto || locked ? 'disabled' : ''}>${value}</button>`).join('');
     const readyInfo = this.readinessFor(card.id);
     const progress = Number(card.mode) === 75 ? ` · ${readyInfo?.lineCount || 0} líneas completas` : '';
-    const bingoHead = Number(card.mode) === 75 ? '<div class="bingoLetters" aria-hidden="true"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>' : '';
+    const bingoHead = Number(card.mode) === 75 ? '<div class="bingoLetters" aria-hidden="true"><span class="bingo-col-b">B</span><span class="bingo-col-i">I</span><span class="bingo-col-n">N</span><span class="bingo-col-g">G</span><span class="bingo-col-o">O</span></div>' : '';
     $('ticketPanel').innerHTML = `<div class="ticketHead"><div class="ticketMetaMain"><span class="ticketNumberBadge">${esc(card.number)}</span><div><b>Tu cartón</b><br><small>${esc(this.state.player.name)}</small></div></div><small class="ticketHeadStatus">${marks.size} marcados${progress}<br>${auto ? 'AUTOMÁTICO' : 'MANUAL'}</small></div>${bingoHead}<div class="grid mode${card.mode}">${cells}</div>`;
     if (!auto && !locked) $('ticketPanel').querySelectorAll('[data-number]').forEach(button => button.onclick = () => this.toggleMark(card.id, Number(button.dataset.number), !button.classList.contains('marked')));
 

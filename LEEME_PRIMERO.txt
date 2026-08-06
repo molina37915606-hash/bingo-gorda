@@ -1,12 +1,10 @@
-BINGO DE LA GORDA 2.3
+BINGO GORDA 2026
 
-1. Configurá MASTER_ADMIN_PASSWORD en Render.
-2. Entrá a /admin-principal con esa clave.
-3. Creá o recuperá una partida.
-4. Generá o importá cartones y configurá la sala.
-5. El administrador solo define cantidad de accesos y máximo de cartones.
-6. Cada jugador recibe un enlace o código, ingresa a la sala, escribe su nombre al elegir cartones y confirma entre 1 y el máximo habilitado.
-7. Ejecutá npm test antes de publicar una actualización.
+1. Abrí PROBAR_EN_ESTA_PC.bat o ejecutá npm start.
+2. Ingresá al panel principal con la clave configurada.
+3. Elegí 75 o 90 bolas y configurá los premios antes de abrir la sala.
 
-El modo TikTok se abre desde el enlace privado de transmisión en un segundo celular.
-Los administradores temporales están deshabilitados en esta versión.
+75 bolas: Línea, Doble línea, Triple línea, 4 esquinas y Bingo.
+90 bolas: AmboCabeza, Primera línea, Segunda línea y Bingo.
+
+El cartón de 75 está adaptado para entrar completo en pantallas de computadora y celular.

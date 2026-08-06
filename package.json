@@ -1,13 +1,13 @@
 {
-  "name": "bingo-de-la-gorda-2-3",
-  "version": "2.3.0",
+  "name": "bingo-gorda-2026",
+  "version": "2026.1.0",
   "private": true,
-  "description": "Bingo de la Gorda 2.3: administrador principal, jugadores móviles, resultados oficiales y modo TikTok.",
+  "description": "BINGO GORDA 2026: bingo de 75 y 90 bolas, salas privadas, reclamos verificados, transmisión y resultados oficiales.",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/v23-smoke.js"
+    "test": "node tests/bingo-2026-smoke.js"
   }
 }

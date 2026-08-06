@@ -1,18 +1,13 @@
-PUBLICAR BINGO DE LA GORDA 2.3 EN RENDER
+PUBLICAR BINGO GORDA 2026 EN RENDER
 
-1. Subí el contenido descomprimido a GitHub.
-2. En Render creá o actualizá un Web Service conectado al repositorio.
-3. Build Command: npm install
-4. Start Command: npm start
-5. En Environment configurá:
-   MASTER_ADMIN_PASSWORD = tu clave privada
-   PUBLIC_URL = https://TU-SERVICIO.onrender.com
-   ONLINE_MODE = true
-6. Publicá y verificá:
-   https://TU-SERVICIO.onrender.com/healthz
-7. Entrá en:
-   https://TU-SERVICIO.onrender.com/admin-principal
+- Runtime: Node
+- Build command: npm install
+- Start command: npm start
+- Health check: /healthz
 
-ADVERTENCIA SOBRE RENDER FREE
+Variables necesarias:
+MASTER_ADMIN_PASSWORD=una_clave_segura
+PUBLIC_URL=https://tu-servicio.onrender.com
+ONLINE_MODE=true
 
-El servicio puede tardar en despertar y sus archivos locales son temporales. Realizá copias de seguridad de las partidas y resultados. No se incluyen administradores temporales en esta versión para evitar depender de accesos guardados en archivos efímeros.
+Para conservar partidas entre reinicios, configurá almacenamiento persistente y BINGO_DATA_DIR.

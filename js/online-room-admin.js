@@ -84,7 +84,7 @@ class LocalRoomAdmin {
     const button = document.createElement('button');
     button.id = 'localRoomBtn';
     button.className = 'tool localRoomTool';
-    button.textContent = '🌐 SALA ONLINE 2.3';
+    button.textContent = '🌐 SALA ONLINE 2026';
     button.onclick = () => this.openMainModal();
     footer?.insertBefore(button, $('cardsBtn'));
 
@@ -506,6 +506,7 @@ class LocalRoomAdmin {
   renderSetup(body) {
     if (!this.assignments.length) this.assignments = this.defaultAssignments();
     const presenter = this.presenterInfo(this.app.game.presenter);
+    const is75 = Number(this.app.game.mode) === 75;
     body.innerHTML = `
       <div class="localIntro">
         ${this.serverState?.lastResult ? `<div class="localFinishedBox"><h3 style="margin:0 0 7px">Último resultado guardado</h3><p style="margin:0;color:#c7cee0">Sala ${esc(this.serverState.lastResult.roomCode)} · Finalizado ${new Date(this.serverState.lastResult.endedAt).toLocaleString('es-AR')}</p><div class="localToolbar"><button class="localPrimary" id="localDownloadLastResult">DESCARGAR ÚLTIMO PDF</button></div></div>` : ''}
@@ -521,9 +522,8 @@ class LocalRoomAdmin {
           <div id="localPlayersEditor" class="localPlayersEditor"></div>
           <div class="localGrid2" style="margin-top:14px">
             <div class="localCardBox">
-              <h3>Premios de línea</h3>
-              <label style="display:grid;gap:7px"><b>Cantidad de líneas ganadoras</b><select id="localLinePrizeCount" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"><option value="1">Una línea</option><option value="2">Primera y segunda línea</option></select></label>
-              <label class="localToggleRow"><span><b>Permitir que el mismo jugador gane ambas líneas</b><br><small>Recomendado: cada cartón participa por separado. Solo se permite con cartones diferentes.</small></span><input id="localSamePlayerSecondLine" type="checkbox" checked></label><label style="display:grid;gap:7px;margin-top:10px"><b>Reclamos simultáneos</b><select id="localTiePolicy" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"><option value="first_claim">Gana el primer reclamo recibido</option><option value="same_ball">Permitir empate con la misma última bolilla (máximo 4)</option></select></label>
+              ${is75 ? `<h3>Premios del modo 75</h3><div class="localNotice">Línea, Doble Línea, Triple Línea y 4 Esquinas son premios independientes. Doble y Triple Línea deben completarse dentro del mismo cartón.</div>` : `<h3>Premios de línea del modo 90</h3><label style="display:grid;gap:7px"><b>Cantidad de líneas ganadoras</b><select id="localLinePrizeCount" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"><option value="1">Solo primera línea</option><option value="2">Primera y segunda línea</option></select></label><label class="localToggleRow"><span><b>Permitir que el mismo jugador gane ambas líneas</b><br><small>Solo con cartones diferentes.</small></span><input id="localSamePlayerSecondLine" type="checkbox" checked></label>`}
+              <label style="display:grid;gap:7px;margin-top:10px"><b>Reclamos simultáneos</b><select id="localTiePolicy" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"><option value="first_claim">Gana el primer reclamo recibido</option><option value="same_ball">Permitir empate con la misma última bolilla (máximo 4)</option></select></label>
             </div>
             <div class="localCardBox">
               <h3>Asignación automática</h3>
@@ -538,8 +538,7 @@ class LocalRoomAdmin {
               <label style="display:grid;gap:7px"><b>WhatsApp de contacto</b><input id="localWhatsapp" placeholder="Ej.: +54 3764 123456" maxlength="40" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label>
             </div>
             <div class="localGrid2" style="margin-top:10px">
-              <label><b>Premio AmboCabeza</b><input id="localPrizeAmbo" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label>
-              <label><b>Premio Línea</b><input id="localPrizeLine" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label>
+              ${is75 ? `<label><b>Premio Línea</b><input id="localPrizeLine" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label><label><b>Premio Doble Línea</b><input id="localPrizeDoubleLine" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label><label><b>Premio Triple Línea</b><input id="localPrizeTripleLine" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label><label><b>Premio 4 Esquinas</b><input id="localPrizeCorners" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label>` : `<label><b>Premio AmboCabeza</b><input id="localPrizeAmbo" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label><label><b>Premio Línea</b><input id="localPrizeLine" type="number" min="0" value="0" style="width:100%;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label>`}
             </div>
             <label style="display:grid;gap:7px;margin-top:10px"><b>Premio Bingo</b><input id="localPrizeBingo" type="number" min="0" value="0" style="padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff"></label>
             <label class="localToggleRow"><span><b>Mostrar Mercado Pago</b><br><small>Solo como medio de contacto/pago; no procesa pagos.</small></span><input id="localShowMercadoPago" type="checkbox" checked></label>
@@ -612,6 +611,9 @@ class LocalRoomAdmin {
         prizeAmounts: {
           ambo: Math.max(0, Number($('localPrizeAmbo')?.value) || 0),
           line: Math.max(0, Number($('localPrizeLine')?.value) || 0),
+          doubleLine: Math.max(0, Number($('localPrizeDoubleLine')?.value) || 0),
+          tripleLine: Math.max(0, Number($('localPrizeTripleLine')?.value) || 0),
+          corners: Math.max(0, Number($('localPrizeCorners')?.value) || 0),
           bingo: Math.max(0, Number($('localPrizeBingo')?.value) || 0)
         },
         whatsapp: String($('localWhatsapp')?.value || '').trim(),
@@ -874,9 +876,14 @@ class LocalRoomAdmin {
     const data = this.serverState;
     const connectedCount = (data.players || []).filter(player => player.connected).length;
     const selectedCount = (data.players || []).filter(player => player.selectionConfirmed).length;
-    const prizeStatus = data.prizeStatus || { ambo: { total: 0, awarded: 0, closed: true }, line: { total: 1, awarded: 0, closed: false }, bingo: { total: 1, awarded: 0, closed: false } };
-    const lineAlerts = prizeStatus.line.closed ? 0 : (data.cardStatus || []).filter(card => card.hasLine && card.lineClaim === 'none').length;
-    const bingoAlerts = prizeStatus.bingo.closed ? 0 : (data.cardStatus || []).filter(card => card.hasBingo && card.bingoClaim === 'none').length;
+    const prizeStatus = data.prizeStatus || {};
+    const mode75 = Number(data.game?.mode) === 75;
+    const prizeDefs = mode75
+      ? [['corners','4 Esquinas','hasCorners','cornersClaim'],['line','Línea','hasLine','lineClaim'],['doubleLine','Doble Línea','hasDoubleLine','doubleLineClaim'],['tripleLine','Triple Línea','hasTripleLine','tripleLineClaim'],['bingo','Bingo','hasBingo','bingoClaim']]
+      : [['ambo','AmboCabeza','hasAmbo','amboClaim'],['line','Líneas','hasLine','lineClaim'],['bingo','Bingo','hasBingo','bingoClaim']];
+    const prizeAlerts = prizeDefs.reduce((sum,[key,,hasKey,claimKey]) => sum + (prizeStatus[key]?.closed ? 0 : (data.cardStatus || []).filter(card => card[hasKey] && card[claimKey] === 'none').length), 0);
+    const bingoAlerts = prizeStatus.bingo?.closed ? 0 : (data.cardStatus || []).filter(card => card.hasBingo && card.bingoClaim === 'none').length;
+    const prizeBarHtml = prizeDefs.filter(([key]) => Number(prizeStatus[key]?.total || 0) > 0).map(([key,label]) => { const prize = prizeStatus[key]; return `<div class="localPrizeItem ${prize.closed ? 'closed' : ''}"><b>${label}: ${prize.awarded}/${prize.total}</b><span>${prize.closed ? 'Premio cerrado' : `Disponible: ${esc(prize.nextLabel || label)}`}</span></div>`; }).join('');
     const playerPageUrl = this.playerPageUrl();
     const waiting = data.status === 'waiting';
     const playing = ['starting','playing','verifying','paused','resuming','finalizing'].includes(data.status);
@@ -917,13 +924,10 @@ class LocalRoomAdmin {
       <div class="localSummary">
         <div class="localMetric"><b>${connectedCount}</b><span>jugadores conectados</span></div>
         <div class="localMetric"><b>${selectedCount}/${data.players?.length || 0}</b><span>elecciones confirmadas</span></div>
-        <div class="localMetric"><b>${lineAlerts}</b><span>líneas sin cantar</span></div>
+        <div class="localMetric"><b>${prizeAlerts}</b><span>premios listos sin cantar</span></div>
         <div class="localMetric"><b>${bingoAlerts}</b><span>bingos sin cantar</span></div>
       </div>
-      <div class="localPrizeBar">
-        <div class="localPrizeItem ${prizeStatus.line.closed ? 'closed' : ''}"><b>Líneas: ${prizeStatus.line.awarded}/${prizeStatus.line.total}</b><span>${prizeStatus.line.closed ? 'Premio cerrado' : `Disponible: ${esc(prizeStatus.line.nextLabel || 'Línea')}`}</span></div>
-        <div class="localPrizeItem ${prizeStatus.bingo.closed ? 'closed' : ''}"><b>Bingo: ${prizeStatus.bingo.awarded}/1</b><span>${prizeStatus.bingo.closed ? 'Premio cerrado' : 'Premio disponible'}</span></div>
-      </div>
+      <div class="localPrizeBar">${prizeBarHtml}</div>
       <div class="localGrid2" style="margin-top:14px">
         <div class="localCardBox"><h3>Ingreso de jugadores</h3><div class="localCompactAccess"><div><small>Página general</small><div class="localCode">SALA ${esc(data.roomCode)}</div></div><button class="localSecondary" id="localCopyPlayerPage">COPIAR PÁGINA PARA JUGADORES</button></div><small>El enlace largo no se muestra. Quien lo reciba escribe su código privado.</small></div>
         <div class="localCardBox"><h3>Código de sala</h3><div class="localUrl">${esc(data.roomCode)}</div><small>Estado: ${waiting ? 'esperando jugadores' : playing ? 'sorteo iniciado' : 'sorteo finalizado'}.</small></div>
@@ -1004,18 +1008,17 @@ class LocalRoomAdmin {
     const check = data.preflight || {};
     const pending = check.pendingPlayers || [];
     const ok = Boolean(check.ok);
-    const tieLabel = check.tiePolicy === 'same_ball'
-      ? 'Se permite empate si completan con la misma última bolilla.'
-      : 'Gana el primer reclamo recibido por el servidor.';
-    const lineLabel = Number(check.linePrizeCount) === 2
-      ? `Primera y segunda línea · ${check.allowSamePlayerSecondLine ? 'un jugador puede ganar ambas con cartones diferentes' : 'cada línea debe ganarla un jugador diferente'}`
-      : 'Una sola línea';
+    const tieLabel = check.tiePolicy === 'same_ball' ? 'Se permite empate si completan con la misma última bolilla.' : 'Gana el primer reclamo recibido por el servidor.';
+    const prizeLabel = (check.enabledPrizes || []).length ? `Premios: ${(check.enabledPrizes || []).join(' · ')}` : 'No hay premios activos';
+    const lineRule = Number(check.mode) === 90 && Number(check.linePrizeCount) === 2
+      ? `${prizeLabel} · ${check.allowSamePlayerSecondLine ? 'un jugador puede ganar ambas líneas con cartones diferentes' : 'cada línea debe ganarla un jugador diferente'}`
+      : prizeLabel;
     const rows = [
       { good: Number(check.totalPlayers) >= 2 && Number(check.totalPlayers) <= 60, text: `${Number(check.totalPlayers) || 0} jugadores configurados` },
       { good: Number(check.readyPlayers) === Number(check.totalPlayers) && Number(check.totalPlayers) > 0, text: `${Number(check.readyPlayers) || 0}/${Number(check.totalPlayers) || 0} jugadores con cartones completos` },
       { good: Number(check.activeCards) > 0 && Number(check.activeCards) <= 250, text: `${Number(check.activeCards) || 0} cartones activos de ${Number(check.generatedCards) || 0} generados · máximo activo 250` },
       { good: !(check.duplicateCardIds || []).length, text: (check.duplicateCardIds || []).length ? `${check.duplicateCardIds.length} cartones duplicados` : 'Sin cartones duplicados' },
-      { good: true, text: lineLabel },
+      { good: (check.enabledPrizes || []).length > 0, text: lineRule },
       { good: true, text: tieLabel }
     ];
     return `<div class="localCardBox" style="margin-top:14px"><h3>Revisión antes de iniciar</h3><div style="display:grid;gap:8px;margin-top:10px">${rows.map(row => `<div class="localNotice ${row.good ? 'localSuccess' : 'localError'}" style="margin:0">${row.good ? '✓' : '✕'} ${esc(row.text)}</div>`).join('')}</div>${pending.length ? `<div class="localNotice" style="margin-top:10px"><b>Pendientes:</b> ${pending.slice(0, 12).map(player => `${esc(player.name)} (${player.missing})`).join(' · ')}${pending.length > 12 ? ` · y ${pending.length - 12} más` : ''}</div>` : ''}${(check.errors || []).length ? `<div class="localError" style="margin-top:10px">${check.errors.map(error => `• ${esc(error)}`).join('<br>')}</div>` : `<div class="localSuccess" style="margin-top:10px"><b>SALA LISTA PARA INICIAR</b></div>`}</div>`;
@@ -1025,15 +1028,17 @@ class LocalRoomAdmin {
   monitorTable(cards, query = '') {
     const normalized = String(query || '').trim().toLowerCase();
     const filtered = normalized ? cards.filter(card => String(card.playerName || '').toLowerCase().includes(normalized) || String(card.cardNumber || '').toLowerCase().includes(normalized)) : cards;
-    const sorted = [...filtered].sort((a, b) => Number(b.hasBingo) - Number(a.hasBingo) || Number(b.hasLine) - Number(a.hasLine) || Number(b.hasAmbo) - Number(a.hasAmbo) || a.bingoMissing - b.bingoMissing || a.lineMissing - b.lineMissing);
-    const amboClosed = Boolean(this.serverState?.prizeStatus?.ambo?.closed);
-    const lineClosed = Boolean(this.serverState?.prizeStatus?.line?.closed);
-    const bingoClosed = Boolean(this.serverState?.prizeStatus?.bingo?.closed);
+    const prizeStatus = this.serverState?.prizeStatus || {};
+    const mode75 = Number(this.serverState?.game?.mode) === 75;
+    const order = mode75
+      ? [['bingo','BINGO','hasBingo','bingoClaim'],['tripleLine','TRIPLE LÍNEA','hasTripleLine','tripleLineClaim'],['doubleLine','DOBLE LÍNEA','hasDoubleLine','doubleLineClaim'],['corners','4 ESQUINAS','hasCorners','cornersClaim'],['line','LÍNEA','hasLine','lineClaim']]
+      : [['bingo','BINGO','hasBingo','bingoClaim'],['line','LÍNEA','hasLine','lineClaim'],['ambo','AMBOCABEZA','hasAmbo','amboClaim']];
+    const readyPrize = card => order.find(([key,,hasKey,claimKey]) => !prizeStatus[key]?.closed && card[hasKey] && card[claimKey] === 'none');
+    const sorted = [...filtered].sort((a,b) => Number(Boolean(readyPrize(b))) - Number(Boolean(readyPrize(a))) || Number(b.lineCount || 0) - Number(a.lineCount || 0) || a.bingoMissing - b.bingoMissing || a.lineMissing - b.lineMissing);
     const visible = normalized ? sorted : sorted.slice(0, 25);
-    return `<div style="margin:8px 0;color:#a9b7d3">Mostrando ${visible.length} de ${cards.length} cartones activos.</div><table class="localMonitor"><thead><tr><th>Jugador</th><th>Cartón</th><th>Conexión</th><th>Falta línea</th><th>Falta bingo</th><th>Modo</th><th>Marcas jugador</th><th>Diferencias</th><th></th></tr></thead><tbody>${visible.map(card => {
-      const rowClass = !bingoClosed && card.hasBingo && card.bingoClaim === 'none' ? 'alertBingo' : !lineClosed && card.hasLine && card.lineClaim === 'none' ? 'alertLine' : !amboClosed && card.hasAmbo && card.amboClaim === 'none' ? 'alertLine' : '';
-      const prize = !bingoClosed && card.hasBingo ? '<span class="localStatus danger">BINGO SIN CANTAR</span>' : !lineClosed && card.hasLine ? '<span class="localStatus warn">LÍNEA SIN CANTAR</span>' : !amboClosed && card.hasAmbo ? '<span class="localStatus warn">AMBOCABEZA SIN CANTAR</span>' : '';
-      return `<tr class="${rowClass}"><td><b>${esc(card.playerName)}</b><br>${prize}</td><td>#${esc(card.cardNumber)}</td><td><span class="localStatus ${card.connected ? 'on' : 'off'}">${card.connected ? 'Sí' : 'No'}</span></td><td><b>${card.lineMissing}</b></td><td><b>${card.bingoMissing}</b></td><td>${card.autoMark ? '<span class="localStatus on">AUTO</span>' : 'Manual'}</td><td>${card.playerMarkedCount}/${card.totalNumbers}</td><td>${card.missed.length ? `Olvidó: ${card.missed.join(', ')}` : ''}${card.wrong.length ? `${card.missed.length ? '<br>' : ''}Mal marcados: ${card.wrong.join(', ')}` : (!card.missed.length ? 'Sin diferencias' : '')}</td><td><button data-card-detail="${esc(card.cardId)}">VER</button></td></tr>`;
+    return `<div style="margin:8px 0;color:#a9b7d3">Mostrando ${visible.length} de ${cards.length} cartones activos.</div><table class="localMonitor"><thead><tr><th>Jugador</th><th>Cartón</th><th>Conexión</th><th>Líneas completas</th><th>Falta línea</th><th>Falta bingo</th><th>Modo</th><th>Marcas</th><th></th></tr></thead><tbody>${visible.map(card => {
+      const ready = readyPrize(card); const prize = ready ? `<span class="localStatus ${ready[0] === 'bingo' ? 'danger' : 'warn'}">${ready[1]} SIN CANTAR</span>` : '';
+      return `<tr class="${ready ? (ready[0] === 'bingo' ? 'alertBingo' : 'alertLine') : ''}"><td><b>${esc(card.playerName)}</b><br>${prize}</td><td>#${esc(card.cardNumber)}</td><td><span class="localStatus ${card.connected ? 'on' : 'off'}">${card.connected ? 'Sí' : 'No'}</span></td><td><b>${Number(card.lineCount || 0)}</b></td><td><b>${card.lineMissing}</b></td><td><b>${card.bingoMissing}</b></td><td>${card.autoMark ? '<span class="localStatus on">AUTO</span>' : 'Manual'}</td><td>${card.playerMarkedCount}/${card.totalNumbers}</td><td><button data-card-detail="${esc(card.cardId)}">VER</button></td></tr>`;
     }).join('')}</tbody></table>`;
   }
 
@@ -1042,7 +1047,7 @@ class LocalRoomAdmin {
     this.backupTimer = setTimeout(async () => {
       try {
         const backup = await this.request('/api/admin/backup');
-        localStorage.setItem('bingoGorda23OnlineLastBackup', JSON.stringify(backup));
+        localStorage.setItem('bingoGorda2026OnlineLastBackup', JSON.stringify(backup));
       } catch (error) {
         console.warn('No se pudo guardar la copia automática:', error);
       }
@@ -1052,18 +1057,18 @@ class LocalRoomAdmin {
   async downloadBackup() {
     try {
       const backup = await this.request('/api/admin/backup');
-      localStorage.setItem('bingoGorda23OnlineLastBackup', JSON.stringify(backup));
+      localStorage.setItem('bingoGorda2026OnlineLastBackup', JSON.stringify(backup));
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `Bingo_2.3_Sala_${backup.state?.roomCode || 'copia'}_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `Bingo_Gorda_2026_Sala_${backup.state?.roomCode || 'copia'}_${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     } catch (error) { alert(error.message); }
   }
 
   async restoreBrowserBackup() {
-    const raw = localStorage.getItem('bingoGorda23OnlineLastBackup') || localStorage.getItem('bingoGorda21OnlineLastBackup') || localStorage.getItem('bingoBetaOnlineLastBackup') || localStorage.getItem('bingoV10OnlineLastBackup');
+    const raw = localStorage.getItem('bingoGorda2026OnlineLastBackup') || localStorage.getItem('bingoGorda21OnlineLastBackup') || localStorage.getItem('bingoBetaOnlineLastBackup') || localStorage.getItem('bingoV10OnlineLastBackup');
     if (!raw) { alert('No hay una copia automática guardada en este navegador.'); return; }
     try { await this.restoreBackup(JSON.parse(raw)); }
     catch (error) { alert(error.message); }
@@ -1174,7 +1179,7 @@ class LocalRoomAdmin {
     this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
     this.app.renderAutoControls();
     const card = this.serverState?.game?.cards?.find(item => item.id === claim.cardId);
-    const claimLabel = claim.prizeLabel || (claim.type === 'ambo' ? 'AMBOCABEZA' : claim.type === 'line' ? 'LÍNEA' : 'BINGO');
+    const claimLabel = claim.prizeLabel || ({ ambo:'AMBOCABEZA', line:'LÍNEA', doubleLine:'DOBLE LÍNEA', tripleLine:'TRIPLE LÍNEA', corners:'4 ESQUINAS', bingo:'BINGO' }[claim.type] || 'PREMIO');
     $('localClaimTitle').textContent = `${claimLabel} CANTADO`;
     $('localClaimSubtitle').textContent = `${claim.playerName} · Cartón ${claim.cardNumber}`;
     $('localClaimBody').innerHTML = this.comparisonHtml(card, claim.playerMarksAtClaim, claim.drawnAtClaim, claim.comparison, claim);
@@ -1190,11 +1195,14 @@ class LocalRoomAdmin {
     if (!card) return '<div class="localError">No se encontró el cartón.</div>';
     const title = claim ? (claim.officialValid ? `RECLAMO VÁLIDO SEGÚN EL SISTEMA` : `RECLAMO INVÁLIDO SEGÚN EL SISTEMA`) : 'COMPARACIÓN EN VIVO';
     const className = claim?.officialValid ? 'localClaimValid' : claim ? 'localClaimValid localClaimInvalid' : 'localNotice';
+    const requiredLines = claim?.type === 'doubleLine' ? 2 : claim?.type === 'tripleLine' ? 3 : 1;
     const claimDetail = !claim ? '' : claim.type === 'ambo'
       ? (analysis.amboDetails?.map(item => `${item.label}: ${item.values.join(' y ')}`).join(' · ') || 'No hay AmboCabeza válido')
-      : claim.type === 'line'
-        ? (analysis.completeLines?.map(line => line.label).join(' · ') || 'No hay línea completa')
-        : `Faltan ${analysis.bingoMissing} números para bingo`;
+      : ['line','doubleLine','tripleLine'].includes(claim.type)
+        ? (analysis.completeLines?.length >= requiredLines ? analysis.completeLines.slice(0, requiredLines).map(line => line.label).join(' · ') : `Hay ${analysis.completeLines?.length || 0} de ${requiredLines} líneas necesarias`)
+        : claim.type === 'corners'
+          ? (analysis.hasCorners ? 'Las cuatro esquinas están completas' : `Faltan ${analysis.cornersMissing} esquinas`)
+          : `Faltan ${analysis.bingoMissing} números para bingo`;
     return `<div class="${className}">${title}${claim ? `<br><small>${claimDetail}</small>` : ''}</div>
       <div class="localCompareLegend"><span><i class="localSwatch ok"></i> Marcado correcto</span><span><i class="localSwatch missed"></i> Salió y el jugador no lo marcó</span><span><i class="localSwatch wrong"></i> Marcado sin haber salido</span></div>
       <div class="localCompare">
@@ -1249,7 +1257,7 @@ class LocalRoomAdmin {
     const prize = this.app.game?.prizes?.[type];
     const card = this.app.game?.cards?.find(item => item.id === claim.cardId);
     if (!prize || !card) return;
-    const totalPrizes = type === 'line' ? Math.max(1, Number(this.serverState?.roomSettings?.linePrizeCount) || 1) : 1;
+    const totalPrizes = type === 'line' && Number(this.serverState?.game?.mode) === 90 ? Math.max(1, Number(this.serverState?.roomSettings?.linePrizeCount) || 1) : 1;
     prize.status = Number(claim.prizeNumber || 1) >= totalPrizes ? 'confirmed' : 'active';
     if (!prize.winners.some(winner => winner.cardId === card.id)) {
       prize.winners.push({
@@ -1257,9 +1265,9 @@ class LocalRoomAdmin {
         name: claim.playerName,
         number: card.number,
         ball: this.app.game.drawn.at(-1),
-        details: claim.comparison.completeLines || [],
+        details: type === 'corners' ? (claim.comparison.cornerDetails || []) : ['line','doubleLine','tripleLine'].includes(type) ? (claim.comparison.completeLines || []) : type === 'ambo' ? (claim.comparison.amboDetails || []) : [],
         prizeNumber: claim.prizeNumber || 1,
-        prizeLabel: claim.prizeLabel || (type === 'ambo' ? 'AmboCabeza' : type === 'line' ? 'Línea' : 'Bingo'),
+        prizeLabel: claim.prizeLabel || ({ ambo:'AmboCabeza', line:'Línea', doubleLine:'Doble línea', tripleLine:'Triple línea', corners:'4 esquinas', bingo:'Bingo' }[type] || 'Premio'),
         confirmedAt: new Date().toISOString(),
         source: 'online-room'
       });
@@ -1267,7 +1275,7 @@ class LocalRoomAdmin {
     this.app.save();
     this.app.renderGame();
     this.app.celebrate(type);
-    const eventName = type === 'ambo' ? 'amboConfirmed' : type === 'line' ? 'lineConfirmed' : 'bingoConfirmed';
+    const eventName = type === 'ambo' ? 'amboConfirmed' : type === 'bingo' ? 'bingoConfirmed' : 'lineConfirmed';
     this.app.voice.event(eventName, {}, true);
   }
 }
@@ -1277,7 +1285,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const app = window.__BINGO_V8__;
     if (!app) return;
     const version = $('versionBadge');
-    if (version) version.textContent = 'VERSIÓN 2.3';
+    if (version) version.textContent = 'BINGO GORDA 2026';
     new LocalRoomAdmin(app).init().catch(error => console.error('No se inició la sala online:', error));
   }, 0);
 });

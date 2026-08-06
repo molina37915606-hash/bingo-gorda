@@ -28,7 +28,7 @@ if (fs.existsSync(LOCAL_ENV_FILE)) {
 const ROOT = __dirname;
 const DATA_DIR = process.env.BINGO_DATA_DIR ? path.resolve(process.env.BINGO_DATA_DIR) : path.join(ROOT, 'data');
 const OWNER_STATE_FILE = path.join(DATA_DIR, 'sala-online.json');
-const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma-2.3.json');
+const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma-2026.json');
 const WORKSPACES_DIR = path.join(DATA_DIR, 'operadores');
 const PORT = Number(process.env.PORT || 3210);
 const HOST = '0.0.0.0';
@@ -54,6 +54,8 @@ const START_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_START_SEQUENCE_
 const RESUME_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_RESUME_SEQUENCE_MS || 5_000));
 const FINAL_BALLS_SEQUENCE_MS = Math.max(250, Number(process.env.BINGO_FINAL_BALLS_SEQUENCE_MS || 8_000));
 const MAX_TIE_WINNERS_PER_PRIZE = 4;
+const APP_PUBLIC_VERSION = '2026';
+const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bingo'];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
 
@@ -92,6 +94,43 @@ function validatePlayerName(value, playerId = null) {
   return name;
 }
 
+function prizeLabelFor(type, prizeNumber = 1, mode = state.game?.mode) {
+  if (type === 'ambo') return 'AmboCabeza';
+  if (type === 'bingo') return 'Bingo';
+  if (type === 'doubleLine') return 'Doble línea';
+  if (type === 'tripleLine') return 'Triple línea';
+  if (type === 'corners') return '4 esquinas';
+  if (type === 'line' && Number(mode) === 90) return Number(prizeNumber) === 2 ? 'Segunda línea' : 'Primera línea';
+  return 'Línea';
+}
+function claimBetName(type) {
+  return type === 'ambo' ? 'ambocabeza' : type;
+}
+function isPrizeEnabled(type, game = state.game) {
+  if (!game) return false;
+  const mode = Number(game.mode) === 75 ? 75 : 90;
+  if (type === 'ambo') return mode === 90 && game.rules?.ambocabeza !== false;
+  if (type === 'line') return game.rules?.line !== false;
+  if (type === 'doubleLine') return mode === 75 && Boolean(game.rules?.doubleLine);
+  if (type === 'tripleLine') return mode === 75 && Boolean(game.rules?.tripleLine);
+  if (type === 'corners') return mode === 75 && Boolean(game.rules?.corners);
+  if (type === 'bingo') return game.rules?.bingo !== false;
+  return false;
+}
+function winningDetailsForClaim(claim) {
+  const lines = claim?.comparison?.completeLines || [];
+  if (claim?.type === 'doubleLine') return lines.slice(0, 2);
+  if (claim?.type === 'tripleLine') return lines.slice(0, 3);
+  if (claim?.type === 'line') return lines.slice(0, 1);
+  if (claim?.type === 'corners') return claim?.comparison?.cornerDetails || [];
+  if (claim?.type === 'ambo') return claim?.comparison?.amboDetails?.slice(0, 1) || [];
+  return [];
+}
+function winningNumbersForClaim(claim, card) {
+  if (claim?.type === 'bingo') return cardNumbers(card);
+  return [...new Set(winningDetailsForClaim(claim).flatMap(detail => detail.values || []).map(Number).filter(Number.isFinite))];
+}
+
 function safeEqual(left, right) {
   const a = Buffer.from(String(left));
   const b = Buffer.from(String(right));
@@ -117,6 +156,7 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
   const lines = lineDefinitions(card);
   const lineMissing = lines.length ? Math.min(...lines.map(line => line.values.filter(n => !drawn.has(n)).length)) : numbers.length;
   const completeLines = lines.filter(line => line.values.length && line.values.every(n => drawn.has(n)));
+  const lineCount = completeLines.length;
   const bingoMissing = numbers.filter(n => !drawn.has(n)).length;
   const amboDetails = Number(card.mode) === 90 ? (card.grid || []).map((row, rowIndex) => {
     const values = row.filter(Number.isFinite);
@@ -126,16 +166,29 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
       ? { key: `row-${rowIndex}`, label: `Fila ${rowIndex + 1}`, values: [values[0], values.at(-1)] }
       : null;
   }).filter(Boolean) : [];
+  const cornerValues = Number(card.mode) === 75
+    ? [card.grid?.[0]?.[0], card.grid?.[0]?.[4], card.grid?.[4]?.[0], card.grid?.[4]?.[4]].filter(Number.isFinite)
+    : [];
+  const cornersMissing = cornerValues.filter(number => !drawn.has(number)).length;
+  const cornerDetails = cornerValues.length === 4 && cornersMissing === 0
+    ? [{ key: 'four-corners', label: 'Las cuatro esquinas', values: cornerValues }]
+    : [];
   const officialMarked = numbers.filter(n => drawn.has(n));
   const playerMarked = numbers.filter(n => marks.has(n));
   const missed = officialMarked.filter(n => !marks.has(n));
   const wrong = playerMarked.filter(n => !drawn.has(n));
   return {
     lineMissing,
+    lineCount,
     bingoMissing,
+    cornersMissing,
     hasAmbo: amboDetails.length > 0,
     amboDetails,
-    hasLine: completeLines.length > 0,
+    hasLine: lineCount >= 1,
+    hasDoubleLine: Number(card.mode) === 75 && lineCount >= 2,
+    hasTripleLine: Number(card.mode) === 75 && lineCount >= 3,
+    hasCorners: Number(card.mode) === 75 && cornerDetails.length > 0,
+    cornerDetails,
     hasBingo: bingoMissing === 0 && numbers.length > 0,
     completeLines,
     officialMarked,
@@ -150,7 +203,7 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
 
 function blankState() {
   return {
-    version: 23,
+    version: 2026,
     active: false,
     status: 'closed',
     roomCode: null,
@@ -167,7 +220,7 @@ function blankState() {
       allowSamePlayerSecondLine: true,
       tiePolicy: 'first_claim',
       gameType: 'real',
-      prizeAmounts: { ambo: 0, line: 0, bingo: 0 },
+      prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 },
       whatsapp: '',
       showMercadoPago: true,
       argentinaHint: true,
@@ -222,6 +275,9 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.prizeAmounts = {
       ambo: Math.max(0, Number(merged.roomSettings.prizeAmounts?.ambo) || 0),
       line: Math.max(0, Number(merged.roomSettings.prizeAmounts?.line) || 0),
+      doubleLine: Math.max(0, Number(merged.roomSettings.prizeAmounts?.doubleLine) || 0),
+      tripleLine: Math.max(0, Number(merged.roomSettings.prizeAmounts?.tripleLine) || 0),
+      corners: Math.max(0, Number(merged.roomSettings.prizeAmounts?.corners) || 0),
       bingo: Math.max(0, Number(merged.roomSettings.prizeAmounts?.bingo) || 0)
     };
     merged.roomSettings.whatsapp = String(merged.roomSettings.whatsapp || '').slice(0, 40);
@@ -314,7 +370,7 @@ function ensureWorkspace(id = 'owner', operatorId = null, label = 'Administrador
 }
 
 const ownerWorkspace = ensureWorkspace('owner');
-// Los operadores temporales están deshabilitados en 2.3.
+// Los operadores temporales están deshabilitados en BINGO GORDA 2026.
 
 function currentWorkspace() { return workspaceContext.getStore() || ownerWorkspace; }
 function replaceCurrentState(next) { currentWorkspace().state = next; }
@@ -617,6 +673,7 @@ function preflightPayload() {
   if (pendingPlayers.length) errors.push(`${pendingPlayers.length} jugador${pendingPlayers.length === 1 ? '' : 'es'} todavía no confirmó${pendingPlayers.length === 1 ? '' : 'aron'} sus cartones.`);
   if (duplicates.length) errors.push(`Hay ${duplicates.length} cartón${duplicates.length === 1 ? '' : 'es'} duplicado${duplicates.length === 1 ? '' : 's'}.`);
   if (activeCards > MAX_ACTIVE_CARDS) errors.push(`Hay ${activeCards} cartones activos y el máximo es ${MAX_ACTIVE_CARDS}.`);
+  const enabledPrizes = PRIZE_TYPES.filter(type => isPrizeEnabled(type)).map(type => prizeLabelFor(type, 1, state.game?.mode));
   return {
     ok: Boolean(state.active && state.status === 'waiting' && state.game && errors.length === 0),
     totalPlayers: state.players.length,
@@ -626,8 +683,10 @@ function preflightPayload() {
     activeCards,
     availableCards,
     duplicateCardIds: duplicates,
-    linePrizeCount: Math.max(1, Math.min(2, Number(state.roomSettings?.linePrizeCount) || 1)),
-    allowSamePlayerSecondLine: Boolean(state.roomSettings?.allowSamePlayerSecondLine),
+    mode: state.game?.mode,
+    enabledPrizes,
+    linePrizeCount: Number(state.game?.mode) === 90 ? Math.max(1, Math.min(2, Number(state.roomSettings?.linePrizeCount) || 1)) : 1,
+    allowSamePlayerSecondLine: Number(state.game?.mode) === 90 && Boolean(state.roomSettings?.allowSamePlayerSecondLine),
     tiePolicy: state.roomSettings?.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim',
     errors
   };
@@ -641,20 +700,28 @@ function playerPrizeReadiness(player) {
     const card = state.game.cards.find(item => item.id === cardId);
     if (!card) return null;
     const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
-    const cardAlreadyWonLine = (prizes.line.winners || []).some(winner => winner.cardId === cardId);
-    const cardAlreadyWonBingo = (prizes.bingo.winners || []).some(winner => winner.cardId === cardId);
-    const samePlayerBlocked = !prizes.allowSamePlayerSecondLine && playerAlreadyWonLine;
+    const alreadyWon = type => (prizes[type]?.winners || []).some(winner => winner.cardId === cardId);
+    const samePlayerBlocked = Number(state.game.mode) === 90 && !prizes.allowSamePlayerSecondLine && playerAlreadyWonLine;
+    const live = state.status === 'playing';
     return {
       cardId,
       cardNumber: card.number,
       hasAmbo: analysis.hasAmbo,
       hasLine: analysis.hasLine,
+      hasDoubleLine: analysis.hasDoubleLine,
+      hasTripleLine: analysis.hasTripleLine,
+      hasCorners: analysis.hasCorners,
       hasBingo: analysis.hasBingo,
+      lineCount: analysis.lineCount,
       lineMissing: analysis.lineMissing,
+      cornersMissing: analysis.cornersMissing,
       bingoMissing: analysis.bingoMissing,
-      amboEligible: state.status === 'playing' && analysis.hasAmbo && !prizes.ambo.closed && card.bets?.ambocabeza !== false,
-      lineEligible: state.status === 'playing' && analysis.hasLine && !prizes.line.closed && !samePlayerBlocked && !cardAlreadyWonLine && card.bets?.line !== false,
-      bingoEligible: state.status === 'playing' && analysis.hasBingo && !prizes.bingo.closed && !cardAlreadyWonBingo && card.bets?.bingo !== false
+      amboEligible: live && analysis.hasAmbo && !prizes.ambo.closed && !alreadyWon('ambo') && card.bets?.ambocabeza !== false,
+      lineEligible: live && analysis.hasLine && !prizes.line.closed && !samePlayerBlocked && !alreadyWon('line') && card.bets?.line !== false,
+      doubleLineEligible: live && analysis.hasDoubleLine && !prizes.doubleLine.closed && !alreadyWon('doubleLine') && card.bets?.doubleLine !== false,
+      tripleLineEligible: live && analysis.hasTripleLine && !prizes.tripleLine.closed && !alreadyWon('tripleLine') && card.bets?.tripleLine !== false,
+      cornersEligible: live && analysis.hasCorners && !prizes.corners.closed && !alreadyWon('corners') && card.bets?.corners !== false,
+      bingoEligible: live && analysis.hasBingo && !prizes.bingo.closed && !alreadyWon('bingo') && card.bets?.bingo !== false
     };
   }).filter(Boolean);
 }
@@ -683,41 +750,33 @@ function confirmedClaims(type) {
 }
 
 function prizeStatusPayload() {
-  const lineTotal = Math.max(1, Math.min(2, Number(state.roomSettings?.linePrizeCount) || 1));
-  const bingoTotal = 1;
-  const lineAwarded = new Set(confirmedClaims('line').map(claim => Number(claim.prizeNumber) || 1)).size;
-  const bingoAwarded = new Set(confirmedClaims('bingo').map(claim => Number(claim.prizeNumber) || 1)).size;
-  const amboEnabled = Boolean(state.game?.mode === 90 && state.game?.rules?.ambocabeza);
-  const amboAwarded = confirmedClaims('ambo').length;
+  const mode = Number(state.game?.mode) === 75 ? 75 : 90;
+  const makeSingle = (type, enabled = isPrizeEnabled(type)) => {
+    const winners = confirmedClaims(type).map(claim => ({ playerId: claim.playerId, playerName: claim.playerName, cardId: claim.cardId, cardNumber: claim.cardNumber, prizeNumber: Number(claim.prizeNumber) || 1 }));
+    return { total: enabled ? 1 : 0, awarded: winners.length ? 1 : 0, remaining: enabled && !winners.length ? 1 : 0, closed: !enabled || winners.length > 0, nextNumber: 1, nextLabel: prizeLabelFor(type, 1, mode), winners };
+  };
+  const lineEnabled = isPrizeEnabled('line');
+  const lineTotal = mode === 90 ? Math.max(1, Math.min(2, Number(state.roomSettings?.linePrizeCount) || 1)) : (lineEnabled ? 1 : 0);
+  const lineAwarded = mode === 90
+    ? new Set(confirmedClaims('line').map(claim => Number(claim.prizeNumber) || 1)).size
+    : (confirmedClaims('line').length ? 1 : 0);
+  const lineWinners = confirmedClaims('line').map(claim => ({ playerId: claim.playerId, playerName: claim.playerName, cardId: claim.cardId, cardNumber: claim.cardNumber, prizeNumber: Number(claim.prizeNumber) || 1 }));
   return {
-    ambo: {
-      total: amboEnabled ? 1 : 0,
-      awarded: amboAwarded,
-      remaining: amboEnabled ? Math.max(0, 1 - amboAwarded) : 0,
-      closed: !amboEnabled || amboAwarded >= 1,
-      nextNumber: 1,
-      nextLabel: 'AmboCabeza',
-      winners: confirmedClaims('ambo').map(claim => ({ playerId: claim.playerId, playerName: claim.playerName, cardId: claim.cardId, cardNumber: claim.cardNumber, prizeNumber: 1 }))
-    },
+    ambo: makeSingle('ambo'),
     line: {
-      total: lineTotal,
+      total: lineEnabled ? lineTotal : 0,
       awarded: lineAwarded,
-      remaining: Math.max(0, lineTotal - lineAwarded),
-      closed: lineAwarded >= lineTotal,
-      nextNumber: Math.min(lineTotal, lineAwarded + 1),
-      nextLabel: lineAwarded === 0 ? 'Primera línea' : 'Segunda línea',
-      winners: confirmedClaims('line').map(claim => ({ playerId: claim.playerId, playerName: claim.playerName, cardId: claim.cardId, cardNumber: claim.cardNumber, prizeNumber: claim.prizeNumber || 1 }))
+      remaining: lineEnabled ? Math.max(0, lineTotal - lineAwarded) : 0,
+      closed: !lineEnabled || lineAwarded >= lineTotal,
+      nextNumber: Math.min(Math.max(1, lineTotal), lineAwarded + 1),
+      nextLabel: prizeLabelFor('line', Math.min(Math.max(1, lineTotal), lineAwarded + 1), mode),
+      winners: lineWinners
     },
-    bingo: {
-      total: bingoTotal,
-      awarded: bingoAwarded,
-      remaining: Math.max(0, bingoTotal - bingoAwarded),
-      closed: bingoAwarded >= bingoTotal,
-      nextNumber: 1,
-      nextLabel: 'Bingo',
-      winners: confirmedClaims('bingo').map(claim => ({ playerId: claim.playerId, playerName: claim.playerName, cardId: claim.cardId, cardNumber: claim.cardNumber, prizeNumber: 1 }))
-    },
-    allowSamePlayerSecondLine: Boolean(state.roomSettings?.allowSamePlayerSecondLine)
+    doubleLine: makeSingle('doubleLine'),
+    tripleLine: makeSingle('tripleLine'),
+    corners: makeSingle('corners'),
+    bingo: makeSingle('bingo'),
+    allowSamePlayerSecondLine: mode === 90 && Boolean(state.roomSettings?.allowSamePlayerSecondLine)
   };
 }
 
@@ -818,28 +877,17 @@ function publicClaimsPayload() {
       status: claim.status,
       resolvedAt: claim.resolvedAt || null,
       prizeNumber: claim.prizeNumber || 1,
-      prizeLabel: claim.prizeLabel || (claim.type === 'ambo' ? 'AmboCabeza' : claim.type === 'line' ? 'Primera línea' : 'Bingo')
+      prizeLabel: claim.prizeLabel || prizeLabelFor(claim.type, claim.prizeNumber, state.game?.mode)
     };
     if (claim.status === 'confirmed') {
       const card = state.game?.cards?.find(item => item.id === claim.cardId);
       if (card) {
-        const completeLine = claim.comparison?.completeLines?.[0] || null;
-        payload.winningCard = {
-          id: card.id,
-          number: card.number,
-          name: card.name,
-          mode: card.mode,
-          grid: card.grid,
-          bets: card.bets
-        };
+        const details = winningDetailsForClaim(claim);
+        payload.winningCard = { id: card.id, number: card.number, name: card.name, mode: card.mode, grid: card.grid, bets: card.bets };
         payload.drawnAtClaim = claim.drawnAtClaim || [];
         payload.officialMarked = claim.comparison?.officialMarked || cardNumbers(card).filter(number => payload.drawnAtClaim.includes(number));
-        payload.winningNumbers = claim.type === 'ambo'
-          ? (claim.comparison?.amboDetails?.[0]?.values || [])
-          : claim.type === 'line' ? (completeLine?.values || []) : cardNumbers(card);
-        payload.winningLineLabel = claim.type === 'ambo'
-          ? (claim.comparison?.amboDetails?.[0]?.label || 'AmboCabeza')
-          : claim.type === 'line' ? (completeLine?.label || 'Línea completa') : null;
+        payload.winningNumbers = winningNumbersForClaim(claim, card);
+        payload.winningLineLabel = details.map(detail => detail.label).join(' · ') || null;
       }
     }
     return payload;
@@ -868,7 +916,7 @@ function baseInfo() {
     lastResult: publicLastResult(),
     publicUrl: PUBLIC_URL || null,
     playerUrl: PUBLIC_URL ? `${PUBLIC_URL}/jugador` : null,
-    version: '2.3',
+    version: APP_PUBLIC_VERSION,
     workspace: { id: currentWorkspace().id, operatorId: currentWorkspace().operatorId || null, label: currentWorkspace().label }
   };
 }
@@ -878,18 +926,18 @@ function currentAccessContext() {
 }
 
 function broadcastPayload() {
-  if (!state.active || !state.game) return { active: false, version: '2.3' };
+  if (!state.active || !state.game) return { active: false, version: APP_PUBLIC_VERSION };
   const pendingClaim = state.claims.find(claim => claim.status === 'pending') || null;
   const latestConfirmedRaw = [...state.claims].reverse().find(claim => claim.status === 'confirmed') || null;
   const latestConfirmed = !pendingClaim && latestConfirmedRaw && Date.now() - new Date(latestConfirmedRaw.resolvedAt || 0).getTime() <= 20_000
     ? latestConfirmedRaw : null;
   return {
-    active: true, version: '2.3', status: state.status, pauseReason: state.pauseReason || null, roomCode: state.roomCode, round: state.round,
+    active: true, version: APP_PUBLIC_VERSION, status: state.status, pauseReason: state.pauseReason || null, roomCode: state.roomCode, round: state.round,
     playersTotal: state.players.length, playersReady: state.players.filter(player => player.selectionConfirmed).length, playersConnected: connectedPlayerIds().size,
     roomSettings: state.roomSettings, transition: state.transition, publicClaims: publicClaimsPayload(),
     game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: state.game.presenter, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, total: state.game.mode },
     pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, createdAt: pendingClaim.createdAt } : null,
-    latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt } : null,
+    latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, prizeNumber: latestConfirmed.prizeNumber || 1, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt } : null,
     updatedAt: state.updatedAt
   };
 }
@@ -932,6 +980,9 @@ function adminPayload() {
         ...analysis,
         amboClaim: claimStateForCard(cardId, 'ambo'),
         lineClaim: claimStateForCard(cardId, 'line'),
+        doubleLineClaim: claimStateForCard(cardId, 'doubleLine'),
+        tripleLineClaim: claimStateForCard(cardId, 'tripleLine'),
+        cornersClaim: claimStateForCard(cardId, 'corners'),
         bingoClaim: claimStateForCard(cardId, 'bingo')
       });
     }
@@ -1038,7 +1089,7 @@ function backupPayload() {
   const cleanState = deepCopy(state);
   cleanState.players = cleanState.players.map(player => ({ ...player, sessionToken: null }));
   return {
-    format: 'el-bingo-de-la-gorda-2.3-backup',
+    format: 'bingo-gorda-2026-backup',
     exportedAt: nowIso(),
     state: cleanState
   };
@@ -1110,17 +1161,26 @@ function validateGame(game) {
 }
 
 function sanitizeGame(game) {
+  const mode = Number(game.mode) === 75 ? 75 : 90;
+  const rules = {
+    ambocabeza: mode === 90 && game.rules?.ambocabeza !== false,
+    line: game.rules?.line !== false,
+    doubleLine: mode === 75 && Boolean(game.rules?.doubleLine),
+    tripleLine: mode === 75 && Boolean(game.rules?.tripleLine),
+    corners: mode === 75 && Boolean(game.rules?.corners),
+    bingo: game.rules?.bingo !== false
+  };
   return {
     id: String(game.id),
     number: Number(game.number) || 1,
-    mode: Number(game.mode) === 75 ? 75 : 90,
-    rules: game.rules || { ambocabeza: true, line: true, bingo: true },
+    mode,
+    rules,
     drawMode: game.drawMode || 'manual',
     autoSeconds: Number(game.autoSeconds) || 6,
     presenter: game.presenter || 'vero',
     theme: game.theme || 'clasico',
     phase: game.phase || 'READY',
-    drawn: uniqueNumbers(game.drawn).filter(n => n >= 1 && n <= Number(game.mode || 90)),
+    drawn: uniqueNumbers(game.drawn).filter(n => n >= 1 && n <= mode),
     prizes: game.prizes ? deepCopy(game.prizes) : undefined,
     createdAt: game.createdAt || nowIso(),
     updatedAt: game.updatedAt || nowIso(),
@@ -1129,10 +1189,17 @@ function sanitizeGame(game) {
       number: String(card.number),
       name: String(card.name || 'Jugador'),
       originalName: String(card.originalName || card.name || `Cartón ${card.number}`),
-      mode: Number(card.mode) === 75 ? 75 : 90,
+      mode,
       source: card.source || 'generated',
       grid: deepCopy(card.grid),
-      bets: card.bets || { ambocabeza: true, line: true, bingo: true }
+      bets: {
+        ambocabeza: mode === 90 && rules.ambocabeza && card.bets?.ambocabeza !== false,
+        line: rules.line && card.bets?.line !== false,
+        doubleLine: mode === 75 && rules.doubleLine && card.bets?.doubleLine !== false,
+        tripleLine: mode === 75 && rules.tripleLine && card.bets?.tripleLine !== false,
+        corners: mode === 75 && rules.corners && card.bets?.corners !== false,
+        bingo: rules.bingo && card.bets?.bingo !== false
+      }
     }))
   };
 }
@@ -1199,7 +1266,7 @@ function configureRoom(payload) {
   sanitizedGame.phase = 'READY';
   const requestedTimerMinutes = Math.max(MIN_ASSIGNMENT_MINUTES, Math.min(MAX_ASSIGNMENT_MINUTES, Number(payload.assignmentTimer?.durationMinutes) || 10));
   replaceCurrentState({
-    version: 23,
+    version: 2026,
     active: true,
     status: 'waiting',
     roomCode: randomCode(5),
@@ -1211,14 +1278,17 @@ function configureRoom(payload) {
     roomSettings: {
       playerAudioAllowed: payload.roomSettings?.playerAudioAllowed !== false,
       playerAudioDefault: payload.roomSettings?.playerAudioDefault !== false,
-      linePrizeCount: Math.max(1, Math.min(2, Number(payload.roomSettings?.linePrizeCount) || 1)),
+      linePrizeCount: Number(sanitizedGame.mode) === 90 ? Math.max(1, Math.min(2, Number(payload.roomSettings?.linePrizeCount) || 1)) : 1,
       bingoPrizeCount: 1,
-      allowSamePlayerSecondLine: Boolean(payload.roomSettings?.allowSamePlayerSecondLine),
+      allowSamePlayerSecondLine: Number(sanitizedGame.mode) === 90 && Boolean(payload.roomSettings?.allowSamePlayerSecondLine),
       tiePolicy: payload.roomSettings?.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim',
       gameType: payload.roomSettings?.gameType === 'test' ? 'test' : 'real',
       prizeAmounts: {
         ambo: Math.max(0, Number(payload.roomSettings?.prizeAmounts?.ambo) || 0),
         line: Math.max(0, Number(payload.roomSettings?.prizeAmounts?.line) || 0),
+        doubleLine: Math.max(0, Number(payload.roomSettings?.prizeAmounts?.doubleLine) || 0),
+        tripleLine: Math.max(0, Number(payload.roomSettings?.prizeAmounts?.tripleLine) || 0),
+        corners: Math.max(0, Number(payload.roomSettings?.prizeAmounts?.corners) || 0),
         bingo: Math.max(0, Number(payload.roomSettings?.prizeAmounts?.bingo) || 0)
       },
       whatsapp: String(payload.roomSettings?.whatsapp || '').slice(0, 40),
@@ -1432,8 +1502,8 @@ function updateRoomSettings(payload) {
   state.roomSettings.playerAudioAllowed = payload.playerAudioAllowed !== false;
   state.roomSettings.playerAudioDefault = Boolean(payload.playerAudioDefault);
   if (state.status === 'waiting') {
-    state.roomSettings.linePrizeCount = Math.max(1, Math.min(2, Number(payload.linePrizeCount ?? state.roomSettings.linePrizeCount) || 1));
-    state.roomSettings.allowSamePlayerSecondLine = Boolean(payload.allowSamePlayerSecondLine ?? state.roomSettings.allowSamePlayerSecondLine);
+    state.roomSettings.linePrizeCount = Number(state.game?.mode) === 90 ? Math.max(1, Math.min(2, Number(payload.linePrizeCount ?? state.roomSettings.linePrizeCount) || 1)) : 1;
+    state.roomSettings.allowSamePlayerSecondLine = Number(state.game?.mode) === 90 && Boolean(payload.allowSamePlayerSecondLine ?? state.roomSettings.allowSamePlayerSecondLine);
     state.roomSettings.tiePolicy = payload.tiePolicy === 'same_ball' ? 'same_ball' : (payload.tiePolicy === 'first_claim' ? 'first_claim' : state.roomSettings.tiePolicy);
   }
   state.roomSettings.bingoPrizeCount = 1;
@@ -1441,6 +1511,9 @@ function updateRoomSettings(payload) {
   if (payload.prizeAmounts) state.roomSettings.prizeAmounts = {
     ambo: Math.max(0, Number(payload.prizeAmounts.ambo) || 0),
     line: Math.max(0, Number(payload.prizeAmounts.line) || 0),
+    doubleLine: Math.max(0, Number(payload.prizeAmounts.doubleLine) || 0),
+    tripleLine: Math.max(0, Number(payload.prizeAmounts.tripleLine) || 0),
+    corners: Math.max(0, Number(payload.prizeAmounts.corners) || 0),
     bingo: Math.max(0, Number(payload.prizeAmounts.bingo) || 0)
   };
   if (payload.whatsapp !== undefined) state.roomSettings.whatsapp = String(payload.whatsapp || '').slice(0, 40);
@@ -1525,7 +1598,7 @@ function archiveCurrentResults() {
   const metaTemp = `${metaFile}.tmp`;
   fs.writeFileSync(pdfTemp, pdf);
   const meta = {
-    version: '2.3',
+    version: APP_PUBLIC_VERSION,
     roomCode: state.roomCode,
     gameNumber: state.game.number,
     round: state.round,
@@ -1994,20 +2067,18 @@ function setPlayerPresenter(player, payload) {
 function createClaim(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
   if (state.status !== 'playing') throw new Error('La partida todavía no comenzó o ya finalizó.');
-  const type = payload.type === 'ambo' ? 'ambo' : payload.type === 'bingo' ? 'bingo' : 'line';
+  const requested = String(payload.type || '');
+  const type = PRIZE_TYPES.includes(requested) ? requested : 'line';
   const cardId = String(payload.cardId || '');
   const card = state.game.cards.find(item => item.id === cardId);
   if (!card || !player.cardIds.includes(cardId)) throw new Error('Ese cartón no pertenece al jugador.');
-  if (type === 'ambo' && (state.game.mode !== 90 || state.game.rules?.ambocabeza === false || card.bets?.ambocabeza === false)) throw new Error('Este cartón no participa por AmboCabeza.');
-  if (type === 'line' && card.bets?.line === false) throw new Error('Este cartón no participa por línea.');
-  if (type === 'bingo' && card.bets?.bingo === false) throw new Error('Este cartón no participa por bingo.');
+  if (!isPrizeEnabled(type)) throw new Error(`El premio ${prizeLabelFor(type)} no está habilitado en esta partida.`);
+  const betName = claimBetName(type);
+  if (card.bets?.[betName] === false) throw new Error(`Este cartón no participa por ${prizeLabelFor(type)}.`);
 
   const prizes = prizeStatusPayload();
   const prize = prizes[type];
-  if (prize.closed) {
-    const closedLabel = type === 'ambo' ? 'El premio de AmboCabeza ya fue entregado.' : type === 'line' ? 'Los premios de línea ya fueron entregados.' : 'El premio de bingo ya fue entregado.';
-    throw new Error(closedLabel);
-  }
+  if (!prize || prize.closed) throw new Error(`El premio ${prizeLabelFor(type)} ya fue entregado o no está habilitado.`);
   const pendingClaims = state.claims.filter(claim => claim.status === 'pending');
   let tieWith = null;
   if (pendingClaims.length) {
@@ -2018,52 +2089,41 @@ function createClaim(player, payload) {
       Date.now() - new Date(first.createdAt).getTime() <= CLAIM_QUEUE_WINDOW_MS;
     if (!sameBallWindow) throw new Error('Ya hay un reclamo siendo revisado. Esperá la decisión del administrador.');
     const tieGroupId = first.tieGroupId || first.id;
-    const tieGroupSize = state.claims.filter(claim =>
-      claim.type === type && ['pending', 'confirmed'].includes(claim.status) && (claim.tieGroupId || claim.id) === tieGroupId
-    ).length;
-    if (tieGroupSize >= MAX_TIE_WINNERS_PER_PRIZE) {
-      throw new Error(`El máximo es de ${MAX_TIE_WINNERS_PER_PRIZE} ganadores simultáneos por premio para conservar el resultado en una sola hoja.`);
-    }
+    const tieGroupSize = state.claims.filter(claim => claim.type === type && ['pending', 'confirmed'].includes(claim.status) && (claim.tieGroupId || claim.id) === tieGroupId).length;
+    if (tieGroupSize >= MAX_TIE_WINNERS_PER_PRIZE) throw new Error(`El máximo es de ${MAX_TIE_WINNERS_PER_PRIZE} ganadores simultáneos por premio.`);
     tieWith = first;
   }
-  if (state.claims.some(claim => claim.type === type && claim.cardId === cardId && claim.status === 'confirmed')) {
-    throw new Error(`Ese cartón ya ganó ${type === 'ambo' ? 'AmboCabeza' : type === 'line' ? 'línea' : 'bingo'}.`);
-  }
-  if (type === 'line' && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(claim => claim.playerId === player.id)) {
+  if (state.claims.some(claim => claim.type === type && claim.cardId === cardId && claim.status === 'confirmed')) throw new Error(`Ese cartón ya ganó ${prizeLabelFor(type)}.`);
+  if (type === 'line' && Number(state.game.mode) === 90 && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(claim => claim.playerId === player.id)) {
     throw new Error('Este jugador ya ganó una línea y la sala no permite que gane la segunda.');
   }
 
   const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
-  const valid = type === 'ambo' ? analysis.hasAmbo : type === 'line' ? analysis.hasLine : analysis.hasBingo;
-  const prizeNumber = tieWith ? Number(tieWith.prizeNumber || (prize.awarded + 1)) : prize.awarded + 1;
-  const prizeLabel = type === 'ambo' ? 'AmboCabeza' : type === 'line' ? (prizeNumber === 1 ? 'Primera línea' : 'Segunda línea') : 'Bingo';
+  const validity = {
+    ambo: analysis.hasAmbo,
+    line: analysis.hasLine,
+    doubleLine: analysis.hasDoubleLine,
+    tripleLine: analysis.hasTripleLine,
+    corners: analysis.hasCorners,
+    bingo: analysis.hasBingo
+  };
+  const valid = Boolean(validity[type]);
+  const prizeNumber = type === 'line' && Number(state.game.mode) === 90
+    ? (tieWith ? Number(tieWith.prizeNumber || (prize.awarded + 1)) : prize.awarded + 1)
+    : 1;
+  const prizeLabel = prizeLabelFor(type, prizeNumber, state.game.mode);
   const claim = {
-    id: randomId('claim'),
-    type,
-    prizeNumber,
-    prizeLabel,
-    playerId: player.id,
-    playerName: playerDisplayName(player),
-    cardId,
-    cardNumber: card.number,
-    createdAt: nowIso(),
-    status: 'pending',
-    officialValid: valid,
-    drawnAtClaim: [...state.game.drawn],
-    playerMarksAtClaim: [...(player.marks?.[cardId] || [])],
-    comparison: analysis,
+    id: randomId('claim'), type, prizeNumber, prizeLabel,
+    playerId: player.id, playerName: playerDisplayName(player), cardId, cardNumber: card.number,
+    createdAt: nowIso(), status: 'pending', officialValid: valid,
+    drawnAtClaim: [...state.game.drawn], playerMarksAtClaim: [...(player.marks?.[cardId] || [])], comparison: analysis,
     tieGroupId: tieWith ? (tieWith.tieGroupId || tieWith.id) : null
   };
   state.claims.push(claim);
   clearWorkspaceTransitionTimer();
-  state.status = 'verifying';
-  state.pauseReason = 'claim';
-  state.transition = null;
-  state.game.phase = 'REVIEWING_WINNER';
+  state.status = 'verifying'; state.pauseReason = 'claim'; state.transition = null; state.game.phase = 'REVIEWING_WINNER';
   logEvent('claim_created', { claimId: claim.id, type, prizeNumber, playerId: player.id, cardId, officialValid: valid });
-  saveState();
-  broadcast();
-  return claim;
+  saveState(); broadcast(); return claim;
 }
 
 function resolveClaim(payload) {
@@ -2079,22 +2139,17 @@ function resolveClaim(payload) {
     const confirmedTie = claim.tieGroupId && confirmedClaims(claim.type).find(item => (item.tieGroupId || item.id) === claim.tieGroupId);
     if (confirmedTie) {
       const tieWinners = confirmedClaims(claim.type).filter(item => (item.tieGroupId || item.id) === claim.tieGroupId && Number(item.prizeNumber || 1) === Number(confirmedTie.prizeNumber || 1));
-      if (tieWinners.length >= MAX_TIE_WINNERS_PER_PRIZE) {
-        throw new Error(`El máximo es de ${MAX_TIE_WINNERS_PER_PRIZE} ganadores simultáneos por premio para conservar el resultado en una sola hoja.`);
-      }
+      if (tieWinners.length >= MAX_TIE_WINNERS_PER_PRIZE) throw new Error(`El máximo es de ${MAX_TIE_WINNERS_PER_PRIZE} ganadores simultáneos por premio.`);
     }
-    if (current.closed && !confirmedTie) {
-      const closedLabel = claim.type === 'ambo' ? 'El premio de AmboCabeza ya fue entregado.' : claim.type === 'line' ? 'Los premios de línea ya fueron entregados.' : 'El premio de bingo ya fue entregado.';
-      throw new Error(closedLabel);
-    }
-    if (claim.type === 'line' && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(item => item.playerId === claim.playerId)) {
+    if (current.closed && !confirmedTie) throw new Error(`El premio ${prizeLabelFor(claim.type, claim.prizeNumber)} ya fue entregado.`);
+    if (claim.type === 'line' && Number(state.game.mode) === 90 && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(item => item.playerId === claim.playerId)) {
       throw new Error('Este jugador ya ganó una línea y no está habilitado para ganar la segunda.');
     }
-    if (confirmedClaims(claim.type).some(item => item.cardId === claim.cardId)) {
-      throw new Error('Ese cartón ya recibió este premio.');
-    }
-    claim.prizeNumber = confirmedTie ? Number(confirmedTie.prizeNumber || claim.prizeNumber || 1) : current.awarded + 1;
-    claim.prizeLabel = claim.type === 'ambo' ? 'AmboCabeza' : claim.type === 'line' ? (claim.prizeNumber === 1 ? 'Primera línea' : 'Segunda línea') : 'Bingo';
+    if (confirmedClaims(claim.type).some(item => item.cardId === claim.cardId)) throw new Error('Ese cartón ya recibió este premio.');
+    claim.prizeNumber = claim.type === 'line' && Number(state.game.mode) === 90
+      ? (confirmedTie ? Number(confirmedTie.prizeNumber || claim.prizeNumber || 1) : current.awarded + 1)
+      : 1;
+    claim.prizeLabel = prizeLabelFor(claim.type, claim.prizeNumber, state.game.mode);
   }
 
   claim.status = resolution;
@@ -2103,39 +2158,21 @@ function resolveClaim(payload) {
   const player = state.players.find(item => item.id === claim.playerId);
   if (player) {
     player.notices ||= [];
+    const label = claim.prizeLabel || prizeLabelFor(claim.type, claim.prizeNumber, state.game.mode);
     player.notices.push({
-      id: randomId('notice'),
-      at: nowIso(),
-      type: 'claim_result',
-      claimId: claim.id,
-      claimType: claim.type,
-      prizeNumber: claim.prizeNumber || 1,
-      cardNumber: claim.cardNumber,
-      result: resolution,
-      officialValid: claim.officialValid,
-      text: resolution === 'confirmed'
-        ? `${claim.prizeLabel || (claim.type === 'ambo' ? 'AmboCabeza' : claim.type === 'line' ? 'Línea' : 'Bingo')} confirmada en el cartón ${claim.cardNumber}.`
-        : `${claim.type === 'ambo' ? 'AmboCabeza' : claim.type === 'line' ? 'Línea' : 'Bingo'} rechazado en el cartón ${claim.cardNumber}.`
+      id: randomId('notice'), at: nowIso(), type: 'claim_result', claimId: claim.id, claimType: claim.type,
+      prizeNumber: claim.prizeNumber || 1, cardNumber: claim.cardNumber, result: resolution, officialValid: claim.officialValid,
+      text: resolution === 'confirmed' ? `${label} confirmado en el cartón ${claim.cardNumber}.` : `${label} rechazado en el cartón ${claim.cardNumber}.`
     });
   }
   logEvent('claim_resolved', { claimId: claim.id, resolution, prizeNumber: claim.prizeNumber || 1, officialValid: claim.officialValid });
-  clearWorkspaceTransitionTimer();
-  state.transition = null;
-  state.pauseReason = 'claim';
+  clearWorkspaceTransitionTimer(); state.transition = null; state.pauseReason = 'claim';
   if (resolution === 'confirmed' && claim.type === 'bingo') {
-    const startedAt = nowIso();
-    state.status = 'finalizing';
-    state.game.phase = 'BINGO_CONFIRMED';
+    const startedAt = nowIso(); state.status = 'finalizing'; state.game.phase = 'BINGO_CONFIRMED';
     state.transition = { id: randomId('transition'), type: 'final-balls', startedAt, endsAt: new Date(Date.now() + FINAL_BALLS_SEQUENCE_MS).toISOString() };
     logEvent('bingo_confirmed_final_extraction', { claimId: claim.id, cardId: claim.cardId, cardNumber: claim.cardNumber });
-  } else {
-    state.status = 'paused';
-    state.game.phase = 'PAUSED';
-  }
-  saveState();
-  broadcast();
-  if (state.status === 'finalizing') scheduleTransition();
-  return claim;
+  } else { state.status = 'paused'; state.game.phase = 'PAUSED'; }
+  saveState(); broadcast(); if (state.status === 'finalizing') scheduleTransition(); return claim;
 }
 
 
@@ -2154,13 +2191,12 @@ function officialBallRows() {
 
 function winnerDetails(claim) {
   const card = state.game?.cards?.find(item => item.id === claim.cardId) || null;
-  const completeLine = claim.comparison?.completeLines?.[0] || null;
-  const completeAmbo = claim.comparison?.amboDetails?.[0] || null;
   const drawnAtClaim = Array.isArray(claim.drawnAtClaim) ? claim.drawnAtClaim : [];
+  const details = winningDetailsForClaim(claim);
   return {
     type: claim.type,
     prizeNumber: Number(claim.prizeNumber) || 1,
-    prizeLabel: claim.prizeLabel || (claim.type === 'ambo' ? 'AmboCabeza' : claim.type === 'line' ? 'Línea' : 'Bingo'),
+    prizeLabel: claim.prizeLabel || prizeLabelFor(claim.type, claim.prizeNumber, state.game?.mode),
     playerName: claim.playerName,
     cardId: claim.cardId,
     cardNumber: claim.cardNumber,
@@ -2170,49 +2206,42 @@ function winnerDetails(claim) {
     ballNumber: drawnAtClaim.at(-1) ?? null,
     mode: Number(card?.mode || state.game?.mode) === 75 ? 75 : 90,
     grid: card ? deepCopy(card.grid) : [],
-    winningNumbers: claim.type === 'ambo'
-      ? (completeAmbo?.values || [])
-      : claim.type === 'line' ? (completeLine?.values || []) : cardNumbers(card),
-    winningLineLabel: claim.type === 'ambo'
-      ? (completeAmbo?.label || 'AmboCabeza')
-      : claim.type === 'line' ? (completeLine?.label || 'Línea completa') : null
+    winningNumbers: winningNumbersForClaim(claim, card),
+    winningLineLabel: details.map(detail => detail.label).join(' · ') || null
   };
 }
 
 function actaPayload() {
   if (!state.active || !state.game) throw new Error('No hay una sala disponible.');
-  const claims = confirmedClaims('ambo').concat(confirmedClaims('line'), confirmedClaims('bingo'))
+  const claims = PRIZE_TYPES.flatMap(type => confirmedClaims(type))
     .sort((a, b) => new Date(a.createdAt || a.resolvedAt || 0) - new Date(b.createdAt || b.resolvedAt || 0));
+  const mode = Number(state.game.mode) === 75 ? 75 : 90;
+  const categories = mode === 90 ? {
+    ambo: { label: 'AmboCabeza', enabled: isPrizeEnabled('ambo'), winners: confirmedClaims('ambo').map(winnerDetails) },
+    line1: { label: 'Primera línea', enabled: isPrizeEnabled('line'), winners: confirmedClaims('line').filter(claim => Number(claim.prizeNumber || 1) === 1).map(winnerDetails) },
+    line2: { label: 'Segunda línea', enabled: isPrizeEnabled('line') && Number(state.roomSettings?.linePrizeCount || 1) === 2, winners: confirmedClaims('line').filter(claim => Number(claim.prizeNumber || 1) === 2).map(winnerDetails) },
+    bingo: { label: 'Bingo', enabled: isPrizeEnabled('bingo'), winners: confirmedClaims('bingo').map(winnerDetails) }
+  } : {
+    line: { label: 'Línea', enabled: isPrizeEnabled('line'), winners: confirmedClaims('line').map(winnerDetails) },
+    doubleLine: { label: 'Doble línea', enabled: isPrizeEnabled('doubleLine'), winners: confirmedClaims('doubleLine').map(winnerDetails) },
+    tripleLine: { label: 'Triple línea', enabled: isPrizeEnabled('tripleLine'), winners: confirmedClaims('tripleLine').map(winnerDetails) },
+    corners: { label: '4 esquinas', enabled: isPrizeEnabled('corners'), winners: confirmedClaims('corners').map(winnerDetails) },
+    bingo: { label: 'Bingo', enabled: isPrizeEnabled('bingo'), winners: confirmedClaims('bingo').map(winnerDetails) }
+  };
   return {
-    version: '2.3',
-    roomCode: state.roomCode,
-    round: state.round,
-    gameNumber: state.game.number,
-    mode: state.game.mode,
-    status: state.status,
-    presenter: state.game.presenter,
-    createdAt: state.createdAt,
-    startedAt: state.startedAt,
-    endedAt: state.endedAt,
+    version: APP_PUBLIC_VERSION, roomCode: state.roomCode, round: state.round, gameNumber: state.game.number, mode,
+    status: state.status, presenter: state.game.presenter, createdAt: state.createdAt, startedAt: state.startedAt, endedAt: state.endedAt,
     totalPlayers: state.players.length,
     activeCards: state.players.reduce((sum, player) => sum + (player.selectionConfirmed ? player.cardIds.length : 0), 0),
     balls: officialBallRows(),
     participants: state.players.map(player => ({
-      name: playerDisplayName(player),
-      nameSet: Boolean(player.nameSet),
-      slotLabel: player.slotLabel,
-      code: player.code,
+      name: playerDisplayName(player), nameSet: Boolean(player.nameSet), slotLabel: player.slotLabel, code: player.code,
       allowedCardCount: player.allowedCardCount,
       cardNumbers: (player.cardIds || []).map(cardId => state.game.cards.find(card => card.id === cardId)?.number).filter(Boolean),
       selectionConfirmed: player.selectionConfirmed
     })),
     winners: claims.map(winnerDetails),
-    categories: Object.fromEntries(Object.entries({
-      ambo: { label: 'AmboCabeza', enabled: Boolean(state.game.mode === 90 && state.game.rules?.ambocabeza), winners: confirmedClaims('ambo').map(winnerDetails) },
-      line1: { label: 'Primera línea', enabled: Boolean(state.game.rules?.line), winners: confirmedClaims('line').filter(claim => Number(claim.prizeNumber || 1) === 1).map(winnerDetails) },
-      line2: { label: 'Doble línea', enabled: Boolean(state.game.rules?.line && Number(state.roomSettings?.linePrizeCount || 1) === 2), winners: confirmedClaims('line').filter(claim => Number(claim.prizeNumber || 1) === 2).map(winnerDetails) },
-      bingo: { label: 'Bingo', enabled: Boolean(state.game.rules?.bingo), winners: confirmedClaims('bingo').map(winnerDetails) }
-    }).map(([key, category]) => [key, { ...category, status: !category.enabled ? 'not_drawn' : category.winners.length ? 'confirmed' : 'no_confirmed_winner' }]))
+    categories: Object.fromEntries(Object.entries(categories).map(([key, category]) => [key, { ...category, status: !category.enabled ? 'not_drawn' : category.winners.length ? 'confirmed' : 'no_confirmed_winner' }]))
   };
 }
 
@@ -2404,7 +2433,7 @@ function buildResultsPdf() {
   rect(19, 10, 70, 70, COLORS.white, '#F2D3E2', 1);
   image(24, 15, 60, 60);
   text('RESULTADOS OFICIALES DEL SORTEO', 101, 18, 20, { bold: true, color: COLORS.white, maxWidth: 390 });
-  text('Bingo de la Gorda - Versión 2.3', 101, 47, 11, { bold: true, color: '#F7DDF0' });
+  text('BINGO GORDA 2026', 101, 47, 11, { bold: true, color: '#F7DDF0' });
   text(`Sala ${acta.roomCode}  ·  Juego ${acta.gameNumber}  ·  Bingo ${acta.mode}`, 101, 65, 8.5, { color: '#E8D7EE' });
 
   const metaX = 510;
@@ -2427,9 +2456,18 @@ function buildResultsPdf() {
   text('Cada casillero indica orden, bolilla y hora exacta de salida.', 818, 102, 7.5, { color: COLORS.muted, align: 'right' });
 
   const markerMap = new Map();
+  const markerLabel = winner => {
+    if (winner.type === 'ambo') return 'A';
+    if (winner.type === 'bingo') return 'B';
+    if (winner.type === 'corners') return '4E';
+    if (winner.type === 'doubleLine') return 'L2';
+    if (winner.type === 'tripleLine') return 'L3';
+    if (winner.type === 'line') return acta.mode === 90 ? (Number(winner.prizeNumber) === 2 ? 'L2' : 'L1') : 'L';
+    return 'P';
+  };
   for (const winner of acta.winners) {
     if (!winner.ballOrder) continue;
-    const label = winner.type === 'ambo' ? 'A' : winner.type === 'bingo' ? 'B' : winner.prizeNumber === 2 ? 'L2' : 'L1';
+    const label = markerLabel(winner);
     const list = markerMap.get(winner.ballOrder) || [];
     list.push({ label, time: formatLocalTime(winner.claimedAt), type: winner.type, prizeNumber: winner.prizeNumber });
     markerMap.set(winner.ballOrder, list);
@@ -2470,18 +2508,24 @@ function buildResultsPdf() {
   const gridBottom = gridY + rows * cellH + Math.max(0, rows - 1) * gap;
   const legendY = gridBottom + 7;
   text('MARCAS DE CANTO:', 24, legendY, 7, { bold: true, color: COLORS.ink });
-  const legend = [
+  const legend = acta.mode === 90 ? [
     ['A', 'AmboCabeza', '#147D64'],
     ['L1', 'Primera línea', COLORS.purple2],
     ['L2', 'Segunda línea', COLORS.gold],
+    ['B', 'Bingo', COLORS.pink]
+  ] : [
+    ['L', 'Línea', COLORS.purple2],
+    ['L2', 'Doble línea', '#C58B00'],
+    ['L3', 'Triple línea', '#7443A8'],
+    ['4E', '4 esquinas', '#147D64'],
     ['B', 'Bingo', COLORS.pink]
   ];
   let lx = 111;
   legend.forEach(([tag, label, color]) => {
     rect(lx, legendY - 1, 16, 10, color);
-    text(tag, lx + 8, legendY, 5.8, { bold: true, color: COLORS.white, align: 'center' });
-    text(label, lx + 21, legendY, 6.7, { color: COLORS.muted });
-    lx += tag === 'A' ? 94 : tag === 'B' ? 65 : 104;
+    text(tag, lx + 8, legendY, 5.5, { bold: true, color: COLORS.white, align: 'center' });
+    text(label, lx + 20, legendY, 6.2, { color: COLORS.muted });
+    lx += acta.mode === 90 ? (tag === 'A' ? 94 : tag === 'B' ? 65 : 104) : (tag === 'B' ? 57 : 90);
   });
   text('La marca se ubica sobre la última bolilla sorteada al momento del canto.', 818, legendY, 6.7, { color: COLORS.muted, align: 'right' });
 
@@ -2490,16 +2534,11 @@ function buildResultsPdf() {
   line(171, winnersTitleY + 7, 818, winnersTitleY + 7, '#DCCFE2', .8);
 
   const blocksY = winnersTitleY + 20;
-  const blockGap = 9;
-  const blockW = (794 - blockGap * 3) / 4;
+  const categoryColors = { ambo: '#147D64', line1: COLORS.purple2, line2: '#C58B00', line: COLORS.purple2, doubleLine: '#C58B00', tripleLine: '#7443A8', corners: '#147D64', bingo: COLORS.pink };
+  const categories = Object.entries(acta.categories).map(([key, category]) => ({ key, label: String(category.label || key).toUpperCase(), color: categoryColors[key] || COLORS.purple2, enabled: category.enabled, winners: category.winners }));
+  const blockGap = categories.length > 4 ? 6 : 9;
+  const blockW = (794 - blockGap * (categories.length - 1)) / Math.max(1, categories.length);
   const blockH = Math.max(145, 571 - blocksY);
-
-  const categories = [
-    { label: 'AMBOCABEZA', color: '#147D64', enabled: acta.categories.ambo.enabled, winners: acta.categories.ambo.winners },
-    { label: 'PRIMERA LÍNEA', color: COLORS.purple2, enabled: acta.categories.line1.enabled, winners: acta.categories.line1.winners },
-    { label: 'DOBLE LÍNEA', color: '#C58B00', enabled: acta.categories.line2.enabled, winners: acta.categories.line2.winners },
-    { label: 'BINGO', color: COLORS.pink, enabled: acta.categories.bingo.enabled, winners: acta.categories.bingo.winners }
-  ];
 
   const drawMiniCard = (winner, x, y, width, height) => {
     rect(x, y, width, height, '#FFFFFF', '#DDD2E2', .7);
@@ -2539,7 +2578,7 @@ function buildResultsPdf() {
         const stroke = isWinner ? (winner.type === 'bingo' ? COLORS.pink : '#D19A08') : '#D7CFDB';
         rect(cx, cy, cellW, cellH, fill, stroke, isWinner ? .8 : .35);
         if (!isBlank) {
-          const display = isFree ? '★' : value;
+          const display = isFree ? 'LIBRE' : value;
           text(display, cx + cellW / 2, cy + Math.max(.5, cellH * .18), Math.max(3.1, Math.min(compact ? 5.2 : 6.8, cellH * .52)), { bold: isWinner, color: COLORS.ink, align: 'center', maxWidth: cellW - 1 });
         }
       }
@@ -2550,7 +2589,7 @@ function buildResultsPdf() {
     const x = 24 + index * (blockW + blockGap);
     rect(x, blocksY, blockW, blockH, '#F7F2F9', '#D7C8DE', .8);
     rect(x, blocksY, blockW, 25, category.color);
-    text(category.label, x + blockW / 2, blocksY + 7, 9.2, { bold: true, color: COLORS.white, align: 'center' });
+    text(category.label, x + blockW / 2, blocksY + 7, categories.length > 4 ? 7.2 : 9.2, { bold: true, color: COLORS.white, align: 'center' });
     const winners = category.winners;
     if (!category.enabled) {
       text('No sorteada', x + blockW / 2, blocksY + 75, 10, { bold: true, color: COLORS.muted, align: 'center' });
@@ -2581,7 +2620,7 @@ function buildResultsPdf() {
   });
 
   text(`Documento oficial generado al cerrar el sorteo · Sala ${acta.roomCode} · Ronda ${acta.round}`, 24, 582, 5.8, { color: COLORS.muted });
-  text('Bingo de la Gorda - Versión 2.3', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
+  text('BINGO GORDA 2026', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
 
   const stream = commands.join('\n');
   const logoPath = path.join(ROOT, 'assets', 'logo-pdf.jpg');
@@ -2709,7 +2748,7 @@ function findWorkspaceByBroadcastToken(token) {
 }
 
 function masterStatePayload() {
-  return { version: '2.3', now: nowIso(), ownerUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/admin`, operatorsEnabled: false };
+  return { version: APP_PUBLIC_VERSION, now: nowIso(), ownerUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/admin`, operatorsEnabled: false };
 }
 
 async function handleMasterApi(req, res, url) {
@@ -2775,7 +2814,7 @@ async function dispatchAdminApi(req, res, url, session) {
 async function handleApi(req, res, url) {
   try {
     if (url.pathname.startsWith('/api/master/')) return await handleMasterApi(req, res, url);
-    if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso(), version: '2.3' });
+    if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso(), version: APP_PUBLIC_VERSION });
 
     if (url.pathname === '/api/admin/login' && req.method === 'POST') {
       if (!consumeRate(req, 'admin-login', 30, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
@@ -2908,7 +2947,7 @@ function handleEvents(req, res, url) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || `localhost:${PORT}`}`);
-  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: '2.3', workspaces: workspaces.size });
+  if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: APP_PUBLIC_VERSION, workspaces: workspaces.size });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('User-agent: *\nDisallow: /admin\nDisallow: /admin-principal\nDisallow: /operador\nDisallow: /transmision\n');
@@ -2961,7 +3000,7 @@ setInterval(() => {
 for (const workspace of workspaces.values()) workspaceContext.run(workspace, () => scheduleTransition());
 
 server.listen(PORT, HOST, () => {
-  console.log('\nBINGO DE LA GORDA 2.3');
+  console.log('\nBINGO GORDA 2026');
   const base = PUBLIC_URL || `http://localhost:${PORT}`;
   console.log(`Panel principal: ${base}/admin-principal`);
   console.log(`Administrador propio: ${base}/admin`);

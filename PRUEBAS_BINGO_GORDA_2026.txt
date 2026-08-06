@@ -1,0 +1,18 @@
+BINGO GORDA 2026 - PRUEBAS REALIZADAS
+
+Resultado automático: PRUEBAS BINGO GORDA 2026: OK
+
+Se verificó:
+- Inicio del servidor y versión pública 2026.
+- Ingreso directo mediante código/enlace sin pedir el nombre en la pantalla inicial.
+- Nombre obligatorio al confirmar cartones y rechazo de nombres repetidos.
+- Modo 90: Primera línea y Segunda línea como dos premios consecutivos.
+- Modo 75: Línea, Doble línea y Triple línea dentro del mismo cartón.
+- Modo 75: validación independiente de 4 esquinas.
+- Reclamo anticipado inválido y posibilidad de reclamar correctamente más adelante.
+- Progresión del mismo cartón: Línea -> Doble Línea -> Triple Línea -> 4 Esquinas -> Bingo.
+- Cierre final, acta oficial y PDF de resultados.
+- PDF de resultados de 75 con cinco categorías y patrones resaltados.
+- Reglamento web y PDF actualizado con las nuevas modalidades.
+- Recursos de celebración transparentes y placa de error diferenciada.
+- Cartón de 75 limitado a 480 px en escritorio y 420 px en pantallas de poca altura, sin ancho mínimo que provoque desplazamiento horizontal.

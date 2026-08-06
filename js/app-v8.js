@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 
-const APP_VERSION = 22;
+const APP_VERSION = 2026;
 const STORAGE_SCOPE = '';
 const STORE_KEY = `bingoGordaV8Games${STORAGE_SCOPE}`;
 const CURRENT_KEY = `bingoGordaV8Current${STORAGE_SCOPE}`;
@@ -11,8 +11,8 @@ const PHASE = Object.freeze({
   HOME: 'HOME', CONFIGURING: 'CONFIGURING', READY: 'READY', DRAWING: 'DRAWING',
   PAUSED: 'PAUSED', REVIEW: 'REVIEWING_WINNER', ROUND_END: 'ROUND_ENDED'
 });
-const PRIZE_ORDER = ['ambo', 'line', 'bingo'];
-const PRIZE_LABEL = { ambo: 'AMBOCABEZA', line: 'LÍNEA', bingo: 'BINGO' };
+const PRIZE_ORDER = ['ambo', 'corners', 'line', 'doubleLine', 'tripleLine', 'bingo'];
+const PRIZE_LABEL = { ambo: 'AMBOCABEZA', corners: '4 ESQUINAS', line: 'LÍNEA', doubleLine: 'DOBLE LÍNEA', tripleLine: 'TRIPLE LÍNEA', bingo: 'BINGO' };
 const $ = id => document.getElementById(id);
 const clone = value => JSON.parse(JSON.stringify(value));
 const escapeHtml = value => String(value ?? '')
@@ -58,10 +58,14 @@ class GameStore {
     const rules = {
       ambocabeza: mode === 90 && Boolean(raw?.rules?.ambocabeza ?? true),
       line: Boolean(raw?.rules?.line ?? true),
+      doubleLine: mode === 75 && Boolean(raw?.rules?.doubleLine ?? false),
+      tripleLine: mode === 75 && Boolean(raw?.rules?.tripleLine ?? false),
+      corners: mode === 75 && Boolean(raw?.rules?.corners ?? false),
       bingo: Boolean(raw?.rules?.bingo ?? true)
     };
     const cards = Array.isArray(raw?.cards) ? raw.cards.map((card, index) => CardService.normalizeCard(card, mode, rules, index)) : [];
     const oldPrize = type => {
+      if (!['ambo', 'line', 'bingo'].includes(type)) return { status: 'active', winners: [], rejectedKeys: [] };
       const awarded = type === 'ambo' ? raw?.amboAwarded : type === 'line' ? raw?.lineAwarded : raw?.bingoAwarded;
       const winners = type === 'ambo' ? raw?.amboWinners : type === 'line' ? raw?.lineWinners : raw?.bingoWinners;
       return {
@@ -70,7 +74,7 @@ class GameStore {
         rejectedKeys: []
       };
     };
-    const prizes = raw?.prizes ? clone(raw.prizes) : { ambo: oldPrize('ambo'), line: oldPrize('line'), bingo: oldPrize('bingo') };
+    const prizes = raw?.prizes ? clone(raw.prizes) : { ambo: oldPrize('ambo'), line: oldPrize('line'), doubleLine: oldPrize('doubleLine'), tripleLine: oldPrize('tripleLine'), corners: oldPrize('corners'), bingo: oldPrize('bingo') };
     for (const type of PRIZE_ORDER) {
       prizes[type] ||= { status: 'active', winners: [], rejectedKeys: [] };
       prizes[type].winners ||= [];
@@ -79,6 +83,9 @@ class GameStore {
     }
     if (!rules.ambocabeza) prizes.ambo.status = 'disabled';
     if (!rules.line) prizes.line.status = 'disabled';
+    if (!rules.doubleLine) prizes.doubleLine.status = 'disabled';
+    if (!rules.tripleLine) prizes.tripleLine.status = 'disabled';
+    if (!rules.corners) prizes.corners.status = 'disabled';
     if (!rules.bingo) prizes.bingo.status = 'disabled';
     return {
       version: APP_VERSION,
@@ -103,6 +110,9 @@ const CardService = {
       bets: {
         ambocabeza: mode === 90 && rules.ambocabeza && Boolean(raw?.bets?.ambocabeza ?? rules.ambocabeza),
         line: rules.line && Boolean(raw?.bets?.line ?? rules.line),
+        doubleLine: mode === 75 && rules.doubleLine && Boolean(raw?.bets?.doubleLine ?? rules.doubleLine),
+        tripleLine: mode === 75 && rules.tripleLine && Boolean(raw?.bets?.tripleLine ?? rules.tripleLine),
+        corners: mode === 75 && rules.corners && Boolean(raw?.bets?.corners ?? rules.corners),
         bingo: rules.bingo && Boolean(raw?.bets?.bingo ?? rules.bingo)
       }
     };
@@ -164,7 +174,7 @@ const CardService = {
     const errors = [];
     if (!card || !Array.isArray(card.grid)) return { valid: false, errors: ['El cartón no tiene una cuadrícula válida.'] };
     if (!String(card.number ?? '').trim()) errors.push('Falta el número del cartón.');
-    if (!card.bets?.ambocabeza && !card.bets?.line && !card.bets?.bingo) errors.push('Elegí al menos una modalidad para este cartón.');
+    if (!card.bets?.ambocabeza && !card.bets?.line && !card.bets?.doubleLine && !card.bets?.tripleLine && !card.bets?.corners && !card.bets?.bingo) errors.push('Elegí al menos una modalidad para este cartón.');
     const values = this.numbers(card);
     if (new Set(values).size !== values.length) errors.push('Hay números repetidos.');
     if (card.mode === 90) {
@@ -195,7 +205,7 @@ const CardService = {
     return { valid: errors.length === 0, errors: [...new Set(errors)] };
   },
   betLabels(card) {
-    return [card.bets?.ambocabeza && 'AmboCabeza', card.bets?.line && 'Línea', card.bets?.bingo && 'Bingo'].filter(Boolean).join(' · ');
+    return [card.bets?.ambocabeza && 'AmboCabeza', card.bets?.line && 'Línea', card.bets?.doubleLine && 'Doble línea', card.bets?.tripleLine && 'Triple línea', card.bets?.corners && '4 esquinas', card.bets?.bingo && 'Bingo'].filter(Boolean).join(' · ');
   }
 };
 
@@ -229,9 +239,17 @@ const PrizeEngine = {
   },
   candidateGroups(game) {
     const set = this.numberSet(game), groups = [];
+    const lineDetails = card => this.lineDetails(card, set);
     const defs = {
       ambo: card => this.amboDetails(card, set),
-      line: card => this.lineDetails(card, set),
+      corners: card => {
+        if (card.mode !== 75) return [];
+        const values = [card.grid[0][0], card.grid[0][4], card.grid[4][0], card.grid[4][4]].filter(Number.isFinite);
+        return values.length === 4 && values.every(n => set.has(n)) ? [{ key: `${card.id}:four-corners`, label: 'Las cuatro esquinas', values }] : [];
+      },
+      line: card => lineDetails(card).slice(0, 1),
+      doubleLine: card => lineDetails(card).length >= 2 ? lineDetails(card).slice(0, 2) : [],
+      tripleLine: card => lineDetails(card).length >= 3 ? lineDetails(card).slice(0, 3) : [],
       bingo: card => CardService.numbers(card).every(n => set.has(n)) ? [{ key: `${card.id}:bingo`, label: 'Cartón completo', values: CardService.numbers(card) }] : []
     };
     for (const type of PRIZE_ORDER) {
@@ -442,7 +460,7 @@ class BingoApp {
     this.voice = new VoiceService(this); this.pdf = new PdfImporter(this);
   }
   freshWizard() {
-    return { step: 1, mode: 90, rules: { ambocabeza: true, line: true, bingo: true }, drawMode: 'automatic', autoSeconds: 10, presenter: null, source: 'generated', names: [], manualCards: [], pdfCards: [], previewCards: [], previewPage: 0, previewPerPage: 8 };
+    return { step: 1, mode: 90, rules: { ambocabeza: true, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true }, drawMode: 'automatic', autoSeconds: 10, presenter: null, source: 'generated', names: [], manualCards: [], pdfCards: [], previewCards: [], previewPage: 0, previewPerPage: 8 };
   }
   init() {
     this.populateQuantities(); this.bindEvents(); this.renderGames(); this.renderThemes();
@@ -468,7 +486,7 @@ class BingoApp {
   }
   exitGame() { this.stopAutomatic(false); this.save(); this.game = null; this.setPhase(PHASE.HOME); this.showScreen('home'); }
   createTestGame(options = {}) {
-    const mode = options.mode === 75 ? 75 : 90, rules = options.rules || { ambocabeza: mode === 90, line: true, bingo: true };
+    const mode = options.mode === 75 ? 75 : 90, rules = options.rules || { ambocabeza: mode === 90, line: true, doubleLine: mode === 75, tripleLine: mode === 75, corners: mode === 75, bingo: true };
     const cards = (options.cards || CardService.generateMany(2, mode).map((grid, i) => ({ grid, number: i + 1, name: `Jugador ${i + 1}` }))).map((card, i) => CardService.normalizeCard(card, mode, rules, i));
     this.game = GameStore.normalizeGame({ id: uid('test'), number: this.store.nextNumber(), mode, rules, drawMode: options.drawMode || 'manual', autoSeconds: 4, presenter: 'vero', cards, drawn: options.drawn || [] });
     this.setPhase(PHASE.READY); this.showScreen('game'); this.renderGame(); return this.game;
@@ -480,9 +498,20 @@ class BingoApp {
     this.wizard = this.freshWizard(); $('pdfFile').value = ''; $('pdfStatus').textContent = 'Todavía no se cargó ningún PDF.'; $('gameModeError').textContent = '';
     document.querySelectorAll('.presenterCard').forEach(card => card.classList.remove('selected', 'dimmed'));
     document.querySelectorAll('.modeChoice button').forEach(button => button.classList.toggle('active', Number(button.dataset.mode) === 90));
-    $('globalAmbo').checked = $('globalLine').checked = $('globalBingo').checked = true; $('globalAmbo').disabled = false;
+    $('globalAmbo').checked = $('globalLine').checked = $('globalBingo').checked = true;
+    ['globalDoubleLine','globalTripleLine','globalCorners'].forEach(id => { if ($(id)) $(id).checked = true; });
+    this.updateWizardPrizeOptions();
     document.querySelector('input[name="drawMode"][value="automatic"]').checked = true; $('autoSeconds').value = '10'; $('qty').value = '8';
     this.setWizardSource('generated'); this.setWizardStep(1); this.setPhase(PHASE.CONFIGURING); this.showScreen('wizard');
+  }
+  updateWizardPrizeOptions() {
+    const is75 = Number(this.wizard.mode) === 75;
+    const group90 = $('prizesMode90'), group75 = $('prizesMode75');
+    if (group90) group90.style.display = is75 ? 'none' : 'flex';
+    if (group75) group75.style.display = is75 ? 'flex' : 'none';
+    $('globalAmbo').disabled = is75;
+    if (is75) $('globalAmbo').checked = false;
+    else ['globalDoubleLine','globalTripleLine','globalCorners'].forEach(id => { if ($(id)) $(id).checked = false; });
   }
   setWizardStep(step) {
     this.wizard.step = step; document.querySelectorAll('.step').forEach(el => el.classList.toggle('active', Number(el.dataset.step) === step));
@@ -496,24 +525,32 @@ class BingoApp {
     $('generatedSetup').style.display = source === 'generated' ? '' : 'none'; $('manualSetup').style.display = source === 'manual' ? '' : 'none'; $('pdfSetup').style.display = source === 'pdf' ? 'block' : 'none';
     if (source === 'manual' && !this.wizard.manualCards.length) this.addManualCard();
   }
-  renderNames() { /* En 2.3 los cartones generados no se vinculan a nombres. */ }
+  renderNames() { /* Los cartones generados no se vinculan a nombres hasta que el jugador confirma. */ }
 
   addManualCard(copyBets = null) {
     if (this.wizard.manualCards.length >= 250) { alert('El máximo es de 250 cartones.'); return; }
     const i = this.wizard.manualCards.length, rules = this.wizard.rules;
-    this.wizard.manualCards.push(CardService.normalizeCard({ id: uid('manual'), number: String(i + 1).padStart(3, '0'), name: `Jugador ${i + 1}`, source: 'manual', grid: CardService.emptyGrid(this.wizard.mode), bets: copyBets || { ambocabeza: rules.ambocabeza, line: rules.line, bingo: rules.bingo } }, this.wizard.mode, rules, i));
+    this.wizard.manualCards.push(CardService.normalizeCard({ id: uid('manual'), number: String(i + 1).padStart(3, '0'), name: `Jugador ${i + 1}`, source: 'manual', grid: CardService.emptyGrid(this.wizard.mode), bets: copyBets || { ambocabeza: rules.ambocabeza, line: rules.line, doubleLine: rules.doubleLine, tripleLine: rules.tripleLine, corners: rules.corners, bingo: rules.bingo } }, this.wizard.mode, rules, i));
     this.renderManualCards();
   }
   renderManualCards() {
     const host = $('manualCards'); host.innerHTML = '';
     this.wizard.manualCards.forEach((card, index) => {
       const box = document.createElement('article'); box.className = 'manualCard';
+      const options = [
+        ['ambocabeza','AmboCabeza', this.wizard.mode === 90 && this.wizard.rules.ambocabeza],
+        ['line','Línea', this.wizard.rules.line],
+        ['doubleLine','Doble línea', this.wizard.mode === 75 && this.wizard.rules.doubleLine],
+        ['tripleLine','Triple línea', this.wizard.mode === 75 && this.wizard.rules.tripleLine],
+        ['corners','4 esquinas', this.wizard.mode === 75 && this.wizard.rules.corners],
+        ['bingo','Bingo', this.wizard.rules.bingo]
+      ];
       box.innerHTML = `<div class="manualCardHead"><input class="manualNumber" value="${escapeHtml(card.number)}"><input class="manualName" value="${escapeHtml(card.name)}"><button type="button" class="secondary removeManual">ELIMINAR</button></div>
-      <div class="manualBets"><label><input type="checkbox" data-bet="ambocabeza" ${card.bets.ambocabeza ? 'checked' : ''} ${this.wizard.mode === 75 || !this.wizard.rules.ambocabeza ? 'disabled' : ''}> AmboCabeza</label><label><input type="checkbox" data-bet="line" ${card.bets.line ? 'checked' : ''} ${!this.wizard.rules.line ? 'disabled' : ''}> Línea</label><label><input type="checkbox" data-bet="bingo" ${card.bets.bingo ? 'checked' : ''} ${!this.wizard.rules.bingo ? 'disabled' : ''}> Bingo</label><button type="button" class="secondary allBets">TODAS LAS ACTIVAS</button></div><div class="${this.wizard.mode === 90 ? 'manualGrid90' : 'manualGrid75'}"></div><div class="manualError"></div>`;
+      <div class="manualBets">${options.map(([key,label,enabled]) => `<label style="${enabled ? '' : 'display:none'}"><input type="checkbox" data-bet="${key}" ${card.bets[key] ? 'checked' : ''} ${enabled ? '' : 'disabled'}> ${label}</label>`).join('')}<button type="button" class="secondary allBets">TODAS LAS ACTIVAS</button></div><div class="${this.wizard.mode === 90 ? 'manualGrid90' : 'manualGrid75'}"></div><div class="manualError"></div>`;
       box.querySelector('.manualNumber').oninput = e => { card.number = e.target.value; this.showManualValidation(box, card); };
       box.querySelector('.manualName').oninput = e => { card.name = e.target.value; };
       box.querySelector('.removeManual').onclick = () => { this.wizard.manualCards.splice(index, 1); this.renderManualCards(); };
-      box.querySelector('.allBets').onclick = () => { card.bets = { ambocabeza: this.wizard.mode === 90 && this.wizard.rules.ambocabeza, line: this.wizard.rules.line, bingo: this.wizard.rules.bingo }; this.renderManualCards(); };
+      box.querySelector('.allBets').onclick = () => { card.bets = Object.fromEntries(options.map(([key,,enabled]) => [key, Boolean(enabled)])); this.renderManualCards(); };
       box.querySelectorAll('[data-bet]').forEach(input => input.onchange = e => { card.bets[e.target.dataset.bet] = e.target.checked; this.showManualValidation(box, card); });
       const gridHost = box.querySelector(this.wizard.mode === 90 ? '.manualGrid90' : '.manualGrid75');
       card.grid.forEach((row, r) => row.forEach((value, c) => {
@@ -653,18 +690,18 @@ class BingoApp {
     const review = this.activeReview; if (!review) return;
     const type = review.type, label = PRIZE_LABEL[type];
     document.querySelectorAll('.big').forEach(button => button.classList.remove('pendingPrize')); $(type === 'ambo' ? 'amboBtn' : `${type}Btn`)?.classList.add('pendingPrize');
-    $('winnerBox').className = `winnerBox ${type === 'line' ? 'lineWinner' : type === 'bingo' ? 'bingoWinner' : ''}`;
+    $('winnerBox').className = `winnerBox ${['line','doubleLine','tripleLine','corners'].includes(type) ? 'lineWinner' : type === 'bingo' ? 'bingoWinner' : ''}`;
     $('winnerKicker').textContent = pending ? '¡POSIBLE GANADOR!' : '¡GANADOR CONFIRMADO!'; $('winnerMain').textContent = label;
     $('winnerNames').innerHTML = review.candidates.map(({ card, details }) => `${escapeHtml(card.name)}<br><small>Cartón N.º ${escapeHtml(card.number)} · ${escapeHtml(details.map(d => type === 'ambo' ? `${d.label}: ${d.first} y ${d.last}` : d.label).join(' · '))}${pending ? ' · Revisá el cartón físico' : ' · Premio confirmado'}</small>`).join('<hr style="border-color:#ffffff33">');
     $('continueGame').textContent = pending ? '✅ CONFIRMAR GANADOR' : (this.reviewQueue.length ? 'REVISAR SIGUIENTE PREMIO' : 'CONTINUAR CANTANDO');
     $('finishGame').textContent = pending ? '❌ NO ES VÁLIDO' : 'CERRAR'; $('finishGame').style.display = pending ? '' : 'none'; $('winnerOverlay').classList.add('show');
-    this.voice.tone(type === 'ambo' ? 700 : type === 'line' ? 659 : 523, .25, 'square', 1);
+    this.voice.tone(type === 'ambo' ? 700 : type === 'bingo' ? 523 : 659, .25, 'square', 1);
   }
   confirmReview() {
     const review = this.activeReview; if (!review || !review.pending) return this.advanceReview();
     const prize = this.game.prizes[review.type], records = review.candidates.map(({ card, details }) => ({ cardId: card.id, name: card.name, number: card.number, ball: review.ball, details: clone(details), confirmedAt: new Date().toISOString() }));
     prize.status = 'confirmed'; prize.winners = records; review.pending = false; this.save(); this.renderGame(); this.celebrate(review.type);
-    this.voice.event(review.type === 'ambo' ? 'amboConfirmed' : review.type === 'line' ? 'lineConfirmed' : 'bingoConfirmed');
+    this.voice.event(review.type === 'ambo' ? 'amboConfirmed' : review.type === 'bingo' ? 'bingoConfirmed' : 'lineConfirmed');
     this.renderWinnerOverlay(false);
   }
   rejectReview() {
@@ -690,7 +727,10 @@ class BingoApp {
     if (!this.game || !confirm('¿Iniciar una nueva ronda conservando los cartones y las apuestas?')) return;
     this.stopAutomatic(false); this.game.drawn = []; this.game.prizes = {
       ambo: { status: this.game.rules.ambocabeza ? 'active' : 'disabled', winners: [], rejectedKeys: [] },
+      corners: { status: this.game.rules.corners ? 'active' : 'disabled', winners: [], rejectedKeys: [] },
       line: { status: this.game.rules.line ? 'active' : 'disabled', winners: [], rejectedKeys: [] },
+      doubleLine: { status: this.game.rules.doubleLine ? 'active' : 'disabled', winners: [], rejectedKeys: [] },
+      tripleLine: { status: this.game.rules.tripleLine ? 'active' : 'disabled', winners: [], rejectedKeys: [] },
       bingo: { status: this.game.rules.bingo ? 'active' : 'disabled', winners: [], rejectedKeys: [] }
     };
     this.reviewQueue = []; this.activeReview = null; this.setPhase(PHASE.READY); this.save(); this.renderGame();
@@ -742,9 +782,9 @@ class BingoApp {
     $('pauseBtn').disabled = online ? !['playing','paused'].includes(roomStatus) : locked;
   }
   renderPrizeButtons() {
-    const defs = { ambo: ['amboBtn', 'AMBOCABEZA'], line: ['lineBtn', '★ LÍNEA'], bingo: ['bingoBtn', 'BINGO'] };
+    const defs = { ambo: ['amboBtn', 'AMBOCABEZA'], corners: ['cornersBtn', '4 ESQUINAS'], line: ['lineBtn', this.game.mode === 90 ? '★ LÍNEA' : 'LÍNEA'], doubleLine: ['doubleLineBtn', 'DOBLE LÍNEA'], tripleLine: ['tripleLineBtn', 'TRIPLE LÍNEA'], bingo: ['bingoBtn', 'BINGO'] };
     for (const type of PRIZE_ORDER) {
-      const [id, label] = defs[type], button = $(id), prize = this.game.prizes[type]; if (!button) continue;
+      const [id, label] = defs[type], button = $(id), prize = this.game.prizes[type]; if (!button || !prize) continue;
       const activeForCards = this.game.cards.some(card => card.bets[type === 'ambo' ? 'ambocabeza' : type]); button.style.display = prize.status === 'disabled' || !activeForCards ? 'none' : '';
       button.classList.toggle('amboExpired', type === 'ambo' && prize.status === 'expired'); button.disabled = type === 'ambo' && prize.status === 'expired';
       button.querySelector('.prizeDefault').textContent = label;
@@ -827,7 +867,7 @@ class BingoApp {
   openEditCard(cardId) {
     if (!this.game || this.game.drawn.length || this.phase === PHASE.REVIEW) { alert('Los cartones solo se pueden editar entre rondas, antes de cantar la primera bolilla.'); return; }
     const card = this.game.cards.find(item => item.id === cardId); if (!card) return; this.editCardId = cardId;
-    $('editCardName').value = card.name; $('editCardNumber').value = card.number; $('editBetAmbo').checked = card.bets.ambocabeza; $('editBetAmbo').disabled = card.mode !== 90 || !this.game.rules.ambocabeza; $('editBetLine').checked = card.bets.line; $('editBetLine').disabled = !this.game.rules.line; $('editBetBingo').checked = card.bets.bingo; $('editBetBingo').disabled = !this.game.rules.bingo;
+    $('editCardName').value = card.name; $('editCardNumber').value = card.number; const editDefs = [['editBetAmbo','ambocabeza',card.mode === 90],['editBetLine','line',true],['editBetDoubleLine','doubleLine',card.mode === 75],['editBetTripleLine','tripleLine',card.mode === 75],['editBetCorners','corners',card.mode === 75],['editBetBingo','bingo',true]]; editDefs.forEach(([id,key,modeOk]) => { if (!$(id)) return; $(id).checked = Boolean(card.bets[key]); $(id).disabled = !modeOk || !this.game.rules[key]; $(id).closest('label').style.display = modeOk && this.game.rules[key] ? '' : 'none'; });
     const host = $('editCardGrid'); host.innerHTML = ''; host.className = `manualGrid editTicketShell ${card.mode === 90 ? 'editGrid90' : 'editGrid75'}`;
     const caption = document.createElement('div'); caption.className = 'editTicketCaption'; caption.innerHTML = `<strong>EL BINGO DE LA GORDA</strong><span>${card.mode} BOLILLAS · Cartón ${escapeHtml(card.number)}</span>`; host.appendChild(caption);
     const board = document.createElement('div'); board.className = 'editCardBoard';
@@ -859,7 +899,7 @@ class BingoApp {
       const index = Number(cell.dataset.index); if (cell.classList.contains('editFreeLogo')) values[index] = 'LIBRE'; else values[index] = cell.value === '' ? null : Number(cell.value);
     });
     const grid = []; for (let i = 0; i < values.length; i += columns) grid.push(values.slice(i, i + columns));
-    return { ...old, name: $('editCardName').value.trim() || 'Jugador', number: $('editCardNumber').value.trim() || old.number, grid, bets: { ambocabeza: !$('editBetAmbo').disabled && $('editBetAmbo').checked, line: !$('editBetLine').disabled && $('editBetLine').checked, bingo: !$('editBetBingo').disabled && $('editBetBingo').checked } };
+    return { ...old, name: $('editCardName').value.trim() || 'Jugador', number: $('editCardNumber').value.trim() || old.number, grid, bets: { ambocabeza: !$('editBetAmbo').disabled && $('editBetAmbo').checked, line: !$('editBetLine').disabled && $('editBetLine').checked, doubleLine: $('editBetDoubleLine') && !$('editBetDoubleLine').disabled && $('editBetDoubleLine').checked, tripleLine: $('editBetTripleLine') && !$('editBetTripleLine').disabled && $('editBetTripleLine').checked, corners: $('editBetCorners') && !$('editBetCorners').disabled && $('editBetCorners').checked, bingo: !$('editBetBingo').disabled && $('editBetBingo').checked } };
   }
   updateEditCardState() {
     if (!this.editCardId) return;
@@ -890,7 +930,7 @@ class BingoApp {
 
   bindEvents() {
     $('newGameBtn').onclick = () => this.openWizard(); $('loadGameBtn').onclick = () => { this.renderGames(); $('gamesModal').classList.add('show'); }; $('cancelWizard').onclick = () => { this.setPhase(PHASE.HOME); this.showScreen('home'); };
-    document.querySelectorAll('.modeChoice button').forEach(button => button.onclick = () => { this.wizard.mode = Number(button.dataset.mode); document.querySelectorAll('.modeChoice button').forEach(b => b.classList.toggle('active', b === button)); if (this.wizard.mode === 75) { $('globalAmbo').checked = false; $('globalAmbo').disabled = true; if (this.wizard.source === 'pdf') this.setWizardSource('generated'); } else $('globalAmbo').disabled = false; });
+    document.querySelectorAll('.modeChoice button').forEach(button => button.onclick = () => { this.wizard.mode = Number(button.dataset.mode); document.querySelectorAll('.modeChoice button').forEach(b => b.classList.toggle('active', b === button)); this.updateWizardPrizeOptions(); if (this.wizard.mode === 75 && this.wizard.source === 'pdf') this.setWizardSource('generated'); this.wizard.manualCards = []; });
     document.querySelectorAll('.presenterCard').forEach(card => {
       card.onclick = event => { if (event.target.closest('.voicePreview')) return; this.wizard.presenter = card.dataset.id; document.querySelectorAll('.presenterCard').forEach(other => { other.classList.toggle('selected', other === card); other.classList.toggle('dimmed', other !== card); }); $('wizardNext').disabled = false; };
     });
@@ -902,7 +942,7 @@ class BingoApp {
     $('wizardBack').onclick = () => this.setWizardStep(Math.max(1, this.wizard.step - 1));
     $('wizardNext').onclick = () => {
       if (this.wizard.step === 1) {
-        this.wizard.rules = { ambocabeza: this.wizard.mode === 90 && $('globalAmbo').checked, line: $('globalLine').checked, bingo: $('globalBingo').checked };
+        this.wizard.rules = { ambocabeza: this.wizard.mode === 90 && $('globalAmbo').checked, line: $('globalLine').checked, doubleLine: this.wizard.mode === 75 && $('globalDoubleLine').checked, tripleLine: this.wizard.mode === 75 && $('globalTripleLine').checked, corners: this.wizard.mode === 75 && $('globalCorners').checked, bingo: $('globalBingo').checked };
         if (!Object.values(this.wizard.rules).some(Boolean)) { $('gameModeError').textContent = 'Elegí al menos un premio para jugar.'; return; }
         $('gameModeError').textContent = ''; this.wizard.drawMode = document.querySelector('input[name="drawMode"]:checked')?.value || 'manual'; this.wizard.autoSeconds = Number($('autoSeconds').value) || 6; this.setWizardStep(2); return;
       }
@@ -915,7 +955,7 @@ class BingoApp {
     $('clearPdfReview').onclick = () => { $('pdfReviewGrid').querySelectorAll('input').forEach(input => { input.value = ''; }); this.validatePdfReview(); }; $('closePdfReview').onclick = () => $('pdfReviewModal').classList.remove('show');
 
     $('drawBtn').onclick = () => this.requestDraw('button'); $('autoBtn').onclick = () => this.toggleAutomatic(); $('pauseBtn').onclick = () => this.toggleAutomatic(); $('undoBtn').onclick = () => this.undoLast(); $('resetBtn').onclick = () => this.newRound(); if ($('autoSecondsLive')) $('autoSecondsLive').onchange = event => this.updateAutoSeconds(event.target.value);
-    $('amboBtn').onclick = () => this.game?.prizes.ambo.winners.length ? this.showConfirmedPrize('ambo') : null; $('lineBtn').onclick = () => this.game?.prizes.line.winners.length ? this.showConfirmedPrize('line') : null; $('bingoBtn').onclick = () => this.game?.prizes.bingo.winners.length ? this.showConfirmedPrize('bingo') : null;
+    [['amboBtn','ambo'],['cornersBtn','corners'],['lineBtn','line'],['doubleLineBtn','doubleLine'],['tripleLineBtn','tripleLine'],['bingoBtn','bingo']].forEach(([id,type]) => { if ($(id)) $(id).onclick = () => this.game?.prizes?.[type]?.winners.length ? this.showConfirmedPrize(type) : null; });
     $('continueGame').onclick = () => this.activeReview?.pending ? this.confirmReview() : this.advanceReview(); $('finishGame').onclick = () => this.activeReview?.pending ? this.rejectReview() : this.advanceReview();
     $('viewWinnerCard').onclick = () => { const card = this.activeReview?.candidates?.[0]?.card; if (card) { $('winnerOverlay').classList.remove('show'); this.openLarge(card.id); } };
     $('cardsBtn').onclick = () => { $('cardsModal').classList.add('show'); this.renderCards(); }; $('closeCards').onclick = () => $('cardsModal').classList.remove('show'); $('prevPage').onclick = () => { this.cardsPage--; this.renderCards(); }; $('nextPage').onclick = () => { this.cardsPage++; this.renderCards(); }; $('perPage').onchange = event => { this.cardsPerPage = Number(event.target.value); this.cardsPage = 0; this.renderCards(); }; $('printVisible').onclick = () => window.print();
@@ -926,14 +966,14 @@ class BingoApp {
     $('autoAssignVoices').onclick = () => { this.voice.refresh(true); this.voice.preview(this.game?.presenter || this.wizard.presenter || 'vero'); }; $('musicOn').onchange = event => event.target.checked ? this.voice.startMusic() : this.voice.stopMusic();
     $('saveEditCard').onclick = () => { const card = this.collectEditedCard(), result = CardService.validate(card); if (!result.valid) { $('editCardError').textContent = result.errors.join(' · '); this.updateEditCardState(); return; } const index = this.game.cards.findIndex(item => item.id === this.editCardId); this.game.cards[index] = card; this.save(); this.renderGame(); $('editCardModal').classList.remove('show'); };
     $('clearEditCard').onclick = () => { $('editCardGrid').querySelectorAll('.editNumberCell').forEach(input => { input.value = ''; input.classList.add('empty'); }); this.updateEditCardState(); }; $('closeEditCard').onclick = () => $('editCardModal').classList.remove('show');
-    ['editCardName','editCardNumber','editBetAmbo','editBetLine','editBetBingo'].forEach(id => $(id).addEventListener('input', () => this.updateEditCardState()));
+    ['editCardName','editCardNumber','editBetAmbo','editBetLine','editBetDoubleLine','editBetTripleLine','editBetCorners','editBetBingo'].filter(id => $(id)).forEach(id => $(id).addEventListener('input', () => this.updateEditCardState()));
     document.addEventListener('keydown', event => { if (event.target.matches('input,textarea,select')) return; if (event.code === 'Space' && $('game').classList.contains('active')) { event.preventDefault(); this.requestDraw('keyboard'); } });
     window.addEventListener('beforeunload', () => this.save());
   }
 }
 
 function showFatal(error) {
-  console.error(error); const box = $('fatalError'); if (box) { box.style.display = 'block'; box.textContent = `Bingo de la Gorda 2.3 encontró un error y detuvo la ejecución para no perder datos.\n\n${error?.stack || error}`; }
+  console.error(error); const box = $('fatalError'); if (box) { box.style.display = 'block'; box.textContent = `BINGO GORDA 2026 encontró un error y detuvo la ejecución para no perder datos.\n\n${error?.stack || error}`; }
 }
 
 window.BingoV8Engine = { APP_VERSION, PHASE, GameStore, CardService, PrizeEngine, VoiceService, PdfImporter, BingoApp };

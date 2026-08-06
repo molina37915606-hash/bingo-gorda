@@ -51,7 +51,7 @@ class PlayerApp {
       { icon:'🔊', title:'Sonido y avisos', text:'El parlante controla la voz y los sonidos. La campana controla los avisos visuales y la vibración.' },
       { icon:'✓', title:'Automarcar', text:'Automarcar completa tus cartones con las bolillas oficiales. También podés marcar manualmente.' },
       { icon:'🍀', title:'Cambiar mi suerte', text:'Durante la partida podés elegir otro presentador desde Mi suerte. Cambia solo la voz que escuchás en tu celular.' },
-      { icon:'🏆', title:'Tenés que cantar', text:'Aunque el sistema marque solo o active una alarma, no avisa al administrador. Tocá Cantar AmboCabeza, Línea o Bingo para enviar el reclamo.' },
+      { icon:'🏆', title:'Tenés que cantar', text:'Aunque el sistema marque solo o active una alarma, no avisa al administrador. Tocá el botón del premio correspondiente para enviar el reclamo.' },
       { icon:'📄', title:'Resultado oficial', text:'Cuando termine el sorteo aparecerá en el centro el botón Descargar resultados con el acta oficial.' },
       { icon:'⚠️', title:'Recordatorio importante', text:'Marcar no es cantar. El reclamo solo es válido cuando tocás manualmente el botón del premio.' }
     ];
@@ -66,7 +66,10 @@ class PlayerApp {
     $('lastResultBtn').onclick = () => this.downloadLastPublicResult();
     $('accessCode').addEventListener('keydown', event => { if (event.key === 'Enter') this.login(); });
     $('claimAmbo').onclick = () => this.claim('ambo');
+    $('claimCorners').onclick = () => this.claim('corners');
     $('claimLine').onclick = () => this.claim('line');
+    $('claimDoubleLine').onclick = () => this.claim('doubleLine');
+    $('claimTripleLine').onclick = () => this.claim('tripleLine');
     $('claimBingo').onclick = () => this.claim('bingo');
     $('logoutBtn').onclick = () => this.logout();
     $('themeToggle').onclick = () => this.toggleTheme();
@@ -500,38 +503,63 @@ class PlayerApp {
 
   renderTabs() {
     const cards = this.state.player.cards || [];
-    $('cardTabs').innerHTML = cards.map(card => { const ready = this.readinessFor(card.id); const cls = [card.id === this.activeCardId ? 'active' : '', ready?.bingoEligible ? 'readyBingo' : ready?.lineEligible || ready?.amboEligible ? 'readyLine' : ''].filter(Boolean).join(' '); return `<button data-card="${esc(card.id)}" class="${cls}">CARTÓN ${esc(card.number)}</button>`; }).join('');
+    $('cardTabs').innerHTML = cards.map(card => {
+      const ready = this.readinessFor(card.id);
+      const anyIntermediate = ready?.tripleLineEligible || ready?.doubleLineEligible || ready?.cornersEligible || ready?.lineEligible || ready?.amboEligible;
+      const cls = [card.id === this.activeCardId ? 'active' : '', ready?.bingoEligible ? 'readyBingo' : anyIntermediate ? 'readyLine' : ''].filter(Boolean).join(' ');
+      return `<button data-card="${esc(card.id)}" class="${cls}">CARTÓN ${esc(card.number)}</button>`;
+    }).join('');
     $('cardTabs').querySelectorAll('button').forEach(button => button.onclick = () => { this.activeCardId = button.dataset.card; localStorage.setItem('bingoOnlineCard', this.activeCardId); this.renderTabs(); this.renderTicket(); });
   }
 
   readinessFor(cardId) { return (this.state?.readiness || []).find(item => item.cardId === cardId) || null; }
-  eligibleCard(type) { const key = type === 'ambo' ? 'amboEligible' : type === 'bingo' ? 'bingoEligible' : 'lineEligible'; return (this.state?.readiness || []).find(item => item[key]) || null; }
+  eligibleCard(type) { const key = `${type}Eligible`; return (this.state?.readiness || []).find(item => item[key]) || null; }
+  claimLabel(type) {
+    if (type === 'ambo') return 'AMBOCABEZA';
+    if (type === 'corners') return '4 ESQUINAS';
+    if (type === 'doubleLine') return 'DOBLE LÍNEA';
+    if (type === 'tripleLine') return 'TRIPLE LÍNEA';
+    if (type === 'bingo') return 'BINGO';
+    if (Number(this.state?.game?.mode) === 90 && Number(this.state?.prizeStatus?.line?.awarded || 0) > 0 && !this.state?.prizeStatus?.line?.closed) return 'SEGUNDA LÍNEA';
+    return 'LÍNEA';
+  }
 
   renderTicket() {
     const card = this.state.player.cards.find(item => item.id === this.activeCardId);
-    const allButtons = [$('claimAmbo'),$('claimLine'),$('claimBingo')];
+    const buttons = {
+      ambo:$('claimAmbo'), corners:$('claimCorners'), line:$('claimLine'), doubleLine:$('claimDoubleLine'), tripleLine:$('claimTripleLine'), bingo:$('claimBingo')
+    };
+    const allButtons = Object.values(buttons);
+    $('ticketPanel').classList.toggle('mode75Card', Number(card?.mode) === 75);
     if (!card) { $('ticketPanel').innerHTML = '<div class="error">No hay un cartón elegido.</div>'; allButtons.forEach(button => button.disabled = true); return; }
     const marks = new Set((this.state.player.marks?.[card.id] || []).map(Number)), auto = Boolean(this.state.player.autoMark), locked = this.state.status !== 'playing';
     const cells = card.grid.flat().map(value => value === null ? '<div class="cell blank">·</div>' : value === 'LIBRE' ? '<div class="cell free">LIBRE</div>' : `<button class="cell number ${marks.has(value) ? 'marked' : ''}" data-number="${value}" ${auto || locked ? 'disabled' : ''}>${value}</button>`).join('');
-    $('ticketPanel').innerHTML = `<div class="ticketHead"><div><b>Cartón ${esc(card.number)}</b><br><small>${esc(this.state.player.name)}</small></div><small>${marks.size} marcados · ${auto ? 'AUTO' : 'MANUAL'}</small></div><div class="grid mode${card.mode}">${cells}</div>`;
+    const readyInfo = this.readinessFor(card.id);
+    const progress = Number(card.mode) === 75 ? ` · ${readyInfo?.lineCount || 0} líneas completas` : '';
+    $('ticketPanel').innerHTML = `<div class="ticketHead"><div><b>Cartón ${esc(card.number)}</b><br><small>${esc(this.state.player.name)}</small></div><small>${marks.size} marcados${progress} · ${auto ? 'AUTO' : 'MANUAL'}</small></div><div class="grid mode${card.mode}">${cells}</div>`;
     if (!auto && !locked) $('ticketPanel').querySelectorAll('[data-number]').forEach(button => button.onclick = () => this.toggleMark(card.id, Number(button.dataset.number), !button.classList.contains('marked')));
 
     const prizes = this.state.prizeStatus || {}, pending = (this.state.publicClaims || []).some(claim => claim.status === 'pending');
+    const mode75 = Number(card.mode) === 75;
     const definitions = [
-      { type:'ambo', button:$('claimAmbo'), prize:prizes.ambo || { total:0, closed:true }, enabled:card.bets?.ambocabeza !== false && Number(prizes.ambo?.total || 0) > 0, label:'CANTAR AMBOCABEZA' },
-      { type:'line', button:$('claimLine'), prize:prizes.line || { closed:false, awarded:0 }, enabled:card.bets?.line !== false, label:Number(prizes.line?.awarded || 0) > 0 && !prizes.line?.closed ? 'CANTAR SEGUNDA LÍNEA' : 'CANTAR LÍNEA' },
-      { type:'bingo', button:$('claimBingo'), prize:prizes.bingo || { closed:false }, enabled:card.bets?.bingo !== false, label:'CANTAR BINGO' }
-    ];
+      { type:'ambo', button:buttons.ambo, enabled:!mode75 && card.bets?.ambocabeza !== false && Number(prizes.ambo?.total || 0) > 0 },
+      { type:'corners', button:buttons.corners, enabled:mode75 && card.bets?.corners !== false && Number(prizes.corners?.total || 0) > 0 },
+      { type:'line', button:buttons.line, enabled:card.bets?.line !== false && Number(prizes.line?.total || 0) > 0 },
+      { type:'doubleLine', button:buttons.doubleLine, enabled:mode75 && card.bets?.doubleLine !== false && Number(prizes.doubleLine?.total || 0) > 0 },
+      { type:'tripleLine', button:buttons.tripleLine, enabled:mode75 && card.bets?.tripleLine !== false && Number(prizes.tripleLine?.total || 0) > 0 },
+      { type:'bingo', button:buttons.bingo, enabled:card.bets?.bingo !== false && Number(prizes.bingo?.total || 0) > 0 }
+    ].map(item => ({ ...item, prize:prizes[item.type] || { closed:true, winners:[] } }));
     const active = definitions.filter(item => item.enabled);
-    $('claimBar').style.setProperty('--claim-count', String(Math.max(1, active.length)));
+    $('claimBar').style.setProperty('--claim-count', String(Math.min(3, Math.max(1, active.length))));
     definitions.forEach(item => {
       item.button.style.display = item.enabled ? '' : 'none';
-      item.button.textContent = item.label;
+      const label = this.claimLabel(item.type);
+      item.button.textContent = `CANTAR ${label}`;
       const ready = this.eligibleCard(item.type);
       const alreadyWon = (item.prize.winners || []).some(winner => winner.cardId === card.id);
       item.button.disabled = locked || pending || item.prize.closed || alreadyWon;
       item.button.classList.toggle('prizeReady', Boolean(ready) && !item.button.disabled);
-      if (ready && !item.button.disabled) item.button.textContent = item.type === 'ambo' ? '¡TENÉS AMBOCABEZA! TOCÁ ACÁ' : item.type === 'line' ? `¡TENÉS ${Number(prizes.line?.awarded || 0) > 0 ? 'SEGUNDA LÍNEA' : 'LÍNEA'}! TOCÁ ACÁ` : '¡TENÉS BINGO! TOCÁ ACÁ';
+      if (ready && !item.button.disabled) item.button.textContent = `¡TENÉS ${label}! TOCÁ ACÁ`;
     });
   }
 
@@ -556,8 +584,8 @@ class PlayerApp {
     const ready = this.eligibleCard(type);
     if (ready) { this.activeCardId = ready.cardId; localStorage.setItem('bingoOnlineCard', this.activeCardId); this.renderTabs(); this.renderTicket(); }
     const card = this.state?.player.cards.find(item => item.id === this.activeCardId); if (!card) return;
-    const label = type === 'ambo' ? 'AMBOCABEZA' : type === 'line' ? (Number(this.state.prizeStatus?.line?.awarded || 0) > 0 ? 'SEGUNDA LÍNEA' : 'LÍNEA') : 'BINGO';
-    [$('claimAmbo'),$('claimLine'),$('claimBingo')].forEach(button => button.disabled = true);
+    const label = this.claimLabel(type);
+    [$('claimAmbo'),$('claimCorners'),$('claimLine'),$('claimDoubleLine'),$('claimTripleLine'),$('claimBingo')].forEach(button => button.disabled = true);
     try {
       const claim = await this.request('/api/player/claim', { method:'POST', body:JSON.stringify({ cardId:card.id, type }) });
       this.showMessage(`${label} enviado. El administrador ya recibió el aviso.`, 'notice');
@@ -568,13 +596,14 @@ class PlayerApp {
 
   handleOwnPrizeReadiness() {
     if (!this.state || this.state.status !== 'playing') return;
-    const ready = this.eligibleCard('bingo') || this.eligibleCard('line') || this.eligibleCard('ambo');
-    if (!ready) { this.lastPrizeReadyKey = ''; return; }
-    const type = ready.bingoEligible ? 'bingo' : ready.lineEligible ? 'line' : 'ambo';
+    const order = ['bingo','tripleLine','doubleLine','corners','line','ambo'];
+    let type = null, ready = null;
+    for (const candidate of order) { ready = this.eligibleCard(candidate); if (ready) { type = candidate; break; } }
+    if (!ready || !type) { this.lastPrizeReadyKey = ''; return; }
     const key = `${type}:${ready.cardId}:${this.state.game.drawn.length}`; if (key === this.lastPrizeReadyKey) return;
     this.lastPrizeReadyKey = key; this.activeCardId = ready.cardId; localStorage.setItem('bingoOnlineCard', ready.cardId);
     this.playAlertSound(type); if (this.alertsEnabled && navigator.vibrate) navigator.vibrate(type === 'bingo' ? [180,80,180,80,260] : [150,70,150]);
-    const label = type === 'ambo' ? 'AMBOCABEZA' : type === 'line' ? 'LÍNEA' : 'BINGO';
+    const label = this.claimLabel(type);
     this.showMessage(`¡TENÉS ${label} EN EL CARTÓN ${ready.cardNumber}! Tocá el botón ahora.`, 'notice');
   }
 
@@ -689,18 +718,27 @@ class PlayerApp {
   renderPublicClaim() {
     const claim = (this.state?.publicClaims || []).at(-1); if (!claim) return;
     const key = `${claim.id}:${claim.status}`; if (key === this.lastPublicClaimKey) return; this.lastPublicClaimKey = key;
-    const label = String(claim.prizeLabel || (claim.type === 'ambo' ? 'AMBOCABEZA' : claim.type === 'bingo' ? 'BINGO' : 'LÍNEA')).toUpperCase();
+    const label = String(claim.prizeLabel || this.claimLabel(claim.type)).toUpperCase();
     if (claim.status === 'pending') {
-      this.showClaimOverlay({ kind:claim.type, icon:'🔔', title:`${claim.playerName} cantó ${label}`, text:`Cartón ${claim.cardNumber}. Esperando verificación del administrador.`, duration:6500, force:true });
-      this.playAlertSound(claim.type); this.speakEvent(claim.type === 'ambo' ? 'claimAmbo' : claim.type === 'line' ? 'claimLine' : 'claimBingo'); return;
+      this.showClaimOverlay({ kind:claim.type, icon:'', title:`${claim.playerName} cantó ${label}`, text:`Cartón ${claim.cardNumber}. Esperando verificación del administrador.`, duration:6500, badge:'assets/celebrations/verificando-jugada.png', force:true });
+      this.playAlertSound(claim.type); this.speakEvent(claim.type === 'ambo' ? 'claimAmbo' : claim.type === 'bingo' ? 'claimBingo' : 'claimLine'); return;
     }
     if (claim.status === 'confirmed') {
-      const isDouble = claim.type === 'line' && Number(claim.prizeNumber || 1) === 2;
-      const badge = claim.type === 'bingo' ? 'assets/celebrations/bingo-confirmado.png' : claim.type === 'ambo' ? 'assets/celebrations/ambocabeza-confirmado.png' : isDouble ? 'assets/celebrations/doble-linea-confirmada.svg' : 'assets/celebrations/linea-confirmada.svg';
+      const badges = {
+        ambo:'assets/celebrations/ambocabeza-confirmado.png',
+        bingo:'assets/celebrations/bingo-confirmado.png',
+        corners:'assets/celebrations/cuatro-esquinas-confirmadas.png',
+        doubleLine:'assets/celebrations/doble-linea-confirmada-75.png',
+        tripleLine:'assets/celebrations/triple-linea-confirmada-75.png',
+        line: Number(this.state?.game?.mode) === 90
+          ? (Number(claim.prizeNumber || 1) === 2 ? 'assets/celebrations/segunda-linea-confirmada.png' : 'assets/celebrations/primera-linea-confirmada.png')
+          : 'assets/celebrations/linea-confirmada-75.png'
+      };
+      const badge = badges[claim.type] || badges.line;
       this.showClaimOverlay({ kind:'confirmed spectacular', icon:'', title:`${label} CONFIRMADO`, text:`Ganador: ${claim.playerName} · Cartón ${claim.cardNumber}.`, duration:claim.type === 'bingo' ? 9000 : 6000, badge, mascot:claim.type === 'bingo', force:true });
-      this.playAlertSound('confirmed'); this.speakEvent(claim.type === 'ambo' ? 'amboConfirmed' : claim.type === 'line' ? 'lineConfirmed' : 'bingoConfirmed'); return;
+      this.playAlertSound('confirmed'); this.speakEvent(claim.type === 'ambo' ? 'amboConfirmed' : claim.type === 'bingo' ? 'bingoConfirmed' : 'lineConfirmed'); return;
     }
-    this.showClaimOverlay({ kind:'rejected', icon:'✖', title:'PREMIO NO CONFIRMADO', text:`${claim.playerName} · Cartón ${claim.cardNumber}.`, duration:4500, badge:'assets/celebrations/premio-no-confirmado.svg', force:true });
+    this.showClaimOverlay({ kind:'rejected', icon:'', title:'PREMIO NO CONFIRMADO', text:`${claim.playerName} · Cartón ${claim.cardNumber}.`, duration:5000, badge:'assets/celebrations/premio-no-confirmado.png', force:true });
     this.playAlertSound('rejected'); this.speakEvent('rejected');
   }
 

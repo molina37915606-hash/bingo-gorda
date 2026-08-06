@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
-<title>Bingo de la Gorda 2.3</title>
+<title>BINGO GORDA 2026</title>
 <style>
 :root{
  --bg:#040712;--panel:#0b1430;--line:#2b4174;--txt:#fff;--muted:#9eb0d8;
@@ -343,6 +343,11 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 #game[data-phase="REVIEWING_WINNER"] #drawBtn,#game[data-phase="REVIEWING_WINNER"] #autoBtn,#game[data-phase="REVIEWING_WINNER"] #pauseBtn,#game[data-phase="REVIEWING_WINNER"] #undoBtn{opacity:.45;pointer-events:none}
 @media(max-width:1280px){.main{grid-template-columns:280px 330px minmax(460px,1fr)}.bottom{grid-template-columns:1fr 1fr 1fr repeat(4,120px)}.tool{font-size:12px}.gameTitle{font-size:15px}}
 .wizardInfo{margin-top:12px;padding:13px;border-radius:12px;background:#10182b;border:1px solid #ffffff20;color:var(--muted);line-height:1.4}.generatedOnly{grid-template-columns:1fr 180px;align-items:center}@media(max-width:620px){.generatedOnly{grid-template-columns:1fr}}
+
+/* BINGO GORDA 2026 */
+.bottom{grid-template-columns:repeat(auto-fit,minmax(105px,1fr))!important;gap:6px!important}
+#cornersBtn,#doubleLineBtn,#tripleLineBtn{background:linear-gradient(135deg,#7a4a08,#c88a19);border-color:#f4c55e}
+@media(max-width:1280px){.bottom{grid-template-columns:repeat(auto-fit,minmax(92px,1fr))!important}.big .prizeDefault{font-size:clamp(12px,1.1vw,18px)!important}}
 </style></head>
 <body>
 <section class="screen active" id="home">
@@ -352,7 +357,7 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 <button class="primary" id="newGameBtn">CREAR SALA</button>
 <button class="secondary" id="loadGameBtn">RECUPERAR PARTIDA</button>
 </div>
-<div class="homeSub">BINGO DE LA GORDA 2.3 · Bingo de 75 o 90 bolas · Hasta 250 cartones</div>
+<div class="homeSub">BINGO GORDA 2026 · Bingo de 75 o 90 bolas · Hasta 250 cartones</div>
 </div>
 </section>
 <section class="screen" id="wizard">
@@ -362,7 +367,11 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 <h3>Configurá el modo de juego</h3>
 <div class="gameConfig">
 <div class="configBlock"><h4>1. Cantidad de bolillas</h4><div class="modeChoice"><button data-mode="75" type="button">75 BOLAS</button><button class="active" data-mode="90" type="button">90 BOLAS</button></div></div>
-<div class="configBlock"><h4>2. Premios que se jugarán</h4><div class="checkRow"><label><input checked="" id="globalAmbo" type="checkbox"/> AmboCabeza</label><label><input checked="" id="globalLine" type="checkbox"/> Línea</label><label><input checked="" id="globalBingo" type="checkbox"/> Bingo</label></div><small id="gameModeError" style="display:block;color:#ff9aa2;margin-top:8px"></small></div>
+<div class="configBlock"><h4>2. Premios que se jugarán</h4>
+<div id="prizesMode90" class="checkRow"><label><input checked id="globalAmbo" type="checkbox"/> AmboCabeza</label></div>
+<div id="prizesMode75" class="checkRow" style="display:none"><label><input checked id="globalDoubleLine" type="checkbox"/> Doble línea</label><label><input checked id="globalTripleLine" type="checkbox"/> Triple línea</label><label><input checked id="globalCorners" type="checkbox"/> 4 esquinas</label></div>
+<div class="checkRow"><label><input checked id="globalLine" type="checkbox"/> Línea</label><label><input checked id="globalBingo" type="checkbox"/> Bingo</label></div>
+<small style="display:block;color:#9db8ef;margin-top:8px">En 90 bolas, Línea puede entregar primera y segunda línea. En 75 bolas, Doble y Triple Línea se completan dentro del mismo cartón.</small><small id="gameModeError" style="display:block;color:#ff9aa2;margin-top:8px"></small></div>
 <div class="configBlock"><h4>3. Forma de sorteo</h4><div class="radioRow"><label><input name="drawMode" type="radio" value="manual"/> Manual</label><label><input checked="" name="drawMode" type="radio" value="automatic"/> Automático</label></div><label style="display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center;margin-top:12px">Segundos entre bolillas <select id="autoSeconds"><option value="4">4 segundos</option><option value="6">6 segundos</option><option value="8">8 segundos</option><option selected="" value="10">10 segundos</option><option value="15">15 segundos</option></select></label><small style="display:block;color:var(--muted);margin-top:8px">En automático se detendrá cuando aparezca un premio para poder verificarlo.</small></div>
 </div>
 </div>
@@ -428,7 +437,7 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 </section>
 <section class="screen" id="game">
 <header class="gameTop card">
-<div class="gameTitle">EL BINGO DE LA GORDA<span id="versionBadge" style="font-size:11px;color:var(--muted);font-weight:800;margin-left:8px">VERSIÓN 2.3</span></div>
+<div class="gameTitle">EL BINGO DE LA GORDA<span id="versionBadge" style="font-size:11px;color:var(--muted);font-weight:800;margin-left:8px">BINGO GORDA 2026</span></div>
 <div class="statusLine" id="lineStatus">Línea: pendiente</div>
 <div class="gameNo" id="gameNo">Juego 0001</div>
 </header>
@@ -449,7 +458,10 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 </main>
 <footer class="bottom">
 <button class="big ambo" id="amboBtn"><span class="prizeDefault">AMBOCABEZA</span><span class="prizeWinnerName"></span><span class="prizeWinnerCard"></span></button>
+<button class="big line" id="cornersBtn"><span class="prizeDefault">4 ESQUINAS</span><span class="prizeWinnerName"></span><span class="prizeWinnerCard"></span></button>
 <button class="big line" id="lineBtn"><span class="prizeDefault">★ LÍNEA</span><span class="prizeWinnerName"></span><span class="prizeWinnerCard"></span></button>
+<button class="big line" id="doubleLineBtn"><span class="prizeDefault">DOBLE LÍNEA</span><span class="prizeWinnerName"></span><span class="prizeWinnerCard"></span></button>
+<button class="big line" id="tripleLineBtn"><span class="prizeDefault">TRIPLE LÍNEA</span><span class="prizeWinnerName"></span><span class="prizeWinnerCard"></span></button>
 <button class="big bingo" id="bingoBtn"><span class="prizeDefault">BINGO</span><span class="prizeWinnerName"></span><span class="prizeWinnerCard"></span></button>
 <button class="tool purple" id="cardsBtn">🧾 CARTONES</button>
 <button class="tool purple" id="themeBtn">🎨 TEMA</button>
@@ -491,7 +503,7 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 <div class="editCardForm">
 <label>Jugador<input id="editCardName" maxlength="40"/></label>
 <label>N.º de cartón<input id="editCardNumber" maxlength="12"/></label>
-<div class="editBets"><b>Participa en:</b><label><input id="editBetAmbo" type="checkbox"/> AmboCabeza</label><label><input id="editBetLine" type="checkbox"/> Línea</label><label><input id="editBetBingo" type="checkbox"/> Bingo</label></div>
+<div class="editBets"><b>Participa en:</b><label><input id="editBetAmbo" type="checkbox"/> AmboCabeza</label><label><input id="editBetLine" type="checkbox"/> Línea</label><label><input id="editBetDoubleLine" type="checkbox"/> Doble línea</label><label><input id="editBetTripleLine" type="checkbox"/> Triple línea</label><label><input id="editBetCorners" type="checkbox"/> 4 esquinas</label><label><input id="editBetBingo" type="checkbox"/> Bingo</label></div>
 <div class="manualGrid" id="editCardGrid"></div>
 <div class="editCardCounters" id="editCardCounters"></div>
 <div class="editCardHint">Escribí cada número en la misma posición que ocupa en el cartón impreso. Podés moverte con Tab o con las flechas.</div>
@@ -532,5 +544,5 @@ button:disabled{opacity:.55;cursor:not-allowed!important}
 <label style="display:grid;grid-template-columns:110px 1fr;gap:7px;margin:8px 0"><span>Vol. efectos</span><input id="fxVol" max=".5" min="0" step=".01" type="range" value=".18"/></label>
 </div>
 
-<div id="fatalError" style="display:none;position:fixed;inset:18px;z-index:999;background:#2a0710;color:#fff;border:2px solid #ff5964;border-radius:18px;padding:20px;overflow:auto;white-space:pre-wrap;font:16px/1.45 Segoe UI,Arial"></div><script defer="defer" src="js/presenter-scripts.js?v=2.3"></script><script defer="defer" src="js/app-v8.js?v=2.3"></script><script defer="defer" src="js/online-room-admin.js?v=2.3"></script></body>
+<div id="fatalError" style="display:none;position:fixed;inset:18px;z-index:999;background:#2a0710;color:#fff;border:2px solid #ff5964;border-radius:18px;padding:20px;overflow:auto;white-space:pre-wrap;font:16px/1.45 Segoe UI,Arial"></div><script defer="defer" src="js/presenter-scripts.js?v=2026"></script><script defer="defer" src="js/app-v8.js?v=2026"></script><script defer="defer" src="js/online-room-admin.js?v=2026"></script></body>
 </html>

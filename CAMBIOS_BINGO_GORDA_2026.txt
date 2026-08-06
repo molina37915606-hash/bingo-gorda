@@ -1,0 +1,10 @@
+BINGO GORDA 2026
+
+- Nueva identidad de versión y carpeta.
+- 90 bolas conserva AmboCabeza, Primera línea, Segunda línea y Bingo.
+- 75 bolas incorpora Línea, Doble línea, Triple línea, 4 esquinas y Bingo como premios independientes.
+- Doble y Triple línea se validan dentro del mismo cartón.
+- Nuevos botones de reclamo, panel de verificación, transmisión y acta final.
+- Nuevas placas transparentes y placa de reclamo rechazado con lenguaje visual de error.
+- Cartones de 75 compactados para evitar desplazamiento horizontal en computadora.
+- Reglamento actualizado y pruebas automáticas ampliadas.

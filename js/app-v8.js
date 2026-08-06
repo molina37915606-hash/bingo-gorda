@@ -496,7 +496,7 @@ class BingoApp {
     $('generatedSetup').style.display = source === 'generated' ? '' : 'none'; $('manualSetup').style.display = source === 'manual' ? '' : 'none'; $('pdfSetup').style.display = source === 'pdf' ? 'block' : 'none';
     if (source === 'manual' && !this.wizard.manualCards.length) this.addManualCard();
   }
-  renderNames() { /* En 2.2 los cartones generados no se vinculan a nombres. */ }
+  renderNames() { /* En 2.3 los cartones generados no se vinculan a nombres. */ }
 
   addManualCard(copyBets = null) {
     if (this.wizard.manualCards.length >= 250) { alert('El máximo es de 250 cartones.'); return; }
@@ -723,7 +723,7 @@ class BingoApp {
     $('autoBtn').style.display = automatic && !online ? '' : 'none';
     $('pauseBtn').style.display = online || automatic ? '' : 'none';
     $('autoBtn').textContent = this.autoRunning ? '⏸ PAUSAR AUTOMÁTICO' : '▶ INICIAR AUTOMÁTICO';
-    $('pauseBtn').textContent = roomStatus === 'paused' ? (automatic ? '▶ CONTINUAR PARTIDA' : '▶ CONTINUAR PARTIDA') : roomStatus === 'resuming' ? '⏳ REANUDANDO' : '⏸ PAUSAR PARTIDA';
+    $('pauseBtn').textContent = roomStatus === 'paused' ? (this.localRoom?.serverState?.pauseReason === 'claim' ? (automatic ? '▶ CONTINUAR AUTOMÁTICO' : '▶ CONTINUAR MANUAL') : '▶ CONTINUAR PARTIDA') : roomStatus === 'resuming' ? '⏳ REANUDANDO' : '⏸ PAUSAR PARTIDA';
     let stateText;
     if (roomStatus === 'starting') stateText = 'Preparando inicio y cuenta regresiva';
     else if (roomStatus === 'verifying') stateText = 'Verificando un reclamo';
@@ -933,7 +933,7 @@ class BingoApp {
 }
 
 function showFatal(error) {
-  console.error(error); const box = $('fatalError'); if (box) { box.style.display = 'block'; box.textContent = `Bingo de la Gorda 2.2 encontró un error y detuvo la ejecución para no perder datos.\n\n${error?.stack || error}`; }
+  console.error(error); const box = $('fatalError'); if (box) { box.style.display = 'block'; box.textContent = `Bingo de la Gorda 2.3 encontró un error y detuvo la ejecución para no perder datos.\n\n${error?.stack || error}`; }
 }
 
 window.BingoV8Engine = { APP_VERSION, PHASE, GameStore, CardService, PrizeEngine, VoiceService, PdfImporter, BingoApp };

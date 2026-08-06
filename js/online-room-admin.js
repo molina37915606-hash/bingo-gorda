@@ -84,7 +84,7 @@ class LocalRoomAdmin {
     const button = document.createElement('button');
     button.id = 'localRoomBtn';
     button.className = 'tool localRoomTool';
-    button.textContent = '🌐 SALA ONLINE 2.2';
+    button.textContent = '🌐 SALA ONLINE 2.3';
     button.onclick = () => this.openMainModal();
     footer?.insertBefore(button, $('cardsBtn'));
 
@@ -120,6 +120,16 @@ class LocalRoomAdmin {
       <input id="localBackupFile" type="file" accept="application/json,.json" hidden>
       <div id="localCopyToast" class="localCopyToast">Enlace copiado</div>`;
     document.body.append(...shell.children);
+    const autoState = $('autoState');
+    if (autoState && !$('claimResumeBar')) {
+      const resumeBar = document.createElement('div');
+      resumeBar.id = 'claimResumeBar';
+      resumeBar.className = 'claimResumeBar';
+      resumeBar.innerHTML = `<b>RECLAMO RESUELTO · EL SORTEO SIGUE DETENIDO</b><small>Continuá directamente desde el bolillero.</small><div><button id="claimResumeAuto" class="primary">▶ CONTINUAR AUTOMÁTICO</button><button id="claimResumeManual" class="secondary">▶ CONTINUAR MANUAL</button></div>`;
+      autoState.insertAdjacentElement('afterend', resumeBar);
+      $('claimResumeAuto').onclick = () => this.resumeRoom('automatic');
+      $('claimResumeManual').onclick = () => this.resumeRoom('manual');
+    }
     $('localRoomClose').onclick = () => this.closeMainModal();
     $('localClaimClose').onclick = () => $('localClaimModal').classList.remove('show');
     $('localClaimReject').onclick = () => this.resolveCurrentClaim('rejected');
@@ -142,10 +152,11 @@ class LocalRoomAdmin {
       .localError{padding:12px 14px;border-radius:12px;background:#50141d;border:1px solid #ad3948;color:#ffd9df;margin:10px 0}.localSuccess{background:#0e3c2c;border-color:#238d68;color:#d9fff1}
       .localGrid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.localCardBox{background:#0b1121;border:1px solid #ffffff1f;border-radius:16px;padding:15px}
       .localCardBox h3{margin:0 0 10px}.localUrl{font:800 17px Consolas,monospace;word-break:break-all;background:#070b15;padding:12px;border-radius:10px;border:1px solid #ffffff1c}
-      .localPlayersEditor{display:grid;gap:10px;margin-top:12px}.localPlayerRow{display:grid;grid-template-columns:minmax(180px,1fr) minmax(190px,.7fr) auto;gap:8px;background:#0a1020;padding:10px;border-radius:13px;border:1px solid #ffffff18}
-      .localPlayerRow input,.localPlayerRow select{min-width:0;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff}.localPlayerRow button{border:0;border-radius:9px;background:#5f1723;color:#fff;font-weight:900;padding:8px 12px}
+      .localPlayersEditor{display:grid;gap:10px;margin-top:12px}.localPlayerRow{display:grid;grid-template-columns:minmax(140px,1fr) minmax(190px,.8fr) auto;gap:8px;background:#0a1020;padding:10px;border-radius:13px;border:1px solid #ffffff18}
+      .localPlayerSlot{display:flex;align-items:center;padding:10px 12px;border-radius:9px;background:#151d31;border:1px solid #ffffff27;font-weight:900}.localPlayerRow input,.localPlayerRow select{min-width:0;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff}.localPlayerRow button{border:0;border-radius:9px;background:#5f1723;color:#fff;font-weight:900;padding:8px 12px}
       .localToolbar{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}.localToolbar button{border:0;border-radius:11px;padding:11px 15px;font-weight:900;cursor:pointer}.localPrimary{background:#ffca2f;color:#17120a}.localSecondary{background:#273553;color:#fff}.localDanger{background:#8b2434;color:#fff}
       .localMessageEditor{width:100%;min-height:88px;resize:vertical;border-radius:12px;border:1px solid #ffffff2b;background:#080d19;color:#fff;padding:12px;font:700 15px/1.4 Segoe UI,Arial,sans-serif}.localMessageMeta{display:flex;justify-content:space-between;gap:10px;margin-top:7px;color:#aab5cc;font-size:12px}.localMessageActive{margin-top:10px;padding:11px 13px;border-radius:12px;background:#2c2250;border:1px solid #aa83ff;color:#f4efff;white-space:pre-wrap}.localMessageActive b{display:block;color:#d8c2ff;margin-bottom:4px}
+      .claimResumeBar{display:none;margin:8px 0 0;padding:10px;border-radius:12px;background:#25164a;border:1px solid #a979ee;text-align:center}.claimResumeBar.show{display:block}.claimResumeBar b{display:block;color:#ffd43b;font-size:12px}.claimResumeBar small{display:block;color:#d6c9ef;margin:4px 0 8px}.claimResumeBar>div{display:grid;grid-template-columns:1fr 1fr;gap:6px}.claimResumeBar button{border:0;border-radius:9px;padding:9px 5px;font-weight:1000;cursor:pointer}.claimResumeBar .primary{background:#ffca2f;color:#16110a}.claimResumeBar .secondary{background:#304163;color:#fff}
 
       .localWaitingHero{display:grid;grid-template-columns:110px 1fr;gap:14px;align-items:center;padding:14px;border-radius:16px;background:linear-gradient(135deg,#271454,#101b39);border:1px solid #9d72ff66;margin-bottom:14px}
       .localWaitingHero img{width:110px;height:110px;object-fit:cover;border-radius:16px;border:2px solid #ffffff42}
@@ -296,7 +307,14 @@ class LocalRoomAdmin {
       this.app.renderRanking();
       this.app.renderAutoControls();
     }
+    this.renderBolilleroResumeControls();
     if ($('localRoomModal')?.classList.contains('show')) this.renderMainModal();
+  }
+
+  renderBolilleroResumeControls() {
+    const bar = $('claimResumeBar');
+    if (!bar) return;
+    bar.classList.toggle('show', Boolean(this.active && this.serverState?.status === 'paused' && this.serverState?.pauseReason === 'claim'));
   }
 
   clearSequenceTimers() {
@@ -459,9 +477,8 @@ class LocalRoomAdmin {
   }
 
   defaultAssignments() {
-    return Array.from({ length: 2 }, (_, index) => ({
+    return Array.from({ length: 2 }, () => ({
       id: crypto.randomUUID?.() || Math.random().toString(36),
-      name: `Jugador ${index + 1}`,
       allowedCardCount: 1
     }));
   }
@@ -470,7 +487,7 @@ class LocalRoomAdmin {
     const count = Math.max(2, Math.min(60, Number(rawCount) || 2));
     while (this.assignments.length < count) {
       const index = this.assignments.length;
-      this.assignments.push({ id: crypto.randomUUID?.() || Math.random().toString(36), name: `Jugador ${index + 1}`, allowedCardCount: 1 });
+      this.assignments.push({ id: crypto.randomUUID?.() || Math.random().toString(36), allowedCardCount: 1 });
     }
     if (this.assignments.length > count) this.assignments.length = count;
     this.renderAssignmentRows();
@@ -481,9 +498,9 @@ class LocalRoomAdmin {
     if (!host) return;
     const authorized = this.assignments.reduce((sum, item) => sum + Math.max(1, Math.min(4, Number(item.allowedCardCount) || 1)), 0);
     const available = this.app.game?.cards?.length || 0;
-    const invalid = authorized > available || authorized > 250;
+    const invalid = authorized > 250 || available < 1;
     host.className = invalid ? 'localError' : 'localNotice localSuccess';
-    host.textContent = `${this.assignments.length} jugadores · ${authorized} cartones activos autorizados (máximo 250) · ${available} cartones generados.`;
+    host.textContent = `${this.assignments.length} accesos · hasta ${authorized} cartones combinados (los jugadores pueden elegir menos) · ${available} cartones disponibles.`;
   }
 
   renderSetup(body) {
@@ -495,11 +512,11 @@ class LocalRoomAdmin {
         <div class="localWaitingHero"><img src="assets/${esc(this.app.game.presenter)}.png" alt="${esc(presenter.name)}"><div><h3>${esc(presenter.name)} acompañará esta partida</h3><p>La sala se abrirá en modo espera. Los jugadores elegirán sus cartones y el sorteo solo comenzará cuando presiones INICIAR SORTEO.</p></div></div>
         <div class="localGrid2">
           <div class="localCardBox"><h3>Partida actual</h3><div>Juego ${String(this.app.game.number).padStart(4, '0')} · Bingo ${this.app.game.mode}</div><div>${this.app.game.cards.length} cartones disponibles · Jugadores configurables: 2 a 60</div></div>
-          <div class="localCardBox"><h3>Elección de cartones</h3><div>Definí si cada jugador puede elegir entre 1 y 4 cartones. Al entrar recibirá hasta diez opciones disponibles.</div></div>
+          <div class="localCardBox"><h3>Elección de cartones</h3><div>Definí el máximo permitido entre 1 y 4. El jugador puede confirmar menos cartones si lo desea.</div></div>
         </div>
         <div class="localCardBox">
-          <h3>Jugadores autorizados</h3>
-          <div class="localToggleRow"><div><b>Cantidad de jugadores</b><br><small>Elegí entre 2 y 60. Esta cantidad es independiente de los cartones generados.</small></div><input id="localPlayerCount" type="number" min="2" max="60" value="${this.assignments.length}" style="width:92px;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff;font-weight:900"></div>
+          <h3>Accesos de jugadores</h3>
+          <div class="localToggleRow"><div><b>Cantidad de jugadores</b><br><small>Elegí entre 2 y 60. Cada persona escribirá su nombre al ingresar con su código.</small></div><input id="localPlayerCount" type="number" min="2" max="60" value="${this.assignments.length}" style="width:92px;padding:10px;border-radius:9px;border:1px solid #ffffff27;background:#151d31;color:#fff;font-weight:900"></div>
           <div id="localAssignmentSummary"></div>
           <div id="localPlayersEditor" class="localPlayersEditor"></div>
           <div class="localGrid2" style="margin-top:14px">
@@ -552,8 +569,7 @@ class LocalRoomAdmin {
     this.assignments.forEach((assignment, index) => {
       const row = document.createElement('div');
       row.className = 'localPlayerRow';
-      row.innerHTML = `<input class="localName" value="${esc(assignment.name)}" placeholder="Nombre o alias"><select class="localAllowed"><option value="1" ${Number(assignment.allowedCardCount) === 1 ? 'selected' : ''}>Puede elegir 1 cartón</option><option value="2" ${Number(assignment.allowedCardCount) === 2 ? 'selected' : ''}>Puede elegir 2 cartones</option><option value="3" ${Number(assignment.allowedCardCount) === 3 ? 'selected' : ''}>Puede elegir 3 cartones</option><option value="4" ${Number(assignment.allowedCardCount) === 4 ? 'selected' : ''}>Puede elegir 4 cartones</option></select><button>ELIMINAR</button>`;
-      row.querySelector('.localName').oninput = event => { assignment.name = event.target.value; };
+      row.innerHTML = `<div class="localPlayerSlot">Acceso ${index + 1}</div><select class="localAllowed"><option value="1" ${Number(assignment.allowedCardCount) === 1 ? 'selected' : ''}>Puede elegir hasta 1 cartón</option><option value="2" ${Number(assignment.allowedCardCount) === 2 ? 'selected' : ''}>Puede elegir hasta 2 cartones</option><option value="3" ${Number(assignment.allowedCardCount) === 3 ? 'selected' : ''}>Puede elegir hasta 3 cartones</option><option value="4" ${Number(assignment.allowedCardCount) === 4 ? 'selected' : ''}>Puede elegir hasta 4 cartones</option></select><button>ELIMINAR</button>`;
       row.querySelector('.localAllowed').onchange = event => { assignment.allowedCardCount = Number(event.target.value); this.updateAssignmentSummary(); };
       row.querySelector('button').onclick = () => { if (this.assignments.length <= 2) return alert('La sala necesita al menos 2 jugadores.'); this.assignments.splice(index, 1); this.renderAssignmentRows(); };
       host.appendChild(row);
@@ -563,15 +579,12 @@ class LocalRoomAdmin {
   }
 
   validateAssignments() {
-    const cleaned = this.assignments
-      .map(item => ({ name: item.name.trim(), allowedCardCount: Math.max(1, Math.min(4, Number(item.allowedCardCount) || 1)) }))
-      .filter(item => item.name);
-    if (cleaned.length < 2) throw new Error('Agregá al menos 2 jugadores.');
+    const cleaned = this.assignments.map(item => ({ allowedCardCount: Math.max(1, Math.min(4, Number(item.allowedCardCount) || 1)) }));
+    if (cleaned.length < 2) throw new Error('Agregá al menos 2 accesos de jugadores.');
     if (cleaned.length > 60) throw new Error('La sala admite como máximo 60 jugadores.');
-    for (const player of cleaned) if (!player.name) throw new Error('Todos los jugadores deben tener nombre o alias.');
-    const total = cleaned.reduce((sum, player) => sum + player.allowedCardCount, 0);
-    if (total > 250) throw new Error(`Autorizaste ${total} cartones activos, pero el máximo es 250.`);
-    if (total > this.app.game.cards.length) throw new Error(`Autorizaste ${total} cartones, pero la partida solo tiene ${this.app.game.cards.length}.`);
+    const totalMaximum = cleaned.reduce((sum, player) => sum + player.allowedCardCount, 0);
+    if (totalMaximum > 250) throw new Error(`El máximo combinado autorizado es ${totalMaximum}, pero la sala admite hasta 250 cartones activos.`);
+    if (this.app.game.cards.length < 1) throw new Error('Generá o importá al menos un cartón.');
     return cleaned;
   }
 
@@ -657,11 +670,7 @@ class LocalRoomAdmin {
       return;
     }
     if (status === 'paused') {
-      if (this.serverState?.pauseReason === 'claim') {
-        this.openMainModal();
-        alert('El reclamo ya fue resuelto. Elegí CONTINUAR AUTOMÁTICO o CONTINUAR MANUAL desde el panel de la sala.');
-        return;
-      }
+      if (this.serverState?.pauseReason === 'claim') return this.resumeRoom(this.app.game?.drawMode || 'manual');
       return this.resumeRoom(this.app.game?.drawMode || 'manual');
     }
   }
@@ -946,8 +955,8 @@ class LocalRoomAdmin {
       ${data.status === 'paused' && data.pauseReason === 'claim' ? `<div class="localFinishedBox"><b>EL AUTOMÁTICO SIGUE DETENIDO</b><br><small>Elegí cómo continuar. No se reiniciará por sí solo.</small><div class="localToolbar" style="margin-top:10px"><button class="localPrimary" id="localResumeAuto">CONTINUAR AUTOMÁTICO</button><button class="localSecondary" id="localResumeManual">CONTINUAR MANUAL</button></div></div>` : ''}
       ${data.status === 'finalizing' ? `<div class="localFinishedBox"><b>SE RETIRAN LAS ÚLTIMAS BOLILLAS FALTANTES</b><br><small>El sorteo se cerrará automáticamente y habilitará el PDF oficial.</small></div>` : ''}
       ${data.status === 'playing' && (data.game?.drawn?.length || 0) >= (data.game?.mode || 90) ? `<button class="localDanger" id="localFinishGame">FINALIZAR SORTEO</button>` : ''}
-      ${finished ? `<div class="localFinishedBox"><h3 style="margin-top:0">Resultados oficiales del sorteo</h3><p style="margin:0 0 12px;color:#c7cee0">El mismo PDF puede ser descargado por el administrador y por todos los jugadores. Incluye orden y hora de las bolillas, momentos de canto y cartones ganadores.</p><div class="localToolbar"><button class="localPrimary" id="localDownloadResults">RESULTADOS · DESCARGAR PDF</button><button class="localDanger" id="localNewRoom">NUEVA SALA</button></div>${this.actaTable(data)}</div>` : ''}
-      <div class="localToolbar"><button class="localSecondary" id="localCopyLink">COPIAR PÁGINA PARA JUGADORES</button><button class="localSecondary" id="localDownloadBackup">DESCARGAR COPIA</button><button class="localSecondary" id="localRestoreFile">RESTAURAR ARCHIVO</button><button class="localSecondary" id="localRefresh">ACTUALIZAR</button><button class="localDanger" id="localCloseRoom">CERRAR SALA</button></div>`;
+      ${finished ? `<div class="localFinishedBox"><h3 style="margin-top:0">Resultados oficiales del sorteo</h3><p style="margin:0 0 12px;color:#c7cee0">El mismo PDF puede ser descargado por el administrador y por todos los jugadores. Incluye orden y hora de las bolillas, momentos de canto y cartones ganadores.</p><div class="localToolbar"><button class="localPrimary" id="localDownloadResults">RESULTADOS · DESCARGAR PDF</button><button class="localDanger" id="localFinalizeRoom">FINALIZAR SALA</button></div>${this.actaTable(data)}</div>` : ''}
+      <div class="localToolbar"><button class="localSecondary" id="localCopyLink">COPIAR PÁGINA PARA JUGADORES</button><button class="localSecondary" id="localDownloadBackup">DESCARGAR COPIA</button><button class="localSecondary" id="localRestoreFile">RESTAURAR ARCHIVO</button><button class="localSecondary" id="localRefresh">ACTUALIZAR</button>${finished ? '' : '<button class="localDanger" id="localCloseRoom">CERRAR SALA</button>'}</div>`;
 
     $('localCopyLink').onclick = () => this.copyText(playerPageUrl);
     if ($('localCopyPlayerPage')) $('localCopyPlayerPage').onclick = () => this.copyText(playerPageUrl);
@@ -959,7 +968,7 @@ class LocalRoomAdmin {
     $('localRestoreFile').onclick = () => $('localBackupFile').click();
     if ($('localDownloadLastResult')) $('localDownloadLastResult').onclick = () => this.downloadResults(this.serverState?.lastResult?.roomCode);
     $('localRefresh').onclick = () => this.refreshState().catch(error => alert(error.message));
-    $('localCloseRoom').onclick = () => this.closeRoom();
+    if ($('localCloseRoom')) $('localCloseRoom').onclick = () => this.closeRoom();
     if ($('localStartGame')) $('localStartGame').onclick = () => this.startRoom();
     if ($('localFinishGame')) $('localFinishGame').onclick = () => this.finishRoom();
     if ($('localResumeAuto')) $('localResumeAuto').onclick = () => this.resumeRoom('automatic');
@@ -970,7 +979,7 @@ class LocalRoomAdmin {
     if ($('localTimerExtend')) $('localTimerExtend').onclick = () => this.controlAssignmentTimer('extend', { extraMinutes: 5 });
     if ($('localAssignNow')) $('localAssignNow').onclick = () => this.controlAssignmentTimer('assign-now');
     if ($('localDownloadResults')) $('localDownloadResults').onclick = () => this.downloadResults();
-    if ($('localNewRoom')) $('localNewRoom').onclick = () => this.createNewRoom();
+    if ($('localFinalizeRoom')) $('localFinalizeRoom').onclick = () => this.closeRoom(true);
     if ($('localTestLine')) $('localTestLine').onclick = () => this.sendTestEvent('line');
     if ($('localTestBingo')) $('localTestBingo').onclick = () => this.sendTestEvent('bingo');
     if ($('localTestBall')) $('localTestBall').onclick = () => this.sendTestEvent('ball');
@@ -1033,7 +1042,7 @@ class LocalRoomAdmin {
     this.backupTimer = setTimeout(async () => {
       try {
         const backup = await this.request('/api/admin/backup');
-        localStorage.setItem('bingoGorda22OnlineLastBackup', JSON.stringify(backup));
+        localStorage.setItem('bingoGorda23OnlineLastBackup', JSON.stringify(backup));
       } catch (error) {
         console.warn('No se pudo guardar la copia automática:', error);
       }
@@ -1043,18 +1052,18 @@ class LocalRoomAdmin {
   async downloadBackup() {
     try {
       const backup = await this.request('/api/admin/backup');
-      localStorage.setItem('bingoGorda22OnlineLastBackup', JSON.stringify(backup));
+      localStorage.setItem('bingoGorda23OnlineLastBackup', JSON.stringify(backup));
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `Bingo_2.2_Sala_${backup.state?.roomCode || 'copia'}_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `Bingo_2.3_Sala_${backup.state?.roomCode || 'copia'}_${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     } catch (error) { alert(error.message); }
   }
 
   async restoreBrowserBackup() {
-    const raw = localStorage.getItem('bingoGorda22OnlineLastBackup') || localStorage.getItem('bingoGorda21OnlineLastBackup') || localStorage.getItem('bingoBetaOnlineLastBackup') || localStorage.getItem('bingoV10OnlineLastBackup');
+    const raw = localStorage.getItem('bingoGorda23OnlineLastBackup') || localStorage.getItem('bingoGorda21OnlineLastBackup') || localStorage.getItem('bingoBetaOnlineLastBackup') || localStorage.getItem('bingoV10OnlineLastBackup');
     if (!raw) { alert('No hay una copia automática guardada en este navegador.'); return; }
     try { await this.restoreBackup(JSON.parse(raw)); }
     catch (error) { alert(error.message); }
@@ -1089,12 +1098,16 @@ class LocalRoomAdmin {
     this.app.renderGame();
   }
 
-  async closeRoom() {
-    if (!confirm('¿Cerrar la sala online? Los celulares perderán el acceso.')) return;
+  async closeRoom(finalized = false) {
+    const message = finalized
+      ? '¿Finalizar la sala? Todos los jugadores saldrán y el enlace dejará de funcionar.'
+      : '¿Cerrar la sala online? Los celulares perderán el acceso.';
+    if (!confirm(message)) return;
     await this.request('/api/admin/close', { method: 'POST', body: '{}' });
     this.applyState({ active: false, status: 'closed' });
     this.assignments = [];
-    this.renderMainModal();
+    this.closeMainModal();
+    this.originalExitGame();
   }
 
   scheduleSync() {
@@ -1216,6 +1229,7 @@ class LocalRoomAdmin {
       const resolved = await this.request('/api/admin/resolve', { method: 'POST', body: JSON.stringify({ claimId: claim.id, resolution }) });
       if (resolution === 'confirmed') this.applyConfirmedPrize(resolved);
       $('localClaimModal').classList.remove('show');
+      $('localRoomModal').classList.remove('show');
       this.currentClaim = null;
       this.claimOpen = false;
       this.app.setPhase(window.BingoV8Engine.PHASE.PAUSED);
@@ -1223,6 +1237,7 @@ class LocalRoomAdmin {
       this.showCopyToast(this.app.game?.drawMode === 'automatic' ? 'Automático detenido · iniciá cuando estés listo' : 'Partida pausada · continuá cuando estés listo');
       await this.refreshState();
       this.updateClaimBadge();
+      this.renderBolilleroResumeControls();
       setTimeout(() => this.showNextClaim(), 150);
     } catch (error) {
       alert(error.message);
@@ -1254,7 +1269,6 @@ class LocalRoomAdmin {
     this.app.celebrate(type);
     const eventName = type === 'ambo' ? 'amboConfirmed' : type === 'line' ? 'lineConfirmed' : 'bingoConfirmed';
     this.app.voice.event(eventName, {}, true);
-    if (type === 'bingo') setTimeout(() => this.app.voice.event('remainingBalls', {}, true), 2300);
   }
 }
 
@@ -1263,7 +1277,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const app = window.__BINGO_V8__;
     if (!app) return;
     const version = $('versionBadge');
-    if (version) version.textContent = 'VERSIÓN 2.2';
+    if (version) version.textContent = 'VERSIÓN 2.3';
     new LocalRoomAdmin(app).init().catch(error => console.error('No se inició la sala online:', error));
   }, 0);
 });

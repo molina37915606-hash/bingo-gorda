@@ -1,0 +1,15 @@
+BINGO DE LA GORDA 2.3
+
+CAMBIOS PRINCIPALES
+- El administrador crea accesos/cupos, no nombres. Cada jugador escribe su nombre o apodo al ingresar.
+- Se bloquean nombres vacíos o genéricos como “Jugador X”. Los nombres no pueden repetirse en la misma sala.
+- Sin avatares.
+- Cada jugador puede cambiar solamente su presentador personal desde “Mi suerte”.
+- El máximo de cartones es un límite, no una obligación. Un jugador habilitado para 4 puede confirmar 1, 2, 3 o 4.
+- Si confirma menos del máximo, recibe la advertencia “Todavía podés elegir X cartones más”.
+- Después de resolver AmboCabeza, Línea, Doble Línea o Bingo, el administrador continúa desde el bolillero.
+- El automático no se reinicia solo. Desde el bolillero se elige continuar automático o manual.
+- Al finalizar el sorteo, los jugadores pueden descargar resultados o volver a revisar sus cartones.
+- La sala permanece abierta hasta que el administrador pulsa FINALIZAR SALA.
+- Al finalizar la sala, todos los jugadores salen y el enlace deja de funcionar.
+- Se mantiene el modo TikTok vertical, resultados oficiales y animaciones sincronizadas.

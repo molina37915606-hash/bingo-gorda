@@ -1,48 +1,37 @@
-# BINGO DE LA GORDA 2.2
+# Bingo de la Gorda 2.3
 
-Plataforma web de bingo de 75 y 90 bolillas, con un administrador principal, jugadores por sala y transmisión vertical para TikTok desde un segundo celular.
+Aplicación web de bingo de 75 o 90 bolillas, con panel del propietario, salas para jugadores, cartones móviles, verificación manual de premios, resultados oficiales y transmisión vertical para TikTok.
 
-## Accesos
+## Inicio rápido
 
-- `/admin-principal`: ingreso privado del propietario con la clave configurada en Render.
-- `/admin`: panel completo de creación y control del bingo. Al entrar desde el panel principal no vuelve a pedir la clave.
-- `/jugador`: ingreso de jugadores mediante número de sala y código privado.
-- `/transmision/<token>`: vista vertical privada y de solo lectura para TikTok.
+1. Instalar Node.js 18 o posterior.
+2. Configurar `MASTER_ADMIN_PASSWORD` en Render o en un archivo `.env` local.
+3. Ejecutar:
 
-Los administradores temporales fueron retirados de esta versión. Se retomarán cuando la plataforma use almacenamiento persistente y un servidor más estable.
+```bash
+npm start
+```
 
-## Funciones principales de 2.2
+4. Abrir `/admin-principal` e ingresar con la clave principal.
 
-- Hasta 250 cartones aleatorios sin asociarlos previamente a nombres.
-- Renovación de cartones ofrecidos conservando los elegidos.
-- Panel móvil del jugador, tema claro/nocturno y guía previa.
-- Intervalo automático modificable durante la partida.
-- Verificación separada de AmboCabeza, Línea, Doble Línea y Bingo.
-- El automático no se reinicia después de un reclamo: el administrador elige continuar automático o manual.
-- Animaciones de premios confirmados para todos los jugadores y la transmisión.
-- Bingo confirmado con retiro de las bolillas faltantes y cierre automático.
-- Resultados oficiales descargables por el administrador y por los jugadores.
-- Vista TikTok 9:16 con Juego de prueba, premios, WhatsApp, Mercado Pago y estados dinámicos.
+## Funciones principales
 
-## Inicio local
-
-1. Instalar Node.js 18 o superior.
-2. Configurar `MASTER_ADMIN_PASSWORD`.
-3. Ejecutar `npm start`.
-4. Abrir `http://localhost:3210/admin-principal`.
-
-En Windows también puede utilizarse `PROBAR_EN_ESTA_PC.bat`.
-
-## Variables importantes
-
-- `MASTER_ADMIN_PASSWORD`: contraseña del propietario.
-- `PUBLIC_URL`: dirección pública del servicio.
-- `PORT`: puerto local.
-- `BINGO_START_SEQUENCE_MS`: duración de la presentación inicial.
-- `BINGO_RESUME_SEQUENCE_MS`: duración de la cuenta regresiva al continuar.
-- `BINGO_FINAL_BALLS_SEQUENCE_MS`: tiempo de celebración antes del retiro final.
-
-No subir `.env`, contraseñas, tokens ni la carpeta `data/` a GitHub.
+- Generación aleatoria de hasta 250 cartones.
+- De 2 a 60 accesos de jugadores y hasta 4 cartones permitidos por jugador.
+- El administrador crea cupos y códigos; cada jugador escribe su propio nombre.
+- Nombre obligatorio, no genérico y sin duplicados dentro de la sala.
+- El jugador puede confirmar menos cartones que el máximo habilitado.
+- Renovación de cartones ofrecidos conservando los ya elegidos.
+- Presentador personal intercambiable mediante “Cambiar mi suerte”.
+- Automarcado opcional, avisos y reclamos manuales.
+- Verificación lado a lado: marcas del jugador frente a marcas oficiales.
+- Continuación manual o automática desde el bolillero después de cada reclamo.
+- Intervalo automático modificable durante el sorteo.
+- Animaciones sincronizadas de AmboCabeza, Línea, Doble Línea y Bingo.
+- Retiro de bolillas restantes después de un Bingo confirmado.
+- Resultados oficiales descargables por administrador y jugadores.
+- La sala permanece disponible para revisar cartones hasta que el administrador la finaliza.
+- Modo TikTok vertical mediante un enlace privado para un segundo celular.
 
 ## Pruebas
 
@@ -50,4 +39,8 @@ No subir `.env`, contraseñas, tokens ni la carpeta `data/` a GitHub.
 npm test
 ```
 
-La prueba automática cubre el acceso del propietario, bloqueo de operadores temporales, cambio de intervalo, reclamos, pausa posterior, continuación manual/automática, Bingo confirmado, retiro final, cierre con todas las bolillas y PDF oficial.
+La prueba automática cubre identificación, selección parcial de cartones, presentador personal, reclamos, continuidad desde el bolillero, cierre del sorteo, PDF y cierre definitivo de la sala.
+
+## Persistencia
+
+Render Free usa almacenamiento efímero. Para uso comercial continuo se recomienda una base de datos o almacenamiento persistente. No se deben guardar claves reales dentro de GitHub.

@@ -1,30 +1,12 @@
-BINGO DE LA GORDA 2.2
-
-INICIO
+BINGO DE LA GORDA 2.3
 
 1. Configurá MASTER_ADMIN_PASSWORD en Render.
-2. Abrí https://TU-DOMINIO/admin-principal
-3. Ingresá con tu clave.
-4. Elegí CREAR SALA, RECUPERAR PARTIDA o ADMINISTRAR MI BINGO.
+2. Entrá a /admin-principal con esa clave.
+3. Creá o recuperá una partida.
+4. Generá o importá cartones y configurá la sala.
+5. El administrador solo define cantidad de accesos y máximo de cartones.
+6. Cada jugador recibe un código, escribe su nombre y elige entre 1 y el máximo habilitado.
+7. Ejecutá npm test antes de publicar una actualización.
 
-En esta versión hay un solo administrador principal. Los accesos temporales fueron retirados hasta migrar a un servidor y almacenamiento persistentes.
-
-JUGADORES
-
-Cada sala genera códigos privados para los jugadores. Los cartones permanecen vinculados aunque el jugador cambie de aplicación o pierda conexión momentáneamente.
-
-TRANSMISIÓN TIKTOK
-
-Dentro de la sala se genera un enlace vertical privado. Copialo y abrilo en un segundo celular. La vista muestra el estado del juego, premios, WhatsApp, Mercado Pago, bolillas y animaciones confirmadas.
-
-IMPORTANTE
-
-- El automarcado no canta premios.
-- El jugador debe tocar Cantar AmboCabeza, Línea o Bingo.
-- Después de un reclamo, el automático queda detenido.
-- Al confirmar Bingo, se retiran las bolillas faltantes y el sorteo se cierra.
-- Al finalizar, administrador y jugadores pueden descargar el resultado oficial.
-
-PRUEBAS
-
-Ejecutar: npm test
+El modo TikTok se abre desde el enlace privado de transmisión en un segundo celular.
+Los administradores temporales están deshabilitados en esta versión.

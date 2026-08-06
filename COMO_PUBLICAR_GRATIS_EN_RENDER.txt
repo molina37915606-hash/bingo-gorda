@@ -1,4 +1,4 @@
-PUBLICAR BINGO DE LA GORDA 2.2 EN RENDER
+PUBLICAR BINGO DE LA GORDA 2.3 EN RENDER
 
 1. Subí el contenido descomprimido a GitHub.
 2. En Render creá o actualizá un Web Service conectado al repositorio.

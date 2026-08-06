@@ -13,3 +13,9 @@ CAMBIOS PRINCIPALES
 - La sala permanece abierta hasta que el administrador pulsa FINALIZAR SALA.
 - Al finalizar la sala, todos los jugadores salen y el enlace deja de funcionar.
 - Se mantiene el modo TikTok vertical, resultados oficiales y animaciones sincronizadas.
+
+REGLAMENTO INTEGRADO
+- Se incorporó el Reglamento General de Participación con el logo de El Bingo de la Gorda.
+- El jugador puede leer el reglamento dentro de la web o descargarlo en PDF antes de confirmar sus cartones.
+- Se agregaron reglas sobre mayoría de edad, acuerdo previo por WhatsApp, retribución del administrador, premios, devoluciones, fallas, reclamos, pagos, privacidad y juego responsable.
+- Se añadió un anexo para comunicar las condiciones particulares de cada partida.

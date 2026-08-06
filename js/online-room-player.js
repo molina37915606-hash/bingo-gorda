@@ -334,7 +334,7 @@ class PlayerApp {
     const ready = this.selectedOffers.size > 0 && this.selectedOffers.size <= player.allowedCardCount;
     const canContinue = ready && (player.nameSet || this.validPlayerNameDraft());
     const confirmation = ready
-      ? `<div class="regulationBlock"><button id="downloadRules" class="btn secondary">DESCARGAR REGLAMENTO</button><button id="continueChoice" class="btn primary" style="margin:0" ${canContinue ? '' : 'disabled'}>CONTINUAR</button><small>Al continuar, aceptás el reglamento interno.</small></div>`
+      ? `<div class="regulationBlock"><div class="regulationActions"><button id="readRules" class="btn secondary" type="button">LEER REGLAMENTO</button><button id="downloadRules" class="btn secondary" type="button">DESCARGAR PDF</button></div><button id="continueChoice" class="btn primary" style="margin:0" ${canContinue ? '' : 'disabled'}>CONTINUAR</button><small>Al continuar, aceptás el reglamento general y las condiciones de la partida.</small></div>`
       : '<button id="continueChoice" class="btn primary" disabled>CONTINUAR</button>';
     $('waitingPanel').innerHTML = `${timerHtml}<h2>Elegí hasta ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}</h2><div class="waitingLead">Podés renovar las opciones. Los cartones que ya elegiste se conservan.</div>${nameSection}<div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="renewChoice" class="btn secondary">RENOVAR CARTONES</button></div>${confirmation}`;
     this.bindPlayerNameInput('continueChoice');
@@ -342,6 +342,7 @@ class PlayerApp {
     $('clearChoice').onclick = () => this.clearReservations();
     $('renewChoice').onclick = () => this.renewOffers();
     $('continueChoice').onclick = () => this.confirmChoice();
+    if ($('readRules')) $('readRules').onclick = () => window.open('/reglamento.html', '_blank', 'noopener,noreferrer');
     if ($('downloadRules')) $('downloadRules').onclick = () => this.downloadRules();
   }
 

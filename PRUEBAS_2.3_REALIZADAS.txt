@@ -19,3 +19,6 @@ Se verificó:
 - Acta oficial versión 2.3 y categoría Doble Línea “no sorteada”.
 - Descarga del PDF oficial.
 - La sala sigue abierta después del sorteo y se cierra solo mediante FINALIZAR SALA.
+- Acceso web al reglamento en formato HTML.
+- Descarga del reglamento PDF de 9 páginas.
+- Botones LEER REGLAMENTO y DESCARGAR PDF en la elección de cartones.

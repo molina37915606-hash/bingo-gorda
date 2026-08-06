@@ -51,11 +51,22 @@ let source = fs.readFileSync(sourcePath, 'utf8');
 source = source.replace("window.addEventListener('DOMContentLoaded', () => new PlayerApp().init());", 'globalThis.PlayerApp = PlayerApp;');
 vm.runInNewContext(source, context, { filename:'online-room-player.js' });
 const app = new context.PlayerApp();
-app.state = { status:'waiting', waitingGame:{type:'red_black', leaderboard:[]}, player:{id:'p1'} };
+app.state = { status:'waiting', waitingGame:{type:'both', activeTypes:['red_black','higher_lower'], leaderboard:[], leaderboards:{red_black:[],higher_lower:[]}}, player:{id:'p1'} };
 app.submitWaitingScore = async () => {};
 app.randomMiniCard = () => ({ key:'spade', symbol:'♠', color:'black', face:'pica', value:13, rank:'K' });
 
 (async () => {
+  const initialHtml = app.waitingMiniGameHtml();
+  assert(initialHtml.includes('data-mini-game="red_black"'));
+  assert(initialHtml.includes('data-mini-game="higher_lower"'));
+  let switchRenders = 0;
+  app.renderWaiting = () => { switchRenders++; };
+  app.switchWaitingMini('higher_lower');
+  assert.equal(app.waitingMini.activeType, 'higher_lower');
+  app.switchWaitingMini('red_black');
+  assert.equal(app.waitingMini.activeType, 'red_black');
+  assert.equal(switchRenders, 2, 'Cambiar de minijuego debe reconstruir el panel.');
+
   await app.playWaitingMini('red');
   assert.equal(app.waitingMini.ended, true, 'La ronda debe terminar al fallar.');
   assert(elements.miniChoices.classList.contains('hidden'), 'Las elecciones deben ocultarse al fallar.');

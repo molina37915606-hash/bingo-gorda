@@ -5,15 +5,17 @@ ADMINISTRACIÓN
 - Configuración de sala en una sola pantalla.
 - Sala de prueba por enlace, hasta 10 jugadores y 40 cartones.
 - Sala oficial con códigos individuales y de 1 a 4 cartones por jugador.
-- Modalidad, premios, cantador, voz, intervalo, minijuego y transmisión en un mismo menú.
+- Modalidad, premios, cantador, voz, intervalo y transmisión en un mismo menú. Los minijuegos ya no requieren configuración administrativa.
 - Generación de 25 a 250 cartones, en pasos de 25.
 - Importación PDF plegada en el panel avanzado.
 - Sin carga manual ni vista previa masiva en el flujo simplificado.
 
 SALA DE ESPERA
 - Ingreso abierto para pruebas mediante nombre y cantidad de cartones.
+- Después del ingreso se muestran 10 vistas previas; el jugador puede recargar, reservar y confirmar los cartones elegidos.
+- Si el administrador inicia mientras una selección está pendiente, el sistema conserva las reservas y completa automáticamente la cantidad solicitada.
 - Inicio siempre controlado por el administrador.
-- Minijuegos Rojo/Negro y Mayor/Menor, sin límite de tiempo: la ronda continúa hasta fallar.
+- Minijuegos Rojo/Negro y Mayor/Menor siempre activos, sin límite de tiempo y con cambio libre entre ambos: la ronda continúa hasta fallar.
 - Naipes personalizados de BINGO DE LA GORDA y clasificación por mejor racha.
 
 PANEL DE SORTEO
@@ -49,3 +51,11 @@ CORRECCIÓN DEL MINIJUEGO
 - Se evita el doble toque mientras se revela una carta.
 - La carta y el mensaje de resultado se conservan al actualizar la sala de espera.
 - Se agregó una prueba automática específica de la interfaz del minijuego.
+
+
+SELECCIÓN DE CARTONES Y MINIJUEGOS SIEMPRE ACTIVOS
+- Se eliminó el selector administrativo de minijuego.
+- Cada jugador puede alternar entre ambos juegos durante toda la espera.
+- Las clasificaciones se guardan por separado para cada minijuego.
+- Las salas de prueba muestran 10 cartones disponibles y permiten recargarlos sin perder las reservas.
+- El inicio administrativo completa automáticamente las elecciones pendientes.

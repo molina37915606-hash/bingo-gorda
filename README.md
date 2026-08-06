@@ -9,7 +9,7 @@ Abrí `http://localhost:3210/admin` y elegí:
 - **Sala de prueba:** enlace abierto, de 2 a 10 jugadores, entre 1 y 4 cartones por persona.
 - **Sala oficial:** jugadores y cartones controlados mediante códigos individuales.
 
-La configuración simplificada permite elegir modalidad, premios, cantador, voz, intervalo, cantidad de cartones en pasos de 25, minijuego y transmisión opcional.
+La configuración simplificada permite elegir modalidad, premios, cantador, voz, intervalo, cantidad de cartones en pasos de 25 y transmisión opcional. Los dos minijuegos están siempre disponibles durante la espera.
 
 ## Funciones principales
 
@@ -20,7 +20,8 @@ La configuración simplificada permite elegir modalidad, premios, cantador, voz,
 - Automarcado obligatorio por encima de 10 jugadores o 40 cartones.
 - Reclamos registrados con hora, milisegundos y secuencia de recepción.
 - Chat público con moderación.
-- Sala de espera con Mayor/Menor o Rojo/Negro.
+- Sala de espera con Mayor/Menor y Rojo/Negro siempre activos, con cambio libre entre ambos.
+- En salas de prueba, el jugador ve 10 cartones, puede recargarlos y elegir los suyos. Si el administrador inicia antes de la confirmación, la asignación se completa automáticamente.
 - Transmisión con chat y cuatro cartones destacados.
 - Actas PDF y CSV consultables desde el juego.
 - Copias de seguridad y recuperación.

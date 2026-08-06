@@ -50,7 +50,10 @@ class PlayerApp {
     this.resultsViewerUrl = '';
     this.openJoinMode = false;
     this.openJoinCardCount = 2;
-    this.waitingMini = { score: 0, best: 0, current: null, ended: false, busy: false, message: '' };
+    this.waitingMini = {
+      activeType: ['red_black','higher_lower'].includes(localStorage.getItem('bingoWaitingMiniGame')) ? localStorage.getItem('bingoWaitingMiniGame') : 'red_black',
+      score: 0, best: 0, bestByType: { red_black: 0, higher_lower: 0 }, current: null, ended: false, busy: false, message: ''
+    };
     this.ticketTouchStartX = null;
     this.guideSteps = [
       { icon:'🧾', title:'Tus cartones', text:'Usá las pestañas para cambiar de cartón. Las marcas oficiales se conservan en todos.' },
@@ -619,12 +622,13 @@ class PlayerApp {
     const nameSection = this.playerNameSectionHtml();
     if (player.selectionConfirmed) {
       if (!player.nameSet) {
-        $('waitingPanel').innerHTML = `${timerHtml}<h2>Confirmá tu nombre</h2><div class="waitingLead">Tus cartones ya están asignados. Solo falta indicar quién va a jugar.</div>${nameSection}<button id="confirmAssignedName" class="btn primary" disabled>CONFIRMAR NOMBRE</button>`;
+        $('waitingPanel').innerHTML = `${timerHtml}<h2>Confirmá tu nombre</h2><div class="waitingLead">Tus cartones ya están asignados. Solo falta indicar quién va a jugar.</div>${nameSection}<button id="confirmAssignedName" class="btn primary" disabled>CONFIRMAR NOMBRE</button>${this.waitingMiniGameHtml()}`;
         this.bindPlayerNameInput('confirmAssignedName');
         $('confirmAssignedName').onclick = () => this.savePlayerName();
+        this.bindWaitingMiniGame();
         return;
       }
-      const canChange = this.state.roomSettings?.roomType !== 'test' && this.state.status === 'waiting' && !this.state.assignmentTimer?.selectionClosed;
+      const canChange = this.state.status === 'waiting' && !this.state.assignmentTimer?.selectionClosed;
       $('waitingPanel').innerHTML = `${timerHtml}<div class="waitingConfirmed waitingStateHero"><b>ESPERANDO SORTEO</b><div>Tus cartones están confirmados y reservados para vos.</div><div class="chosenList">${player.cards.map(card => `<span class="chosenBadge">Cartón ${esc(card.number)}</span>`).join('')}</div>${canChange ? '<button id="changeChoice" class="btn secondary" style="margin-top:10px">CAMBIAR CARTONES</button>' : ''}</div>${this.waitingMiniGameHtml()}`;
       if ($('changeChoice')) $('changeChoice').onclick = () => this.releaseChoice();
       this.bindWaitingMiniGame();
@@ -632,12 +636,16 @@ class PlayerApp {
     }
     const offers = player.offeredCards || [], valid = new Set(offers.map(card => card.id));
     this.selectedOffers = new Set([...this.selectedOffers].filter(id => valid.has(id)));
-    const ready = this.selectedOffers.size > 0 && this.selectedOffers.size <= player.allowedCardCount;
+    const exactSelection = this.state.roomSettings?.roomType === 'test';
+    const ready = exactSelection
+      ? this.selectedOffers.size === player.allowedCardCount
+      : this.selectedOffers.size > 0 && this.selectedOffers.size <= player.allowedCardCount;
     const canContinue = ready && (player.nameSet || this.validPlayerNameDraft());
     const confirmation = ready
-      ? `<div class="regulationBlock"><div class="regulationActions"><button id="readRules" class="btn secondary" type="button">LEER REGLAMENTO</button><button id="downloadRules" class="btn secondary" type="button">DESCARGAR PDF</button></div><button id="continueChoice" class="btn primary" style="margin:0" ${canContinue ? '' : 'disabled'}>CONTINUAR</button><small>Al continuar, aceptás el reglamento general y las condiciones de la partida.</small></div>`
-      : '<button id="continueChoice" class="btn primary" disabled>CONTINUAR</button>';
-    $('waitingPanel').innerHTML = `${timerHtml}<h2>Elegí hasta ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}</h2><div class="waitingLead">Podés renovar las opciones. Los cartones que ya elegiste se conservan.</div>${nameSection}<div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="renewChoice" class="btn secondary">RENOVAR CARTONES</button></div>${confirmation}`;
+      ? `<div class="regulationBlock"><div class="regulationActions"><button id="readRules" class="btn secondary" type="button">LEER REGLAMENTO</button><button id="downloadRules" class="btn secondary" type="button">DESCARGAR PDF</button></div><button id="continueChoice" class="btn primary" style="margin:0" ${canContinue ? '' : 'disabled'}>CONFIRMAR CARTONES</button><small>Al confirmar, aceptás el reglamento general y las condiciones de la partida.</small></div>`
+      : '<button id="continueChoice" class="btn primary" disabled>CONFIRMAR CARTONES</button>';
+    const selectionTitle = exactSelection ? `Elegí ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}` : `Elegí hasta ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}`;
+    $('waitingPanel').innerHTML = `${timerHtml}<h2>${selectionTitle}</h2><div class="waitingLead">Tenés ${offers.length} vistas previas. Podés recargarlas; los cartones que ya elegiste se conservan. Si comienza la partida antes de confirmar, el sistema completará tu asignación automáticamente.</div>${nameSection}<div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="renewChoice" class="btn secondary">RECARGAR CARTONES</button></div>${confirmation}${this.waitingMiniGameHtml()}`;
     this.bindPlayerNameInput('continueChoice');
     $('offerGrid').querySelectorAll('[data-offer]').forEach(button => button.onclick = () => this.toggleOffer(button.dataset.offer));
     $('clearChoice').onclick = () => this.clearReservations();
@@ -645,15 +653,17 @@ class PlayerApp {
     $('continueChoice').onclick = () => this.confirmChoice();
     if ($('readRules')) $('readRules').onclick = () => window.open('/reglamento.html', '_blank', 'noopener,noreferrer');
     if ($('downloadRules')) $('downloadRules').onclick = () => this.downloadRules();
+    this.bindWaitingMiniGame();
   }
 
   waitingMiniGameHtml() {
-    const type = this.state?.waitingGame?.type || 'none';
-    if (!['red_black','higher_lower'].includes(type)) return '';
+    if (this.state?.status !== 'waiting') return '';
+    const type = ['red_black','higher_lower'].includes(this.waitingMini.activeType) ? this.waitingMini.activeType : 'red_black';
     const title = type === 'red_black' ? 'ROJO O NEGRO' : 'MAYOR O MENOR';
-    const leaders = this.state.waitingGame?.leaderboard || [];
+    const leaders = this.state.waitingGame?.leaderboards?.[type] || this.state.waitingGame?.leaderboard || [];
     const serverBest = Number(leaders.find(item => item.playerId === this.state.player.id)?.bestScore) || 0;
-    const best = Math.max(this.waitingMini.best, serverBest);
+    this.waitingMini.best = Math.max(Number(this.waitingMini.bestByType?.[type]) || 0, this.waitingMini.best, serverBest);
+    this.waitingMini.bestByType[type] = this.waitingMini.best;
     const defaultMessage = type === 'red_black'
       ? 'Elegí el color de la próxima carta.'
       : this.waitingMini.current
@@ -662,7 +672,7 @@ class PlayerApp {
     const result = this.waitingMini.message || defaultMessage;
     const choicesClass = `miniGameChoices${this.waitingMini.ended ? ' hidden' : ''}`;
     const restartClass = `btn secondary${this.waitingMini.ended ? '' : ' hidden'}`;
-    return `<section class="waitMiniGame"><h3>${title}</h3><div class="muted">Jugá hasta equivocarte. Podés volver a empezar todas las veces que quieras. No afecta el bingo.</div><div class="miniGameLayout"><div id="miniPlayingCard" class="playingCard back"></div><div class="miniGameControls"><div class="miniScore">Racha: <span id="miniScore">${this.waitingMini.score}</span> · Mejor: <span id="miniBest">${best}</span></div><div id="miniResult" class="miniResult">${result}</div><div id="miniChoices" class="${choicesClass}">${type === 'red_black' ? '<button type="button" class="redChoice" data-mini="red">ROJO</button><button type="button" class="blackChoice" data-mini="black">NEGRO</button>' : '<button type="button" class="higherChoice" data-mini="higher">MAYOR</button><button type="button" class="lowerChoice" data-mini="lower">MENOR</button>'}</div><button id="miniRestart" class="${restartClass}" type="button">VOLVER A JUGAR</button></div></div><div class="miniLeaderboard"><b>Mejores rachas:</b> ${leaders.length ? leaders.map((item,index)=>`${index+1}. ${esc(item.name)} ${Number(item.bestScore)||0}`).join(' · ') : 'todavía no hay puntajes'}</div></section>`;
+    return `<section class="waitMiniGame"><div class="miniGameTabs"><button type="button" data-mini-game="red_black" class="${type === 'red_black' ? 'active' : ''}">ROJO O NEGRO</button><button type="button" data-mini-game="higher_lower" class="${type === 'higher_lower' ? 'active' : ''}">MAYOR O MENOR</button></div><h3>${title}</h3><div class="muted">Los dos juegos están siempre disponibles durante la espera. Cambiá de juego cuando quieras. No afectan el bingo.</div><div class="miniGameLayout"><div id="miniPlayingCard" class="playingCard back"></div><div class="miniGameControls"><div class="miniScore">Racha: <span id="miniScore">${this.waitingMini.score}</span> · Mejor: <span id="miniBest">${this.waitingMini.best}</span></div><div id="miniResult" class="miniResult">${result}</div><div id="miniChoices" class="${choicesClass}">${type === 'red_black' ? '<button type="button" class="redChoice" data-mini="red">ROJO</button><button type="button" class="blackChoice" data-mini="black">NEGRO</button>' : '<button type="button" class="higherChoice" data-mini="higher">MAYOR</button><button type="button" class="lowerChoice" data-mini="lower">MENOR</button>'}</div><button id="miniRestart" class="${restartClass}" type="button">VOLVER A JUGAR</button></div></div><div class="miniLeaderboard"><b>Mejores rachas en ${title.toLowerCase()}:</b> ${leaders.length ? leaders.map((item,index)=>`${index+1}. ${esc(item.name)} ${Number(item.bestScore)||0}`).join(' · ') : 'todavía no hay puntajes'}</div></section>`;
   }
 
   randomMiniCard() {
@@ -684,8 +694,9 @@ class PlayerApp {
   }
 
   bindWaitingMiniGame() {
-    const type = this.state?.waitingGame?.type;
+    const type = this.waitingMini.activeType;
     if (!['red_black','higher_lower'].includes(type) || !$('miniChoices')) return;
+    document.querySelectorAll('[data-mini-game]').forEach(button => button.onclick = () => this.switchWaitingMini(button.dataset.miniGame));
     if (type === 'higher_lower' && !this.waitingMini.current && !this.waitingMini.ended) {
       this.waitingMini.current = this.randomMiniCard();
       this.waitingMini.message = `Carta actual: ${this.waitingMini.current.rank}${this.waitingMini.current.symbol}. ¿La próxima será mayor o menor?`;
@@ -702,7 +713,7 @@ class PlayerApp {
 
   async playWaitingMini(choice) {
     if (this.waitingMini.ended || this.waitingMini.busy) return;
-    const type = this.state?.waitingGame?.type;
+    const type = this.waitingMini.activeType;
     if (!['red_black','higher_lower'].includes(type)) return;
     this.waitingMini.busy = true;
     this.setWaitingMiniButtonsDisabled(true);
@@ -729,6 +740,7 @@ class PlayerApp {
     if (correct) {
       this.waitingMini.score += 1;
       this.waitingMini.best = Math.max(this.waitingMini.best, this.waitingMini.score);
+      this.waitingMini.bestByType[type] = this.waitingMini.best;
       this.waitingMini.current = next;
       this.waitingMini.message = type === 'red_black'
         ? `¡Correcto! Salió ${next.rank}${next.symbol}. Elegí otra vez.`
@@ -756,13 +768,28 @@ class PlayerApp {
     this.waitingMini.ended = false;
     this.waitingMini.busy = false;
     this.waitingMini.current = null;
-    this.waitingMini.message = this.state?.waitingGame?.type === 'red_black' ? 'Elegí el color de la próxima carta.' : '';
+    this.waitingMini.message = this.waitingMini.activeType === 'red_black' ? 'Elegí el color de la próxima carta.' : '';
+    this.renderWaiting();
+  }
+
+  switchWaitingMini(type) {
+    if (!['red_black','higher_lower'].includes(type) || type === this.waitingMini.activeType || this.state?.status !== 'waiting') return;
+    this.waitingMini.bestByType[this.waitingMini.activeType] = Math.max(Number(this.waitingMini.bestByType[this.waitingMini.activeType]) || 0, Number(this.waitingMini.best) || 0);
+    this.waitingMini.activeType = type;
+    this.waitingMini.score = 0;
+    this.waitingMini.best = Number(this.waitingMini.bestByType[type]) || 0;
+    this.waitingMini.current = null;
+    this.waitingMini.ended = false;
+    this.waitingMini.busy = false;
+    this.waitingMini.message = type === 'red_black' ? 'Elegí el color de la próxima carta.' : '';
+    localStorage.setItem('bingoWaitingMiniGame', type);
     this.renderWaiting();
   }
 
   async submitWaitingScore(score) {
     try {
-      const data = await this.request('/api/player/waiting-game/score', { method:'POST', body:JSON.stringify({ score }) });
+      const gameType = this.waitingMini.activeType;
+      const data = await this.request('/api/player/waiting-game/score', { method:'POST', body:JSON.stringify({ score, gameType }) });
       if (data.waitingGame) this.state.waitingGame = data.waitingGame;
     } catch {}
   }
@@ -853,9 +880,10 @@ class PlayerApp {
     const selected = this.selectedOffers.size;
     const maximum = Number(this.state?.player?.allowedCardCount || 1);
     if (selected < 1 || selected > maximum) return;
+    if (this.state?.roomSettings?.roomType === 'test' && selected !== maximum) return this.showMessage(`Elegí exactamente ${maximum} cartón${maximum === 1 ? '' : 'es'} o esperá la asignación automática al iniciar.`, 'error');
     const name = this.requireValidPlayerName();
     if (name === null) return;
-    if (!force && selected < maximum) {
+    if (!force && selected < maximum && this.state?.roomSettings?.roomType !== 'test') {
       const remaining = maximum - selected;
       $('partialChoiceText').textContent = `Todavía podés elegir ${remaining} cartón${remaining === 1 ? '' : 'es'} más. ¿Seguro que querés continuar?`;
       $('partialChoiceOverlay').classList.add('show');

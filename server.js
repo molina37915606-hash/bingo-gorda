@@ -264,7 +264,7 @@ function blankState() {
     testDrawOrderFixed: false,
     chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} },
     demo: null,
-    waitingGame: { type: 'none', leaderboard: [] },
+    waitingGame: { type: 'both', leaderboard: [], leaderboards: { red_black: [], higher_lower: [] } },
     game: null,
     players: [],
     cardReservations: {},
@@ -314,7 +314,19 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.maxOpenPlayers = Math.max(2, Math.min(10, Number(merged.roomSettings.maxOpenPlayers) || 10));
     merged.roomSettings.presenterVoiceGender = merged.roomSettings.presenterVoiceGender === 'male' ? 'male' : 'female';
     merged.roomSettings.transmission = { enabled: Boolean(merged.roomSettings.transmission?.enabled), showChat: merged.roomSettings.transmission?.showChat !== false, showCards: merged.roomSettings.transmission?.showCards !== false, showNames: merged.roomSettings.transmission?.showNames !== false, showProgress: merged.roomSettings.transmission?.showProgress !== false, rotationSeconds: [20,30,60].includes(Number(merged.roomSettings.transmission?.rotationSeconds)) ? Number(merged.roomSettings.transmission.rotationSeconds) : 30 };
-    merged.waitingGame = { type: ['red_black','higher_lower'].includes(parsed.waitingGame?.type) ? parsed.waitingGame.type : 'none', leaderboard: Array.isArray(parsed.waitingGame?.leaderboard) ? parsed.waitingGame.leaderboard.slice(0, 60) : [] };
+    const legacyWaitingLeaderboard = Array.isArray(parsed.waitingGame?.leaderboard) ? parsed.waitingGame.leaderboard.slice(0, 60) : [];
+    merged.waitingGame = {
+      type: 'both',
+      leaderboard: legacyWaitingLeaderboard,
+      leaderboards: {
+        red_black: Array.isArray(parsed.waitingGame?.leaderboards?.red_black)
+          ? parsed.waitingGame.leaderboards.red_black.slice(0, 60)
+          : (parsed.waitingGame?.type === 'red_black' ? legacyWaitingLeaderboard : []),
+        higher_lower: Array.isArray(parsed.waitingGame?.leaderboards?.higher_lower)
+          ? parsed.waitingGame.leaderboards.higher_lower.slice(0, 60)
+          : (parsed.waitingGame?.type === 'higher_lower' ? legacyWaitingLeaderboard : [])
+      }
+    };
     merged.revision = Math.max(0, Number(parsed.revision) || 0);
     merged.drawOrder = Array.isArray(parsed.drawOrder) ? uniqueNumbers(parsed.drawOrder) : [];
     merged.claimSequence = Math.max(0, Number(parsed.claimSequence) || 0);
@@ -1363,10 +1375,25 @@ function chooseDiverseCardsForPlayer(count, mode) {
 }
 
 function waitingGamePayload() {
-  const game = state.waitingGame || { type: 'none', leaderboard: [] };
+  const game = state.waitingGame || {};
+  const sortBoard = board => (Array.isArray(board) ? board : [])
+    .slice()
+    .sort((a,b) => Number(b.bestScore || 0) - Number(a.bestScore || 0) || String(a.name || '').localeCompare(String(b.name || ''), 'es'))
+    .slice(0, 10);
+  const legacy = Array.isArray(game.leaderboard) ? game.leaderboard : [];
+  const redBlack = sortBoard(game.leaderboards?.red_black || (game.type === 'red_black' ? legacy : []));
+  const higherLower = sortBoard(game.leaderboards?.higher_lower || (game.type === 'higher_lower' ? legacy : []));
+  const aggregateByPlayer = new Map();
+  for (const entry of [...redBlack, ...higherLower]) {
+    const key = String(entry.playerId || entry.name || '');
+    const current = aggregateByPlayer.get(key);
+    if (!current || Number(entry.bestScore || 0) > Number(current.bestScore || 0)) aggregateByPlayer.set(key, { ...entry });
+  }
   return {
-    type: ['red_black','higher_lower'].includes(game.type) ? game.type : 'none',
-    leaderboard: (game.leaderboard || []).slice().sort((a,b) => Number(b.bestScore || 0) - Number(a.bestScore || 0)).slice(0, 10)
+    type: 'both',
+    activeTypes: ['red_black', 'higher_lower'],
+    leaderboards: { red_black: redBlack, higher_lower: higherLower },
+    leaderboard: sortBoard([...aggregateByPlayer.values()])
   };
 }
 
@@ -1385,7 +1412,7 @@ function createSimpleRoom(payload = {}) {
       broadcastToken: randomId('live'),
       transmission: { enabled: Boolean(payload.transmission?.enabled), showChat: payload.transmission?.showChat !== false, showCards: payload.transmission?.showCards !== false, showNames: payload.transmission?.showNames !== false, showProgress: payload.transmission?.showProgress !== false, rotationSeconds: [20,30,60].includes(Number(payload.transmission?.rotationSeconds)) ? Number(payload.transmission.rotationSeconds) : 30 }
     },
-    waitingGame: { type: ['red_black','higher_lower'].includes(payload.waitingGame) ? payload.waitingGame : 'none', leaderboard: [] },
+    waitingGame: { type: 'both', leaderboard: [], leaderboards: { red_black: [], higher_lower: [] } },
     drawOrder: createSecureDrawOrder(game.mode), game, players: [], cardReservations: {}, claims: [], eventLog: [],
     chat: { enabled: payload.chatEnabled !== false, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} }
   });
@@ -1408,15 +1435,16 @@ function openJoinPlayer(payload = {}) {
   if (state.players.length >= 10) throw new Error('La sala ya alcanzó el límite de 10 jugadores.');
   const name = validatePlayerName(payload.name);
   const cardCount = Math.max(1, Math.min(4, Number(payload.cardCount) || 2));
-  const activeCards = state.players.reduce((total, player) => total + (player.cardIds || []).length, 0);
-  if (activeCards + cardCount > 40) throw new Error('La sala alcanzó el límite de 40 cartones activos.');
-  const chosen = chooseDiverseCardsForPlayer(cardCount, state.game.mode);
-  const player = emptyRoomPlayer({ name, cardIds: chosen.map(card => card.id), allowedCardCount: cardCount, deviceId, openJoin: true });
+  const authorizedCards = state.players.reduce((total, player) => total + Math.max(1, Number(player.allowedCardCount) || (player.cardIds || []).length || 1), 0);
+  if (authorizedCards + cardCount > 40) throw new Error('La sala alcanzó el límite de 40 cartones autorizados.');
+  if (authorizedCards + cardCount > state.game.cards.length) throw new Error('No quedan suficientes cartones generados para esa cantidad.');
+  const player = emptyRoomPlayer({ name, cardIds: [], allowedCardCount: cardCount, deviceId, openJoin: true });
   player.slotNumber = state.players.length + 1; player.slotLabel = name;
   state.players.push(player);
+  refreshOffersForPlayer(player, true);
   if (state.players.length >= 10) state.roomSettings.joinOpen = false;
-  syncAutoMarksForPlayer(player); enforceAutoMarkPolicy(); updateCardDisplayNames();
-  logEvent('open_player_joined', { playerId: player.id, playerName: name, cards: cardCount });
+  enforceAutoMarkPolicy(); updateCardDisplayNames();
+  logEvent('open_player_joined', { playerId: player.id, playerName: name, requestedCards: cardCount, selectionPending: true });
   saveState(); broadcast();
   return { token: player.sessionToken, state: playerPayload(player), returning: false };
 }
@@ -1443,6 +1471,7 @@ function removeRoomPlayer(payload = {}) {
   const id = String(payload.playerId || '');
   const player = state.players.find(item => item.id === id);
   if (!player) throw new Error('No se encontró el jugador.');
+  releaseReservationsForPlayer(player);
   state.players = state.players.filter(item => item.id !== id);
   state.roomSettings.joinOpen = state.roomSettings.roomType === 'test' && state.players.length < 10;
   updateCardDisplayNames(); enforceAutoMarkPolicy();
@@ -1460,13 +1489,18 @@ function updateJoinOpen(payload = {}) {
 
 function submitWaitingGameScore(player, payload = {}) {
   if (!state.active || state.status !== 'waiting') throw new Error('El minijuego solo está disponible en la sala de espera.');
-  if (!['red_black','higher_lower'].includes(state.waitingGame?.type)) throw new Error('No hay un minijuego activo.');
+  const gameType = ['red_black','higher_lower'].includes(payload.gameType) ? payload.gameType : 'red_black';
   const score = Math.max(0, Math.min(9999, Math.floor(Number(payload.score) || 0)));
-  state.waitingGame ||= { type: 'none', leaderboard: [] };
-  state.waitingGame.leaderboard ||= [];
-  const entry = state.waitingGame.leaderboard.find(item => item.playerId === player.id);
+  state.waitingGame ||= { type: 'both', leaderboard: [], leaderboards: { red_black: [], higher_lower: [] } };
+  state.waitingGame.type = 'both';
+  state.waitingGame.leaderboards ||= { red_black: [], higher_lower: [] };
+  state.waitingGame.leaderboards[gameType] ||= [];
+  const board = state.waitingGame.leaderboards[gameType];
+  const entry = board.find(item => item.playerId === player.id);
   if (entry) { entry.bestScore = Math.max(Number(entry.bestScore) || 0, score); entry.name = playerDisplayName(player); entry.updatedAt = nowIso(); }
-  else state.waitingGame.leaderboard.push({ playerId: player.id, name: playerDisplayName(player), bestScore: score, updatedAt: nowIso() });
+  else board.push({ playerId: player.id, name: playerDisplayName(player), bestScore: score, updatedAt: nowIso() });
+  const aggregate = waitingGamePayload().leaderboard;
+  state.waitingGame.leaderboard = aggregate;
   saveState(); broadcast(); return playerPayload(player);
 }
 
@@ -1749,7 +1783,7 @@ function validateCardDiversity(cards, mode) {
 
 function assertCardGroupDiversity(cards, mode, label = 'La selección') {
   if (cards.length < 2) return;
-  const maxShared = Number(mode) === 75 ? 9 : 4;
+  const maxShared = Number(mode) === 75 ? 12 : 6;
   for (let left = 0; left < cards.length; left++) {
     for (let right = left + 1; right < cards.length; right++) {
       const shared = sharedCardNumbers(cards[left], cards[right]);
@@ -2003,7 +2037,7 @@ function configureRoom(payload) {
     testDrawOrderFixed: false,
     chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} },
     demo: currentWorkspace().isDemo ? { active: true, label: 'DEMOSTRACIÓN — SIN VALIDEZ OFICIAL', createdAt: nowIso() } : null,
-    waitingGame: { type: ['red_black','higher_lower'].includes(payload.waitingGame?.type) ? payload.waitingGame.type : 'none', leaderboard: [] },
+    waitingGame: { type: 'both', leaderboard: [], leaderboards: { red_black: [], higher_lower: [] } },
     game: sanitizedGame,
     players,
     cardReservations: {},
@@ -2304,6 +2338,8 @@ function startRoom() {
   if (state.roomSettings) state.roomSettings.joinOpen = false;
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'waiting') return adminPayload();
+  const hasPendingSelections = state.players.some(player => !(player.nameSet && player.selectionConfirmed && player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount));
+  if (hasPendingSelections) autoAssignPendingPlayers('game_start');
   const preflight = preflightPayload();
   if (!preflight.ok) throw new Error(preflight.errors[0] || 'La sala todavía no está lista para iniciar.');
   if (state.game.drawn.length) throw new Error('La ronda ya contiene bolillas. Reiniciala antes de empezar.');
@@ -2863,6 +2899,7 @@ function chooseCards(player, payload) {
   const selectedName = player.nameSet ? null : validatePlayerName(payload?.name, player.id);
   const selected = [...new Set((payload.cardIds || []).map(String))];
   if (selected.length < 1 || selected.length > player.allowedCardCount) throw new Error(`Podés elegir entre 1 y ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}.`);
+  if (state.roomSettings?.roomType === 'test' && selected.length !== player.allowedCardCount) throw new Error(`En la sala de prueba tenés que elegir exactamente ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}. Si no terminás, el sistema los asignará al iniciar.`);
   const offers = new Set(player.offeredCardIds || []);
   if (!selected.every(cardId => offers.has(cardId) || (player.reservedCardIds || []).includes(cardId))) throw new Error('Una de las opciones ya no está disponible. Actualizamos tus opciones de cartones.');
   for (const cardId of selected) {

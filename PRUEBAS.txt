@@ -15,10 +15,12 @@ Cobertura principal:
 - Cierre del ingreso al alcanzar 10 jugadores o al iniciar.
 - Reingreso mediante el mismo dispositivo.
 - Sala oficial con códigos individuales.
-- Minijuego y clasificación por mejor racha.
+- Ambos minijuegos siempre activos, cambio entre juegos y clasificaciones independientes.
 - Chat, moderación y ráfaga de 60 mensajes.
 - Reclamos simultáneos con milisegundos y secuencia.
 - Transmisión con cartones destacados.
 - Respaldos, restauración, acta PDF y CSV.
 - Escala de 60 jugadores y 240 cartones.
 - Reinicio del minijuego después de perder y después de actualizar la clasificación.
+- Diez vistas previas de cartones, recarga conservando reservas y confirmación manual.
+- Asignación automática al iniciar con elecciones pendientes o parciales.

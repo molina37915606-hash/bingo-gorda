@@ -62,7 +62,11 @@ const CHAT_MAX_LENGTH = 160;
 const CHAT_COOLDOWN_MS = 2000;
 const DEMO_TTL_MS = 30 * 60 * 1000;
 const DEMO_IDLE_TTL_MS = 15 * 60 * 1000;
-const APP_PUBLIC_VERSION = '2026.2';
+const DEMO_CLAIM_WINDOW_MS = 1600;
+const DEMO_START_SEQUENCE_MS = 3200;
+const DEMO_RESUME_SEQUENCE_MS = 1400;
+const DEMO_FINAL_SEQUENCE_MS = 2600;
+const APP_PUBLIC_VERSION = '2026.3';
 const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bingo'];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
@@ -1092,6 +1096,13 @@ function playerPayload(player) {
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
     readiness: playerPrizeReadiness(player),
     publicClaims: publicClaimsPayload(),
+    demo: currentWorkspace().isDemo ? {
+      active: true,
+      label: state.demo?.label || 'DEMOSTRACIÓN — SIN VALIDEZ OFICIAL',
+      expiresAt: state.demo?.expiresAt || null,
+      autoSeconds: Number(state.game?.autoSeconds) || 4,
+      participants: state.players.map(item => ({ name: playerDisplayName(item), virtual: Boolean(item.virtual), cardCount: (item.cardIds || []).length }))
+    } : null,
     game: {
       id: state.game.id,
       number: state.game.number,
@@ -1245,42 +1256,96 @@ function generateDiverseCardsServer(count, mode, rules, maxSharedOverride = null
 
 function createDemoRoom(payload = {}) {
   const mode = Number(payload.mode) === 75 ? 75 : 90;
-  const virtualPlayers = Math.max(2, Math.min(10, Number(payload.players) || 6));
-  const cardsPerPlayer = Math.max(1, Math.min(4, Number(payload.cardsPerPlayer) || 2));
-  const autoSeconds = Math.max(3, Math.min(20, Number(payload.autoSeconds) || 5));
+  const aiCount = Number(payload.aiCount ?? payload.players) === 2 ? 2 : 3;
+  const playerCardCount = Math.max(1, Math.min(4, Number(payload.playerCardCount ?? payload.cardsPerPlayer) || 2));
+  const allowedIntervals = new Set([2, 4, 6, 8]);
+  const requestedInterval = Number(payload.autoSeconds) || 4;
+  const autoSeconds = allowedIntervals.has(requestedInterval) ? requestedInterval : 4;
   const rules = mode === 75
     ? { ambocabeza: false, line: true, doubleLine: true, tripleLine: true, corners: true, bingo: true }
     : { ambocabeza: true, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true };
-  const count = virtualPlayers * cardsPerPlayer;
-  const cards = generateDiverseCardsServer(count, mode, rules, mode === 75 ? 9 : 4);
+  const aiNames = ['Zoe', 'Mateo', 'Owen'].slice(0, aiCount);
+  const totalCards = playerCardCount + aiCount * 2;
+  const cards = generateDiverseCardsServer(totalCards, mode, rules, mode === 75 ? 9 : 4);
   const game = {
-    id: randomId('demo_game'), number: 1, mode, rules, drawMode: 'automatic', autoSeconds, presenter: ['vero','vivi','josu','daia'].includes(payload.presenter) ? payload.presenter : 'vero',
+    id: randomId('demo_game'), number: 1, mode, rules, drawMode: 'automatic', autoSeconds,
+    presenter: ['vero','vivi','josu','daia'].includes(payload.presenter) ? payload.presenter : 'vero',
     theme: 'clasico', phase: 'READY', drawn: [], createdAt: nowIso(), updatedAt: nowIso(), cards
   };
-  const players = Array.from({ length: virtualPlayers }, (_, index) => ({ allowedCardCount: cardsPerPlayer, cardIds: cards.slice(index * cardsPerPlayer, (index + 1) * cardsPerPlayer).map(card => card.id) }));
+  let offset = 0;
+  const assignments = [{
+    allowedCardCount: playerCardCount,
+    cardIds: cards.slice(offset, offset + playerCardCount).map(card => card.id)
+  }];
+  offset += playerCardCount;
+  for (let index = 0; index < aiCount; index++) {
+    assignments.push({ allowedCardCount: 2, cardIds: cards.slice(offset, offset + 2).map(card => card.id) });
+    offset += 2;
+  }
   const workspace = ensureWorkspace(`demo_${randomCode(10).toLowerCase()}`);
   workspace.isDemo = true;
   workspace.expiresAt = Date.now() + DEMO_TTL_MS;
   workspace.lastActivityAt = Date.now();
   return workspaceContext.run(workspace, () => {
     configureRoom({
-      game, players,
-      roomSettings: { playerAudioAllowed: true, playerAudioDefault: true, linePrizeCount: mode === 90 ? 2 : 1, allowSamePlayerSecondLine: true, tiePolicy: 'first_claim', gameType: 'test', prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 }, showMercadoPago: false, argentinaHint: true },
+      game,
+      players: assignments,
+      roomSettings: {
+        playerAudioAllowed: true,
+        playerAudioDefault: payload.sound !== false,
+        linePrizeCount: mode === 90 ? 2 : 1,
+        allowSamePlayerSecondLine: true,
+        tiePolicy: 'first_claim',
+        gameType: 'test',
+        prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 },
+        showMercadoPago: false,
+        argentinaHint: true
+      },
       assignmentTimer: { enabled: false, durationMinutes: 10 }
     });
-    state.demo = { active: true, label: 'DEMOSTRACIÓN — SIN VALIDEZ OFICIAL', createdAt: nowIso(), expiresAt: new Date(workspace.expiresAt).toISOString() };
-    state.players.forEach((player, index) => {
-      player.name = `Jugador virtual ${index + 1}`;
+    const human = state.players[0];
+    human.name = 'Vos';
+    human.nameSet = true;
+    human.virtual = false;
+    human.demoHuman = true;
+    human.autoMark = true;
+    human.selectionConfirmed = true;
+    state.players.slice(1).forEach((player, index) => {
+      player.name = aiNames[index];
       player.nameSet = true;
       player.virtual = true;
       player.autoMark = true;
-      syncAutoMarksForPlayer(player);
+      player.selectionConfirmed = true;
     });
+    state.demo = {
+      active: true,
+      label: 'DEMOSTRACIÓN — SIN VALIDEZ OFICIAL',
+      createdAt: nowIso(),
+      expiresAt: new Date(workspace.expiresAt).toISOString(),
+      aiNames,
+      aiCount,
+      playerCardCount,
+      cardsPerAi: 2,
+      autoSeconds,
+      mode
+    };
+    syncAllAutoMarks();
     updateCardDisplayNames();
-    logEvent('demo_created', { virtualPlayers, cardsPerPlayer, mode, autoSeconds });
+    logEvent('demo_created', { aiNames, aiCount, playerCardCount, cardsPerAi: 2, mode, autoSeconds });
     saveState();
-    const token = createAdminSession({ workspaceId: workspace.id, role: 'owner', hardExpiresAt: workspace.expiresAt });
-    return { token, workspaceId: workspace.id, roomCode: state.roomCode, expiresAt: new Date(workspace.expiresAt).toISOString(), adminUrl: '/admin?demo=1' };
+    if (!(TEST_MODE && payload.testHoldStart)) startRoom();
+    const response = {
+      workspaceId: workspace.id,
+      roomCode: state.roomCode,
+      playerCode: human.code,
+      expiresAt: new Date(workspace.expiresAt).toISOString(),
+      playerUrl: `/jugador?demo=1&sala=${encodeURIComponent(state.roomCode)}&codigo=${encodeURIComponent(human.code)}`,
+      participants: [{ name: human.name, virtual: false, cardCount: human.cardIds.length }, ...state.players.slice(1).map(player => ({ name: player.name, virtual: true, cardCount: player.cardIds.length }))],
+      mode,
+      autoSeconds
+    };
+    if (TEST_MODE) response.testAdminToken = createAdminSession({ workspaceId: workspace.id, role: 'owner', hardExpiresAt: workspace.expiresAt });
+    return response;
   });
 }
 
@@ -1471,7 +1536,7 @@ function activeCardCount() {
 }
 
 function autoMarkRequired() {
-  return activePlayerCount() > MANUAL_MARK_MAX_PLAYERS || activeCardCount() > MANUAL_MARK_MAX_CARDS;
+  return Boolean(currentWorkspace().isDemo) || activePlayerCount() > MANUAL_MARK_MAX_PLAYERS || activeCardCount() > MANUAL_MARK_MAX_CARDS;
 }
 
 function markingPolicyPayload() {
@@ -1734,7 +1799,8 @@ function scheduleAutomaticDraw() {
   const workspace = currentWorkspace();
   clearAutomaticDrawTimer(workspace);
   if (!state.active || state.status !== 'playing' || state.game?.drawMode !== 'automatic') return;
-  const delay = Math.max(3, Math.min(60, Number(state.game.autoSeconds) || 6)) * 1000;
+  const minimumSeconds = currentWorkspace().isDemo ? 2 : 3;
+  const delay = Math.max(minimumSeconds, Math.min(60, Number(state.game.autoSeconds) || 6)) * 1000;
   const timer = setTimeout(() => workspaceContext.run(workspace, () => {
     try { drawNextBall('automatic'); }
     catch (error) { console.error(`No se pudo extraer una bolilla automática en ${workspace.id}:`, error.message); }
@@ -1742,23 +1808,127 @@ function scheduleAutomaticDraw() {
   automaticDrawTimers.set(workspace.id, timer);
 }
 
-function maybeCreateDemoClaim() {
-  if (!currentWorkspace().isDemo || state.status !== 'playing') return false;
-  const types = Number(state.game.mode) === 75 ? ['corners', 'line', 'doubleLine', 'tripleLine', 'bingo'] : ['ambo', 'line', 'bingo'];
-  for (const type of types) {
+const demoAutomationTimers = new Map();
+
+function rememberDemoTimer(workspace, timer) {
+  const timers = demoAutomationTimers.get(workspace.id) || new Set();
+  timers.add(timer);
+  demoAutomationTimers.set(workspace.id, timers);
+  return timer;
+}
+
+function forgetDemoTimer(workspace, timer) {
+  const timers = demoAutomationTimers.get(workspace.id);
+  if (!timers) return;
+  timers.delete(timer);
+  if (!timers.size) demoAutomationTimers.delete(workspace.id);
+}
+
+function clearDemoAutomationTimers(workspace = currentWorkspace()) {
+  const timers = demoAutomationTimers.get(workspace.id);
+  if (timers) for (const timer of timers) clearTimeout(timer);
+  demoAutomationTimers.delete(workspace.id);
+}
+
+function demoPrizeTypes() {
+  return Number(state.game?.mode) === 75
+    ? ['corners', 'line', 'doubleLine', 'tripleLine', 'bingo']
+    : ['ambo', 'line', 'bingo'];
+}
+
+function demoClaimDelay(player) {
+  if (TEST_MODE) return 30 + crypto.randomInt(0, 30);
+  const base = player?.name === 'Zoe' ? 720 : player?.name === 'Mateo' ? 920 : 1120;
+  return base + crypto.randomInt(0, 430);
+}
+
+function scheduleDemoAiClaims() {
+  if (!currentWorkspace().isDemo || state.status !== 'playing') return 0;
+  const drawnCount = state.game.drawn.length;
+  let candidates = [];
+  let selectedType = null;
+  for (const type of demoPrizeTypes()) {
     if (!isPrizeEnabled(type) || prizeStatusPayload()[type]?.closed) continue;
+    const typeCandidates = [];
     for (const player of state.players) {
       if (!player.virtual) continue;
-      for (const cardId of player.cardIds || []) {
-        const card = state.game.cards.find(item => item.id === cardId);
-        if (!card || state.claims.some(claim => claim.cardId === cardId && claim.type === type && ['pending', 'confirmed'].includes(claim.status))) continue;
-        const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
-        const valid = { ambo: analysis.hasAmbo, line: analysis.hasLine, doubleLine: analysis.hasDoubleLine, tripleLine: analysis.hasTripleLine, corners: analysis.hasCorners, bingo: analysis.hasBingo }[type];
-        if (valid) { createClaim(player, { cardId, type, simulated: true }); return true; }
-      }
+      const card = (player.cardIds || [])
+        .map(cardId => state.game.cards.find(item => item.id === cardId))
+        .find(candidate => {
+          if (!candidate || state.claims.some(claim => claim.cardId === candidate.id && claim.type === type && ['pending', 'confirmed'].includes(claim.status))) return false;
+          const analysis = analyzeCard(candidate, state.game.drawn, player.marks?.[candidate.id] || []);
+          return Boolean({ ambo: analysis.hasAmbo, line: analysis.hasLine, doubleLine: analysis.hasDoubleLine, tripleLine: analysis.hasTripleLine, corners: analysis.hasCorners, bingo: analysis.hasBingo }[type]);
+        });
+      if (card) typeCandidates.push({ player, card });
     }
+    if (typeCandidates.length) { selectedType = type; candidates = typeCandidates; break; }
   }
-  return false;
+  if (!selectedType) return 0;
+  const workspace = currentWorkspace();
+  for (const { player, card } of candidates) {
+    const timer = setTimeout(() => workspaceContext.run(workspace, () => {
+      forgetDemoTimer(workspace, timer);
+      try {
+        if (!workspace.isDemo || !state.active || !['playing', 'verifying'].includes(state.status) || state.game.drawn.length !== drawnCount) return;
+        const window = state.claimWindow;
+        if (state.status === 'verifying' && (!window || window.type !== selectedType || Number(window.drawnCount) !== drawnCount || Date.now() > Number(window.expiresAtMs || 0))) return;
+        if (state.claims.some(claim => claim.cardId === card.id && claim.type === selectedType && ['pending', 'confirmed'].includes(claim.status))) return;
+        const analysis = analyzeCard(card, state.game.drawn, player.marks?.[card.id] || []);
+        const stillValid = Boolean({ ambo: analysis.hasAmbo, line: analysis.hasLine, doubleLine: analysis.hasDoubleLine, tripleLine: analysis.hasTripleLine, corners: analysis.hasCorners, bingo: analysis.hasBingo }[selectedType]);
+        if (stillValid) createClaim(player, { cardId: card.id, type: selectedType, simulated: true });
+      } catch (error) {
+        console.error(`No se pudo registrar el reclamo de IA en ${workspace.id}:`, error.message);
+      }
+    }), demoClaimDelay(player));
+    rememberDemoTimer(workspace, timer);
+  }
+  return candidates.length;
+}
+
+function scheduleDemoResume() {
+  if (!currentWorkspace().isDemo || state.status !== 'paused' || state.game?.phase !== 'PAUSED') return;
+  const workspace = currentWorkspace();
+  const timer = setTimeout(() => workspaceContext.run(workspace, () => {
+    forgetDemoTimer(workspace, timer);
+    try {
+      if (workspace.isDemo && state.active && state.status === 'paused' && state.game && !prizeStatusPayload().bingo.closed) resumeRoom({ mode: 'automatic' });
+    } catch (error) {
+      console.error(`No se pudo reanudar la demostración ${workspace.id}:`, error.message);
+    }
+  }), 900);
+  rememberDemoTimer(workspace, timer);
+}
+
+function autoResolveDemoClaimWindow(windowId) {
+  if (!currentWorkspace().isDemo || !windowId || state.claimWindow?.id !== windowId) return;
+  const pending = state.claims
+    .filter(claim => claim.claimWindowId === windowId && claim.status === 'pending')
+    .sort((a, b) => Number(a.receivedSequence || 0) - Number(b.receivedSequence || 0));
+  if (!pending.length) return;
+  const winner = pending.find(claim => claim.officialValid);
+  try {
+    if (winner) resolveClaim({ claimId: winner.id, resolution: 'confirmed', note: 'Validación automática de demostración.' });
+    else for (const claim of pending) if (claim.status === 'pending') resolveClaim({ claimId: claim.id, resolution: 'rejected', note: 'Reclamo inválido en la demostración.' });
+  } catch (error) {
+    console.error(`No se pudo resolver automáticamente la demostración:`, error.message);
+  }
+  if (state.status === 'paused') scheduleDemoResume();
+}
+
+function scheduleDemoClaimResolution(windowId) {
+  if (!currentWorkspace().isDemo || !windowId) return;
+  const workspace = currentWorkspace();
+  const key = `claim:${windowId}`;
+  workspace.demoScheduled ||= new Set();
+  if (workspace.demoScheduled.has(key)) return;
+  workspace.demoScheduled.add(key);
+  const delay = Math.max(20, Number(state.claimWindow?.expiresAtMs || Date.now()) - Date.now() + 35);
+  const timer = setTimeout(() => workspaceContext.run(workspace, () => {
+    forgetDemoTimer(workspace, timer);
+    workspace.demoScheduled?.delete(key);
+    autoResolveDemoClaimWindow(windowId);
+  }), delay);
+  rememberDemoTimer(workspace, timer);
 }
 
 function drawNextBall(source = 'manual') {
@@ -1776,7 +1946,7 @@ function drawNextBall(source = 'manual') {
   state.game.phase = state.game.drawMode === 'automatic' ? 'DRAWING' : 'READY';
   logEvent('ball_drawn', { number, position: state.game.drawn.length, source, drawRevision: Number(state.revision) + 1 });
   syncAllAutoMarks();
-  if (maybeCreateDemoClaim()) return adminPayload();
+  scheduleDemoAiClaims();
   if (state.game.drawn.length >= state.game.mode) {
     state.status = 'finished';
     state.pauseReason = null;
@@ -1793,7 +1963,8 @@ function drawNextBall(source = 'manual') {
 
 function setTestDrawOrder(payload = {}) {
   if (!TEST_MODE) throw new Error('Esta función solo está disponible durante pruebas automáticas.');
-  if (!state.active || !state.game || state.status !== 'waiting') throw new Error('El orden de prueba solo puede fijarse en la sala de espera.');
+  const demoBeforeFirstBall = currentWorkspace().isDemo && state.status === 'starting' && !(state.game?.drawn || []).length;
+  if (!state.active || !state.game || (state.status !== 'waiting' && !demoBeforeFirstBall)) throw new Error('El orden de prueba solo puede fijarse antes de la primera bolilla.');
   const prefix = uniqueNumbers(payload.sequence || []).filter(number => number >= 1 && number <= state.game.mode);
   state.drawOrder = createSecureDrawOrder(state.game.mode, prefix);
   state.testDrawOrderFixed = true;
@@ -1804,7 +1975,8 @@ function setTestDrawOrder(payload = {}) {
 
 function updateDrawSettings(payload = {}) {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
-  const nextSeconds = Math.max(3, Math.min(60, Number(payload.autoSeconds ?? state.game.autoSeconds) || 6));
+  const minimumSeconds = currentWorkspace().isDemo ? 2 : 3;
+  const nextSeconds = Math.max(minimumSeconds, Math.min(60, Number(payload.autoSeconds ?? state.game.autoSeconds) || 6));
   state.game.autoSeconds = nextSeconds;
   if (state.status === 'waiting' && ['manual', 'automatic'].includes(payload.drawMode)) state.game.drawMode = payload.drawMode;
   logEvent('draw_settings_updated', { drawMode: state.game.drawMode, autoSeconds: state.game.autoSeconds });
@@ -1900,7 +2072,7 @@ function startRoom() {
   state.game.phase = 'READY';
   state.transition = {
     id: randomId('transition'), type: 'start', startedAt,
-    endsAt: new Date(Date.now() + START_SEQUENCE_MS).toISOString(),
+    endsAt: new Date(Date.now() + (currentWorkspace().isDemo ? (TEST_MODE ? 100 : DEMO_START_SEQUENCE_MS) : START_SEQUENCE_MS)).toISOString(),
     officialTime: new Date().toLocaleTimeString('es-AR', { timeZone: BINGO_TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false })
   };
   logEvent('game_start_sequence', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0) });
@@ -1931,7 +2103,7 @@ function resumeRoom(payload = {}) {
   const startedAt = nowIso();
   state.status = 'resuming';
   state.pauseReason = null;
-  state.transition = { id: randomId('transition'), type: 'resume', resumeMode: mode, startedAt, endsAt: new Date(Date.now() + RESUME_SEQUENCE_MS).toISOString() };
+  state.transition = { id: randomId('transition'), type: 'resume', resumeMode: mode, startedAt, endsAt: new Date(Date.now() + (currentWorkspace().isDemo ? (TEST_MODE ? 100 : DEMO_RESUME_SEQUENCE_MS) : RESUME_SEQUENCE_MS)).toISOString() };
   state.game.phase = 'PAUSED';
   logEvent('game_resume_sequence', { mode });
   saveState(); broadcast(); scheduleTransition();
@@ -2556,7 +2728,7 @@ function createClaim(player, payload) {
       type,
       openedAt: nowIso(),
       openedAtMs: nowMs,
-      expiresAtMs: nowMs + CLAIM_QUEUE_WINDOW_MS,
+      expiresAtMs: nowMs + (currentWorkspace().isDemo ? (TEST_MODE ? CLAIM_QUEUE_WINDOW_MS : DEMO_CLAIM_WINDOW_MS) : CLAIM_QUEUE_WINDOW_MS),
       drawnCount: state.game.drawn.length,
       lastBall: state.game.drawn.at(-1) ?? null
     };
@@ -2595,6 +2767,7 @@ function createClaim(player, payload) {
   logEvent('claim_created', { claimId: claim.id, type, prizeNumber, playerId: player.id, cardId, officialValid: valid, receivedSequence: sequence, deltaFromFirstMs: claim.deltaFromFirstMs, simulated: claim.simulated });
   saveState();
   broadcast();
+  if (currentWorkspace().isDemo) scheduleDemoClaimResolution(claim.claimWindowId);
   return claim;
 }
 
@@ -2675,7 +2848,7 @@ function resolveClaim(payload) {
     const startedAt = nowIso();
     state.status = 'finalizing';
     state.game.phase = 'BINGO_CONFIRMED';
-    state.transition = { id: randomId('transition'), type: 'final-balls', startedAt, endsAt: new Date(Date.now() + FINAL_BALLS_SEQUENCE_MS).toISOString() };
+    state.transition = { id: randomId('transition'), type: 'final-balls', startedAt, endsAt: new Date(Date.now() + (currentWorkspace().isDemo ? (TEST_MODE ? 250 : DEMO_FINAL_SEQUENCE_MS) : FINAL_BALLS_SEQUENCE_MS)).toISOString() };
     logEvent('bingo_confirmed_final_extraction', { claimId: claim.id, cardId: claim.cardId, cardNumber: claim.cardNumber });
   } else {
     state.status = 'paused';
@@ -2990,7 +3163,7 @@ function buildResultsPdf() {
   rect(19, 10, 70, 70, COLORS.white, '#F2D3E2', 1);
   image(24, 15, 60, 60);
   text('RESULTADOS OFICIALES DEL SORTEO', 101, 18, 20, { bold: true, color: COLORS.white, maxWidth: 390 });
-  text(acta.demo ? 'DEMOSTRACIÓN - SIN VALIDEZ OFICIAL' : 'BINGO GORDA 2026.2', 101, 47, 11, { bold: true, color: '#F7DDF0' });
+  text(acta.demo ? 'DEMOSTRACIÓN - SIN VALIDEZ OFICIAL' : 'BINGO GORDA 2026.3', 101, 47, 11, { bold: true, color: '#F7DDF0' });
   text(`Sala ${acta.roomCode}  ·  Juego ${acta.gameNumber}  ·  Bingo ${acta.mode}`, 101, 65, 8.5, { color: '#E8D7EE' });
 
   const metaX = 510;
@@ -3197,7 +3370,7 @@ function buildResultsPdf() {
   });
 
   text(`Documento oficial generado al cerrar el sorteo · Sala ${acta.roomCode} · Ronda ${acta.round}`, 24, 582, 5.8, { color: COLORS.muted });
-  text(acta.demo ? 'DEMO' : 'BINGO GORDA 2026.2', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
+  text(acta.demo ? 'DEMO' : 'BINGO GORDA 2026.3', 818, 582, 5.8, { bold: true, color: COLORS.purple2, align: 'right' });
 
   const stream = commands.join('\n');
   const logoPath = path.join(ROOT, 'assets', 'logo-pdf.jpg');
@@ -3582,7 +3755,7 @@ setInterval(() => {
   for (const [token, expiresAt] of masterSessions) if (expiresAt <= now) masterSessions.delete(token);
   for (const workspace of [...workspaces.values()]) {
     if (workspace.isDemo && ((workspace.expiresAt && workspace.expiresAt <= now) || (workspace.lastActivityAt && now - workspace.lastActivityAt > DEMO_IDLE_TTL_MS))) {
-      clearAutomaticDrawTimer(workspace); clearWorkspaceTransitionTimer(workspace); workspaces.delete(workspace.id);
+      clearAutomaticDrawTimer(workspace); clearWorkspaceTransitionTimer(workspace); clearDemoAutomationTimers(workspace); workspaces.delete(workspace.id);
       try { fs.rmSync(path.dirname(workspace.stateFile), { recursive: true, force: true }); } catch {}
       continue;
     }

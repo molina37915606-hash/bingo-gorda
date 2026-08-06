@@ -1,40 +1,26 @@
-BINGO GORDA 2026.2 - CAMBIOS
+BINGO GORDA 2026.3 - CAMBIOS
 
-INTEGRIDAD
-- Bolillero generado por el servidor mediante aleatoriedad criptográfica.
-- Compromiso SHA-256 del orden y hash de la configuración inicial.
-- Reglas, premios, cartones y bolillas bloqueados después del inicio.
-- Validación completa de cartones en el servidor.
+MODO DEMOSTRACIÓN PARA JUGADORES
+- Se eliminó el panel administrativo de la demostración.
+- La demo entra directamente a la vista del jugador.
+- Se puede elegir Bingo 75 o Bingo 90.
+- Se puede jugar contra 2 o 3 rivales IA.
+- Los rivales usan los nombres Zoe, Mateo y Owen.
+- Cada rival IA recibe exactamente 2 cartones aleatorios.
+- El visitante puede elegir entre 1 y 4 cartones.
+- Se puede elegir un intervalo de 2, 4, 6 u 8 segundos.
+- Todos los cartones se generan nuevamente en cada partida y respetan las reglas de diversidad.
+- El automarcado es obligatorio dentro de la demo.
+- Las IA reclaman con un retraso breve y variable.
+- Los reclamos se ordenan por recepción oficial del servidor.
+- La validación y la reanudación son automáticas; no requieren administrador.
+- La sala sigue siendo temporal y sin validez oficial.
 
-CARTONES
-- 75 bolas: columna N corregida para elegir cuatro números de forma directa.
-- 75 bolas: máximo 12 números compartidos entre cartones generales.
-- 90 bolas: máximo 6 números compartidos entre cartones generales.
-- Sin líneas ganadoras idénticas.
-- Control más estricto entre los cartones de un mismo jugador.
-
-ESCALA
-- Hasta 60 jugadores y 250 cartones.
-- Marcado manual permitido solo con hasta 10 jugadores y 40 cartones.
-- En salas mayores se activa automarcado obligatorio.
-
-CHAT
-- Chat público separado del estado completo del juego.
-- Máximo 160 caracteres, espera de 2 segundos y 100 mensajes de historial.
-- Bloqueo, silencio, borrado y limpieza desde administración.
-
-RECLAMOS Y ACTAS
-- Hora del servidor con milisegundos.
-- Secuencia oficial de recepción.
-- Ventana de auditoría de 3 segundos.
-- El primer reclamo válido recibido por el servidor obtiene el premio.
-- PDF y CSV con todas las alertas de la misma ventana.
-
-DEMOSTRACIÓN
-- Ruta pública /demo.
-- Sala aislada y temporal.
-- Jugadores virtuales, automarcado y bolillero automático.
-- Acta marcada DEMOSTRACIÓN - SIN VALIDEZ OFICIAL.
-
-RECUPERACIÓN
-- Restauración completa de nombres, cupos, presentador, cartones, reclamos, chat y orden de bolillas.
+SE CONSERVA DE 2026.2
+- Bolillero de servidor.
+- Bloqueo de configuración al comenzar.
+- Validación fuerte y diversidad de cartones.
+- Chat público.
+- Auditoría de reclamos con milisegundos.
+- Actas PDF y CSV.
+- Automarcado obligatorio por escala.

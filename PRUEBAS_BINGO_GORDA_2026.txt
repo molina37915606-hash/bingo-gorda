@@ -1,21 +1,14 @@
-BINGO GORDA 2026.2 - PRUEBAS AUTOMÁTICAS
+BINGO GORDA 2026.3 - PRUEBAS AUTOMÁTICAS
 
-Comando: npm test
-Resultado esperado: PRUEBAS BINGO GORDA 2026.2: OK
+Ejecutar: npm test
+Resultado esperado: PRUEBAS BINGO GORDA 2026.3: OK
 
-COBERTURA
-- 250 cartones de 75 bolas y 250 de 90 bolas.
-- Límites máximos de coincidencia y líneas ganadoras no repetidas.
-- Estructura reglamentaria y centro LIBRE de 75 bolas.
-- Creación de demostración con jugadores virtuales.
-- Respaldo y restauración de sala lista para iniciar.
-- Chat público y bloqueo administrativo.
-- Orden de bolillas controlado por el servidor.
-- Bloqueo de configuración después del inicio.
-- Ventana de auditoría antes de resolver un reclamo.
-- Dos bingos válidos simultáneos con secuencia oficial.
-- PDF y CSV de resultados.
-- Automarcado obligatorio con 11 jugadores.
-- Rechazo de cartones malformados en el servidor.
-- Escala con 60 jugadores conectados por SSE y 4 cartones cada uno.
-- Ráfaga simultánea de 60 mensajes de chat sin reenviar el estado completo.
+Cobertura principal:
+- Cartones de 75 y 90 bolas y reglas de diversidad.
+- Demo directa con Vos, Zoe, Mateo y Owen.
+- Dos cartones por IA y de uno a cuatro para el visitante.
+- Automarcado forzado en demostración.
+- Bolillero automático y reclamos de IA.
+- Chat, respaldos, bloqueo de configuración y actas.
+- Reclamos simultáneos con milisegundos y secuencia.
+- Escala de 60 jugadores y 240 cartones.

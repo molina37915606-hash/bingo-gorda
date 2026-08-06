@@ -62,6 +62,7 @@ class PlayerApp {
   }
 
   async init() {
+    this.injectDemoUi();
     this.injectChatUi();
     $('loginBtn').onclick = () => this.login();
     $('lastResultBtn').onclick = () => this.downloadLastPublicResult();
@@ -125,6 +126,33 @@ class PlayerApp {
 
     this.keepAliveTimer = setInterval(() => { if (this.state?.active) fetch('/api/ping', { cache:'no-store' }).catch(() => {}); }, 5 * 60 * 1000);
     this.assignmentClockTimer = setInterval(() => this.updateAssignmentCountdown(), 1000);
+  }
+
+  injectDemoUi() {
+    if ($('demoPlayerBanner')) return;
+    const style = document.createElement('style');
+    style.textContent = `
+      .demoPlayerBanner{display:none;margin:0 0 14px;padding:12px 14px;border-radius:15px;background:linear-gradient(135deg,#4b1764,#7e1f73);border:1px solid #d79de6;color:#fff;box-shadow:0 12px 34px #0005}.demoPlayerBanner.show{display:grid;gap:9px}.demoPlayerBannerTop{display:flex;justify-content:space-between;align-items:center;gap:12px}.demoPlayerBanner strong{font-size:14px;letter-spacing:.04em}.demoPlayerBanner small{color:#f2dff5}.demoParticipants{display:flex;flex-wrap:wrap;gap:7px}.demoParticipant{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;background:#ffffff14;border:1px solid #ffffff22;font-size:12px;font-weight:800}.demoParticipant.you{background:#ffca2f;color:#241805;border-color:#ffdf78}.demoAiTag{font-size:9px;padding:2px 5px;border-radius:999px;background:#17243a;color:#d9ebff}.day .demoPlayerBanner{background:linear-gradient(135deg,#efe1f3,#f6e8f2);color:#32153d;border-color:#b98ac4}.day .demoPlayerBanner small{color:#6f4e75}.day .demoParticipant{background:#fff8;border-color:#80588a33}.day .demoParticipant.you{background:#ffca2f;color:#241805}
+    `;
+    document.head.appendChild(style);
+    const host = $('gameView') || document.body;
+    const banner = document.createElement('section');
+    banner.id = 'demoPlayerBanner'; banner.className = 'demoPlayerBanner';
+    banner.innerHTML = `<div class="demoPlayerBannerTop"><div><strong>DEMOSTRACIÓN · SIN VALIDEZ OFICIAL</strong><br><small id="demoPlayerSummary"></small></div><span id="demoPlayerSpeed"></span></div><div id="demoParticipants" class="demoParticipants"></div>`;
+    host.prepend(banner);
+  }
+
+  renderDemoUi() {
+    const banner = $('demoPlayerBanner');
+    if (!banner) return;
+    const demo = this.state?.demo;
+    banner.classList.toggle('show', Boolean(demo?.active));
+    if (!demo?.active) return;
+    const participants = demo.participants || [];
+    const rivals = participants.filter(item => item.virtual).length;
+    $('demoPlayerSummary').textContent = `${this.state.game.mode} bolas · ${rivals} rival${rivals === 1 ? '' : 'es'} IA · automarcado obligatorio`;
+    $('demoPlayerSpeed').textContent = `${Number(demo.autoSeconds) || 4} s por bolilla`;
+    $('demoParticipants').innerHTML = participants.map(item => `<span class="demoParticipant ${item.virtual ? '' : 'you'}">${esc(item.name)}${item.virtual ? '<span class="demoAiTag">IA</span>' : ''} · ${Number(item.cardCount) || 0} cartón${Number(item.cardCount) === 1 ? '' : 'es'}</span>`).join('');
   }
 
   injectChatUi() {
@@ -313,7 +341,7 @@ class PlayerApp {
     localStorage.setItem('bingoOnlineCard', this.activeCardId);
     if (!this.audioPreferenceLoaded) { this.audioEnabled = Boolean(data.roomSettings?.playerAudioDefault); this.audioPreferenceLoaded = true; localStorage.setItem('bingoPlayerSound', String(this.audioEnabled)); }
     $('loginView').classList.add('hidden'); $('gameView').classList.remove('hidden');
-    this.render(); this.renderChat(); this.renderPublicClaim(); this.handleOwnPrizeReadiness(); this.handleTestEvent(); this.handleSequence(previous);
+    this.render(); this.renderDemoUi(); this.renderChat(); this.renderPublicClaim(); this.handleOwnPrizeReadiness(); this.handleTestEvent(); this.handleSequence(previous);
     if ($('drawnOverlay').classList.contains('show')) this.renderDrawnNumbers();
     if ($('winnerOverlay').classList.contains('show')) this.renderWinnerCard();
     const currentCount = data.game.drawn.length;
@@ -531,6 +559,7 @@ class PlayerApp {
   }
 
   showGreetingOnce() {
+    if (this.state?.demo?.active) return;
     const key = `bingoGreeting:${this.state.roomCode}:${this.state.player.id}`;
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, '1');

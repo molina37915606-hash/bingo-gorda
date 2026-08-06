@@ -11,8 +11,8 @@ const { spawn } = require('child_process');
 const root = path.resolve(__dirname, '..');
 const port = 47000 + Math.floor(Math.random() * 500);
 const base = `http://127.0.0.1:${port}`;
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-gorda-2026-2-'));
-const password = 'clave-prueba-2026-2';
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-gorda-2026-3-'));
+const password = 'clave-prueba-2026-3';
 const child = spawn(process.execPath, ['server.js'], {
   cwd: root,
   env: {
@@ -124,18 +124,35 @@ function assertGeneratedDiversity() {
 }
 
 async function demoCards(mode, players, cardsPerPlayer) {
+  const aiCount = Number(players) === 2 ? 2 : 3;
+  const playerCardCount = Math.max(1, Math.min(4, Number(cardsPerPlayer) || 2));
   const result = await json('/api/demo/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode, players, cardsPerPlayer, autoSeconds: 20, presenter: 'vero' })
+    body: JSON.stringify({ mode, aiCount, playerCardCount, autoSeconds: 8, presenter: 'vero', testHoldStart: true })
   });
   assert.equal(result.response.status, 200, JSON.stringify(result.data));
-  const headers = { 'Content-Type': 'application/json', 'X-Admin-Token': result.data.token };
+  assert(result.data.playerUrl.includes('/jugador'));
+  assert.equal(result.data.participants[0].name, 'Vos');
+  assert.equal(result.data.participants[0].cardCount, playerCardCount);
+  assert(result.data.participants.slice(1).every(player => player.cardCount === 2));
+  const headers = { 'Content-Type': 'application/json', 'X-Admin-Token': result.data.testAdminToken };
   const state = (await json('/api/admin/state', { headers })).data;
   assert.equal(state.demo, true);
   assert.equal(state.game.drawMode, 'automatic');
+  assert.equal(state.status, 'waiting');
+  assert.deepEqual(state.players.map(player => player.name), ['Vos', 'Zoe', 'Mateo', 'Owen'].slice(0, aiCount + 1));
   assert(state.players.every(player => player.nameSet && player.autoMark));
-  return { state, headers };
+  const login = await json('/api/player/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: result.data.playerCode, roomCode: result.data.roomCode, deviceId: `demo-${mode}-${Date.now()}` })
+  });
+  assert.equal(login.response.status, 200, JSON.stringify(login.data));
+  assert.equal(login.data.state.player.name, 'Vos');
+  assert.equal(login.data.state.player.cards.length, playerCardCount);
+  assert.equal(login.data.state.player.autoMarkForced, true);
+  assert.equal(login.data.state.demo.participants.length, aiCount + 1);
+  return { state, headers, response: result.data, playerState: login.data.state };
 }
 
 async function playerLogin(state, playerIndex, deviceId) {
@@ -164,10 +181,11 @@ async function drawMany(adminHeaders, count) {
     await waitForServer();
 
     let result = await json('/healthz');
-    assert.equal(result.data.version, '2026.2');
+    assert.equal(result.data.version, '2026.3');
     const demoHtml = await (await fetch(base + '/demo')).text();
-    assert(demoHtml.includes('Probá el bingo completo'));
-    assert(demoHtml.includes('CREAR DEMOSTRACIÓN'));
+    assert(demoHtml.includes('Jugá una partida real y rápida'));
+    assert(demoHtml.includes('CREAR Y COMENZAR PARTIDA'));
+    assert(demoHtml.includes('Zoe, Mateo y Owen'));
 
     result = await json('/api/master/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password })
@@ -176,6 +194,26 @@ async function drawMany(adminHeaders, count) {
     const adminHeaders = { 'Content-Type': 'application/json', 'X-Admin-Token': result.data.adminToken };
 
     const demo75 = await demoCards(75, 2, 1);
+
+    // La demo debe sortear sola y resolver los reclamos de IA sin administrador.
+    const demo90Flow = await demoCards(90, 2, 1);
+    const aiPlayer = demo90Flow.state.players[1];
+    const aiCard = demo90Flow.state.game.cards.find(card => aiPlayer.cardIds.includes(card.id));
+    const amboRow = aiCard.grid.find(row => row.filter(Number.isFinite).length === 5).filter(Number.isFinite);
+    result = await json('/api/admin/test/draw-order', { method: 'POST', headers: demo90Flow.headers, body: JSON.stringify({ sequence: [amboRow[0], amboRow.at(-1)] }) });
+    assert.equal(result.response.status, 200, JSON.stringify(result.data));
+    result = await json('/api/admin/draw-settings', { method: 'POST', headers: demo90Flow.headers, body: JSON.stringify({ drawMode: 'automatic', autoSeconds: 2 }) });
+    assert.equal(result.response.status, 200, JSON.stringify(result.data));
+    result = await json('/api/admin/start', { method: 'POST', headers: demo90Flow.headers, body: '{}' });
+    assert.equal(result.response.status, 200, JSON.stringify(result.data));
+    let demoClaimState = null;
+    for (let index = 0; index < 160; index++) {
+      demoClaimState = (await json('/api/admin/state', { headers: demo90Flow.headers })).data;
+      if (demoClaimState.claims.some(claim => claim.type === 'ambo' && claim.status === 'confirmed' && claim.playerName === 'Zoe')) break;
+      await sleep(50);
+    }
+    assert(demoClaimState.claims.some(claim => claim.type === 'ambo' && claim.status === 'confirmed' && claim.playerName === 'Zoe'), 'La IA de la demo no reclamó o no fue validada automáticamente.');
+
     const sourceCards = demo75.state.game.cards.slice(0, 2).map(card => ({ ...card }));
     const game = {
       ...demo75.state.game,
@@ -281,7 +319,7 @@ async function drawMany(adminHeaders, count) {
     assert.equal(state.game.drawn.length, 75);
 
     const acta = (await json('/api/admin/acta', { headers: adminHeaders })).data;
-    assert.equal(acta.version, '2026.2');
+    assert.equal(acta.version, '2026.3');
     assert.equal(acta.categories.bingo.status, 'confirmed');
     const bingoWinner = acta.categories.bingo.winners[0];
     assert.equal(bingoWinner.receivedSequence, bingo1.data.receivedSequence);
@@ -302,9 +340,13 @@ async function drawMany(adminHeaders, count) {
 
     // Más de 10 jugadores: automarcado obligatorio y rechazo del modo manual.
     await json('/api/admin/close', { method: 'POST', headers: adminHeaders, body: '{}' });
-    const demo90 = await demoCards(90, 6, 2);
-    const cards11 = demo90.state.game.cards.slice(0, 11);
-    const largeGame = { ...demo90.state.game, id: 'escala-90', drawMode: 'manual', drawn: [], cards: cards11 };
+    const rules90 = { ambocabeza: true, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true };
+    const cards11 = generatedSets[90].slice(0, 11).map((grid, index) => ({
+      id: `large90-${index + 1}`, number: String(index + 1).padStart(3, '0'), name: `Cartón ${index + 1}`,
+      originalName: `Cartón ${index + 1}`, mode: 90, source: 'generated', grid,
+      bets: { ambocabeza: true, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true }
+    }));
+    const largeGame = { id: 'escala-90', number: 90, mode: 90, rules: rules90, drawMode: 'manual', autoSeconds: 10, presenter: 'vero', phase: 'READY', drawn: [], cards: cards11 };
     result = await json('/api/admin/configure', {
       method: 'POST', headers: adminHeaders,
       body: JSON.stringify({
@@ -389,7 +431,7 @@ async function drawMany(adminHeaders, count) {
     assert.equal(state.chat.messages.length, 60);
     controllers.forEach(controller => controller.abort());
 
-    console.log('PRUEBAS BINGO GORDA 2026.2: OK');
+    console.log('PRUEBAS BINGO GORDA 2026.3: OK');
   } catch (error) {
     console.error(error);
     console.error(logs);

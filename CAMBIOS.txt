@@ -38,3 +38,12 @@ AJUSTES DEMOS, IA Y REANUDACIÓN
 - Después de confirmar un premio que no finaliza la partida, se programa una reanudación automática a los 5 segundos.
 - El administrador puede reanudar inmediatamente o elegir MANTENER PAUSADO para cancelar el automático.
 - Vero presenta por nombre a Zoe, Mateo y Owen y los menciona en reclamos/premios importantes de las demos, sin recitar nombres en la prueba masiva.
+
+CIERRE OFICIAL Y TRANSMISIÓN DE GANADORES
+- Al confirmar Bingo, Vero deja de cantar bolillas normales y la partida entra en cierre oficial.
+- Se informa que se extraerán las bolillas faltantes para completar el registro y habilitar el acta.
+- Las bolillas restantes se extraen progresivamente; el acta queda bloqueada hasta completar el bolillero.
+- La transmisión muestra una pantalla de extracción final con progreso y cantidad restante.
+- Al finalizar, la transmisión pasa a un carrusel de cartones ganadores con nombre, premios y jugadas resaltadas.
+- Cada cartón permanece 10 segundos antes de pasar al siguiente y el carrusel queda en loop hasta cerrar la sala.
+- Agregada prueba automática específica del cierre, bloqueo temprano del acta y carrusel de ganadores.

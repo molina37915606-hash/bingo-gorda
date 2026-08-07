@@ -1221,10 +1221,13 @@ class PlayerApp {
         clearTimeout(this.finalSequenceTimer);
         this.finalSequenceTimer = setTimeout(() => {
           if (this.state?.status !== 'finalizing' || (this.state.transition?.id || 'final') !== key) return;
-          this.showSequence('SE RETIRAN LAS ÚLTIMAS BOLILLAS FALTANTES', 'Luego se publicará el resultado oficial.', '');
-          this.speakSequenceOnce(`${key}:remaining`, 'remainingBalls', {});
+          this.showSequence('EXTRACCIÓN FINAL DE BOLILLAS', 'Se completa el bolillero para habilitar el acta oficial.', '');
+          this.speakSequenceOnce(`${key}:remaining`, 'finalExtractionStart', {});
         }, 3400);
       }
+    } else if (status === 'finished' && previous?.status === 'finalizing') {
+      clearInterval(this.sequenceTimer); clearTimeout(this.finalSequenceTimer); $('sequenceOverlay').classList.remove('show');
+      this.speakSequenceOnce(`${this.state.roomCode}:final-complete`, 'finalExtractionDone', {});
     } else if (status === 'starting' && transition) this.runStartSequence(transition);
     else if (status === 'resuming' && transition) this.runResumeSequence(transition);
     else { clearInterval(this.sequenceTimer); clearTimeout(this.finalSequenceTimer); $('sequenceOverlay').classList.remove('show'); }
@@ -1291,7 +1294,7 @@ class PlayerApp {
     utterance.rate = profile.rate || 1; utterance.pitch = profile.pitch || 1; utterance.volume = this.audioVolume;
     if (priority) window.speechSynthesis.cancel(); window.speechSynthesis.speak(utterance);
   }
-  speakBall(number) { this.speak(this.phrases.ball('vero', number, this.state.game.drawn.length, this.state.game.mode)); }
+  speakBall(number) { if (this.state?.bingoConfirmed || ['finalizing','finished'].includes(this.state?.status)) return; this.speak(this.phrases.ball('vero', number, this.state.game.drawn.length, this.state.game.mode)); }
   speakEvent(name, replacements = {}, priority = true) { this.speak(this.phrases.event('vero', name, replacements), priority); }
 
   setAudioEnabled(enabled) {

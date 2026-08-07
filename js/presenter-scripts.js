@@ -65,6 +65,8 @@ const profiles = {
       tripleLineConfirmed: 'Triple línea confirmada. Felicitaciones a {name}, con el cartón {card}.',
       cornersConfirmed: 'Cuatro esquinas confirmadas. Felicitaciones a {name}, con el cartón {card}.',
       bingoConfirmed: '¡Bingo confirmado! Felicitaciones a {name}. El cartón ganador es el {card}.',
+      finalExtractionStart: 'Ahora se extraen las bolillas faltantes para completar el cierre oficial y habilitar la descarga del acta.',
+      finalExtractionDone: 'Extracción final completa. El acta ya está habilitada. A continuación repasamos los cartones ganadores de la partida.',
       rejected: 'El reclamo no fue válido. Revisamos el cartón y la partida puede continuar.',
       leaderChange: '{name} pasa al frente de la carrera con el cartón {card}. Está a {missing} para {prize}.',
       leaderOneAway: 'Atención con {name}. El cartón {card} queda a una sola bolilla de {prize}.',

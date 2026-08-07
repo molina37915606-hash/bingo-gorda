@@ -61,6 +61,9 @@ const LARGE_ROOM_NOTICE_TEXT = 'Si varios cartones completan el mismo premio con
 const RESUME_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_RESUME_SEQUENCE_MS || 5_000));
 const CLAIM_AUTO_RESUME_MS = Math.max(1_000, Number(process.env.BINGO_CLAIM_AUTO_RESUME_MS || 5_000));
 const FINAL_BALLS_SEQUENCE_MS = Math.max(250, Number(process.env.BINGO_FINAL_BALLS_SEQUENCE_MS || 8_000));
+const FINAL_BALLS_LEAD_IN_MS = Math.max(250, Number(process.env.BINGO_FINAL_BALLS_LEAD_IN_MS || 5_500));
+const FINAL_BALLS_MIN_INTERVAL_MS = Math.max(80, Number(process.env.BINGO_FINAL_BALLS_MIN_INTERVAL_MS || 180));
+const FINAL_BALLS_MAX_INTERVAL_MS = Math.max(FINAL_BALLS_MIN_INTERVAL_MS, Number(process.env.BINGO_FINAL_BALLS_MAX_INTERVAL_MS || 850));
 const MAX_TIE_WINNERS_PER_PRIZE = 4;
 const MANUAL_MARK_MAX_PLAYERS = 10;
 const MANUAL_MARK_MAX_CARDS = 40;
@@ -1156,6 +1159,64 @@ function currentAccessContext() {
   return { role: 'owner', name: 'Administrador principal', expiresAt: null, canCreateNewGames: true };
 }
 
+function finalExtractionPayload() {
+  if (!state.active || !state.game || state.status !== 'finalizing' || state.transition?.type !== 'final-balls') return null;
+  const transition = state.transition;
+  const initialDrawnCount = Math.max(0, Number(transition.initialDrawnCount) || 0);
+  const total = Number(state.game.mode) || 0;
+  const drawnCount = state.game.drawn.length;
+  return {
+    active: true,
+    initialDrawnCount,
+    drawnCount,
+    total,
+    extractedAfterBingo: Math.max(0, drawnCount - initialDrawnCount),
+    remaining: Math.max(0, total - drawnCount),
+    remainingInitial: Math.max(0, Number(transition.remainingInitial) || total - initialDrawnCount),
+    leadInEndsAt: transition.leadInEndsAt || null,
+    endsAt: transition.endsAt || null,
+    intervalMs: Math.max(0, Number(transition.intervalMs) || 0)
+  };
+}
+
+function finalShowcasePayload() {
+  if (!state.active || !state.game || state.status !== 'finished') return [];
+  const claims = PRIZE_TYPES.flatMap(type => confirmedClaims(type))
+    .sort((a, b) => new Date(a.resolvedAt || a.createdAt || 0) - new Date(b.resolvedAt || b.createdAt || 0));
+  const grouped = new Map();
+  for (const claim of claims) {
+    const winner = winnerDetails(claim);
+    const key = String(winner.cardId || `${winner.playerName}:${winner.cardNumber}`);
+    if (!grouped.has(key)) grouped.set(key, {
+      cardId: winner.cardId,
+      cardNumber: winner.cardNumber,
+      playerName: winner.playerName,
+      mode: winner.mode,
+      grid: deepCopy(winner.grid || []),
+      firstConfirmedAt: winner.confirmedAt || winner.claimedAt || null,
+      prizes: [],
+      winningNumbers: new Set()
+    });
+    const entry = grouped.get(key);
+    const winningNumbers = uniqueNumbers(winner.winningNumbers || []);
+    winningNumbers.forEach(number => entry.winningNumbers.add(number));
+    entry.prizes.push({
+      type: winner.type,
+      prizeNumber: winner.prizeNumber,
+      prizeLabel: winner.prizeLabel,
+      winningLineLabel: winner.winningLineLabel || (winner.type === 'bingo' ? 'Cartón completo' : null),
+      winningNumbers
+    });
+  }
+  return [...grouped.values()].map((entry, index) => ({
+    ...entry,
+    rank: index + 1,
+    winningNumbers: [...entry.winningNumbers],
+    prizeSummary: entry.prizes.map(prize => prize.prizeLabel).join(' · '),
+    playSummary: [...new Set(entry.prizes.map(prize => prize.winningLineLabel).filter(Boolean))].join(' · ') || 'Jugada confirmada'
+  }));
+}
+
 function broadcastPayload() {
   if (!state.active || !state.game) return { active: false, version: APP_PUBLIC_VERSION };
   const pendingClaim = state.claims.find(claim => claim.status === 'pending') || null;
@@ -1170,6 +1231,10 @@ function broadcastPayload() {
     game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: PRESENTER_ID, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, total: state.game.mode },
     pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, createdAt: pendingClaim.createdAt } : null,
     latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, prizeNumber: latestConfirmed.prizeNumber || 1, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt } : null,
+    bingoConfirmed: prizeStatusPayload().bingo.closed,
+    finalExtraction: finalExtractionPayload(),
+    finalShowcase: finalShowcasePayload(),
+    resultsReady: state.status === 'finished',
     highlightedCards: highlightedBroadcastCards(),
     broadcastUrl: shortBroadcastUrlFor(),
     castAppId: CAST_APP_ID || null,
@@ -2717,10 +2782,66 @@ function clearWorkspaceTransitionTimer(workspace = currentWorkspace()) {
   transitionTimers.delete(workspace.id);
 }
 
+function finalExtractionTiming(remainingBalls) {
+  const count = Math.max(0, Number(remainingBalls) || 0);
+  if (TEST_MODE) return { leadInMs: 45, intervalMs: 12, totalMs: 45 + Math.max(1, count) * 12 };
+  if (currentWorkspace().isDemo) {
+    const leadInMs = 900;
+    const targetMs = Math.max(900, DEMO_FINAL_SEQUENCE_MS - leadInMs);
+    const intervalMs = count ? Math.max(90, Math.min(350, Math.round(targetMs / count))) : 90;
+    return { leadInMs, intervalMs, totalMs: leadInMs + Math.max(1, count) * intervalMs };
+  }
+  const leadInMs = FINAL_BALLS_LEAD_IN_MS;
+  const intervalMs = count
+    ? Math.max(FINAL_BALLS_MIN_INTERVAL_MS, Math.min(FINAL_BALLS_MAX_INTERVAL_MS, Math.round(FINAL_BALLS_SEQUENCE_MS / count)))
+    : FINAL_BALLS_MIN_INTERVAL_MS;
+  return { leadInMs, intervalMs, totalMs: leadInMs + Math.max(1, count) * intervalMs };
+}
+
+function scheduleFinalExtractionStep(workspace = currentWorkspace()) {
+  clearWorkspaceTransitionTimer(workspace);
+  const transition = state.transition;
+  if (!state.active || state.status !== 'finalizing' || transition?.type !== 'final-balls') return;
+  const initialCount = Math.max(0, Number(transition.initialDrawnCount) || 0);
+  const alreadyExtracted = Math.max(0, (state.game?.drawn?.length || 0) - initialCount);
+  const totalRemaining = Math.max(0, Number(transition.remainingInitial) || 0);
+  if (alreadyExtracted >= totalRemaining || (state.game?.drawn?.length || 0) >= Number(state.game?.mode || 0)) {
+    const timer = setTimeout(() => workspaceContext.run(workspace, () => completeTransition()), TEST_MODE ? 10 : 450);
+    transitionTimers.set(workspace.id, timer);
+    return;
+  }
+  const leadInEndsAtMs = new Date(transition.leadInEndsAt || transition.startedAt || Date.now()).getTime();
+  const intervalMs = Math.max(1, Number(transition.intervalMs) || FINAL_BALLS_MIN_INTERVAL_MS);
+  const dueAt = leadInEndsAtMs + alreadyExtracted * intervalMs;
+  const delay = Math.max(0, dueAt - Date.now());
+  const timer = setTimeout(() => workspaceContext.run(workspace, () => {
+    transitionTimers.delete(workspace.id);
+    runFinalExtractionStep();
+  }), delay);
+  transitionTimers.set(workspace.id, timer);
+}
+
+function runFinalExtractionStep() {
+  const workspace = currentWorkspace();
+  if (!state.active || state.status !== 'finalizing' || state.transition?.type !== 'final-balls' || !state.game) return;
+  if (!Array.isArray(state.drawOrder) || state.drawOrder.length !== state.game.mode) state.drawOrder = createSecureDrawOrder(state.game.mode, state.game.drawn);
+  const number = state.drawOrder[state.game.drawn.length];
+  if (Number.isFinite(number)) {
+    state.game.drawn.push(number);
+    state.game.phase = 'FINAL_EXTRACTION';
+    logEvent('ball_drawn', { number, position: state.game.drawn.length, finalVerification: true, source: 'final-extraction' });
+    syncAllAutoMarks();
+    saveState();
+    broadcast();
+  }
+  scheduleFinalExtractionStep(workspace);
+}
+
 function scheduleTransition() {
   const workspace = currentWorkspace();
   clearWorkspaceTransitionTimer(workspace);
   if (!state.active || !state.transition?.endsAt) return;
+  if (state.transition.type === 'final-balls') return scheduleFinalExtractionStep(workspace);
   const delay = Math.max(0, new Date(state.transition.endsAt).getTime() - Date.now());
   const timer = setTimeout(() => workspaceContext.run(workspace, () => completeTransition()), delay);
   transitionTimers.set(workspace.id, timer);
@@ -2744,12 +2865,12 @@ function completeTransition() {
     return;
   }
   if (type === 'final-balls') {
-    const existing = new Set(state.game.drawn || []);
     if (!Array.isArray(state.drawOrder) || state.drawOrder.length !== state.game.mode) state.drawOrder = createSecureDrawOrder(state.game.mode, state.game.drawn);
-    const remaining = state.drawOrder.filter(number => !existing.has(number));
-    for (const number of remaining) {
+    while (state.game.drawn.length < state.game.mode) {
+      const number = state.drawOrder[state.game.drawn.length];
+      if (!Number.isFinite(number)) break;
       state.game.drawn.push(number);
-      logEvent('ball_drawn', { number, position: state.game.drawn.length, finalVerification: true });
+      logEvent('ball_drawn', { number, position: state.game.drawn.length, finalVerification: true, source: 'final-extraction-recovery' });
     }
     syncAllAutoMarks();
     state.status = 'finished';
@@ -2757,6 +2878,7 @@ function completeTransition() {
     state.game.phase = 'ROUND_END';
     state.endedAt = nowIso();
     state.transition = null;
+    logEvent('final_extraction_completed', { round: state.round, balls: state.game.drawn.length });
     logEvent('game_finished', { round: state.round, balls: state.game.drawn.length, automaticFinalExtraction: true });
     archiveCurrentResults();
     saveState();
@@ -3639,10 +3761,20 @@ function resolveClaim(payload) {
   } else if (confirmedClaims('bingo').length) {
     const bingoClaim = confirmedClaims('bingo').at(-1);
     const startedAt = nowIso();
+    const remainingInitial = Math.max(0, Number(state.game.mode || 0) - state.game.drawn.length);
+    const timing = finalExtractionTiming(remainingInitial);
+    const now = Date.now();
     state.status = 'finalizing';
     state.game.phase = 'BINGO_CONFIRMED';
-    state.transition = { id: randomId('transition'), type: 'final-balls', startedAt, endsAt: new Date(Date.now() + (currentWorkspace().isDemo ? (TEST_MODE ? 250 : DEMO_FINAL_SEQUENCE_MS) : FINAL_BALLS_SEQUENCE_MS)).toISOString() };
-    logEvent('bingo_confirmed_final_extraction', { claimId: bingoClaim.id, cardId: bingoClaim.cardId, cardNumber: bingoClaim.cardNumber });
+    state.transition = {
+      id: randomId('transition'), type: 'final-balls', startedAt,
+      initialDrawnCount: state.game.drawn.length,
+      remainingInitial,
+      intervalMs: timing.intervalMs,
+      leadInEndsAt: new Date(now + timing.leadInMs).toISOString(),
+      endsAt: new Date(now + timing.totalMs).toISOString()
+    };
+    logEvent('bingo_confirmed_final_extraction', { claimId: bingoClaim.id, cardId: bingoClaim.cardId, cardNumber: bingoClaim.cardNumber, remainingBalls: remainingInitial, leadInMs: timing.leadInMs, intervalMs: timing.intervalMs });
   } else if (state.game.drawn.length >= state.game.mode) {
     state.status = 'finished';
     state.pauseReason = null;
@@ -3722,6 +3854,7 @@ function winnerDetails(claim) {
 
 function actaPayload() {
   if (!state.active || !state.game) throw new Error('No hay una sala disponible.');
+  if (state.status !== 'finished') throw new Error('El acta se habilita cuando termina la extracción final de bolillas.');
   const claims = PRIZE_TYPES.flatMap(type => confirmedClaims(type))
     .sort((a, b) => new Date(a.createdAt || a.resolvedAt || 0) - new Date(b.createdAt || b.resolvedAt || 0));
   const mode = Number(state.game.mode) === 75 ? 75 : 90;

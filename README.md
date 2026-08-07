@@ -24,6 +24,7 @@ Aplicación web para partidas de bingo de 75 y 90 bolas con administración, jug
 - Reanudación automática 5 segundos después de confirmar un premio, con opción del administrador para mantener la pausa.
 - Cada partida crea automáticamente su modo espectador público.
 - Modo espectador con pantalla completa, efectos, voz de Vero que canta las bolillas y carrera dinámica de cartones.
+- Cierre oficial tras Bingo: extracción progresiva de bolillas restantes, habilitación del acta al completar y carrusel final de cartones ganadores en loop.
 - Link corto de espectador personalizable por el administrador.
 - Integración Chromecast preparada mediante `CAST_APP_ID`.
 - Actas PDF/CSV, copias de seguridad y recuperación.

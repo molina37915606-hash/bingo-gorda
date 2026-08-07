@@ -69,6 +69,13 @@ const CHAT_STICKER_COOLDOWN_MS = 1200;
 const CHAT_STICKER_WINDOW_MS = 10 * 1000;
 const CHAT_STICKER_WINDOW_MAX = 4;
 const CHAT_STICKER_IDS = new Set(['gorda-risa','gorda-festejo','gorda-dinero','gorda-ay-no','gorda-enojada','corazon','aplausos','suerte','dinero','ira','explosion','cerveza']);
+const COMMUNITY_CHAT_MAX_MESSAGES = 120;
+const COMMUNITY_CHAT_MAX_LENGTH = 180;
+const COMMUNITY_CHAT_COOLDOWN_MS = 1800;
+const COMMUNITY_ONLINE_TTL_MS = 45 * 1000;
+const COMMUNITY_FILTER_MAX_TERMS = 200;
+const COMMUNITY_FILTER_TERM_MAX_LENGTH = 60;
+const COMMUNITY_RESERVED_NAMES = /^(la\s*gorda|administraci[oó]n|admin|administrador(?:a)?|sistema|moderador(?:a)?|staff|oficial)$/i;
 const DEMO_TTL_MS = 30 * 60 * 1000;
 const DEMO_IDLE_TTL_MS = 15 * 60 * 1000;
 const DEMO_CLAIM_WINDOW_MS = 1600;
@@ -386,12 +393,112 @@ function loadState(stateFile = OWNER_STATE_FILE) {
   }
 }
 
+function blankCommunity() {
+  return {
+    whatsappGroup: String(process.env.COMMUNITY_WHATSAPP_GROUP || '').trim().slice(0, 500),
+    whatsappNumber: String(process.env.COMMUNITY_WHATSAPP_NUMBER || '').trim().slice(0, 60),
+    chatEnabled: true,
+    blockPhoneNumbers: true,
+    blockWhatsappLinks: true,
+    blockedTerms: [],
+    messages: [],
+    leaderboards: { red_black: [], higher_lower: [] }
+  };
+}
+
+function normalizeCommunityFilterText(value) {
+  return String(value || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('es')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeCommunityBlockedTerm(value) {
+  return normalizeCommunityFilterText(String(value || '').slice(0, COMMUNITY_FILTER_TERM_MAX_LENGTH));
+}
+
+function communityContainsBlockedTerm(text, terms = []) {
+  const normalized = ` ${normalizeCommunityFilterText(text)} `;
+  if (!normalized.trim()) return '';
+  for (const raw of terms) {
+    const term = normalizeCommunityBlockedTerm(raw);
+    if (!term) continue;
+    if (normalized.includes(` ${term} `)) return raw;
+    // Para términos de 4+ caracteres también frena separaciones simples: s.p.a.m / s p a m.
+    const compactTerm = term.replace(/\s+/g, '');
+    if (compactTerm.length >= 4 && !term.includes(' ')) {
+      const chars = compactTerm.split('').map(ch => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      const separated = new RegExp(`(?:^|[^a-z0-9])${chars.join('[^a-z0-9]*')}(?:$|[^a-z0-9])`, 'i');
+      const folded = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
+      if (separated.test(folded)) return raw;
+    }
+  }
+  return '';
+}
+
+function communityContainsWhatsappLink(text) {
+  const value = String(text || '');
+  return /(?:https?:\/\/)?(?:www\.)?(?:wa\.me\/|api\.whatsapp\.com\/|chat\.whatsapp\.com\/|whatsapp\.com\/(?:send|channel)\b)/i.test(value);
+}
+
+function communityContainsPhoneNumber(text) {
+  const value = String(text || '');
+  // Busca secuencias con formato telefónico de 7 a 15 dígitos, permitiendo +, espacios,
+  // guiones, puntos y paréntesis. Números cortos de sala, cartón, bolilla u horarios no coinciden.
+  const candidates = value.match(/(?:\+?\d[\d\s().-]{5,28}\d)/g) || [];
+  for (const candidate of candidates) {
+    const digits = candidate.replace(/\D/g, '');
+    if (digits.length < 7 || digits.length > 15) continue;
+    // Fechas/horarios o repeticiones cortas no llegan a 7 dígitos; esto evita además
+    // capturar una cadena larga formada por varios números independientes del bingo.
+    const groups = candidate.trim().split(/\s+/).filter(Boolean);
+    const groupDigits = groups.map(group => group.replace(/\D/g, '').length);
+    if (groups.length >= 7 && groupDigits.every(length => length === 1)) return true;
+    if (groups.length >= 5 && groupDigits.every(length => length <= 2)) continue;
+    return true;
+  }
+  return false;
+}
+
+function validateCommunityMessageContent(text, community) {
+  if (community.blockWhatsappLinks !== false && communityContainsWhatsappLink(text)) {
+    throw new Error('No está permitido compartir números de teléfono ni datos de contacto en el chat.');
+  }
+  if (community.blockPhoneNumbers !== false && communityContainsPhoneNumber(text)) {
+    throw new Error('No está permitido compartir números de teléfono ni datos de contacto en el chat.');
+  }
+  if (communityContainsBlockedTerm(text, community.blockedTerms || [])) {
+    throw new Error('Tu mensaje contiene contenido no permitido.');
+  }
+}
+
+function normalizeCommunity(raw = {}) {
+  const defaults = blankCommunity();
+  return {
+    whatsappGroup: String(raw.whatsappGroup ?? defaults.whatsappGroup).trim().slice(0, 500),
+    whatsappNumber: String(raw.whatsappNumber ?? defaults.whatsappNumber).trim().slice(0, 60),
+    chatEnabled: raw.chatEnabled !== false,
+    blockPhoneNumbers: raw.blockPhoneNumbers !== false,
+    blockWhatsappLinks: raw.blockWhatsappLinks !== false,
+    blockedTerms: Array.isArray(raw.blockedTerms)
+      ? [...new Set(raw.blockedTerms.map(normalizeCommunityBlockedTerm).filter(Boolean))].slice(0, COMMUNITY_FILTER_MAX_TERMS)
+      : [],
+    messages: Array.isArray(raw.messages) ? raw.messages.slice(-COMMUNITY_CHAT_MAX_MESSAGES) : [],
+    leaderboards: {
+      red_black: Array.isArray(raw.leaderboards?.red_black) ? raw.leaderboards.red_black.slice(0, 60) : [],
+      higher_lower: Array.isArray(raw.leaderboards?.higher_lower) ? raw.leaderboards.higher_lower.slice(0, 60) : []
+    }
+  };
+}
+
 function loadPlatform() {
   try {
     const parsed = JSON.parse(fs.readFileSync(PLATFORM_FILE, 'utf8'));
-    return { version: 23, operators: Array.isArray(parsed.operators) ? parsed.operators : [] };
+    return { version: 24, operators: Array.isArray(parsed.operators) ? parsed.operators : [], community: normalizeCommunity(parsed.community || {}) };
   } catch {
-    return { version: 23, operators: [] };
+    return { version: 24, operators: [], community: blankCommunity() };
   }
 }
 
@@ -459,6 +566,8 @@ const sseClients = new Proxy(new Set(), {
 const adminSessions = new Map();
 const masterSessions = new Map();
 const rateBuckets = new Map();
+const communityVisitors = new Map();
+const communityLastSentAt = new Map();
 
 function currentResultFiles() {
   const workspace = currentWorkspace();
@@ -3994,7 +4103,8 @@ function serveFile(res, filePath) {
     path.join(ROOT, 'transmision.html'),
     path.join(ROOT, 'reglamento.html'),
     path.join(ROOT, 'reglamento.pdf'),
-    path.join(ROOT, 'demo.html')
+    path.join(ROOT, 'demo.html'),
+    path.join(ROOT, 'comunidad.html')
   ]);
   const allowed = allowedHtml.has(normalized) || normalized.startsWith(assetRoot) || normalized.startsWith(jsRoot);
   if (!allowed) return sendJson(res, 403, { error: 'Acceso denegado.' });
@@ -4033,8 +4143,171 @@ function findWorkspaceByBroadcastToken(token) {
   return [...workspaces.values()].find(workspace => workspace.state.roomSettings?.broadcastToken === normalized) || null;
 }
 
+function normalizeCommunityName(value) {
+  const name = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 20);
+  if (name.length < 2) throw new Error('Escribí un nombre o apodo de al menos 2 caracteres.');
+  if (COMMUNITY_RESERVED_NAMES.test(name)) throw new Error('Ese nombre está reservado para mensajes oficiales. Elegí otro.');
+  return name;
+}
+
+function communityWhatsappGroupUrl() {
+  const value = String(platform.community?.whatsappGroup || '').trim();
+  return /^https:\/\/(?:chat\.)?whatsapp\.com\//i.test(value) ? value : '';
+}
+
+function communityWhatsappNumber() {
+  return String(platform.community?.whatsappNumber || ownerWorkspace.state.roomSettings?.whatsapp || '').trim().slice(0, 60);
+}
+
+function communityWhatsappContactUrl() {
+  const digits = communityWhatsappNumber().replace(/\D/g, '');
+  return digits.length >= 8 ? `https://wa.me/${digits}` : '';
+}
+
+function communityActiveGamePayload() {
+  const current = ownerWorkspace.state;
+  if (!current?.active || !current.game || current.status === 'closed' || current.status === 'finished') return null;
+  const roomType = current.roomSettings?.roomType === 'test' ? 'test' : 'official';
+  const canJoin = roomType === 'test' && current.status === 'waiting' && Boolean(current.roomSettings?.joinOpen);
+  const broadcastToken = current.roomSettings?.transmission?.enabled ? current.roomSettings?.broadcastToken : null;
+  return {
+    roomCode: current.roomCode,
+    mode: Number(current.game.mode) === 75 ? 75 : 90,
+    status: current.status,
+    playerCount: Array.isArray(current.players) ? current.players.filter(player => player.selectionConfirmed || roomType === 'test').length : 0,
+    roomType,
+    canJoin,
+    joinUrl: canJoin ? `/jugador?sala=${encodeURIComponent(current.roomCode)}&prueba=1` : '',
+    transmissionUrl: broadcastToken ? `/transmision/${encodeURIComponent(broadcastToken)}` : '',
+    transmissionEnabled: Boolean(broadcastToken)
+  };
+}
+
+function pruneCommunityVisitors() {
+  const cutoff = Date.now() - COMMUNITY_ONLINE_TTL_MS;
+  for (const [id, seenAt] of communityVisitors) if (seenAt < cutoff) communityVisitors.delete(id);
+}
+
+function communityStatePayload(visitorId = '') {
+  const id = String(visitorId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  if (id) communityVisitors.set(id, Date.now());
+  pruneCommunityVisitors();
+  const community = platform.community ||= blankCommunity();
+  return {
+    now: nowIso(),
+    chatEnabled: community.chatEnabled !== false,
+    maxLength: COMMUNITY_CHAT_MAX_LENGTH,
+    messages: (community.messages || []).slice(-60),
+    onlineCount: communityVisitors.size,
+    whatsapp: {
+      groupUrl: communityWhatsappGroupUrl(),
+      contactUrl: communityWhatsappContactUrl(),
+      number: communityWhatsappNumber()
+    },
+    activeGame: communityActiveGamePayload(),
+    leaderboards: {
+      red_black: (community.leaderboards?.red_black || []).slice(0, 8),
+      higher_lower: (community.leaderboards?.higher_lower || []).slice(0, 8)
+    }
+  };
+}
+
+function appendCommunityMessage(req, payload = {}) {
+  const community = platform.community ||= blankCommunity();
+  if (community.chatEnabled === false) throw new Error('El chat de la comunidad está pausado.');
+  const name = normalizeCommunityName(payload.name);
+  const visitorId = String(payload.visitorId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  if (!visitorId) throw new Error('No se pudo identificar este dispositivo. Recargá la página.');
+  const text = String(payload.text || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, COMMUNITY_CHAT_MAX_LENGTH);
+  if (!text) throw new Error('Escribí un mensaje.');
+  validateCommunityMessageContent(text, community);
+  const now = Date.now();
+  const last = Number(communityLastSentAt.get(visitorId)) || 0;
+  if (now - last < COMMUNITY_CHAT_COOLDOWN_MS) throw new Error('Esperá un momento antes de enviar otro mensaje.');
+  communityLastSentAt.set(visitorId, now);
+  communityVisitors.set(visitorId, now);
+  const message = { id: randomId('community'), role: 'guest', visitorId, name, text, createdAt: nowIso() };
+  community.messages ||= [];
+  community.messages.push(message);
+  if (community.messages.length > COMMUNITY_CHAT_MAX_MESSAGES) community.messages.splice(0, community.messages.length - COMMUNITY_CHAT_MAX_MESSAGES);
+  savePlatform();
+  return message;
+}
+
+function submitCommunityScore(payload = {}) {
+  const community = platform.community ||= blankCommunity();
+  const gameType = ['red_black','higher_lower'].includes(String(payload.gameType)) ? String(payload.gameType) : '';
+  if (!gameType) throw new Error('Minijuego no válido.');
+  const name = normalizeCommunityName(payload.name);
+  const visitorId = String(payload.visitorId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  if (!visitorId) throw new Error('No se pudo identificar este dispositivo.');
+  const score = Math.max(0, Math.min(999, Math.floor(Number(payload.score) || 0)));
+  const board = community.leaderboards[gameType] ||= [];
+  const existing = board.find(item => item.visitorId === visitorId);
+  if (existing) { existing.name = name; existing.bestScore = Math.max(Number(existing.bestScore) || 0, score); existing.updatedAt = nowIso(); }
+  else board.push({ visitorId, name, bestScore: score, updatedAt: nowIso() });
+  board.sort((a, b) => (Number(b.bestScore) || 0) - (Number(a.bestScore) || 0) || String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')));
+  community.leaderboards[gameType] = board.slice(0, 60);
+  savePlatform();
+  return communityStatePayload(visitorId);
+}
+
+function updateCommunitySettings(payload = {}) {
+  const community = platform.community ||= blankCommunity();
+  if (payload.whatsappGroup !== undefined) {
+    const value = String(payload.whatsappGroup || '').trim().slice(0, 500);
+    if (value && !/^https:\/\/(?:chat\.)?whatsapp\.com\//i.test(value)) throw new Error('Pegá un enlace válido de invitación de WhatsApp.');
+    community.whatsappGroup = value;
+  }
+  if (payload.whatsappNumber !== undefined) community.whatsappNumber = String(payload.whatsappNumber || '').trim().slice(0, 60);
+  if (payload.chatEnabled !== undefined) community.chatEnabled = Boolean(payload.chatEnabled);
+  if (payload.blockPhoneNumbers !== undefined) community.blockPhoneNumbers = Boolean(payload.blockPhoneNumbers);
+  if (payload.blockWhatsappLinks !== undefined) community.blockWhatsappLinks = Boolean(payload.blockWhatsappLinks);
+  savePlatform();
+  return communityAdminPayload();
+}
+
+function moderateCommunity(payload = {}) {
+  const community = platform.community ||= blankCommunity();
+  const action = String(payload.action || '').toLowerCase();
+  if (action === 'clear') community.messages = [];
+  else if (action === 'delete') community.messages = (community.messages || []).filter(item => item.id !== String(payload.messageId || ''));
+  else if (action === 'block-term') {
+    const term = normalizeCommunityBlockedTerm(payload.term);
+    if (term.length < 2) throw new Error('Escribí una palabra o frase de al menos 2 caracteres.');
+    community.blockedTerms ||= [];
+    if (!community.blockedTerms.includes(term)) community.blockedTerms.unshift(term);
+    community.blockedTerms = community.blockedTerms.slice(0, COMMUNITY_FILTER_MAX_TERMS);
+    if (payload.removeMatchingMessages === true) {
+      community.messages = (community.messages || []).filter(item => !communityContainsBlockedTerm(item.text, [term]));
+    }
+  }
+  else if (action === 'unblock-term') {
+    const term = normalizeCommunityBlockedTerm(payload.term);
+    community.blockedTerms = (community.blockedTerms || []).filter(item => normalizeCommunityBlockedTerm(item) !== term);
+  }
+  else throw new Error('Acción de moderación no válida.');
+  savePlatform();
+  return communityAdminPayload();
+}
+
+function communityAdminPayload() {
+  const community = platform.community ||= blankCommunity();
+  return {
+    communityUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/comunidad`,
+    whatsappGroup: community.whatsappGroup || '',
+    whatsappNumber: community.whatsappNumber || '',
+    chatEnabled: community.chatEnabled !== false,
+    blockPhoneNumbers: community.blockPhoneNumbers !== false,
+    blockWhatsappLinks: community.blockWhatsappLinks !== false,
+    blockedTerms: (community.blockedTerms || []).slice(0, COMMUNITY_FILTER_MAX_TERMS),
+    messages: (community.messages || []).slice(-COMMUNITY_CHAT_MAX_MESSAGES),
+    leaderboards: community.leaderboards || { red_black: [], higher_lower: [] }
+  };
+}
+
 function masterStatePayload() {
-  return { version: APP_PUBLIC_VERSION, now: nowIso(), ownerUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/admin`, operatorsEnabled: false };
+  return { version: APP_PUBLIC_VERSION, now: nowIso(), ownerUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/admin`, communityUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/comunidad`, operatorsEnabled: false };
 }
 
 async function handleMasterApi(req, res, url) {
@@ -4052,6 +4325,9 @@ async function handleMasterApi(req, res, url) {
   }
   if (!isMasterAuthorized(req, url)) return sendJson(res, 401, { error: 'Ingresá al panel principal.' });
   if (url.pathname === '/api/master/state' && req.method === 'GET') return sendJson(res, 200, masterStatePayload());
+  if (url.pathname === '/api/master/community' && req.method === 'GET') return sendJson(res, 200, communityAdminPayload());
+  if (url.pathname === '/api/master/community/settings' && req.method === 'POST') return sendJson(res, 200, updateCommunitySettings(await readJson(req)));
+  if (url.pathname === '/api/master/community/moderate' && req.method === 'POST') return sendJson(res, 200, moderateCommunity(await readJson(req)));
   if (url.pathname === '/api/master/admin-session' && req.method === 'POST') {
     return sendJson(res, 200, { adminToken: createAdminSession({ workspaceId: 'owner', role: 'owner' }) });
   }
@@ -4115,6 +4391,16 @@ async function handleApi(req, res, url) {
   try {
     if (url.pathname.startsWith('/api/master/')) return await handleMasterApi(req, res, url);
     if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso(), version: APP_PUBLIC_VERSION });
+    if (url.pathname === '/api/community/state' && req.method === 'GET') return sendJson(res, 200, communityStatePayload(url.searchParams.get('visitorId')));
+    if (url.pathname === '/api/community/chat' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-chat', 35, 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados mensajes. Esperá un momento.' });
+      const message = appendCommunityMessage(req, await readJson(req));
+      return sendJson(res, 200, { message, state: communityStatePayload(message.visitorId) });
+    }
+    if (url.pathname === '/api/community/score' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-score', 80, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados puntajes enviados. Probá más tarde.' });
+      return sendJson(res, 200, submitCommunityScore(await readJson(req)));
+    }
 
     if (url.pathname === '/api/demo/create' && req.method === 'POST') {
       if (!consumeRate(req, 'demo-create', 5, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Se alcanzó el límite de demostraciones. Probá más tarde.' });
@@ -4282,6 +4568,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/admin-principal' || url.pathname === '/admin-principal/') return serveFile(res, path.join(ROOT, 'admin-principal.html'));
   if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'admin.html'));
   if (url.pathname === '/demo' || url.pathname === '/demo/') return serveFile(res, path.join(ROOT, 'demo.html'));
+  if (url.pathname === '/comunidad' || url.pathname === '/comunidad/' || url.pathname === '/comunidad.html') return serveFile(res, path.join(ROOT, 'comunidad.html'));
   if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return sendJson(res, 404, { error: 'Los accesos temporales están deshabilitados.' });
   if (/^\/transmision\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'transmision.html'));
   if (url.pathname === '/jugador' || url.pathname === '/jugador/') return serveFile(res, path.join(ROOT, 'jugador.html'));

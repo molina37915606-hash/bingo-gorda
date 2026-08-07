@@ -1,0 +1,17 @@
+REDISEÑO DE TRANSMISIÓN - 2026-08-07
+
+- Pantalla de transmisión rediseñada para ocupar 100% del viewport sin scroll general.
+- Distribución específica para escritorio y teléfonos en orientación vertical.
+- Cartones destacados presentados como tarjetas visuales, con mejor jerarquía y legibilidad.
+- En celular se muestra un cartón protagonista por vez; en escritorio se muestran varios según el ancho disponible.
+- Rotación de cartones implementada usando la configuración existente de 15/20/30/60 segundos.
+- Las opciones "Mostrar nombres" y "Mostrar progreso" ahora afectan realmente la transmisión.
+- Se integró el cantador actual (Vero, Vivi, Josu o Daia) usando los recursos ya incluidos en el proyecto.
+- Reclamos pendientes ahora aparecen como aviso pequeño sin bloquear la transmisión.
+- Premios confirmados distintos de Bingo usan una placa dinámica reutilizable "¡HAY PREMIO!".
+- Bingo confirmado muestra una placa especial a pantalla completa durante unos segundos.
+- Cartones confirmados que estén entre los destacados reciben tratamiento visual de ganador.
+- Chat reducido y adaptativo para no desplazar el contenido principal.
+- Cuando chat o cartones están desactivados, el resto de la transmisión aprovecha automáticamente el espacio.
+- Se respetan safe areas/notch y unidades dinámicas de viewport en móviles.
+- No se agregaron imágenes nuevas; se reutilizan logo y cantadores existentes.

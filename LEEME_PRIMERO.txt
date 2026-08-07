@@ -7,7 +7,9 @@ LA GORDA - BINGO ONLINE
 5. Las salas oficiales usan códigos individuales para jugadores con pago confirmado.
 6. El panel de sorteo reúne bolillero, reclamos, conectados y chat en una sola pantalla.
 7. La transmisión es opcional y puede mostrar chat y cuatro cartones destacados.
-8. El minijuego de espera no afecta el bingo ni los premios.
-9. Ejecutá npm test antes de publicar cambios.
+8. La comunidad pública está en http://localhost:3210/comunidad y reúne WhatsApp, chat social y minijuegos.
+9. Configurá el grupo y el número desde ADMINISTRACIÓN PRINCIPAL > COMUNIDAD.
+10. El minijuego de espera y los minijuegos de comunidad no afectan el bingo ni los premios.
+11. Ejecutá npm test antes de publicar cambios.
 
 IMPORTANTE: en producción configurá BINGO_DATA_DIR sobre almacenamiento persistente.

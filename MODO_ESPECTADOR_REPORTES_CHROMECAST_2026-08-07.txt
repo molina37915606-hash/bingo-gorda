@@ -1,0 +1,32 @@
+LA GORDA - BINGO ONLINE
+MODO ESPECTADOR, REPORTES Y TV · 2026-08-07
+
+COMUNIDAD / MODERACIÓN
+- Se corrigió el campo manual de palabras y frases bloqueadas para escritura, pegado y Enter.
+- Cada mensaje ajeno del chat público muestra una bandera ⚑ muy discreta.
+- Antes de reportar se pide confirmación para evitar toques accidentales.
+- Reportar no oculta ni elimina el mensaje.
+- Cada dispositivo puede reportar un mismo mensaje una sola vez y hay límite anti-spam.
+- Administración > Comunidad incluye Chat público en vivo.
+- Hay una bandeja separada de Mensajes reportados, ordenada por cantidad de reportes.
+- El operador puede eliminar un mensaje o censurar una palabra/frase desde el mensaje reportado.
+- Un reporte permanece pendiente hasta que el operador resuelve el contenido.
+
+MODO ESPECTADOR
+- Toda partida crea automáticamente su transmisión/modo espectador.
+- Ya no existe la opción de crear una sala sin transmisión.
+- Comunidad muestra VER PARTIDA cuando hay una partida activa.
+- El jugador tiene acceso 📺 desde su cartón.
+- El administrador puede abrir/configurar la transmisión en cualquier momento.
+- Cada sala crea un link corto automático /v/xxxxxx.
+- El administrador puede personalizar el alias del link corto.
+- El link largo anterior sigue siendo compatible internamente.
+
+CHROMECAST
+- Se agregó el botón 📺 CHROMECAST en administrador, jugador y modo espectador.
+- Se agregó /cast-receiver como receptor web de LA GORDA.
+- Para habilitar Chromecast en producción hay que registrar esa URL como Custom Web Receiver en Google Cast, obtener su App ID y configurar CAST_APP_ID en el servidor.
+- El sitio publicado debe usar HTTPS para Google Cast.
+- Sin CAST_APP_ID, el resto del modo espectador y los links funcionan normalmente; el botón informa que Chromecast falta configurar.
+
+Se mantienen sonido, pantalla completa, carrera dinámica de cartones, chat, stickers y minijuegos.

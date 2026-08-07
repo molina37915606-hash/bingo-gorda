@@ -35,6 +35,7 @@ const HOST = '0.0.0.0';
 const ONLINE_MODE = process.env.RENDER === 'true' || process.env.ONLINE_MODE === 'true';
 const TEST_MODE = process.env.BINGO_TEST_MODE === 'true';
 const PUBLIC_URL = String(process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '').replace(/\/+$/, '');
+const CAST_APP_ID = String(process.env.CAST_APP_ID || '').trim();
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
 const MASTER_ADMIN_PASSWORD = String(process.env.MASTER_ADMIN_PASSWORD || ADMIN_PASSWORD || '');
 const BINGO_TIMEZONE = String(process.env.BINGO_TIMEZONE || 'America/Argentina/Buenos_Aires');
@@ -78,6 +79,8 @@ const COMMUNITY_STICKER_WINDOW_MAX = 4;
 const COMMUNITY_ONLINE_TTL_MS = 45 * 1000;
 const COMMUNITY_FILTER_MAX_TERMS = 200;
 const COMMUNITY_FILTER_TERM_MAX_LENGTH = 60;
+const COMMUNITY_REPORT_WINDOW_MS = 60 * 60 * 1000;
+const COMMUNITY_REPORT_WINDOW_MAX = 12;
 const COMMUNITY_RESERVED_NAMES = /^(la\s*gorda|administraci[oó]n|admin|administrador(?:a)?|sistema|moderador(?:a)?|staff|oficial)$/i;
 const DEMO_TTL_MS = 30 * 60 * 1000;
 const DEMO_IDLE_TTL_MS = 15 * 60 * 1000;
@@ -258,11 +261,12 @@ function blankState() {
       showMercadoPago: true,
       argentinaHint: true,
       broadcastToken: null,
+      broadcastAlias: null,
       roomType: 'official',
       joinOpen: false,
       maxOpenPlayers: 10,
       presenterVoiceGender: 'female',
-      transmission: { enabled: false, showChat: true, showCards: true, showNames: true, showProgress: true, rotationSeconds: 30 }
+      transmission: { enabled: true, showChat: true, showCards: true, showNames: true, showProgress: true, rotationSeconds: 30 }
     },
     assignmentTimer: {
       enabled: false,
@@ -329,11 +333,16 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.showMercadoPago = merged.roomSettings.showMercadoPago !== false;
     merged.roomSettings.argentinaHint = merged.roomSettings.argentinaHint !== false;
     merged.roomSettings.broadcastToken = merged.roomSettings.broadcastToken ? String(merged.roomSettings.broadcastToken) : null;
+    merged.roomSettings.broadcastAlias = merged.roomSettings.broadcastAlias ? String(merged.roomSettings.broadcastAlias).trim().toLowerCase() : null;
     merged.roomSettings.roomType = merged.roomSettings.roomType === 'test' ? 'test' : 'official';
     merged.roomSettings.joinOpen = Boolean(merged.roomSettings.joinOpen);
     merged.roomSettings.maxOpenPlayers = Math.max(2, Math.min(10, Number(merged.roomSettings.maxOpenPlayers) || 10));
     merged.roomSettings.presenterVoiceGender = merged.roomSettings.presenterVoiceGender === 'male' ? 'male' : 'female';
-    merged.roomSettings.transmission = { enabled: Boolean(merged.roomSettings.transmission?.enabled), showChat: merged.roomSettings.transmission?.showChat !== false, showCards: merged.roomSettings.transmission?.showCards !== false, showNames: merged.roomSettings.transmission?.showNames !== false, showProgress: merged.roomSettings.transmission?.showProgress !== false, rotationSeconds: [15,20,30,60].includes(Number(merged.roomSettings.transmission?.rotationSeconds)) ? Number(merged.roomSettings.transmission.rotationSeconds) : 30 };
+    merged.roomSettings.transmission = { enabled: true, showChat: merged.roomSettings.transmission?.showChat !== false, showCards: merged.roomSettings.transmission?.showCards !== false, showNames: merged.roomSettings.transmission?.showNames !== false, showProgress: merged.roomSettings.transmission?.showProgress !== false, rotationSeconds: [15,20,30,60].includes(Number(merged.roomSettings.transmission?.rotationSeconds)) ? Number(merged.roomSettings.transmission.rotationSeconds) : 30 };
+    if (merged.active) {
+      merged.roomSettings.broadcastToken ||= randomId('live');
+      merged.roomSettings.broadcastAlias ||= randomCode(6).toLowerCase();
+    }
     const legacyWaitingLeaderboard = Array.isArray(parsed.waitingGame?.leaderboard) ? parsed.waitingGame.leaderboard.slice(0, 60) : [];
     merged.waitingGame = {
       type: 'both',
@@ -488,7 +497,13 @@ function normalizeCommunity(raw = {}) {
     blockedTerms: Array.isArray(raw.blockedTerms)
       ? [...new Set(raw.blockedTerms.map(normalizeCommunityBlockedTerm).filter(Boolean))].slice(0, COMMUNITY_FILTER_MAX_TERMS)
       : [],
-    messages: Array.isArray(raw.messages) ? raw.messages.slice(-COMMUNITY_CHAT_MAX_MESSAGES) : [],
+    messages: Array.isArray(raw.messages) ? raw.messages.slice(-COMMUNITY_CHAT_MAX_MESSAGES).map(message => ({
+      ...message,
+      reports: Array.isArray(message?.reports) ? message.reports
+        .filter(report => report && report.visitorId)
+        .slice(-50)
+        .map(report => ({ visitorId: String(report.visitorId).slice(0,80), createdAt: String(report.createdAt || '') })) : []
+    })) : [],
     leaderboards: {
       red_black: Array.isArray(raw.leaderboards?.red_black) ? raw.leaderboards.red_black.slice(0, 60) : [],
       higher_lower: Array.isArray(raw.leaderboards?.higher_lower) ? raw.leaderboards.higher_lower.slice(0, 60) : []
@@ -573,6 +588,7 @@ const communityVisitors = new Map();
 const communityLastSentAt = new Map();
 const communityLastStickerAt = new Map();
 const communityStickerSentAt = new Map();
+const communityReportSentAt = new Map();
 
 function currentResultFiles() {
   const workspace = currentWorkspace();
@@ -1137,6 +1153,8 @@ function broadcastPayload() {
     pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, createdAt: pendingClaim.createdAt } : null,
     latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, prizeNumber: latestConfirmed.prizeNumber || 1, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt } : null,
     highlightedCards: highlightedBroadcastCards(),
+    broadcastUrl: shortBroadcastUrlFor(),
+    castAppId: CAST_APP_ID || null,
     updatedAt: state.updatedAt
   };
 }
@@ -1211,7 +1229,9 @@ function adminPayload() {
     deviceTransferRequests: (state.deviceTransferRequests || []).filter(request => request.status === 'pending'),
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
     accessContext: currentAccessContext(),
-    broadcastUrl: state.roomSettings?.broadcastToken ? `${PUBLIC_URL || `http://localhost:${PORT}`}/transmision/${encodeURIComponent(state.roomSettings.broadcastToken)}` : null,
+    broadcastUrl: shortBroadcastUrlFor(),
+    broadcastLongUrl: state.roomSettings?.broadcastToken ? `${PUBLIC_URL || `http://localhost:${PORT}`}/transmision/${encodeURIComponent(state.roomSettings.broadcastToken)}` : null,
+    castAppId: CAST_APP_ID || null,
     joinUrl: state.roomSettings?.roomType === 'test' && state.roomCode ? `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode)}&prueba=1` : `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode || '')}`,
     lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`),
     localUrl: `http://localhost:${PORT}`,
@@ -1272,6 +1292,8 @@ function playerPayload(player) {
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
     readiness: playerPrizeReadiness(player),
     publicClaims: publicClaimsPayload(),
+    broadcastUrl: shortBroadcastUrlFor(),
+    castAppId: CAST_APP_ID || null,
     demo: currentWorkspace().isDemo ? {
       active: true,
       label: state.demo?.label || 'DEMOSTRACIÓN — SIN VALIDEZ OFICIAL',
@@ -1547,7 +1569,8 @@ function createSimpleRoom(payload = {}) {
       roomType, joinOpen: roomType === 'test', maxOpenPlayers: 10,
       presenterVoiceGender: payload.presenterVoiceGender === 'male' ? 'male' : 'female',
       broadcastToken: randomId('live'),
-      transmission: { enabled: Boolean(payload.transmission?.enabled), showChat: payload.transmission?.showChat !== false, showCards: payload.transmission?.showCards !== false, showNames: payload.transmission?.showNames !== false, showProgress: payload.transmission?.showProgress !== false, rotationSeconds: [15,20,30,60].includes(Number(payload.transmission?.rotationSeconds)) ? Number(payload.transmission.rotationSeconds) : 30 }
+      broadcastAlias: freshBroadcastAlias(currentWorkspace().id),
+      transmission: { enabled: true, showChat: payload.transmission?.showChat !== false, showCards: payload.transmission?.showCards !== false, showNames: payload.transmission?.showNames !== false, showProgress: payload.transmission?.showProgress !== false, rotationSeconds: [15,20,30,60].includes(Number(payload.transmission?.rotationSeconds)) ? Number(payload.transmission.rotationSeconds) : 30 }
     },
     waitingGame: { type: 'both', leaderboard: [], leaderboards: { red_black: [], higher_lower: [] } },
     drawOrder: createSecureDrawOrder(game.mode), game, players: [], cardReservations: {}, claims: [], eventLog: [],
@@ -1874,7 +1897,7 @@ function createAdminSimulationRoom(payload = {}) {
       showMercadoPago: false,
       argentinaHint: true,
       presenterVoiceGender: payload.presenterVoiceGender === 'male' ? 'male' : 'female',
-      transmission: { enabled: false, showChat: true, showCards: true, showNames: false, showProgress: true, rotationSeconds: 30 }
+      transmission: { enabled: true, showChat: true, showCards: true, showNames: false, showProgress: true, rotationSeconds: 30 }
     },
     assignmentTimer: { enabled: false, durationMinutes: 10 }
   });
@@ -2293,11 +2316,12 @@ function configureRoom(payload) {
       showMercadoPago: payload.roomSettings?.showMercadoPago !== false,
       argentinaHint: payload.roomSettings?.argentinaHint !== false,
       broadcastToken: randomId('live'),
+      broadcastAlias: freshBroadcastAlias(currentWorkspace().id),
       roomType: payload.roomSettings?.roomType === 'test' ? 'test' : 'official',
       joinOpen: Boolean(payload.roomSettings?.joinOpen),
       maxOpenPlayers: Math.max(2, Math.min(10, Number(payload.roomSettings?.maxOpenPlayers) || 10)),
       presenterVoiceGender: payload.roomSettings?.presenterVoiceGender === 'male' ? 'male' : 'female',
-      transmission: { enabled: Boolean(payload.roomSettings?.transmission?.enabled), showChat: payload.roomSettings?.transmission?.showChat !== false, showCards: payload.roomSettings?.transmission?.showCards !== false, showNames: payload.roomSettings?.transmission?.showNames !== false, showProgress: payload.roomSettings?.transmission?.showProgress !== false, rotationSeconds: [15,20,30,60].includes(Number(payload.roomSettings?.transmission?.rotationSeconds)) ? Number(payload.roomSettings.transmission.rotationSeconds) : 30 }
+      transmission: { enabled: true, showChat: payload.roomSettings?.transmission?.showChat !== false, showCards: payload.roomSettings?.transmission?.showCards !== false, showNames: payload.roomSettings?.transmission?.showNames !== false, showProgress: payload.roomSettings?.transmission?.showProgress !== false, rotationSeconds: [15,20,30,60].includes(Number(payload.roomSettings?.transmission?.rotationSeconds)) ? Number(payload.roomSettings.transmission.rotationSeconds) : 30 }
     },
     assignmentTimer: {
       enabled: Boolean(payload.assignmentTimer?.enabled),
@@ -2785,7 +2809,7 @@ function updateRoomSettings(payload) {
   if (payload.showMercadoPago !== undefined) state.roomSettings.showMercadoPago = payload.showMercadoPago !== false;
   if (payload.argentinaHint !== undefined) state.roomSettings.argentinaHint = payload.argentinaHint !== false;
   if (payload.transmission && typeof payload.transmission === 'object') state.roomSettings.transmission = {
-    enabled: Boolean(payload.transmission.enabled),
+    enabled: true,
     showChat: payload.transmission.showChat !== false,
     showCards: payload.transmission.showCards !== false,
     showNames: payload.transmission.showNames !== false,
@@ -2793,6 +2817,14 @@ function updateRoomSettings(payload) {
     rotationSeconds: [15,20,30,60].includes(Number(payload.transmission.rotationSeconds)) ? Number(payload.transmission.rotationSeconds) : 30
   };
   state.roomSettings.broadcastToken ||= randomId('live');
+  state.roomSettings.broadcastAlias ||= freshBroadcastAlias(currentWorkspace().id);
+  if (payload.broadcastAlias !== undefined) {
+    const alias = normalizeBroadcastAlias(payload.broadcastAlias);
+    if (alias.length < 3) throw new Error('El link corto debe tener al menos 3 caracteres.');
+    if (broadcastAliasTaken(alias, currentWorkspace().id)) throw new Error('Ese link corto ya está en uso. Elegí otro.');
+    state.roomSettings.broadcastAlias = alias;
+  }
+  state.roomSettings.transmission.enabled = true;
   logEvent('room_settings_updated', { ...state.roomSettings });
   saveState();
   broadcast();
@@ -4205,10 +4237,31 @@ function findWorkspaceByTransfer(requestId, deviceId = '') {
   return [...workspaces.values()].find(workspace => workspace.state.deviceTransferRequests?.some(request => request.id === String(requestId || '') && (!deviceId || request.deviceId === String(deviceId)))) || null;
 }
 
+function normalizeBroadcastAlias(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 24);
+}
+
+function broadcastAliasTaken(alias, exceptWorkspaceId = '') {
+  const normalized = normalizeBroadcastAlias(alias);
+  return [...workspaces.values()].some(workspace => workspace.id !== exceptWorkspaceId && normalizeBroadcastAlias(workspace.state.roomSettings?.broadcastAlias) === normalized);
+}
+
+function freshBroadcastAlias(exceptWorkspaceId = '') {
+  let alias = '';
+  do { alias = randomCode(6).toLowerCase(); } while (broadcastAliasTaken(alias, exceptWorkspaceId));
+  return alias;
+}
+
 function findWorkspaceByBroadcastToken(token) {
-  const normalized = String(token || '');
+  const normalized = String(token || '').trim();
   if (!normalized) return null;
-  return [...workspaces.values()].find(workspace => workspace.state.roomSettings?.broadcastToken === normalized) || null;
+  const alias = normalizeBroadcastAlias(normalized);
+  return [...workspaces.values()].find(workspace => workspace.state.roomSettings?.broadcastToken === normalized || normalizeBroadcastAlias(workspace.state.roomSettings?.broadcastAlias) === alias) || null;
+}
+
+function shortBroadcastUrlFor(workspace = currentWorkspace()) {
+  const alias = normalizeBroadcastAlias(workspace?.state?.roomSettings?.broadcastAlias);
+  return alias ? `${PUBLIC_URL || `http://localhost:${PORT}`}/v/${encodeURIComponent(alias)}` : null;
 }
 
 function normalizeCommunityName(value) {
@@ -4237,7 +4290,9 @@ function communityActiveGamePayload() {
   if (!current?.active || !current.game || current.status === 'closed' || current.status === 'finished') return null;
   const roomType = current.roomSettings?.roomType === 'test' ? 'test' : 'official';
   const canJoin = roomType === 'test' && current.status === 'waiting' && Boolean(current.roomSettings?.joinOpen);
-  const broadcastToken = current.roomSettings?.transmission?.enabled ? current.roomSettings?.broadcastToken : null;
+  current.roomSettings.broadcastToken ||= randomId('live');
+  current.roomSettings.broadcastAlias ||= freshBroadcastAlias(ownerWorkspace.id);
+  const broadcastToken = current.roomSettings.broadcastToken;
   return {
     roomCode: current.roomCode,
     mode: Number(current.game.mode) === 75 ? 75 : 90,
@@ -4246,7 +4301,7 @@ function communityActiveGamePayload() {
     roomType,
     canJoin,
     joinUrl: canJoin ? `/jugador?sala=${encodeURIComponent(current.roomCode)}&prueba=1` : '',
-    transmissionUrl: broadcastToken ? `/transmision/${encodeURIComponent(broadcastToken)}` : '',
+    transmissionUrl: broadcastToken ? `/v/${encodeURIComponent(current.roomSettings.broadcastAlias)}` : '',
     transmissionEnabled: Boolean(broadcastToken)
   };
 }
@@ -4265,7 +4320,11 @@ function communityStatePayload(visitorId = '') {
     now: nowIso(),
     chatEnabled: community.chatEnabled !== false,
     maxLength: COMMUNITY_CHAT_MAX_LENGTH,
-    messages: (community.messages || []).slice(-60),
+    messages: (community.messages || []).slice(-60).map(message => {
+      const reports = Array.isArray(message.reports) ? message.reports : [];
+      const { reports: _privateReports, ...publicMessage } = message;
+      return { ...publicMessage, reportedByMe: Boolean(id && reports.some(report => report.visitorId === id)) };
+    }),
     onlineCount: communityVisitors.size,
     whatsapp: {
       groupUrl: communityWhatsappGroupUrl(),
@@ -4307,12 +4366,32 @@ function appendCommunityMessage(req, payload = {}) {
     communityLastSentAt.set(visitorId, now);
   }
   communityVisitors.set(visitorId, now);
-  const message = { id: randomId('community'), role: 'guest', visitorId, name, type: isSticker ? 'sticker' : 'text', text, stickerId: isSticker ? stickerId : null, createdAt: nowIso() };
+  const message = { id: randomId('community'), role: 'guest', visitorId, name, type: isSticker ? 'sticker' : 'text', text, stickerId: isSticker ? stickerId : null, createdAt: nowIso(), reports: [] };
   community.messages ||= [];
   community.messages.push(message);
   if (community.messages.length > COMMUNITY_CHAT_MAX_MESSAGES) community.messages.splice(0, community.messages.length - COMMUNITY_CHAT_MAX_MESSAGES);
   savePlatform();
   return message;
+}
+
+function reportCommunityMessage(payload = {}) {
+  const community = platform.community ||= blankCommunity();
+  const visitorId = String(payload.visitorId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  const messageId = String(payload.messageId || '').slice(0, 120);
+  if (!visitorId || !messageId) throw new Error('No se pudo registrar el reporte.');
+  const message = (community.messages || []).find(item => item.id === messageId);
+  if (!message) throw new Error('Ese mensaje ya no está disponible.');
+  if (message.role === 'official') throw new Error('Los mensajes oficiales no se pueden reportar desde este botón.');
+  if (message.visitorId === visitorId) throw new Error('No hace falta reportar tu propio mensaje.');
+  message.reports ||= [];
+  if (message.reports.some(report => report.visitorId === visitorId)) return { alreadyReported: true, state: communityStatePayload(visitorId) };
+  const now = Date.now();
+  const times = (communityReportSentAt.get(visitorId) || []).map(Number).filter(at => now - at < COMMUNITY_REPORT_WINDOW_MS);
+  if (times.length >= COMMUNITY_REPORT_WINDOW_MAX) throw new Error('Alcanzaste el límite de reportes por ahora.');
+  times.push(now); communityReportSentAt.set(visitorId, times);
+  message.reports.push({ visitorId, createdAt: nowIso() });
+  savePlatform();
+  return { alreadyReported: false, state: communityStatePayload(visitorId) };
 }
 
 function submitCommunityScore(payload = {}) {
@@ -4361,6 +4440,9 @@ function moderateCommunity(payload = {}) {
     community.blockedTerms = community.blockedTerms.slice(0, COMMUNITY_FILTER_MAX_TERMS);
     if (payload.removeMatchingMessages === true) {
       community.messages = (community.messages || []).filter(item => !communityContainsBlockedTerm(item.text, [term]));
+    } else if (payload.messageId) {
+      const reported = (community.messages || []).find(item => item.id === String(payload.messageId));
+      if (reported && communityContainsBlockedTerm(reported.text, [term])) reported.reports = [];
     }
   }
   else if (action === 'unblock-term') {
@@ -4382,7 +4464,8 @@ function communityAdminPayload() {
     blockPhoneNumbers: community.blockPhoneNumbers !== false,
     blockWhatsappLinks: community.blockWhatsappLinks !== false,
     blockedTerms: (community.blockedTerms || []).slice(0, COMMUNITY_FILTER_MAX_TERMS),
-    messages: (community.messages || []).slice(-COMMUNITY_CHAT_MAX_MESSAGES),
+    messages: (community.messages || []).slice(-COMMUNITY_CHAT_MAX_MESSAGES).map(message => ({ ...message, reportCount: Array.isArray(message.reports) ? message.reports.length : 0 })),
+    reportedMessages: (community.messages || []).filter(message => Array.isArray(message.reports) && message.reports.length).map(message => ({ ...message, reportCount: message.reports.length })).sort((a,b) => Number(b.reportCount)-Number(a.reportCount) || String(b.createdAt).localeCompare(String(a.createdAt))),
     leaderboards: community.leaderboards || { red_black: [], higher_lower: [] }
   };
 }
@@ -4477,6 +4560,10 @@ async function handleApi(req, res, url) {
       if (!consumeRate(req, 'community-chat', 35, 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados mensajes. Esperá un momento.' });
       const message = appendCommunityMessage(req, await readJson(req));
       return sendJson(res, 200, { message, state: communityStatePayload(message.visitorId) });
+    }
+    if (url.pathname === '/api/community/report' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-report', 60, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados reportes. Probá más tarde.' });
+      return sendJson(res, 200, reportCommunityMessage(await readJson(req)));
     }
     if (url.pathname === '/api/community/score' && req.method === 'POST') {
       if (!consumeRate(req, 'community-score', 80, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados puntajes enviados. Probá más tarde.' });
@@ -4637,7 +4724,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: APP_PUBLIC_VERSION, workspaces: workspaces.size });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    return res.end('User-agent: *\nDisallow: /admin\nDisallow: /admin-principal\nDisallow: /operador\nDisallow: /transmision\n');
+    return res.end('User-agent: *\nDisallow: /admin\nDisallow: /admin-principal\nDisallow: /operador\nDisallow: /transmision\nDisallow: /v\n');
   }
   if (url.pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res, url);
   if (url.pathname.startsWith('/api/')) return handleApi(req, res, url);
@@ -4651,7 +4738,8 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/demo' || url.pathname === '/demo/') return serveFile(res, path.join(ROOT, 'demo.html'));
   if (url.pathname === '/comunidad' || url.pathname === '/comunidad/' || url.pathname === '/comunidad.html') return serveFile(res, path.join(ROOT, 'comunidad.html'));
   if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return sendJson(res, 404, { error: 'Los accesos temporales están deshabilitados.' });
-  if (/^\/transmision\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'transmision.html'));
+  if (/^\/transmision\/[^/]+\/?$/.test(url.pathname) || /^\/v\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'transmision.html'));
+  if (url.pathname === '/cast-receiver' || url.pathname === '/cast-receiver/') return serveFile(res, path.join(ROOT, 'cast-receiver.html'));
   if (url.pathname === '/jugador' || url.pathname === '/jugador/') return serveFile(res, path.join(ROOT, 'jugador.html'));
   if (url.pathname === '/reglamento' || url.pathname === '/reglamento/' || url.pathname === '/reglamento.html') return serveFile(res, path.join(ROOT, 'reglamento.html'));
   if (url.pathname === '/reglamento.pdf') return serveFile(res, path.join(ROOT, 'reglamento.pdf'));

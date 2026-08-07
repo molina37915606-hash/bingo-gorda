@@ -117,6 +117,16 @@ async function waitServer(){for(let i=0;i<100;i++){try{const x=await json('/heal
     result = await json('/api/admin/draw', { method:'POST', headers:admin, body:JSON.stringify({ source:'test' }) });
     assert.equal(result.response.status, 200, JSON.stringify(result.data));
     const txToken = result.data.roomSettings.broadcastToken;
+    assert(result.data.broadcastUrl && result.data.broadcastUrl.includes('/v/'), 'Toda sala debe tener un link corto de espectador.');
+    const initialAlias = result.data.roomSettings.broadcastAlias;
+    assert(initialAlias && initialAlias.length >= 3, 'Toda sala debe crear un alias corto automáticamente.');
+    const shortTransmissionHtml = await (await fetch(`${base}/v/${encodeURIComponent(initialAlias)}`)).text();
+    assert(shortTransmissionHtml.includes('CARRERA POR EL PREMIO'));
+    let aliasUpdate = await json('/api/admin/settings', { method:'POST', headers:admin, body:JSON.stringify({ broadcastAlias:'viernes-test' }) });
+    assert.equal(aliasUpdate.response.status, 200, JSON.stringify(aliasUpdate.data));
+    assert(aliasUpdate.data.broadcastUrl.endsWith('/v/viernes-test'));
+    const customShortHtml = await (await fetch(`${base}/v/viernes-test`)).text();
+    assert(customShortHtml.includes('CARRERA POR EL PREMIO'));
     const tx = await json(`/api/broadcast/state?token=${encodeURIComponent(txToken)}`);
     assert.equal(tx.response.status, 200, JSON.stringify(tx.data));
     assert(tx.data.highlightedCards.length > 0 && tx.data.highlightedCards.length <= 4);

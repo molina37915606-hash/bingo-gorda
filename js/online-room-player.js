@@ -129,8 +129,13 @@ class PlayerApp {
     $('closePresenterChoiceBtn').onclick = () => this.closeModal('presenterChoiceOverlay');
     $('roomClosedBtn').onclick = () => this.logout(true);
     $('closeWinnerBtn').onclick = () => this.closeModal('winnerOverlay');
+    $('watchBtn').onclick = () => this.openWatchPanel();
+    $('closeWatchBtn').onclick = () => this.closeModal('watchOverlay');
+    $('openWatchBtn').onclick = () => this.state?.broadcastUrl && window.open(this.state.broadcastUrl,'_blank','noopener');
+    $('copyWatchBtn').onclick = () => this.copyWatchLink();
+    $('castWatchBtn').onclick = () => this.castWatch();
     $('fullScreenBtn').onclick = () => this.setFocusMode(!this.focusMode);
-    ['winnerOverlay','partialChoiceOverlay','presenterChoiceOverlay'].forEach(id => $(id)?.addEventListener('click', event => { if (event.target === $(id)) this.closeModal(id); }));
+    ['winnerOverlay','partialChoiceOverlay','presenterChoiceOverlay','watchOverlay'].forEach(id => $(id)?.addEventListener('click', event => { if (event.target === $(id)) this.closeModal(id); }));
     $('ticketPanel').addEventListener('touchstart', event => this.beginTicketSwipe(event), { passive:true });
     $('ticketPanel').addEventListener('touchend', event => this.endTicketSwipe(event), { passive:true });
     document.addEventListener('keydown', event => {
@@ -139,7 +144,7 @@ class PlayerApp {
       if ($('settingsOverlay').classList.contains('show')) return this.closeSettings();
       if ($('infoDrawer').classList.contains('show')) return this.closeInfoDrawer();
       if ($('playerChatPanel')?.classList.contains('show')) return this.closeChat();
-      this.closeModal('winnerOverlay'); this.closeModal('partialChoiceOverlay'); this.closeModal('presenterChoiceOverlay'); this.closeGuide();
+      this.closeModal('winnerOverlay'); this.closeModal('partialChoiceOverlay'); this.closeModal('presenterChoiceOverlay'); this.closeModal('watchOverlay'); this.closeGuide();
       if (this.focusMode) this.setFocusMode(false);
     });
     document.addEventListener('fullscreenchange', () => {
@@ -1469,6 +1474,20 @@ class PlayerApp {
   }
   showMessage(text,kind='notice') { $('playerNotice').innerHTML=`<div class="${kind}">${esc(text)}</div>`; clearTimeout(this.messageTimer); this.messageTimer=setTimeout(()=>{$('playerNotice').innerHTML='';},8000); }
   closeModal(id) { $(id)?.classList.remove('show'); }
+  openWatchPanel() {
+    if(!this.state?.broadcastUrl) return this.showMessage('El modo espectador todavía no está disponible.','error');
+    $('watchLinkText').textContent=this.state.broadcastUrl;
+    $('castWatchBtn').disabled=false;
+    $('watchOverlay').classList.add('show');
+  }
+  async copyWatchLink() {
+    const url=this.state?.broadcastUrl;if(!url)return;
+    try{await navigator.clipboard.writeText(url);this.showMessage('Link de la transmisión copiado.','notice')}catch{prompt('Copiá este enlace:',url)}
+  }
+  async castWatch() {
+    const url=this.state?.broadcastUrl;if(!url)return;
+    try{await window.LaGordaCast.castUrl(url,this.state?.castAppId);this.showMessage('Elegí tu Chromecast o TV compatible.','notice')}catch(e){this.showMessage(e.message,'error')}
+  }
 
   toggleTheme() { this.theme=this.theme==='day'?'night':'day'; localStorage.setItem('bingoPlayerTheme',this.theme); this.applyTheme(); }
   applyTheme() {

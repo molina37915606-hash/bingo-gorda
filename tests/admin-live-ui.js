@@ -11,7 +11,10 @@ assert(html.includes('id="liveTransmissionBtn"'), 'Debe existir configuración d
 assert(html.includes('id="simulationChat"'), 'La simulación masiva debe permitir habilitar chat IA.');
 assert(js.includes('document.documentElement.requestFullscreen()'), 'Fullscreen debe incluir overlays y reclamos.');
 assert(js.includes('lastBallOf(data)'), 'El panel debe derivar la última bolilla desde el historial.');
-assert(js.includes("d.roomSettings?.transmission?.enabled?'TRANSMISIÓN ✓':'TRANSMISIÓN'"), 'El panel debe reflejar el estado de transmisión en vivo.');
+assert(js.includes("TRANSMISIÓN / TV"), 'El panel debe ofrecer transmisión/TV siempre disponible.');
+assert(html.includes('id="txAlias"'), 'El administrador debe poder personalizar el link corto de transmisión.');
+assert(html.includes('id="castTransmission"'), 'El administrador debe tener acceso a Chromecast.');
+assert(playerHtml.includes('id="watchBtn"'), 'El jugador debe poder abrir el modo espectador desde su cartón.');
 
 assert(playerHtml.includes('id="sequenceCard"'), 'La secuencia del jugador debe tener un panel identificable para el aviso especial.');
 assert(playerJs.includes('transition.largeRoomNotice'), 'El jugador debe recibir el aviso especial antes del sorteo en salas grandes.');

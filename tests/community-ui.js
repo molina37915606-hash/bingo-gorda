@@ -27,6 +27,13 @@ async function json(url,opt={}){const r=await fetch(base+url,opt);const d=await 
   const communityJs=await (await fetch(base+'/js/community.js')).text();
   assert(communityJs.includes('focusNameInput'));
   assert(communityJs.includes('sendSticker'));
+  assert(communityJs.includes('data-report-message'));
+  assert(communityJs.includes('¿Seguro que querés reportar este mensaje?'));
+  const masterHtml=await (await fetch(base+'/admin-principal')).text();
+  assert(masterHtml.includes('Chat público en vivo'));
+  assert(masterHtml.includes('Mensajes reportados'));
+  assert(masterHtml.includes('id="communityBlockedTerm"'));
+
   let x=await json('/api/community/state?visitorId=v1'); assert.equal(x.r.status,200); assert(x.d.onlineCount>=1);
   x=await json('/api/community/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitorId:'v1',name:'ADMIN',text:'hola'})}); assert.equal(x.r.status,400);
   x=await json('/api/community/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitorId:'v1',name:'Marta',text:'Hola comunidad'})}); assert.equal(x.r.status,200); assert.equal(x.d.message.name,'Marta'); assert.equal(x.d.message.type,'text');
@@ -46,7 +53,11 @@ async function json(url,opt={}){const r=await fetch(base+url,opt);const d=await 
   x=await json('/api/community/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitorId:'v1',name:'Marta',text:'3 5 1 6 1 2 3 4 5 6'})}); assert.equal(x.r.status,400);
   x=await json('/api/community/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitorId:'v1',name:'Marta',text:'Escribime en wa.me/5493516123456'})}); assert.equal(x.r.status,400);
   await sleep(1900);
-  x=await json('/api/community/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitorId:'v1',name:'Marta',text:'Sala 4821, bolilla 48, carton 123, jugamos 21:30'})}); assert.equal(x.r.status,200);
+  x=await json('/api/community/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitorId:'v1',name:'Marta',text:'Sala 4821, bolilla 48, carton 123, jugamos 21:30'})}); assert.equal(x.r.status,200); const reportMessageId=x.d.message.id;
+  x=await json('/api/community/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitorId:'v2',messageId:reportMessageId})}); assert.equal(x.r.status,200); assert.equal(x.d.alreadyReported,false); assert(x.d.state.messages.find(m=>m.id===reportMessageId)?.reportedByMe);
+  x=await json('/api/community/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitorId:'v2',messageId:reportMessageId})}); assert.equal(x.r.status,200); assert.equal(x.d.alreadyReported,true);
+  x=await json('/api/master/community',{headers:mh}); assert.equal(x.r.status,200); const reported=x.d.reportedMessages.find(m=>m.id===reportMessageId); assert(reported); assert.equal(reported.reportCount,1); assert(x.d.messages.some(m=>m.id===reportMessageId),'Reportar no debe ocultar ni borrar el mensaje.');
+
   x=await json('/api/master/community/moderate',{method:'POST',headers:mh,body:JSON.stringify({action:'unblock-term',term:'spam'})}); assert.equal(x.r.status,200); assert(!x.d.blockedTerms.includes('spam'));
   x=await json('/api/master/community/moderate',{method:'POST',headers:mh,body:JSON.stringify({action:'clear'})}); assert.equal(x.r.status,200); assert.equal(x.d.messages.length,0);
   console.log('PRUEBA COMUNIDAD: OK');

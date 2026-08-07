@@ -51,3 +51,12 @@ TRANSMISIÓN EN VIVO · CARRERA POR EL PREMIO
 - Ranking dinámico de cartones según cercanía real a premios todavía abiertos.
 - Líder siempre visible, animaciones de cambios de posición y destello de nuevas marcas.
 
+
+MODO ESPECTADOR, REPORTES Y TV
+- Toda partida crea automáticamente su modo espectador y un link corto /v/xxxxxx.
+- Acceso al espectador desde Comunidad, cartón del jugador y administración.
+- Alias corto personalizable únicamente por el administrador.
+- Integración preparada para Chromecast mediante Custom Web Receiver y CAST_APP_ID.
+- Chat público con bandera ⚑ discreta, confirmación y reportes sin borrado automático.
+- Administración incorpora bandeja de reportados y ventana de chat público en vivo.
+- Corregido el ingreso manual de palabras/frases al filtro de Comunidad.

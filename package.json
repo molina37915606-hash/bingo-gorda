@@ -8,6 +8,6 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/core-smoke.js && node tests/online-flows.js && node tests/urgent-regressions.js && node tests/waiting-games-ui.js && node tests/animated-stickers.js && node tests/admin-simulation.js"
+    "test": "node tests/core-smoke.js && node tests/online-flows.js && node tests/urgent-regressions.js && node tests/waiting-games-ui.js && node tests/animated-stickers.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-live-ui.js"
   }
 }

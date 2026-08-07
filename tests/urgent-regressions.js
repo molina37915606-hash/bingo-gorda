@@ -98,6 +98,13 @@ async function drawMany(admin, count) {
     assert.equal(claimA.response.status, 200, JSON.stringify(claimA.data));
     let claimB = await json('/api/player/claim', { method: 'POST', headers: headers(room.joined[1].token, 'player'), body: JSON.stringify({ cardId: cardB.id, type: 'line' }) });
     assert.equal(claimB.response.status, 200, JSON.stringify(claimB.data));
+    // Una recarga/reconexión durante la ventana debe reconstruir el reclamo desde el estado persistido.
+    let reconnectAdmin = (await json('/api/admin/state', { headers: headers(admin) })).data;
+    let reconnectPlayer = (await json('/api/player/state', { headers: headers(room.joined[1].token, 'player') })).data;
+    assert.equal(reconnectAdmin.status, 'verifying');
+    assert(reconnectAdmin.claims.some(item => item.id === claimB.data.id && item.status === 'pending'), 'El administrador debe recuperar el reclamo pendiente al reconectar.');
+    assert.equal(reconnectPlayer.status, 'verifying');
+    assert.equal(reconnectPlayer.claimWindow?.id, claimB.data.claimWindowId, 'El jugador debe recuperar la ventana de reclamo al reconectar.');
     await wait(180);
     let resolved = await json('/api/admin/resolve', { method: 'POST', headers: headers(admin), body: JSON.stringify({ claimId: claimA.data.id, resolution: 'confirmed' }) });
     assert.equal(resolved.response.status, 200, JSON.stringify(resolved.data));
@@ -105,6 +112,10 @@ async function drawMany(admin, count) {
     const pendingSecond = adminState.claims.find(item => item.id === claimB.data.id);
     assert.equal(pendingSecond.status, 'pending', 'El segundo reclamo válido no debe rechazarse al confirmar la Primera línea.');
     assert.equal(pendingSecond.prizeNumber, 2, 'El segundo reclamo debe convertirse en Segunda línea.');
+    reconnectPlayer = (await json('/api/player/state', { headers: headers(room.joined[1].token, 'player') })).data;
+    assert.equal(reconnectPlayer.status, 'verifying');
+    assert.equal(reconnectPlayer.prizeStatus.line.awarded, 1);
+    assert.equal(reconnectPlayer.prizeStatus.line.remaining, 1, 'Tras reconectar debe conservarse que falta adjudicar la Segunda línea.');
     resolved = await json('/api/admin/resolve', { method: 'POST', headers: headers(admin), body: JSON.stringify({ claimId: claimB.data.id, resolution: 'confirmed' }) });
     assert.equal(resolved.response.status, 200, JSON.stringify(resolved.data));
     adminState = (await json('/api/admin/state', { headers: headers(admin) })).data;
@@ -156,7 +167,13 @@ async function drawMany(admin, count) {
     assert(playerJs.includes("bingoOnlineRoom"), 'La sesión debe quedar asociada al código de sala.');
     assert(playerJs.includes('this.tokenRoom !== roomCode'), 'Un token de otra sala no debe reanudarse sobre un enlace nuevo.');
     assert(playerHtml.includes('desktopTickets') && playerHtml.includes('@media(min-width:1100px)'), 'Escritorio debe tener grilla multi-cartón.');
+    assert(playerHtml.includes('repeat(2,minmax(0,520px))'), 'Los cartones de escritorio deben conservar un ancho máximo fijo.');
+    assert(playerHtml.includes('.ticketInstance:last-child:nth-child(odd){grid-column:1/-1;justify-self:center}'), 'Un cartón solo o el tercero deben centrarse sin estirarse.');
     assert(playerJs.includes('@media(min-width:1100px)') && playerJs.includes('.playerLogged .playerChatDock'), 'El chat debe quedar lateral en escritorio.');
+    assert(playerJs.includes("await this.request('/api/player/state')") && playerJs.includes('reconnectRefreshTimer'), 'El jugador debe recuperar el estado completo después de una reconexión.');
+    const adminJs = fs.readFileSync(path.join(__dirname, '..', 'js', 'admin-simplificado.js'), 'utf8');
+    assert(adminJs.includes('this.reconnectTimer') && adminJs.includes('await this.refresh()'), 'El administrador debe recuperar el estado completo al reconectar.');
+    assert(adminJs.includes("await this.req('/api/admin/resolve'") && adminJs.includes('});await this.refresh()'), 'Después de resolver un premio el panel debe refrescar el estado completo.');
 
     console.log('PRUEBAS URGENTES DE REGRESIÓN: OK');
   } catch (error) {

@@ -1,0 +1,46 @@
+LA GORDA - BINGO ONLINE
+ARREGLOS DE ESTABILIDAD Y ESCRITORIO - 07/08/2026
+
+BASE
+- Esta versión parte de LA_GORDA_BINGO_ONLINE_2_CORREGIDO_DEMO_SIMULACION.zip.
+- No incluye ni utiliza las bolillas personalizadas que se probaron posteriormente.
+
+1. CARTONES EN ESCRITORIO
+- A partir de 1100 px, cada cartón conserva un ancho máximo fijo de 520 px.
+- Un solo cartón queda centrado y ya no se estira por todo el ancho disponible.
+- Dos cartones se muestran lado a lado manteniendo el mismo tamaño.
+- Con tres cartones, el tercero queda centrado en la fila siguiente sin agrandarse.
+- Cuatro cartones mantienen la grilla 2x2.
+- El chat permanece fijo en la columna derecha de escritorio.
+
+2. RECONEXIÓN DEL JUGADOR
+- Ante una caída de SSE/conexión, además de la reconexión automática del navegador, el cliente vuelve a pedir /api/player/state.
+- Esto reconstruye el estado completo de la partida, incluyendo ventana de reclamos, premios ya adjudicados y situación actual de los cartones.
+- Si el token deja de ser válido, se limpia la sesión local en vez de dejar una pantalla inconsistente.
+
+3. RECONEXIÓN DEL ADMINISTRADOR
+- El panel administrativo vuelve a pedir /api/admin/state después de una interrupción de conexión.
+- Si se recarga la página durante un reclamo pendiente, el reclamo vuelve a aparecer desde el estado del servidor.
+
+4. CORRECCIÓN ADICIONAL EN RESOLUCIÓN DE PREMIOS
+- Se detectó que /api/admin/resolve devuelve el reclamo resuelto, pero el panel intentaba tratar esa respuesta como si fuera el estado completo de la sala.
+- Ahora el administrador resuelve el reclamo y después refresca el estado completo antes de redibujar el panel.
+- Esto evita que confirmar/rechazar un premio pueda mandar el panel a una vista incorrecta.
+
+5. PRUEBAS
+- Se amplió urgent-regressions para verificar reconexión durante reclamos y el tamaño fijo de escritorio.
+- Se agregó tests/simulation-stress.js.
+- La prueba crea 60 jugadores IA con 1 a 4 cartones aleatorios, valida que no haya cartones duplicados, inicia una partida de 90 bolas, avanza 40 extracciones, procesa reclamos y repite múltiples lecturas del estado como simulación de recargas/reconexiones administrativas.
+- La prueba se ejecutó varias veces con distintas asignaciones aleatorias y pasó correctamente.
+
+SUITE COMPLETA
+- core-smoke: OK
+- online-flows: OK
+- urgent-regressions: OK
+- waiting-games-ui: OK
+- animated-stickers: OK
+- admin-simulation: OK
+- simulation-stress: OK
+
+NOTA
+La simulación de 60 IA prueba la lógica del servidor, cartones, premios y administración de una sala grande. No sustituye una prueba futura de 60 navegadores/dispositivos reales conectados simultáneamente.

@@ -335,7 +335,7 @@ async function drawMany(adminHeaders, count) {
     assert(bingoWinner.claimAlerts[1].sequence > bingoWinner.claimAlerts[0].sequence);
     const csv = await (await fetch(base + '/api/admin/acta.csv', { headers: adminHeaders })).text();
     assert(csv.includes('TODAS LAS ALERTAS DE PREMIOS'));
-    assert(csv.includes('valid_but_received_later'));
+    assert(csv.includes('VÁLIDA POSTERIOR'));
     const pdf = await fetch(base + `/api/results.pdf?sala=${encodeURIComponent(state.roomCode)}`);
     assert.equal(pdf.status, 200);
     assert.equal(pdf.headers.get('content-type'), 'application/pdf');

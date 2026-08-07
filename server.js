@@ -53,6 +53,10 @@ const CLAIM_QUEUE_WINDOW_MS = Math.max(100, Number(process.env.BINGO_CLAIM_WINDO
 const FINAL_CLAIM_GRACE_MS = Math.max(1000, Number(process.env.BINGO_FINAL_CLAIM_GRACE_MS || 5000));
 const TEST_EVENT_TTL_MS = 20 * 1000;
 const START_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_START_SEQUENCE_MS || 11_000));
+const LARGE_ROOM_NOTICE_THRESHOLD = Math.max(2, Number(process.env.BINGO_LARGE_ROOM_NOTICE_THRESHOLD || 20));
+const LARGE_ROOM_NOTICE_MS = Math.max(1000, Number(process.env.BINGO_LARGE_ROOM_NOTICE_MS || 6_000));
+const LARGE_ROOM_NOTICE_TITLE = 'CRITERIO DE ADJUDICACIÓN DE PREMIOS';
+const LARGE_ROOM_NOTICE_TEXT = 'Si varios cartones completan el mismo premio con una misma bolilla, tendrá prioridad el reclamo que sea recibido y validado primero por el servidor central. Los reclamos válidos recibidos posteriormente quedarán registrados en el acta oficial como “VÁLIDA POSTERIOR”, conservando su orden de recepción. Este procedimiento permite determinar de forma objetiva y transparente la prioridad entre reclamos simultáneos.';
 const RESUME_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_RESUME_SEQUENCE_MS || 5_000));
 const FINAL_BALLS_SEQUENCE_MS = Math.max(250, Number(process.env.BINGO_FINAL_BALLS_SEQUENCE_MS || 8_000));
 const MAX_TIE_WINNERS_PER_PRIZE = 4;
@@ -319,7 +323,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.joinOpen = Boolean(merged.roomSettings.joinOpen);
     merged.roomSettings.maxOpenPlayers = Math.max(2, Math.min(10, Number(merged.roomSettings.maxOpenPlayers) || 10));
     merged.roomSettings.presenterVoiceGender = merged.roomSettings.presenterVoiceGender === 'male' ? 'male' : 'female';
-    merged.roomSettings.transmission = { enabled: Boolean(merged.roomSettings.transmission?.enabled), showChat: merged.roomSettings.transmission?.showChat !== false, showCards: merged.roomSettings.transmission?.showCards !== false, showNames: merged.roomSettings.transmission?.showNames !== false, showProgress: merged.roomSettings.transmission?.showProgress !== false, rotationSeconds: [20,30,60].includes(Number(merged.roomSettings.transmission?.rotationSeconds)) ? Number(merged.roomSettings.transmission.rotationSeconds) : 30 };
+    merged.roomSettings.transmission = { enabled: Boolean(merged.roomSettings.transmission?.enabled), showChat: merged.roomSettings.transmission?.showChat !== false, showCards: merged.roomSettings.transmission?.showCards !== false, showNames: merged.roomSettings.transmission?.showNames !== false, showProgress: merged.roomSettings.transmission?.showProgress !== false, rotationSeconds: [15,20,30,60].includes(Number(merged.roomSettings.transmission?.rotationSeconds)) ? Number(merged.roomSettings.transmission.rotationSeconds) : 30 };
     const legacyWaitingLeaderboard = Array.isArray(parsed.waitingGame?.leaderboard) ? parsed.waitingGame.leaderboard.slice(0, 60) : [];
     merged.waitingGame = {
       type: 'both',
@@ -1429,7 +1433,7 @@ function createSimpleRoom(payload = {}) {
       roomType, joinOpen: roomType === 'test', maxOpenPlayers: 10,
       presenterVoiceGender: payload.presenterVoiceGender === 'male' ? 'male' : 'female',
       broadcastToken: randomId('live'),
-      transmission: { enabled: Boolean(payload.transmission?.enabled), showChat: payload.transmission?.showChat !== false, showCards: payload.transmission?.showCards !== false, showNames: payload.transmission?.showNames !== false, showProgress: payload.transmission?.showProgress !== false, rotationSeconds: [20,30,60].includes(Number(payload.transmission?.rotationSeconds)) ? Number(payload.transmission.rotationSeconds) : 30 }
+      transmission: { enabled: Boolean(payload.transmission?.enabled), showChat: payload.transmission?.showChat !== false, showCards: payload.transmission?.showCards !== false, showNames: payload.transmission?.showNames !== false, showProgress: payload.transmission?.showProgress !== false, rotationSeconds: [15,20,30,60].includes(Number(payload.transmission?.rotationSeconds)) ? Number(payload.transmission.rotationSeconds) : 30 }
     },
     waitingGame: { type: 'both', leaderboard: [], leaderboards: { red_black: [], higher_lower: [] } },
     drawOrder: createSecureDrawOrder(game.mode), game, players: [], cardReservations: {}, claims: [], eventLog: [],
@@ -1693,14 +1697,15 @@ function createAdminSimulationRoom(payload = {}) {
       showMercadoPago: false,
       argentinaHint: true,
       presenterVoiceGender: payload.presenterVoiceGender === 'male' ? 'male' : 'female',
-      transmission: { enabled: false, showChat: false, showCards: true, showNames: false, showProgress: true, rotationSeconds: 30 }
+      transmission: { enabled: false, showChat: true, showCards: true, showNames: false, showProgress: true, rotationSeconds: 30 }
     },
     assignmentTimer: { enabled: false, durationMinutes: 10 }
   });
   state.roomSettings.adminSimulation = true;
   state.roomSettings.simulatedPlayers = playerCount;
   state.roomSettings.simulatedCards = totalCards;
-  state.chat.enabled = false;
+  state.roomSettings.simulatedChat = Boolean(payload.aiChatEnabled);
+  state.chat.enabled = Boolean(payload.aiChatEnabled);
   state.players.forEach((player, index) => {
     player.name = '';
     player.nameSet = true;
@@ -1713,7 +1718,7 @@ function createAdminSimulationRoom(payload = {}) {
   });
   syncAllAutoMarks();
   updateCardDisplayNames();
-  logEvent('admin_simulation_created', { playerCount, totalCards, cardCounts, mode, autoSeconds });
+  logEvent('admin_simulation_created', { playerCount, totalCards, cardCounts, mode, autoSeconds, simulatedChat: state.roomSettings.simulatedChat });
   saveState();
   broadcast();
   return adminPayload();
@@ -2115,7 +2120,7 @@ function configureRoom(payload) {
       joinOpen: Boolean(payload.roomSettings?.joinOpen),
       maxOpenPlayers: Math.max(2, Math.min(10, Number(payload.roomSettings?.maxOpenPlayers) || 10)),
       presenterVoiceGender: payload.roomSettings?.presenterVoiceGender === 'male' ? 'male' : 'female',
-      transmission: { enabled: Boolean(payload.roomSettings?.transmission?.enabled), showChat: payload.roomSettings?.transmission?.showChat !== false, showCards: payload.roomSettings?.transmission?.showCards !== false, showNames: payload.roomSettings?.transmission?.showNames !== false, showProgress: payload.roomSettings?.transmission?.showProgress !== false, rotationSeconds: [20,30,60].includes(Number(payload.roomSettings?.transmission?.rotationSeconds)) ? Number(payload.roomSettings.transmission.rotationSeconds) : 30 }
+      transmission: { enabled: Boolean(payload.roomSettings?.transmission?.enabled), showChat: payload.roomSettings?.transmission?.showChat !== false, showCards: payload.roomSettings?.transmission?.showCards !== false, showNames: payload.roomSettings?.transmission?.showNames !== false, showProgress: payload.roomSettings?.transmission?.showProgress !== false, rotationSeconds: [15,20,30,60].includes(Number(payload.roomSettings?.transmission?.rotationSeconds)) ? Number(payload.roomSettings.transmission.rotationSeconds) : 30 }
     },
     assignmentTimer: {
       enabled: Boolean(payload.assignmentTimer?.enabled),
@@ -2240,6 +2245,46 @@ function virtualPlayersAreActive() {
   return Boolean(currentWorkspace().isDemo || state.roomSettings?.adminSimulation);
 }
 
+const SIMULATED_CHAT_TEXTS = [
+  '🍀🍀🍀', 'Vamos 😄', 'Me falta poquito 🤞', 'Qué nervios 😅', '🎱✨', 'Dale dale 🔥',
+  'Casi casi 👀', '👏👏👏', 'Suerte para todos 🍀', 'Nooo 😭', 'Vamos que sale 🎉', '😂😂',
+  'Tengo fe 🤞', 'Qué buena partida 😎', '❤️', '🔥🔥', 'Me falta una 😬', 'A ver esa bolilla 👀'
+];
+const SIMULATED_CHAT_STICKERS = ['gorda-risa','gorda-festejo','gorda-ay-no','corazon','aplausos','suerte','ira','explosion'];
+
+function scheduleSimulatedAiChat() {
+  if (!state.roomSettings?.adminSimulation || !state.roomSettings?.simulatedChat || state.chat?.enabled === false || state.chat?.locked) return 0;
+  const players = state.players.filter(player => player.virtual);
+  if (!players.length) return 0;
+  const workspace = currentWorkspace();
+  const maxBurst = Math.min(4, Math.max(1, Math.ceil(players.length / 20)));
+  const messageCount = 1 + crypto.randomInt(0, maxBurst);
+  const chosen = [];
+  const pool = [...players];
+  while (chosen.length < messageCount && pool.length) chosen.push(pool.splice(crypto.randomInt(0, pool.length), 1)[0]);
+  chosen.forEach((player, index) => {
+    const delay = TEST_MODE ? 20 + index * 15 : 280 + crypto.randomInt(0, 1900) + index * 160;
+    const timer = setTimeout(() => workspaceContext.run(workspace, () => {
+      forgetDemoTimer(workspace, timer);
+      try {
+        if (!state.active || !state.roomSettings?.adminSimulation || !state.roomSettings?.simulatedChat || state.chat?.enabled === false || state.chat?.locked) return;
+        if (crypto.randomInt(0, 100) < 24) {
+          const stickerId = SIMULATED_CHAT_STICKERS[crypto.randomInt(0, SIMULATED_CHAT_STICKERS.length)];
+          appendChatMessage({ role: 'player', player, stickerId });
+        } else {
+          const text = SIMULATED_CHAT_TEXTS[crypto.randomInt(0, SIMULATED_CHAT_TEXTS.length)];
+          appendChatMessage({ role: 'player', player, text });
+        }
+        saveState();
+      } catch (error) {
+        if (!/Esperá|pausó|silenciada|deshabilitado/i.test(error.message)) console.error(`No se pudo generar chat IA en ${workspace.id}:`, error.message);
+      }
+    }), delay);
+    rememberDemoTimer(workspace, timer);
+  });
+  return chosen.length;
+}
+
 function scheduleVirtualPlayerClaims() {
   if (!virtualPlayersAreActive() || state.status !== 'playing') return 0;
   const drawnCount = state.game.drawn.length;
@@ -2346,6 +2391,7 @@ function drawNextBall(source = 'manual') {
   logEvent('ball_drawn', { number, position: state.game.drawn.length, source, drawRevision: Number(state.revision) + 1 });
   syncAllAutoMarks();
   scheduleVirtualPlayerClaims();
+  scheduleSimulatedAiChat();
   if (state.game.drawn.length >= state.game.mode) {
     const graceMs = currentWorkspace().isDemo
       ? Math.max(CLAIM_QUEUE_WINDOW_MS, DEMO_CLAIM_WINDOW_MS + 600)
@@ -2487,6 +2533,9 @@ function startRoom() {
     completedAt: state.assignmentTimer?.completedAt || nowIso()
   };
   const startedAt = nowIso();
+  const largeRoomNotice = state.players.length > LARGE_ROOM_NOTICE_THRESHOLD;
+  const largeRoomNoticeMs = largeRoomNotice ? (TEST_MODE ? 30 : LARGE_ROOM_NOTICE_MS) : 0;
+  const baseStartSequenceMs = currentWorkspace().isDemo ? (TEST_MODE ? 100 : DEMO_START_SEQUENCE_MS) : START_SEQUENCE_MS;
   state.status = 'starting';
   state.pauseReason = null;
   state.startedAt = startedAt;
@@ -2494,10 +2543,13 @@ function startRoom() {
   state.game.phase = 'READY';
   state.transition = {
     id: randomId('transition'), type: 'start', startedAt,
-    endsAt: new Date(Date.now() + (currentWorkspace().isDemo ? (TEST_MODE ? 100 : DEMO_START_SEQUENCE_MS) : START_SEQUENCE_MS)).toISOString(),
-    officialTime: new Date().toLocaleTimeString('es-AR', { timeZone: BINGO_TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false })
+    endsAt: new Date(Date.now() + baseStartSequenceMs + largeRoomNoticeMs).toISOString(),
+    officialTime: new Date().toLocaleTimeString('es-AR', { timeZone: BINGO_TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false }),
+    largeRoomNotice,
+    noticeDurationMs: largeRoomNoticeMs,
+    priorityNotice: largeRoomNotice ? { title: LARGE_ROOM_NOTICE_TITLE, text: LARGE_ROOM_NOTICE_TEXT } : null
   };
-  logEvent('game_start_sequence', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0) });
+  logEvent('game_start_sequence', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0), largeRoomNotice });
   saveState(); broadcast(); scheduleTransition();
   return adminPayload();
 }
@@ -2535,8 +2587,8 @@ function resumeRoom(payload = {}) {
 function updateRoomSettings(payload) {
   if (!state.active) throw new Error('No hay una sala abierta.');
   if (state.status !== 'waiting' && (payload.prizeAmounts || payload.gameType || payload.linePrizeCount !== undefined || payload.allowSamePlayerSecondLine !== undefined || payload.tiePolicy)) throw new Error('Los premios y reglas quedaron bloqueados al iniciar el sorteo.');
-  state.roomSettings.playerAudioAllowed = payload.playerAudioAllowed !== false;
-  state.roomSettings.playerAudioDefault = Boolean(payload.playerAudioDefault);
+  if (payload.playerAudioAllowed !== undefined) state.roomSettings.playerAudioAllowed = payload.playerAudioAllowed !== false;
+  if (payload.playerAudioDefault !== undefined) state.roomSettings.playerAudioDefault = Boolean(payload.playerAudioDefault);
   if (state.status === 'waiting') {
     state.roomSettings.linePrizeCount = Number(state.game?.mode) === 90 ? Math.max(1, Math.min(2, Number(payload.linePrizeCount ?? state.roomSettings.linePrizeCount) || 1)) : 1;
     state.roomSettings.allowSamePlayerSecondLine = Number(state.game?.mode) === 90 && Boolean(payload.allowSamePlayerSecondLine ?? state.roomSettings.allowSamePlayerSecondLine);
@@ -2555,6 +2607,14 @@ function updateRoomSettings(payload) {
   if (payload.whatsapp !== undefined) state.roomSettings.whatsapp = String(payload.whatsapp || '').slice(0, 40);
   if (payload.showMercadoPago !== undefined) state.roomSettings.showMercadoPago = payload.showMercadoPago !== false;
   if (payload.argentinaHint !== undefined) state.roomSettings.argentinaHint = payload.argentinaHint !== false;
+  if (payload.transmission && typeof payload.transmission === 'object') state.roomSettings.transmission = {
+    enabled: Boolean(payload.transmission.enabled),
+    showChat: payload.transmission.showChat !== false,
+    showCards: payload.transmission.showCards !== false,
+    showNames: payload.transmission.showNames !== false,
+    showProgress: payload.transmission.showProgress !== false,
+    rotationSeconds: [15,20,30,60].includes(Number(payload.transmission.rotationSeconds)) ? Number(payload.transmission.rotationSeconds) : 30
+  };
   state.roomSettings.broadcastToken ||= randomId('live');
   logEvent('room_settings_updated', { ...state.roomSettings });
   saveState();
@@ -3484,6 +3544,14 @@ function formatDuration(startedAt, endedAt) {
   return `${hours ? `${hours} h ` : ''}${String(minutes).padStart(2, '0')} min ${String(seconds).padStart(2, '0')} s`;
 }
 
+function claimAuditResultLabel(alert) {
+  if (alert?.status === 'confirmed') return 'GANADOR';
+  if (alert?.resolutionReason === 'valid_but_received_later') return 'VÁLIDA POSTERIOR';
+  if (alert?.resolutionReason === 'rejected_by_admin') return alert?.officialValid ? 'VÁLIDO · RECHAZADO POR ADMIN' : 'RECHAZADO POR ADMIN';
+  if (alert?.resolutionReason === 'invalid_card') return 'INVÁLIDO';
+  return alert?.resolutionReason || alert?.status || '—';
+}
+
 function actaCsv() {
   const acta = actaPayload();
   const lines = [
@@ -3509,7 +3577,7 @@ function actaCsv() {
     [],
     ['TODAS LAS ALERTAS DE PREMIOS'],
     ['SECUENCIA', 'PREMIO', 'JUGADOR', 'CARTÓN', 'HORA SERVIDOR', 'DIFERENCIA MS', 'VALIDACIÓN', 'RESULTADO'],
-    ...acta.claimAlerts.map(alert => [alert.sequence, alert.prizeLabel, alert.playerName, alert.cardNumber, formatLocalTimeMs(alert.receivedAt), alert.deltaMs, alert.officialValid ? 'VÁLIDO' : 'INVÁLIDO', alert.status === 'confirmed' ? 'GANADOR' : alert.resolutionReason || alert.status]),
+    ...acta.claimAlerts.map(alert => [alert.sequence, alert.prizeLabel, alert.playerName, alert.cardNumber, formatLocalTimeMs(alert.receivedAt), alert.deltaMs, alert.officialValid ? 'VÁLIDO' : 'INVÁLIDO', claimAuditResultLabel(alert)]),
     [],
     ['JUGADORES Y CARTONES'],
     ['JUGADOR', 'CÓDIGO', 'CARTONES ASIGNADOS', 'CANTIDAD'],
@@ -3752,7 +3820,7 @@ function buildResultsPdf() {
       rect(x + width - auditWidth - 4, y + 37, auditWidth, Math.max(28, height - 42), '#FBF7FC', '#D9CBE2', .5);
       text('OTRAS ALERTAS', x + width - auditWidth / 2 - 4, y + 41, 4.7, { bold: true, color: COLORS.purple2, align: 'center' });
       otherAlerts.slice(0, 4).forEach((item, index) => {
-        const result = item.officialValid ? `+${item.deltaMs} ms` : 'INVÁLIDO';
+        const result = item.officialValid ? `+${item.deltaMs} ms · ${item.resolutionReason === 'valid_but_received_later' ? 'VÁLIDA POSTERIOR' : 'VÁLIDA'}` : 'INVÁLIDO';
         text(`#${item.sequence} ${formatLocalTimeMs(item.receivedAt)}`, x + width - auditWidth, y + 52 + index * 15, 4.2, { color: COLORS.ink, maxWidth: auditWidth - 7 });
         text(`${item.cardNumber} · ${result}`, x + width - auditWidth, y + 58 + index * 15, 4.0, { color: item.officialValid ? COLORS.purple2 : COLORS.red, maxWidth: auditWidth - 7 });
       });

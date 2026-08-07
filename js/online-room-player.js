@@ -14,6 +14,7 @@ class PlayerApp {
     this.state = null;
     this.activeCardId = localStorage.getItem('bingoOnlineCard') || '';
     this.events = null;
+    this.reconnectRefreshTimer = null;
     this.selectedOffers = new Set();
     this.pendingReservation = new Set();
     this.pendingMark = new Set();
@@ -588,8 +589,10 @@ class PlayerApp {
 
   connectEvents() {
     this.events?.close();
+    clearTimeout(this.reconnectRefreshTimer);
     this.events = new EventSource(`/api/events?role=player&token=${encodeURIComponent(this.token)}`);
     this.events.addEventListener('state', event => {
+      clearTimeout(this.reconnectRefreshTimer);
       $('connectionMask').classList.remove('show');
       this.applyState(JSON.parse(event.data));
     });
@@ -611,6 +614,18 @@ class PlayerApp {
     this.events.addEventListener('logout', () => this.logout());
     this.events.onerror = () => {
       $('connectionStatus').className = 'status off'; $('connectionStatus').textContent = 'SIN CONEXIÓN'; $('connectionMask').classList.add('show');
+      clearTimeout(this.reconnectRefreshTimer);
+      this.reconnectRefreshTimer = setTimeout(async () => {
+        if (!this.token) return;
+        try {
+          const data = await this.request('/api/player/state');
+          this.applyState(data);
+          $('connectionMask').classList.remove('show');
+          if (this.events?.readyState === EventSource.CLOSED) this.connectEvents();
+        } catch (error) {
+          if (error?.status === 401 || error?.status === 403) this.logout(false);
+        }
+      }, 1200);
     };
   }
 
@@ -1225,8 +1240,15 @@ class PlayerApp {
     const key = transition.id || transition.startedAt;
     clearInterval(this.sequenceTimer);
     const update = () => {
-      const start = new Date(transition.startedAt).getTime(), end = new Date(transition.endsAt).getTime(), now = Date.now(), elapsed = now - start, remaining = Math.max(0, end - now);
-      if (elapsed < 3300) {
+      const start = new Date(transition.startedAt).getTime(), end = new Date(transition.endsAt).getTime(), now = Date.now();
+      const noticeMs = transition.largeRoomNotice ? Math.max(0, Number(transition.noticeDurationMs) || 0) : 0;
+      const elapsed = now - start;
+      if (transition.largeRoomNotice && transition.priorityNotice && elapsed < noticeMs) {
+        this.showSequence(transition.priorityNotice.title || 'CRITERIO DE ADJUDICACIÓN DE PREMIOS', transition.priorityNotice.text || '', '', true);
+        return;
+      }
+      const sequenceElapsed = now - (start + noticeMs), remaining = Math.max(0, end - now);
+      if (sequenceElapsed < 3300) {
         this.showSequence(`SIENDO LAS ${transition.officialTime || ''} HORAS`, 'DAMOS INICIO A UN NUEVO SORTEO', '');
         this.speakSequenceOnce(`${key}:time`, 'startTime', { time:transition.officialTime || '' });
       } else if (remaining > 4300) {
@@ -1254,8 +1276,8 @@ class PlayerApp {
     update(); this.sequenceTimer = setInterval(update, 180);
   }
 
-  showSequence(title, text, count) {
-    $('sequencePresenter').src = `assets/${this.personalPresenterId()}.png`; $('sequenceTitle').textContent = title; $('sequenceText').textContent = text; $('sequenceCount').textContent = count; $('sequenceOverlay').classList.add('show');
+  showSequence(title, text, count, notice = false) {
+    $('sequencePresenter').src = `assets/${this.personalPresenterId()}.png`; $('sequenceTitle').textContent = title; $('sequenceText').textContent = text; $('sequenceCount').textContent = count; $('sequenceCard')?.classList.toggle('noticeMode', Boolean(notice)); $('sequenceOverlay').classList.add('show');
   }
 
   speakSequenceOnce(key, event, replacements) { if (sessionStorage.getItem(`spoken:${key}`)) return; sessionStorage.setItem(`spoken:${key}`,'1'); this.speakEvent(event, replacements, true); }
@@ -1478,7 +1500,7 @@ class PlayerApp {
   }
 
   logout(reload=true) {
-    this.events?.close(); clearInterval(this.sequenceTimer); this.setFocusMode(false); this.closeOtherPanels(); this.closeResultsViewer(); this.token=''; this.tokenRoom=''; this.state=null; this.roomClosedShown=false; localStorage.removeItem('bingoOnlineToken'); localStorage.removeItem('bingoOnlineRoom'); localStorage.removeItem('bingoOnlineCard');
+    this.events?.close(); clearTimeout(this.reconnectRefreshTimer); clearInterval(this.sequenceTimer); this.setFocusMode(false); this.closeOtherPanels(); this.closeResultsViewer(); this.token=''; this.tokenRoom=''; this.state=null; this.roomClosedShown=false; localStorage.removeItem('bingoOnlineToken'); localStorage.removeItem('bingoOnlineRoom'); localStorage.removeItem('bingoOnlineCard');
     document.body.classList.remove('playerLogged'); $('infoDrawerToggle').classList.add('hidden');
     if(reload) location.reload(); else { $('gameView').classList.add('hidden'); $('loginView').classList.remove('hidden'); }
   }

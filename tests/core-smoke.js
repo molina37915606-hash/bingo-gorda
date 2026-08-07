@@ -91,7 +91,11 @@ async function demoCards(mode, players, cardsPerPlayer) {
   assert.equal(state.demo, true);
   assert.equal(state.game.drawMode, 'automatic');
   assert.equal(state.status, 'waiting');
-  assert.deepEqual(state.players.map(player => player.name), ['Vos', 'Zoe', 'Mateo', 'Owen'].slice(0, aiCount + 1));
+  assert.equal(state.players[0].name, 'Vos');
+  const aiNames = state.players.slice(1).map(player => player.name);
+  assert.equal(aiNames.length, aiCount);
+  assert.equal(new Set(aiNames).size, aiCount, 'Los nombres IA de demo deben ser únicos en cada partida.');
+  assert(aiNames.every(name => name && name !== 'Vos'), 'Cada IA de demo debe recibir un nombre visible.');
   assert(state.players.every(player => player.nameSet && player.autoMark));
   const login = await json('/api/player/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -203,10 +207,10 @@ async function drawMany(adminHeaders, count) {
     let demoClaimState = null;
     for (let index = 0; index < 160; index++) {
       demoClaimState = (await json('/api/admin/state', { headers: demo90Flow.headers })).data;
-      if (demoClaimState.claims.some(claim => claim.type === 'ambo' && claim.status === 'confirmed' && claim.playerName === 'Zoe')) break;
+      if (demoClaimState.claims.some(claim => claim.type === 'ambo' && claim.status === 'confirmed' && claim.playerName === aiPlayer.name)) break;
       await sleep(50);
     }
-    assert(demoClaimState.claims.some(claim => claim.type === 'ambo' && claim.status === 'confirmed' && claim.playerName === 'Zoe'), 'La IA de la demo no reclamó o no fue validada automáticamente.');
+    assert(demoClaimState.claims.some(claim => claim.type === 'ambo' && claim.status === 'confirmed' && claim.playerName === aiPlayer.name), 'La IA de la demo no reclamó o no fue validada automáticamente.');
 
     const sourceCards = demo75.state.game.cards.slice(0, 2).map(card => ({ ...card }));
     const game = {

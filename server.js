@@ -98,6 +98,7 @@ const randomCode = (length = 7) => {
 const uniqueNumbers = values => [...new Set((values || []).map(Number).filter(Number.isFinite))];
 const cardNumbers = card => (card?.grid || []).flat().filter(value => typeof value === 'number');
 const PLAYER_PRESENTERS = new Set(['vero', 'vivi', 'josu', 'daia']);
+const DEMO_AI_NAME_POOL = ['Owen', 'Zoe', 'Mateo', 'Lola', 'Milo', 'Emma', 'Tomi', 'Cata', 'Benja', 'Luz', 'Simón', 'Uma'];
 const playerDisplayName = player => String(player?.name || player?.slotLabel || 'Acceso sin nombre').trim();
 function normalizePlayerName(value) {
   return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 20);
@@ -1109,6 +1110,7 @@ function adminPayload() {
       offeredCardIds: player.offeredCardIds,
       reservedCardIds: player.reservedCardIds || [],
       autoMark: Boolean(player.autoMark),
+      virtual: Boolean(player.virtual),
       connected: connected.has(player.id),
       transferPending: (state.deviceTransferRequests || []).some(request => request.playerId === player.id && request.status === 'pending')
     })),
@@ -1567,7 +1569,7 @@ function createDemoRoom(payload = {}) {
   const rules = mode === 75
     ? { ambocabeza: false, line: true, doubleLine: true, tripleLine: true, corners: true, bingo: true }
     : { ambocabeza: true, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true };
-  const aiNames = ['Zoe', 'Mateo', 'Owen'].slice(0, aiCount);
+  const aiNames = shuffle(DEMO_AI_NAME_POOL).slice(0, aiCount);
   const totalCards = playerCardCount + aiCount * 2;
   const pool = generateDiverseCardsServer(Math.max(25, totalCards), mode, rules);
   const groups = partitionDiverseCardGroups(pool, [playerCardCount, ...Array(aiCount).fill(2)], mode);
@@ -1652,6 +1654,69 @@ function createDemoRoom(payload = {}) {
     if (TEST_MODE) response.testAdminToken = createAdminSession({ workspaceId: workspace.id, role: 'owner', hardExpiresAt: workspace.expiresAt });
     return response;
   });
+}
+
+function createAdminSimulationRoom(payload = {}) {
+  const playerCount = Math.max(2, Math.min(MAX_PLAYERS, Math.floor(Number(payload.playerCount) || 20)));
+  const mode = Number(payload.mode) === 75 ? 75 : 90;
+  const rules = roomRulesFor(mode, payload.rules || {});
+  const autoSeconds = Math.max(3, Math.min(60, Number(payload.autoSeconds) || 6));
+  const presenter = PLAYER_PRESENTERS.has(String(payload.presenter || '')) ? String(payload.presenter) : 'vero';
+  const cardCounts = Array.from({ length: playerCount }, () => crypto.randomInt(1, MAX_CARDS_PER_PLAYER + 1));
+  const totalCards = cardCounts.reduce((sum, count) => sum + count, 0);
+  if (totalCards > MAX_ACTIVE_CARDS) throw new Error(`La simulación pidió ${totalCards} cartones y el máximo es ${MAX_ACTIVE_CARDS}.`);
+  const cards = generateDiverseCardsServer(totalCards, mode, rules);
+  let offset = 0;
+  const assignments = cardCounts.map(count => {
+    const cardIds = cards.slice(offset, offset + count).map(card => card.id);
+    offset += count;
+    return { allowedCardCount: count, cardIds };
+  });
+  const game = {
+    id: randomId('simulation_game'), number: 1, mode, rules, drawMode: 'automatic', autoSeconds,
+    presenter, theme: 'clasico', phase: 'READY', drawn: [], createdAt: nowIso(), updatedAt: nowIso(), cards
+  };
+  configureRoom({
+    game,
+    players: assignments,
+    roomSettings: {
+      playerAudioAllowed: false,
+      playerAudioDefault: false,
+      linePrizeCount: mode === 90 ? 2 : 1,
+      allowSamePlayerSecondLine: true,
+      tiePolicy: 'first_claim',
+      gameType: 'test',
+      roomType: 'official',
+      joinOpen: false,
+      maxOpenPlayers: 0,
+      prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 },
+      showMercadoPago: false,
+      argentinaHint: true,
+      presenterVoiceGender: payload.presenterVoiceGender === 'male' ? 'male' : 'female',
+      transmission: { enabled: false, showChat: false, showCards: true, showNames: false, showProgress: true, rotationSeconds: 30 }
+    },
+    assignmentTimer: { enabled: false, durationMinutes: 10 }
+  });
+  state.roomSettings.adminSimulation = true;
+  state.roomSettings.simulatedPlayers = playerCount;
+  state.roomSettings.simulatedCards = totalCards;
+  state.chat.enabled = false;
+  state.players.forEach((player, index) => {
+    player.name = '';
+    player.nameSet = true;
+    player.slotLabel = `IA ${String(index + 1).padStart(2, '0')}`;
+    player.virtual = true;
+    player.autoMark = true;
+    player.selectionConfirmed = true;
+    player.sessionToken = null;
+    player.sessionDeviceId = '';
+  });
+  syncAllAutoMarks();
+  updateCardDisplayNames();
+  logEvent('admin_simulation_created', { playerCount, totalCards, cardCounts, mode, autoSeconds });
+  saveState();
+  broadcast();
+  return adminPayload();
 }
 
 function ensureChatState() {
@@ -2166,14 +2231,17 @@ function demoPrizeTypes() {
     : ['ambo', 'line', 'bingo'];
 }
 
-function demoClaimDelay(player) {
+function virtualClaimDelay() {
   if (TEST_MODE) return 30 + crypto.randomInt(0, 30);
-  const base = player?.name === 'Zoe' ? 720 : player?.name === 'Mateo' ? 920 : 1120;
-  return base + crypto.randomInt(0, 430);
+  return 650 + crypto.randomInt(0, 900);
 }
 
-function scheduleDemoAiClaims() {
-  if (!currentWorkspace().isDemo || state.status !== 'playing') return 0;
+function virtualPlayersAreActive() {
+  return Boolean(currentWorkspace().isDemo || state.roomSettings?.adminSimulation);
+}
+
+function scheduleVirtualPlayerClaims() {
+  if (!virtualPlayersAreActive() || state.status !== 'playing') return 0;
   const drawnCount = state.game.drawn.length;
   let candidates = [];
   let selectedType = null;
@@ -2199,7 +2267,7 @@ function scheduleDemoAiClaims() {
     const timer = setTimeout(() => workspaceContext.run(workspace, () => {
       forgetDemoTimer(workspace, timer);
       try {
-        if (!workspace.isDemo || !state.active || !['playing', 'verifying'].includes(state.status) || state.game.drawn.length !== drawnCount) return;
+        if (!virtualPlayersAreActive() || !state.active || !['playing', 'verifying'].includes(state.status) || state.game.drawn.length !== drawnCount) return;
         const window = state.claimWindow;
         if (state.status === 'verifying' && (!window || Number(window.drawnCount) !== drawnCount || Date.now() > Number(window.expiresAtMs || 0))) return;
         if (state.claims.some(claim => claim.cardId === card.id && claim.type === selectedType && ['pending', 'confirmed'].includes(claim.status))) return;
@@ -2209,7 +2277,7 @@ function scheduleDemoAiClaims() {
       } catch (error) {
         console.error(`No se pudo registrar el reclamo de IA en ${workspace.id}:`, error.message);
       }
-    }), demoClaimDelay(player));
+    }), virtualClaimDelay());
     rememberDemoTimer(workspace, timer);
   }
   return candidates.length;
@@ -2277,7 +2345,7 @@ function drawNextBall(source = 'manual') {
   state.game.phase = state.game.drawMode === 'automatic' ? 'DRAWING' : 'READY';
   logEvent('ball_drawn', { number, position: state.game.drawn.length, source, drawRevision: Number(state.revision) + 1 });
   syncAllAutoMarks();
-  scheduleDemoAiClaims();
+  scheduleVirtualPlayerClaims();
   if (state.game.drawn.length >= state.game.mode) {
     const graceMs = currentWorkspace().isDemo
       ? Math.max(CLAIM_QUEUE_WINDOW_MS, DEMO_CLAIM_WINDOW_MS + 600)
@@ -3931,6 +3999,10 @@ async function dispatchAdminApi(req, res, url, session) {
   currentWorkspace().lastActivityAt = Date.now();
   if (url.pathname === '/api/admin/state' && req.method === 'GET') return sendJson(res, 200, adminPayload());
   if (url.pathname === '/api/admin/create-simple-room' && req.method === 'POST') return sendJson(res, 200, createSimpleRoom(await readJson(req)));
+  if (url.pathname === '/api/admin/create-ai-simulation' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'La simulación masiva solo está disponible para el administrador principal.' });
+    return sendJson(res, 200, createAdminSimulationRoom(await readJson(req)));
+  }
   if (url.pathname === '/api/admin/add-official-player' && req.method === 'POST') return sendJson(res, 200, addOfficialPlayer(await readJson(req)));
   if (url.pathname === '/api/admin/remove-player' && req.method === 'POST') return sendJson(res, 200, removeRoomPlayer(await readJson(req)));
   if (url.pathname === '/api/admin/join-open' && req.method === 'POST') return sendJson(res, 200, updateJoinOpen(await readJson(req)));

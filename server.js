@@ -50,6 +50,7 @@ const MAX_ASSIGNMENT_MINUTES = 30;
 const CARD_RESERVATION_TTL_MS = 2 * 60 * 1000;
 const ADMIN_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const CLAIM_QUEUE_WINDOW_MS = Math.max(100, Number(process.env.BINGO_CLAIM_WINDOW_MS || 3000));
+const FINAL_CLAIM_GRACE_MS = Math.max(1000, Number(process.env.BINGO_FINAL_CLAIM_GRACE_MS || 5000));
 const TEST_EVENT_TTL_MS = 20 * 1000;
 const START_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_START_SEQUENCE_MS || 11_000));
 const RESUME_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_RESUME_SEQUENCE_MS || 5_000));
@@ -759,13 +760,17 @@ function playerPrizeReadiness(player) {
   if (!state.game || !player?.selectionConfirmed) return [];
   const prizes = prizeStatusPayload();
   const playerAlreadyWonLine = (prizes.line.winners || []).some(winner => winner.playerId === player.id);
+  const activeClaimWindow = state.status === 'verifying'
+    && state.claimWindow
+    && Number(state.claimWindow.drawnCount) === state.game.drawn.length
+    && Date.now() <= Number(state.claimWindow.expiresAtMs || 0);
   return (player.cardIds || []).map(cardId => {
     const card = state.game.cards.find(item => item.id === cardId);
     if (!card) return null;
     const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
     const alreadyWon = type => (prizes[type]?.winners || []).some(winner => winner.cardId === cardId);
     const samePlayerBlocked = Number(state.game.mode) === 90 && !prizes.allowSamePlayerSecondLine && playerAlreadyWonLine;
-    const live = state.status === 'playing';
+    const live = state.status === 'playing' || activeClaimWindow;
     return {
       cardId,
       cardNumber: card.number,
@@ -1132,6 +1137,14 @@ function playerPayload(player) {
     markingPolicy: markingPolicyPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), muted: (state.chat?.mutedPlayerIds || []).includes(player.id) },
     assignmentTimer: assignmentTimerPayload(),
+    claimWindow: state.claimWindow ? {
+      id: state.claimWindow.id,
+      type: state.claimWindow.type || null,
+      types: Array.isArray(state.claimWindow.types) ? [...state.claimWindow.types] : (state.claimWindow.type ? [state.claimWindow.type] : []),
+      expiresAtMs: Number(state.claimWindow.expiresAtMs) || 0,
+      drawnCount: Number(state.claimWindow.drawnCount) || 0,
+      lastBall: state.claimWindow.lastBall ?? null
+    } : null,
     prizeStatus: prizeStatusPayload(),
     bingoConfirmed: prizeStatusPayload().bingo.closed,
     adminMessage: state.adminMessage,
@@ -2115,6 +2128,7 @@ function scheduleAutomaticDraw() {
   const workspace = currentWorkspace();
   clearAutomaticDrawTimer(workspace);
   if (!state.active || state.status !== 'playing' || state.game?.drawMode !== 'automatic') return;
+  if ((state.game?.drawn?.length || 0) >= Number(state.game?.mode || 0)) return;
   const minimumSeconds = currentWorkspace().isDemo ? 2 : 3;
   const delay = Math.max(minimumSeconds, Math.min(60, Number(state.game.autoSeconds) || 6)) * 1000;
   const timer = setTimeout(() => workspaceContext.run(workspace, () => {
@@ -2187,7 +2201,7 @@ function scheduleDemoAiClaims() {
       try {
         if (!workspace.isDemo || !state.active || !['playing', 'verifying'].includes(state.status) || state.game.drawn.length !== drawnCount) return;
         const window = state.claimWindow;
-        if (state.status === 'verifying' && (!window || window.type !== selectedType || Number(window.drawnCount) !== drawnCount || Date.now() > Number(window.expiresAtMs || 0))) return;
+        if (state.status === 'verifying' && (!window || Number(window.drawnCount) !== drawnCount || Date.now() > Number(window.expiresAtMs || 0))) return;
         if (state.claims.some(claim => claim.cardId === card.id && claim.type === selectedType && ['pending', 'confirmed'].includes(claim.status))) return;
         const analysis = analyzeCard(card, state.game.drawn, player.marks?.[card.id] || []);
         const stillValid = Boolean({ ambo: analysis.hasAmbo, line: analysis.hasLine, doubleLine: analysis.hasDoubleLine, tripleLine: analysis.hasTripleLine, corners: analysis.hasCorners, bingo: analysis.hasBingo }[selectedType]);
@@ -2217,14 +2231,15 @@ function scheduleDemoResume() {
 
 function autoResolveDemoClaimWindow(windowId) {
   if (!currentWorkspace().isDemo || !windowId || state.claimWindow?.id !== windowId) return;
-  const pending = state.claims
-    .filter(claim => claim.claimWindowId === windowId && claim.status === 'pending')
-    .sort((a, b) => Number(a.receivedSequence || 0) - Number(b.receivedSequence || 0));
-  if (!pending.length) return;
-  const winner = pending.find(claim => claim.officialValid);
   try {
-    if (winner) resolveClaim({ claimId: winner.id, resolution: 'confirmed', note: 'Validación automática de demostración.' });
-    else for (const claim of pending) if (claim.status === 'pending') resolveClaim({ claimId: claim.id, resolution: 'rejected', note: 'Reclamo inválido en la demostración.' });
+    while (true) {
+      const pending = state.claims
+        .filter(claim => claim.claimWindowId === windowId && claim.status === 'pending')
+        .sort((a, b) => Number(a.receivedSequence || 0) - Number(b.receivedSequence || 0));
+      if (!pending.length) break;
+      const next = pending[0];
+      resolveClaim({ claimId: next.id, resolution: next.officialValid ? 'confirmed' : 'rejected', note: next.officialValid ? 'Validación automática de demostración.' : 'Reclamo inválido en la demostración.' });
+    }
   } catch (error) {
     console.error(`No se pudo resolver automáticamente la demostración:`, error.message);
   }
@@ -2264,16 +2279,23 @@ function drawNextBall(source = 'manual') {
   syncAllAutoMarks();
   scheduleDemoAiClaims();
   if (state.game.drawn.length >= state.game.mode) {
-    state.status = 'finished';
+    const graceMs = currentWorkspace().isDemo
+      ? Math.max(CLAIM_QUEUE_WINDOW_MS, DEMO_CLAIM_WINDOW_MS + 600)
+      : FINAL_CLAIM_GRACE_MS;
+    const startedAt = nowIso();
+    state.status = 'playing';
     state.pauseReason = null;
-    state.endedAt = nowIso();
-    state.game.phase = 'ROUND_END';
-    logEvent('game_finished', { round: state.round, balls: state.game.drawn.length, automatic: true });
-    archiveCurrentResults();
+    state.game.phase = 'FINAL_CLAIM_WINDOW';
+    state.transition = {
+      id: randomId('transition'), type: 'last-ball-claim-window', startedAt,
+      endsAt: new Date(Date.now() + graceMs).toISOString()
+    };
+    logEvent('final_claim_window_opened', { round: state.round, balls: state.game.drawn.length, graceMs });
   }
   saveState();
   broadcast();
-  if (state.status === 'playing') scheduleAutomaticDraw();
+  if (state.transition?.type === 'last-ball-claim-window') scheduleTransition();
+  else if (state.status === 'playing') scheduleAutomaticDraw();
   return adminPayload();
 }
 
@@ -2323,6 +2345,19 @@ function completeTransition() {
   clearWorkspaceTransitionTimer();
   if (!state.active || !state.transition) return;
   const type = state.transition.type;
+  if (type === 'last-ball-claim-window') {
+    if (state.claims.some(claim => claim.status === 'pending')) return;
+    state.status = 'finished';
+    state.pauseReason = null;
+    state.game.phase = 'ROUND_END';
+    state.endedAt = nowIso();
+    state.transition = null;
+    logEvent('game_finished', { round: state.round, balls: state.game.drawn.length, automatic: true, afterFinalClaimWindow: true });
+    archiveCurrentResults();
+    saveState();
+    broadcast();
+    return;
+  }
   if (type === 'final-balls') {
     const existing = new Set(state.game.drawn || []);
     if (!Array.isArray(state.drawOrder) || state.drawOrder.length !== state.game.mode) state.drawOrder = createSecureDrawOrder(state.game.mode, state.game.drawn);
@@ -3026,7 +3061,7 @@ function createClaim(player, payload) {
   const type = PRIZE_TYPES.includes(requested) ? requested : 'line';
   const nowMs = Date.now();
   const existingWindow = state.claimWindow;
-  const windowOpen = state.status === 'verifying' && existingWindow && nowMs <= Number(existingWindow.expiresAtMs) && existingWindow.type === type && Number(existingWindow.drawnCount) === state.game.drawn.length;
+  const windowOpen = state.status === 'verifying' && existingWindow && nowMs <= Number(existingWindow.expiresAtMs) && Number(existingWindow.drawnCount) === state.game.drawn.length;
   if (state.status !== 'playing' && !windowOpen) throw new Error('La partida todavía no comenzó, ya finalizó o la ventana de reclamos se cerró.');
   const cardId = String(payload.cardId || '');
   const card = state.game.cards.find(item => item.id === cardId);
@@ -3046,12 +3081,15 @@ function createClaim(player, payload) {
     state.claimWindow = {
       id: randomId('claim_window'),
       type,
+      types: [type],
       openedAt: nowIso(),
       openedAtMs: nowMs,
       expiresAtMs: nowMs + (currentWorkspace().isDemo ? (TEST_MODE ? CLAIM_QUEUE_WINDOW_MS : DEMO_CLAIM_WINDOW_MS) : CLAIM_QUEUE_WINDOW_MS),
       drawnCount: state.game.drawn.length,
       lastBall: state.game.drawn.at(-1) ?? null
     };
+  } else {
+    state.claimWindow.types = [...new Set([...(Array.isArray(state.claimWindow.types) ? state.claimWindow.types : [state.claimWindow.type].filter(Boolean)), type])];
   }
   const window = state.claimWindow;
   const windowClaims = state.claims.filter(claim => claim.claimWindowId === window.id);
@@ -3103,6 +3141,27 @@ function addClaimNotice(claim, resolution, textOverride = '') {
   });
 }
 
+function rejectPendingClaim(claim, reason, note, text) {
+  if (!claim || claim.status !== 'pending') return;
+  claim.status = 'rejected';
+  claim.resolvedAt = nowIso();
+  claim.resolutionReason = reason;
+  claim.adminNote = note;
+  addClaimNotice(claim, 'rejected', text);
+  logEvent('claim_resolved', { claimId: claim.id, resolution: 'rejected', reason, receivedSequence: claim.receivedSequence });
+}
+
+function refreshPendingPrizeLabels(type, claimWindowId) {
+  const current = prizeStatusPayload()[type];
+  const nextNumber = type === 'line' && Number(state.game?.mode) === 90
+    ? Math.max(1, Math.min(Number(current?.total) || 1, (Number(current?.awarded) || 0) + 1))
+    : 1;
+  for (const item of state.claims.filter(claim => claim.status === 'pending' && claim.type === type && claim.claimWindowId === claimWindowId)) {
+    item.prizeNumber = nextNumber;
+    item.prizeLabel = prizeLabelFor(type, nextNumber, state.game?.mode);
+  }
+}
+
 function resolveClaim(payload) {
   const claim = state.claims.find(item => item.id === payload.claimId);
   if (!claim) throw new Error('No se encontró el reclamo.');
@@ -3121,7 +3180,7 @@ function resolveClaim(payload) {
     const sameWindow = state.claims.filter(item => item.claimWindowId === claim.claimWindowId && item.type === claim.type);
     if (state.roomSettings.tiePolicy !== 'same_ball') {
       const earlierValid = sameWindow
-        .filter(item => item.officialValid && item.status !== 'rejected' && Number(item.receivedSequence) < Number(claim.receivedSequence))
+        .filter(item => item.officialValid && item.status === 'pending' && Number(item.receivedSequence) < Number(claim.receivedSequence))
         .sort((a, b) => Number(a.receivedSequence) - Number(b.receivedSequence))[0];
       if (earlierValid) throw new Error(`Primero debe resolverse el reclamo #${earlierValid.receivedSequence}, recibido antes por el servidor.`);
       if (current.closed) throw new Error(`El premio ${prizeLabelFor(claim.type, claim.prizeNumber)} ya fue entregado.`);
@@ -3145,15 +3204,24 @@ function resolveClaim(payload) {
   addClaimNotice(claim, resolution);
 
   if (resolution === 'confirmed' && state.roomSettings.tiePolicy !== 'same_ball') {
+    const currentAfter = prizeStatusPayload()[claim.type];
     for (const later of state.claims.filter(item => item.status === 'pending' && item.claimWindowId === claim.claimWindowId && item.type === claim.type)) {
-      later.status = 'rejected';
-      later.resolvedAt = nowIso();
-      later.resolutionReason = later.officialValid ? 'valid_but_received_later' : 'invalid_card';
-      later.adminNote = later.officialValid ? `Reclamo válido recibido ${later.deltaFromFirstMs} ms después del ganador.` : 'Reclamo inválido registrado durante la misma ventana.';
-      addClaimNotice(later, 'rejected', later.officialValid ? `${later.prizeLabel} válido, pero recibido después del reclamo ganador.` : `${later.prizeLabel} rechazado: el cartón no estaba completo.`);
-      logEvent('claim_resolved', { claimId: later.id, resolution: 'rejected', reason: later.resolutionReason, receivedSequence: later.receivedSequence });
+      if (!later.officialValid) {
+        rejectPendingClaim(later, 'invalid_card', 'Reclamo inválido registrado durante la misma ventana.', `${later.prizeLabel} rechazado: el cartón no estaba completo.`);
+        continue;
+      }
+      const samePlayerBlocked = claim.type === 'line' && Number(state.game.mode) === 90 && !state.roomSettings.allowSamePlayerSecondLine
+        && confirmedClaims('line').some(item => item.playerId === later.playerId);
+      if (samePlayerBlocked) {
+        rejectPendingClaim(later, 'same_player_second_line_not_allowed', 'El jugador ya recibió una línea y la configuración no permite que gane la segunda.', 'Reclamo válido, pero este jugador no está habilitado para ganar la segunda línea.');
+        continue;
+      }
+      if (currentAfter?.closed) {
+        rejectPendingClaim(later, 'valid_but_received_later', `Reclamo válido recibido ${later.deltaFromFirstMs} ms después del ganador.`, `${later.prizeLabel} válido, pero recibido después del reclamo ganador.`);
+      }
     }
   }
+  refreshPendingPrizeLabels(claim.type, claim.claimWindowId);
 
   logEvent('claim_resolved', { claimId: claim.id, resolution, prizeNumber: claim.prizeNumber || 1, officialValid: claim.officialValid, receivedSequence: claim.receivedSequence, reason: claim.resolutionReason });
   clearWorkspaceTransitionTimer();
@@ -3164,12 +3232,21 @@ function resolveClaim(payload) {
   if (stillPending) {
     state.status = 'verifying';
     state.game.phase = 'REVIEWING_WINNER';
-  } else if (resolution === 'confirmed' && claim.type === 'bingo') {
+  } else if (confirmedClaims('bingo').length) {
+    const bingoClaim = confirmedClaims('bingo').at(-1);
     const startedAt = nowIso();
     state.status = 'finalizing';
     state.game.phase = 'BINGO_CONFIRMED';
     state.transition = { id: randomId('transition'), type: 'final-balls', startedAt, endsAt: new Date(Date.now() + (currentWorkspace().isDemo ? (TEST_MODE ? 250 : DEMO_FINAL_SEQUENCE_MS) : FINAL_BALLS_SEQUENCE_MS)).toISOString() };
-    logEvent('bingo_confirmed_final_extraction', { claimId: claim.id, cardId: claim.cardId, cardNumber: claim.cardNumber });
+    logEvent('bingo_confirmed_final_extraction', { claimId: bingoClaim.id, cardId: bingoClaim.cardId, cardNumber: bingoClaim.cardNumber });
+  } else if (state.game.drawn.length >= state.game.mode) {
+    state.status = 'finished';
+    state.pauseReason = null;
+    state.game.phase = 'ROUND_END';
+    state.endedAt = nowIso();
+    state.transition = null;
+    logEvent('game_finished', { round: state.round, balls: state.game.drawn.length, afterFinalClaims: true });
+    archiveCurrentResults();
   } else {
     state.status = 'paused';
     state.game.phase = 'PAUSED';

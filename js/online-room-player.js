@@ -8,6 +8,7 @@ const PRESENTERS = Scripts.profiles || {};
 class PlayerApp {
   constructor() {
     this.token = localStorage.getItem('bingoOnlineToken') || '';
+    this.tokenRoom = String(localStorage.getItem('bingoOnlineRoom') || '').trim().toUpperCase();
     this.deviceId = localStorage.getItem('bingoPlayerDeviceId') || this.makeDeviceId();
     localStorage.setItem('bingoPlayerDeviceId', this.deviceId);
     this.state = null;
@@ -169,7 +170,16 @@ class PlayerApp {
     if (directCode) {
       $('accessCode').value = directCode;
       await this.login(directCode, roomCode);
-    } else if (this.token) await this.resume();
+    } else if (this.token && (!roomCode || (this.tokenRoom && this.tokenRoom === roomCode))) {
+      await this.resume();
+    } else if (roomCode && this.token && this.tokenRoom !== roomCode) {
+      this.token = '';
+      this.tokenRoom = '';
+      this.activeCardId = '';
+      localStorage.removeItem('bingoOnlineToken');
+      localStorage.removeItem('bingoOnlineRoom');
+      localStorage.removeItem('bingoOnlineCard');
+    }
 
     this.keepAliveTimer = setInterval(() => { if (this.state?.active) fetch('/api/ping', { cache:'no-store' }).catch(() => {}); }, 5 * 60 * 1000);
     this.assignmentClockTimer = setInterval(() => this.updateAssignmentCountdown(), 1000);
@@ -208,6 +218,7 @@ class PlayerApp {
     style.textContent = `
       .playerChatDock{position:fixed;right:9px;bottom:9px;z-index:105}.playerChatToggle{min-height:44px;border:0;border-radius:999px;padding:10px 14px;background:#5a167b;color:#fff;font-weight:1000;box-shadow:0 10px 35px #0008}.playerChatPanel{display:none;position:fixed;left:50%;bottom:8px;transform:translateX(-50%);width:min(540px,calc(100vw - 16px));height:min(620px,80dvh);background:var(--panel);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 25px 70px #000b}.playerChatPanel.show{display:grid;grid-template-rows:auto 1fr auto auto}.playerChatPanel header{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;background:linear-gradient(135deg,#5a167b,#7b2494);color:#fff}.playerChatPanel header button{border:0;background:transparent;color:#fff;font-size:24px}.playerChatMessages{overflow:auto;padding:10px;display:grid;align-content:start;gap:8px;background:var(--panel3)}.playerChatMessage{padding:9px 10px;border-radius:11px;background:var(--panel2);color:var(--text);border:1px solid var(--border)}.playerChatMessage.admin{background:#3b2454;color:#fff;border-color:#9867b2}.playerChatMessage small{display:flex;justify-content:space-between;gap:8px;color:var(--muted);margin-bottom:4px}.playerChatMessage.admin small{color:#e3cdeb}.playerChatMessage p{margin:0;word-break:break-word}.playerChatMessage.stickerMessage{background:transparent;border-color:transparent;padding:5px 8px}.playerChatMessage.stickerMessage small{margin-bottom:1px}.playerChatMessage.stickerMessage p{display:flex;align-items:center;min-height:104px}.playerChatComposer{display:grid;grid-template-columns:46px 46px minmax(0,1fr) auto;align-items:end;border-top:1px solid var(--border);background:var(--panel)}.playerChatToolButton{width:46px;height:52px;border:0;border-right:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:22px;font-weight:900;cursor:pointer}.playerChatToolButton.active{background:#5a167b;color:#fff}.playerChatPanel textarea{resize:none;min-height:52px;max-height:94px;padding:10px;border:0;background:var(--panel);color:var(--text);outline:none}.playerChatSend{height:52px;border:0;padding:0 14px;background:#ffca2f;color:#1b1405;font-weight:1000}.playerChatNotice{padding:8px 10px;background:#3f2c0a;color:#ffe39a;font-size:12px}.playerPicker{display:none;padding:9px;border-top:1px solid var(--border);background:var(--panel2);max-height:260px;overflow:auto}.playerPicker.show{display:grid}.playerEmojiMenu{grid-template-columns:repeat(5,1fr);gap:5px}.playerEmojiMenu button{height:48px;border:1px solid var(--border);border-radius:11px;background:var(--panel3);color:var(--text);font-size:25px;cursor:pointer}.playerEmojiMenu button:active{transform:scale(.92)}.playerStickerMenu{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.playerStickerMenu .premiumStickerButton{min-height:88px}.playerStickerHint{grid-column:1/-1;color:var(--muted);font-size:11px;line-height:1.35;padding:2px 3px 5px}.playerChatBadge:not(:empty){display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:999px;background:#e83e87;margin-left:5px}.playerChatToggle:focus-visible,.playerPicker button:focus-visible,.playerChatToolButton:focus-visible{outline:3px solid #ffca2f;outline-offset:2px}
       @media(max-width:620px){.playerChatDock{right:7px;bottom:7px}.playerChatPanel{bottom:0;width:100%;height:min(690px,84dvh);border-radius:20px 20px 0 0}.playerEmojiMenu{grid-template-columns:repeat(5,1fr)}.playerStickerMenu{grid-template-columns:repeat(3,minmax(0,1fr))}.playerStickerMenu .premiumStickerButton{min-height:82px}.playerChatComposer{grid-template-columns:44px 44px minmax(0,1fr) auto}.playerChatToolButton{width:44px}}
+      @media(min-width:1100px){.playerLogged .playerChatDock{position:fixed;right:10px;top:10px;bottom:10px;width:340px;z-index:60}.playerLogged .playerChatToggle{display:none}.playerLogged .playerChatPanel,.playerLogged .playerChatPanel.show{display:grid;position:static;transform:none;width:100%;height:100%;grid-template-rows:auto minmax(0,1fr) auto auto auto auto;border-radius:18px}.playerLogged .playerChatPanel header button{display:none}.playerLogged .playerChatMessages{min-height:0}.playerLogged .playerChatPanel textarea{min-width:0}.playerLogged .playerChatSend{padding:0 10px;font-size:11px}}
     `;
     document.head.appendChild(style);
     const dock = document.createElement('aside');
@@ -520,6 +531,8 @@ class PlayerApp {
   acceptLogin(data) {
     this.token = data.token;
     localStorage.setItem('bingoOnlineToken', this.token);
+    this.tokenRoom = String(data.state?.roomCode || '').trim().toUpperCase();
+    if (this.tokenRoom) localStorage.setItem('bingoOnlineRoom', this.tokenRoom);
     this.cleanDirectAccessUrl();
     this.applyState(data.state);
     this.connectEvents();
@@ -607,6 +620,10 @@ class PlayerApp {
     const previousCount = previous?.game?.drawn?.length;
     const previousConfirmed = Boolean(previous?.player?.selectionConfirmed);
     this.state = data;
+    if (data.roomCode && this.token) {
+      this.tokenRoom = String(data.roomCode).trim().toUpperCase();
+      localStorage.setItem('bingoOnlineRoom', this.tokenRoom);
+    }
     if (data.status === 'waiting' && !data.player.selectionConfirmed) this.selectedOffers = new Set(data.player.reservedCardIds || []);
     else this.selectedOffers.clear();
     const cards = data.player.cards || [];
@@ -1059,23 +1076,51 @@ class PlayerApp {
     return 'LÍNEA';
   }
 
+  claimInputOpen() {
+    if (this.state?.status === 'playing') return true;
+    const window = this.state?.claimWindow;
+    return this.state?.status === 'verifying'
+      && window
+      && Number(window.drawnCount) === Number(this.state?.game?.drawn?.length || 0)
+      && Date.now() <= Number(window.expiresAtMs || 0);
+  }
+
+  ticketMarkup(card) {
+    const marks = new Set((this.state.player.marks?.[card.id] || []).map(Number));
+    const auto = Boolean(this.state.player.autoMark);
+    const markLocked = this.state.status !== 'playing';
+    const cells = card.grid.flat().map(value => value === null
+      ? '<div class="cell blank">·</div>'
+      : value === 'LIBRE'
+        ? '<div class="cell free"><img src="assets/celebrations/la-gorda-festejando.png" alt="La Gorda"><span>LIBRE</span></div>'
+        : `<button class="cell number ${marks.has(value) ? 'marked' : ''}" data-card-id="${esc(card.id)}" data-number="${value}" ${auto || markLocked ? 'disabled' : ''}>${value}</button>`).join('');
+    const readyInfo = this.readinessFor(card.id);
+    const progress = Number(card.mode) === 75 ? ` · ${readyInfo?.lineCount || 0} líneas completas` : '';
+    const bingoHead = Number(card.mode) === 75 ? '<div class="bingoLetters" aria-hidden="true"><span class="bingo-col-b">B</span><span class="bingo-col-i">I</span><span class="bingo-col-n">N</span><span class="bingo-col-g">G</span><span class="bingo-col-o">O</span></div>' : '';
+    return `<article class="ticketInstance ${card.id === this.activeCardId ? 'active' : ''}" data-ticket-card="${esc(card.id)}"><div class="ticketHead"><div class="ticketMetaMain"><span class="ticketNumberBadge">${esc(card.number)}</span><div><b>Tu cartón</b><br><small>${esc(this.state.player.name)}</small></div></div><small class="ticketHeadStatus">${marks.size} marcados${progress}<br>${auto ? 'AUTOMÁTICO' : 'MANUAL'}</small></div>${bingoHead}<div class="grid mode${card.mode}">${cells}</div></article>`;
+  }
+
   renderTicket() {
-    const card = this.state.player.cards.find(item => item.id === this.activeCardId);
+    const cards = this.state.player.cards || [];
+    const card = cards.find(item => item.id === this.activeCardId) || cards[0];
     const buttons = {
       ambo:$('claimAmbo'), corners:$('claimCorners'), line:$('claimLine'), doubleLine:$('claimDoubleLine'), tripleLine:$('claimTripleLine'), bingo:$('claimBingo')
     };
     const allButtons = Object.values(buttons);
     $('ticketPanel').classList.toggle('mode75Card', Number(card?.mode) === 75);
     if (!card) { $('ticketPanel').innerHTML = '<div class="error">No hay un cartón elegido.</div>'; allButtons.forEach(button => button.disabled = true); return; }
-    const marks = new Set((this.state.player.marks?.[card.id] || []).map(Number)), auto = Boolean(this.state.player.autoMark), locked = this.state.status !== 'playing';
-    const cells = card.grid.flat().map(value => value === null ? '<div class="cell blank">·</div>' : value === 'LIBRE' ? '<div class="cell free"><img src="assets/celebrations/la-gorda-festejando.png" alt="La Gorda"><span>LIBRE</span></div>' : `<button class="cell number ${marks.has(value) ? 'marked' : ''}" data-number="${value}" ${auto || locked ? 'disabled' : ''}>${value}</button>`).join('');
-    const readyInfo = this.readinessFor(card.id);
-    const progress = Number(card.mode) === 75 ? ` · ${readyInfo?.lineCount || 0} líneas completas` : '';
-    const bingoHead = Number(card.mode) === 75 ? '<div class="bingoLetters" aria-hidden="true"><span class="bingo-col-b">B</span><span class="bingo-col-i">I</span><span class="bingo-col-n">N</span><span class="bingo-col-g">G</span><span class="bingo-col-o">O</span></div>' : '';
-    $('ticketPanel').innerHTML = `<div class="ticketHead"><div class="ticketMetaMain"><span class="ticketNumberBadge">${esc(card.number)}</span><div><b>Tu cartón</b><br><small>${esc(this.state.player.name)}</small></div></div><small class="ticketHeadStatus">${marks.size} marcados${progress}<br>${auto ? 'AUTOMÁTICO' : 'MANUAL'}</small></div>${bingoHead}<div class="grid mode${card.mode}">${cells}</div>`;
-    if (!auto && !locked) $('ticketPanel').querySelectorAll('[data-number]').forEach(button => button.onclick = () => this.toggleMark(card.id, Number(button.dataset.number), !button.classList.contains('marked')));
+    const auto = Boolean(this.state.player.autoMark), locked = !this.claimInputOpen();
+    $('ticketPanel').innerHTML = `<div class="desktopTickets">${cards.map(item => this.ticketMarkup(item)).join('')}</div>`;
+    if (!auto && this.state.status === 'playing') $('ticketPanel').querySelectorAll('[data-number]').forEach(button => button.onclick = () => this.toggleMark(button.dataset.cardId, Number(button.dataset.number), !button.classList.contains('marked')));
+    $('ticketPanel').querySelectorAll('[data-ticket-card]').forEach(ticket => ticket.onclick = event => {
+      if (event.target.closest('[data-number]')) return;
+      this.activeCardId = ticket.dataset.ticketCard;
+      localStorage.setItem('bingoOnlineCard', this.activeCardId);
+      this.renderTabs(); this.renderTicket();
+    });
 
-    const prizes = this.state.prizeStatus || {}, pending = (this.state.publicClaims || []).some(claim => claim.status === 'pending');
+    const prizes = this.state.prizeStatus || {};
+    const ownCardNumbers = new Set(cards.map(item => String(item.number)));
     const mode75 = Number(card.mode) === 75;
     const definitions = [
       { type:'ambo', button:buttons.ambo, enabled:!mode75 && card.bets?.ambocabeza !== false && Number(prizes.ambo?.total || 0) > 0 },
@@ -1093,7 +1138,8 @@ class PlayerApp {
       item.button.textContent = `CANTAR ${label}`;
       const ready = this.eligibleCard(item.type);
       const alreadyWon = (item.prize.winners || []).some(winner => winner.cardId === card.id);
-      item.button.disabled = locked || pending || item.prize.closed || alreadyWon;
+      const ownPending = (this.state.publicClaims || []).some(claim => claim.status === 'pending' && claim.type === item.type && ownCardNumbers.has(String(claim.cardNumber)));
+      item.button.disabled = locked || ownPending || item.prize.closed || (alreadyWon && !ready);
       item.button.classList.toggle('prizeReady', Boolean(ready) && !item.button.disabled);
       if (ready && !item.button.disabled) item.button.textContent = `¡TENÉS ${label}! TOCÁ ACÁ`;
     });
@@ -1116,7 +1162,7 @@ class PlayerApp {
   }
 
   async claim(type) {
-    if (this.state?.status !== 'playing') return;
+    if (!this.claimInputOpen()) return;
     const ready = this.eligibleCard(type);
     if (ready) { this.activeCardId = ready.cardId; localStorage.setItem('bingoOnlineCard', this.activeCardId); this.renderTabs(); this.renderTicket(); }
     const card = this.state?.player.cards.find(item => item.id === this.activeCardId); if (!card) return;
@@ -1133,12 +1179,13 @@ class PlayerApp {
   }
 
   handleOwnPrizeReadiness() {
-    if (!this.state || this.state.status !== 'playing') return;
+    if (!this.state || !this.claimInputOpen()) return;
     const order = ['bingo','tripleLine','doubleLine','corners','line','ambo'];
     let type = null, ready = null;
     for (const candidate of order) { ready = this.eligibleCard(candidate); if (ready) { type = candidate; break; } }
     if (!ready || !type) { this.lastPrizeReadyKey = ''; return; }
-    const key = `${type}:${ready.cardId}:${this.state.game.drawn.length}`; if (key === this.lastPrizeReadyKey) return;
+    const awarded = Number(this.state.prizeStatus?.[type]?.awarded || 0);
+    const key = `${type}:${ready.cardId}:${this.state.game.drawn.length}:${awarded}`; if (key === this.lastPrizeReadyKey) return;
     this.lastPrizeReadyKey = key; this.activeCardId = ready.cardId; localStorage.setItem('bingoOnlineCard', ready.cardId);
     this.playAlertSound(type); if (this.alertsEnabled && navigator.vibrate) navigator.vibrate(type === 'bingo' ? [180,80,180,80,260] : [150,70,150]);
     const label = this.claimLabel(type);
@@ -1386,7 +1433,9 @@ class PlayerApp {
     this.roomClosedShown = true;
     this.events?.close();
     this.token = '';
+    this.tokenRoom = '';
     localStorage.removeItem('bingoOnlineToken');
+    localStorage.removeItem('bingoOnlineRoom');
     localStorage.removeItem('bingoOnlineCard');
     $('connectionMask').classList.remove('show');
     $('finalResultsOverlay').classList.remove('show');
@@ -1429,7 +1478,7 @@ class PlayerApp {
   }
 
   logout(reload=true) {
-    this.events?.close(); clearInterval(this.sequenceTimer); this.setFocusMode(false); this.closeOtherPanels(); this.closeResultsViewer(); this.token=''; this.state=null; this.roomClosedShown=false; localStorage.removeItem('bingoOnlineToken'); localStorage.removeItem('bingoOnlineCard');
+    this.events?.close(); clearInterval(this.sequenceTimer); this.setFocusMode(false); this.closeOtherPanels(); this.closeResultsViewer(); this.token=''; this.tokenRoom=''; this.state=null; this.roomClosedShown=false; localStorage.removeItem('bingoOnlineToken'); localStorage.removeItem('bingoOnlineRoom'); localStorage.removeItem('bingoOnlineCard');
     document.body.classList.remove('playerLogged'); $('infoDrawerToggle').classList.add('hidden');
     if(reload) location.reload(); else { $('gameView').classList.add('hidden'); $('loginView').classList.remove('hidden'); }
   }

@@ -67,6 +67,25 @@ html[data-theme="day"]{--bg:#edf2f8;--bg2:#dfe7f1;--panel:#ffffff;--panel2:#edf3
 .waitMiniGame{margin-top:14px;padding:13px;border-radius:16px;background:var(--panel2);border:1px solid var(--border)}.waitMiniGame h3{margin:10px 0 5px}.miniGameTabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px}.miniGameTabs button{min-height:42px;border:2px solid var(--border);border-radius:11px;background:var(--panel3);color:var(--muted);font-size:12px;font-weight:1000;cursor:pointer}.miniGameTabs button.active{border-color:var(--gold);background:linear-gradient(135deg,#ffb51e,#ffe36b);color:#241600}.miniGameLayout{display:grid;grid-template-columns:minmax(130px,210px) 1fr;gap:14px;align-items:center}.playingCard{position:relative;width:min(190px,44vw);aspect-ratio:5/7;margin:auto;border-radius:18px;background:center/cover no-repeat;box-shadow:0 16px 35px #0007;overflow:hidden}.playingCard.back{background-image:url('/assets/cards/dorso.webp')}.cardIndex{position:absolute;display:grid;place-items:center;width:27%;height:20%;font:1000 clamp(22px,7vw,38px)/.85 Georgia,serif;text-shadow:0 2px 2px #fff8}.cardIndex.top{left:6%;top:5%}.cardIndex.bottom{right:6%;bottom:5%;transform:rotate(180deg)}.cardIndex.red{color:#b31342}.cardIndex.black{color:#2b123e}.cardIndex small{display:block;font-size:.58em}.miniGameControls{display:grid;gap:8px}.miniGameChoices{display:grid;grid-template-columns:1fr 1fr;gap:8px}.miniGameChoices button{min-height:52px;border:0;cursor:pointer;border-radius:12px;font-weight:1000;font-size:16px}.miniGameChoices button:disabled{opacity:.55;cursor:wait}.redChoice{background:#bd2444;color:#fff}.blackChoice{background:#281337;color:#fff}.higherChoice,.lowerChoice{background:var(--gold);color:var(--goldText)}.miniScore{font-weight:1000;font-size:18px}.miniResult{min-height:44px;color:var(--muted);line-height:1.4}.miniLeaderboard{margin-top:10px;padding-top:9px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}.miniLeaderboard b{color:var(--text)}
 @media(max-width:520px){.miniGameLayout{grid-template-columns:1fr}.playingCard{width:150px}.miniGameChoices button{min-height:46px}}
 
+.desktopTickets{display:block}.ticketInstance{display:none}.ticketInstance.active{display:block}
+@media(min-width:1100px){
+  .playerLogged .wrap{width:calc(100% - 365px);max-width:none;margin:0;padding:10px 12px 30px}
+  .playerLogged #playPanel .drawCard,.playerLogged #playPanel .ticketCard,.playerLogged #playPanel .claimBar{width:100%}
+  .playerLogged #cardTabs{display:none}
+  .playerLogged #ticketPanel{padding:9px}
+  .playerLogged .desktopTickets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .playerLogged .ticketInstance,.playerLogged .ticketInstance.active{display:block;min-width:0;padding:9px;border:1px solid var(--border);border-radius:14px;background:var(--panel2);cursor:pointer}
+  .playerLogged .ticketInstance.active{box-shadow:inset 0 0 0 2px #a95aff66}
+  .playerLogged .ticketInstance .ticketHead{margin-bottom:6px}.playerLogged .ticketInstance .ticketHead b{font-size:15px}.playerLogged .ticketInstance .ticketHead small{font-size:9px}
+  .playerLogged .ticketInstance .ticketNumberBadge{min-width:36px;height:26px;font-size:11px}
+  .playerLogged .ticketInstance .grid{gap:3px}
+  .playerLogged .ticketInstance .cell{aspect-ratio:auto;height:clamp(34px,4.8vh,52px);border-radius:6px;border-width:1px;font-size:clamp(16px,1.65vw,25px)}
+  .playerLogged .ticketInstance .grid.mode90 .cell{height:clamp(32px,4.3vh,46px);font-size:clamp(13px,1.25vw,19px)}
+  .playerLogged .desktopTickets .ticketInstance:only-child{grid-column:1/-1}
+  .playerLogged .ticketInstance .bingoLetters{gap:3px;margin-bottom:3px}.playerLogged .ticketInstance .bingoLetters span{height:25px;font-size:15px}
+  .playerLogged .claimBar{position:sticky;bottom:6px;z-index:30;padding:7px;border-radius:15px;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(8px)}
+}
+
 </style>
 </head>
 <body>

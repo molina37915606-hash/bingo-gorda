@@ -1,62 +1,40 @@
-LA GORDA - BINGO ONLINE - ACTUALIZACIÓN 2.0
+BINGO DE LA GORDA - BASE LIMPIA
 
-CHAT PREMIUM
-- El chat del jugador separa texto, emojis comunes y stickers premium.
-- Panel de 20 emojis comunes para insertar dentro de mensajes de texto.
-- Panel independiente de 12 stickers premium de envío directo.
-- Los stickers son mensajes individuales grandes; no se mezclan con el texto.
-- Los stickers se animan al enviarse/recibirse y vuelven a animarse al tocarlos dentro del chat.
-- La animación no queda en loop y respeta prefers-reduced-motion.
-- Anti-spam de stickers validado en cliente y servidor: mínimo 1,2 s entre stickers y máximo 4 en 10 s por jugador.
-- El administrador puede eliminar mensajes, silenciar jugadores y pausar el chat.
-- Administrador y transmisión renderizan los mismos stickers premium y reciben los mensajes de chat en tiempo real.
+Esta carpeta representa la base actual del proyecto. Se retiraron notas históricas de parches y configuraciones obsoletas sin modificar las funciones vigentes.
 
-STICKERS CON LA GORDA
-- Risa.
-- Festejos.
-- Dinero.
-- AY NO.
-- Enojada.
+ESTADO ACTUAL
+- Administración principal y administración de partidas.
+- Salas de prueba y oficiales.
+- Jugadores con selección de cartones, chat, emojis y stickers.
+- Comunidad pública con moderación, filtros y reportes.
+- Minijuegos de espera y comunidad.
+- Modo espectador automático en todas las partidas.
+- Pantalla completa, efectos, voz de Vero y carrera por el premio en la transmisión.
+- Link corto de espectador y soporte preparado para Chromecast.
+- Actas PDF/CSV, backup, recuperación y auditoría.
 
-STICKERS DE ELEMENTOS PREMIUM
-- Corazón.
-- Aplausos.
-- Suerte.
-- Símbolo dinero.
-- Ira.
-- Explosión.
-- Cerveza.
+LIMPIEZA REALIZADA
+- Eliminado el viejo estado transmission.enabled: la transmisión ya existe siempre.
+- Unificada la normalización de ajustes de transmisión en el servidor.
+- Eliminadas rutas maestras antiguas de operadores temporales que ya estaban deshabilitadas.
+- Eliminadas notas de parches fechadas que no eran usadas por la aplicación.
+- Corregida la variable de ejemplo BINGO_CLAIM_WINDOW_MS.
+- Agregada auditoría estructural automática para detectar referencias locales rotas y restos obsoletos.
 
-ACTA DE RESULTADOS
-- VER ACTA ya no navega directamente al PDF.
-- El administrador recibe una vista previa HTML interna con resultados, bolillas, ganadores, auditoría de reclamos y participantes.
-- ABRIR PDF y DESCARGAR PDF quedan como acciones separadas.
-- En el jugador, el visor obtiene el PDF mediante fetch y lo muestra con una URL Blob para evitar que Content-Disposition fuerce una descarga.
-- La ruta PDF mantiene modo inline para apertura y attachment para descarga.
+ACTUALIZACIÓN VERO Y COMUNIDAD
+- Vero es la única presentadora del juego.
+- Eliminados Vivi, Josu y Daia de interfaz, código y assets.
+- Voz femenina en español y guion ampliado para bolillas, premios, reclamos, pausas, tensión y cierre.
+- Jugador y transmisión comparten el mismo guion de Vero.
+- La transmisión canta cada nueva bolilla.
+- El nombre del chat de Comunidad queda fijo una vez guardado en el dispositivo.
+- Mejorada la visibilidad del acceso/identidad del chat.
+- Eliminada la descarga del antiguo reglamento PDF y su archivo asociado.
 
-BOLILLERO DEL ADMINISTRADOR
-- El número de la bolilla es el elemento dominante dentro del círculo.
-- En Bingo 75, la letra B/I/N/G/O queda arriba como insignia secundaria.
-- Se mantienen color por columna, alto contraste y animación breve.
-
-RENDIMIENTO Y COMPATIBILIDAD
-- Los 12 stickers se optimizaron a WebP transparente para reducir el peso de red.
-- Se agregó soporte MIME image/webp en el servidor.
-- Los mensajes antiguos de texto y emojis siguen siendo compatibles.
-- Se mantienen respaldo, recuperación, auditoría, transmisión y pruebas de escala.
-
-TRANSMISIÓN EN VIVO · CARRERA POR EL PREMIO
-- Botón de pantalla completa y control de sonido para espectadores.
-- Sonidos para bolillas, cambios de líder, reclamos, premios y Bingo.
-- Ranking dinámico de cartones según cercanía real a premios todavía abiertos.
-- Líder siempre visible, animaciones de cambios de posición y destello de nuevas marcas.
-
-
-MODO ESPECTADOR, REPORTES Y TV
-- Toda partida crea automáticamente su modo espectador y un link corto /v/xxxxxx.
-- Acceso al espectador desde Comunidad, cartón del jugador y administración.
-- Alias corto personalizable únicamente por el administrador.
-- Integración preparada para Chromecast mediante Custom Web Receiver y CAST_APP_ID.
-- Chat público con bandera ⚑ discreta, confirmación y reportes sin borrado automático.
-- Administración incorpora bandeja de reportados y ventana de chat público en vivo.
-- Corregido el ingreso manual de palabras/frases al filtro de Comunidad.
+AJUSTES DEMOS, IA Y REANUDACIÓN
+- Las demos normales usan únicamente Zoe, Mateo y Owen; con 1 o 2 rivales se eligen al azar y con 3 juegan los tres.
+- La simulación masiva del administrador mantiene nombres genéricos únicos para observar mejor los flujos.
+- Las simulaciones IA del administrador pueden iniciarse con INICIAR AHORA sin la espera de sala grande.
+- Después de confirmar un premio que no finaliza la partida, se programa una reanudación automática a los 5 segundos.
+- El administrador puede reanudar inmediatamente o elegir MANTENER PAUSADO para cancelar el automático.
+- Vero presenta por nombre a Zoe, Mateo y Owen y los menciona en reclamos/premios importantes de las demos, sin recitar nombres en la prueba masiva.

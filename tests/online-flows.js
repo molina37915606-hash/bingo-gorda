@@ -137,7 +137,7 @@ async function waitServer(){for(let i=0;i<100;i++){try{const x=await json('/heal
     });
 
     await json('/api/admin/new-room', { method:'POST', headers:admin, body:'{}' });
-    result = await json('/api/admin/create-simple-room', { method:'POST', headers:admin, body:JSON.stringify({ roomType:'official', mode:90, cardCount:25, autoSeconds:6, presenter:'josu', presenterVoiceGender:'male', rules:{ line:true, ambocabeza:true, bingo:true } }) });
+    result = await json('/api/admin/create-simple-room', { method:'POST', headers:admin, body:JSON.stringify({ roomType:'official', mode:90, cardCount:25, autoSeconds:6, presenter:'vero', presenterVoiceGender:'female', rules:{ line:true, ambocabeza:true, bingo:true } }) });
     assert.equal(result.response.status, 200, JSON.stringify(result.data));
     const officialRoom = result.data.roomCode;
     const p1 = await json('/api/admin/add-official-player', { method:'POST', headers:admin, body:JSON.stringify({ name:'Laura', cardCount:3 }) });
@@ -149,7 +149,8 @@ async function waitServer(){for(let i=0;i<100;i++){try{const x=await json('/heal
     const login = await json('/api/player/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ roomCode:officialRoom, code:p1.data.player.code, deviceId:'official-laura' }) });
     assert.equal(login.response.status, 200, JSON.stringify(login.data));
     assert.equal(login.data.state.player.cards.length, 3);
-    assert.equal(login.data.state.roomSettings.presenterVoiceGender, 'male');
+    assert.equal(login.data.state.roomSettings.presenterVoiceGender, 'female');
+    assert.equal(login.data.state.game.presenter, 'vero');
 
     for (const file of ['dorso.webp','corazon.webp','pica.webp','diamante.webp','trebol.webp']) {
       const response = await fetch(`${base}/assets/cards/${file}`);

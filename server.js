@@ -59,6 +59,7 @@ const LARGE_ROOM_NOTICE_MS = Math.max(1000, Number(process.env.BINGO_LARGE_ROOM_
 const LARGE_ROOM_NOTICE_TITLE = 'CRITERIO DE ADJUDICACIÓN DE PREMIOS';
 const LARGE_ROOM_NOTICE_TEXT = 'Si varios cartones completan el mismo premio con una misma bolilla, tendrá prioridad el reclamo que sea recibido y validado primero por el servidor central. Los reclamos válidos recibidos posteriormente quedarán registrados en el acta oficial como “VÁLIDA POSTERIOR”, conservando su orden de recepción. Este procedimiento permite determinar de forma objetiva y transparente la prioridad entre reclamos simultáneos.';
 const RESUME_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_RESUME_SEQUENCE_MS || 5_000));
+const CLAIM_AUTO_RESUME_MS = Math.max(1_000, Number(process.env.BINGO_CLAIM_AUTO_RESUME_MS || 5_000));
 const FINAL_BALLS_SEQUENCE_MS = Math.max(250, Number(process.env.BINGO_FINAL_BALLS_SEQUENCE_MS || 8_000));
 const MAX_TIE_WINNERS_PER_PRIZE = 4;
 const MANUAL_MARK_MAX_PLAYERS = 10;
@@ -114,8 +115,14 @@ const randomCode = (length = 7) => {
 };
 const uniqueNumbers = values => [...new Set((values || []).map(Number).filter(Number.isFinite))];
 const cardNumbers = card => (card?.grid || []).flat().filter(value => typeof value === 'number');
-const PLAYER_PRESENTERS = new Set(['vero', 'vivi', 'josu', 'daia']);
-const DEMO_AI_NAME_POOL = ['Owen', 'Zoe', 'Mateo', 'Lola', 'Milo', 'Emma', 'Tomi', 'Cata', 'Benja', 'Luz', 'Simón', 'Uma'];
+const PRESENTER_ID = 'vero';
+const DEMO_AI_NAME_POOL = ['Zoe', 'Mateo', 'Owen'];
+const ADMIN_SIMULATION_NAME_POOL = ['Ana', 'Bruno', 'Carla', 'Diego', 'Elena', 'Fabián', 'Gabi', 'Hugo', 'Inés', 'Julián', 'Karen', 'Leo', 'Mara', 'Nico', 'Olga', 'Pablo', 'Romi', 'Santi', 'Tania', 'Ulises', 'Valen', 'Walter', 'Ximena', 'Yamila', 'Abril', 'Beto', 'Ceci', 'Damián', 'Eva', 'Franco'];
+function adminSimulationName(index) {
+  const base = ADMIN_SIMULATION_NAME_POOL[index % ADMIN_SIMULATION_NAME_POOL.length];
+  const cycle = Math.floor(index / ADMIN_SIMULATION_NAME_POOL.length);
+  return cycle ? `${base} ${cycle + 1}` : base;
+}
 const playerDisplayName = player => String(player?.name || player?.slotLabel || 'Acceso sin nombre').trim();
 function normalizePlayerName(value) {
   return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 20);
@@ -127,6 +134,17 @@ function validatePlayerName(value, playerId = null) {
   const duplicate = state.players?.find(item => item.id !== playerId && item.nameSet && normalizePlayerName(item.name).toLocaleLowerCase('es') === name.toLocaleLowerCase('es'));
   if (duplicate) throw new Error('Ese nombre ya está en uso en esta sala. Elegí otro.');
   return name;
+}
+
+function normalizeTransmissionSettings(value = {}) {
+  const rotationSeconds = Number(value?.rotationSeconds);
+  return {
+    showChat: value?.showChat !== false,
+    showCards: value?.showCards !== false,
+    showNames: value?.showNames !== false,
+    showProgress: value?.showProgress !== false,
+    rotationSeconds: [15, 20, 30, 60].includes(rotationSeconds) ? rotationSeconds : 30
+  };
 }
 
 function prizeLabelFor(type, prizeNumber = 1, mode = state.game?.mode) {
@@ -266,7 +284,7 @@ function blankState() {
       joinOpen: false,
       maxOpenPlayers: 10,
       presenterVoiceGender: 'female',
-      transmission: { enabled: true, showChat: true, showCards: true, showNames: true, showProgress: true, rotationSeconds: 30 }
+      transmission: normalizeTransmissionSettings()
     },
     assignmentTimer: {
       enabled: false,
@@ -337,8 +355,8 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.roomType = merged.roomSettings.roomType === 'test' ? 'test' : 'official';
     merged.roomSettings.joinOpen = Boolean(merged.roomSettings.joinOpen);
     merged.roomSettings.maxOpenPlayers = Math.max(2, Math.min(10, Number(merged.roomSettings.maxOpenPlayers) || 10));
-    merged.roomSettings.presenterVoiceGender = merged.roomSettings.presenterVoiceGender === 'male' ? 'male' : 'female';
-    merged.roomSettings.transmission = { enabled: true, showChat: merged.roomSettings.transmission?.showChat !== false, showCards: merged.roomSettings.transmission?.showCards !== false, showNames: merged.roomSettings.transmission?.showNames !== false, showProgress: merged.roomSettings.transmission?.showProgress !== false, rotationSeconds: [15,20,30,60].includes(Number(merged.roomSettings.transmission?.rotationSeconds)) ? Number(merged.roomSettings.transmission.rotationSeconds) : 30 };
+    merged.roomSettings.presenterVoiceGender = 'female';
+    merged.roomSettings.transmission = normalizeTransmissionSettings(merged.roomSettings.transmission);
     if (merged.active) {
       merged.roomSettings.broadcastToken ||= randomId('live');
       merged.roomSettings.broadcastAlias ||= randomCode(6).toLowerCase();
@@ -387,7 +405,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
         name,
         nameSet: player.nameSet === undefined ? Boolean(name && !/^Jugador\s+\d+$/i.test(name)) : Boolean(player.nameSet),
         slotLabel: String(player.slotLabel || `Acceso ${Number(player.slotNumber) || 1}`),
-        personalPresenter: PLAYER_PRESENTERS.has(player.personalPresenter) ? player.personalPresenter : null,
+        personalPresenter: PRESENTER_ID,
         cardIds,
         allowedCardCount,
         selectionConfirmed: player.selectionConfirmed === undefined ? cardIds.length > 0 : Boolean(player.selectionConfirmed && cardIds.length > 0),
@@ -1145,11 +1163,11 @@ function broadcastPayload() {
   const latestConfirmed = !pendingClaim && latestConfirmedRaw && Date.now() - new Date(latestConfirmedRaw.resolvedAt || 0).getTime() <= 20_000
     ? latestConfirmedRaw : null;
   return {
-    active: true, version: APP_PUBLIC_VERSION, status: state.status, pauseReason: state.pauseReason || null, roomCode: state.roomCode, round: state.round,
+    active: true, version: APP_PUBLIC_VERSION, status: state.status, pauseReason: state.pauseReason || null, roomCode: state.roomCode, round: state.round, demo: Boolean(currentWorkspace().isDemo || state.demo),
     playersTotal: state.players.length, playersReady: state.players.filter(player => player.selectionConfirmed).length, playersConnected: connectedPlayerIds().size,
     roomSettings: state.roomSettings, transition: state.transition, publicClaims: publicClaimsPayload(), markingPolicy: markingPolicyPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES) },
-    game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: state.game.presenter, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, total: state.game.mode },
+    game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: PRESENTER_ID, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, total: state.game.mode },
     pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, createdAt: pendingClaim.createdAt } : null,
     latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, prizeNumber: latestConfirmed.prizeNumber || 1, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt } : null,
     highlightedCards: highlightedBroadcastCards(),
@@ -1209,6 +1227,7 @@ function adminPayload() {
     active: true,
     status: state.status,
     pauseReason: state.pauseReason || null,
+    claimAutoResume: claimAutoResumePayload(),
     readyToStart: preflightPayload().ok,
     preflight: preflightPayload(),
     roomCode: state.roomCode,
@@ -1305,7 +1324,7 @@ function playerPayload(player) {
       id: state.game.id,
       number: state.game.number,
       mode: state.game.mode,
-      presenter: state.game.presenter,
+      presenter: PRESENTER_ID,
       drawn: state.game.drawn,
       lastBall: state.game.drawn.at(-1) ?? null,
       phase: state.game.phase
@@ -1315,7 +1334,7 @@ function playerPayload(player) {
       name: playerDisplayName(player),
       nameSet: Boolean(player.nameSet),
       slotLabel: player.slotLabel,
-      personalPresenter: PLAYER_PRESENTERS.has(player.personalPresenter) ? player.personalPresenter : state.game.presenter,
+      personalPresenter: PRESENTER_ID,
       code: player.code,
       allowedCardCount: player.allowedCardCount,
       selectionConfirmed: player.selectionConfirmed,
@@ -1479,7 +1498,7 @@ function createGeneratedGame(payload = {}) {
     id: randomId('game'), number: 1, mode, rules,
     drawMode: payload.drawMode === 'manual' ? 'manual' : 'automatic',
     autoSeconds: Math.max(2, Math.min(60, Number(payload.autoSeconds) || 6)),
-    presenter: PLAYER_PRESENTERS.has(String(payload.presenter || '')) ? String(payload.presenter) : 'vero',
+    presenter: PRESENTER_ID,
     theme: 'clasico', phase: 'READY', drawn: [], createdAt: nowIso(), updatedAt: nowIso(), cards
   };
 }
@@ -1492,7 +1511,7 @@ function emptyRoomPlayer({ name = '', cardIds = [], allowedCardCount = 1, code =
     nameSet: Boolean(normalizePlayerName(name)),
     slotNumber: state.players?.length ? state.players.length + 1 : 1,
     slotLabel: normalizePlayerName(name) || `Acceso ${(state.players?.length || 0) + 1}`,
-    personalPresenter: state.game?.presenter || 'vero',
+    personalPresenter: PRESENTER_ID,
     code: code || randomCode(7),
     allowedCardCount: Math.max(1, Math.min(4, Number(allowedCardCount) || 1)),
     cardIds: [...cardIds],
@@ -1567,10 +1586,10 @@ function createSimpleRoom(payload = {}) {
       linePrizeCount: Number(game.mode) === 90 ? 2 : 1,
       allowSamePlayerSecondLine: true, tiePolicy: 'first_claim', gameType: roomType === 'test' ? 'test' : 'real',
       roomType, joinOpen: roomType === 'test', maxOpenPlayers: 10,
-      presenterVoiceGender: payload.presenterVoiceGender === 'male' ? 'male' : 'female',
+      presenterVoiceGender: 'female',
       broadcastToken: randomId('live'),
       broadcastAlias: freshBroadcastAlias(currentWorkspace().id),
-      transmission: { enabled: true, showChat: payload.transmission?.showChat !== false, showCards: payload.transmission?.showCards !== false, showNames: payload.transmission?.showNames !== false, showProgress: payload.transmission?.showProgress !== false, rotationSeconds: [15,20,30,60].includes(Number(payload.transmission?.rotationSeconds)) ? Number(payload.transmission.rotationSeconds) : 30 }
+      transmission: normalizeTransmissionSettings(payload.transmission)
     },
     waitingGame: { type: 'both', leaderboard: [], leaderboards: { red_black: [], higher_lower: [] } },
     drawOrder: createSecureDrawOrder(game.mode), game, players: [], cardReservations: {}, claims: [], eventLog: [],
@@ -1765,7 +1784,7 @@ function partitionDiverseCardGroups(pool, sizes, mode) {
 
 function createDemoRoom(payload = {}) {
   const mode = Number(payload.mode) === 75 ? 75 : 90;
-  const aiCount = Number(payload.aiCount ?? payload.players) === 2 ? 2 : 3;
+  const aiCount = Math.max(1, Math.min(3, Math.floor(Number(payload.aiCount ?? payload.players) || 2)));
   const playerCardCount = Math.max(1, Math.min(4, Number(payload.playerCardCount ?? payload.cardsPerPlayer) || 2));
   const allowedIntervals = new Set([2, 4, 6, 8]);
   const requestedInterval = Number(payload.autoSeconds) || 4;
@@ -1773,14 +1792,15 @@ function createDemoRoom(payload = {}) {
   const rules = mode === 75
     ? { ambocabeza: false, line: true, doubleLine: true, tripleLine: true, corners: true, bingo: true }
     : { ambocabeza: true, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true };
-  const aiNames = shuffle(DEMO_AI_NAME_POOL).slice(0, aiCount);
+  const requestedAiNames = Array.isArray(payload.aiNames) ? [...new Set(payload.aiNames.map(name => String(name || '').trim()).filter(name => DEMO_AI_NAME_POOL.includes(name)))] : [];
+  const aiNames = requestedAiNames.length === aiCount ? requestedAiNames : shuffle(DEMO_AI_NAME_POOL).slice(0, aiCount);
   const totalCards = playerCardCount + aiCount * 2;
   const pool = generateDiverseCardsServer(Math.max(25, totalCards), mode, rules);
   const groups = partitionDiverseCardGroups(pool, [playerCardCount, ...Array(aiCount).fill(2)], mode);
   const cards = groups.flat().map((card, index) => ({ ...card, number: String(index + 1).padStart(3, '0'), name: `Cartón ${index + 1}`, originalName: `Cartón ${index + 1}` }));
   const game = {
     id: randomId('demo_game'), number: 1, mode, rules, drawMode: 'automatic', autoSeconds,
-    presenter: ['vero','vivi','josu','daia'].includes(payload.presenter) ? payload.presenter : 'vero',
+    presenter: PRESENTER_ID,
     theme: 'clasico', phase: 'READY', drawn: [], createdAt: nowIso(), updatedAt: nowIso(), cards
   };
   let offset = 0;
@@ -1865,7 +1885,7 @@ function createAdminSimulationRoom(payload = {}) {
   const mode = Number(payload.mode) === 75 ? 75 : 90;
   const rules = roomRulesFor(mode, payload.rules || {});
   const autoSeconds = Math.max(3, Math.min(60, Number(payload.autoSeconds) || 6));
-  const presenter = PLAYER_PRESENTERS.has(String(payload.presenter || '')) ? String(payload.presenter) : 'vero';
+  const presenter = PRESENTER_ID;
   const cardCounts = Array.from({ length: playerCount }, () => crypto.randomInt(1, MAX_CARDS_PER_PLAYER + 1));
   const totalCards = cardCounts.reduce((sum, count) => sum + count, 0);
   if (totalCards > MAX_ACTIVE_CARDS) throw new Error(`La simulación pidió ${totalCards} cartones y el máximo es ${MAX_ACTIVE_CARDS}.`);
@@ -1896,8 +1916,8 @@ function createAdminSimulationRoom(payload = {}) {
       prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 },
       showMercadoPago: false,
       argentinaHint: true,
-      presenterVoiceGender: payload.presenterVoiceGender === 'male' ? 'male' : 'female',
-      transmission: { enabled: true, showChat: true, showCards: true, showNames: false, showProgress: true, rotationSeconds: 30 }
+      presenterVoiceGender: 'female',
+      transmission: normalizeTransmissionSettings({ showNames: false })
     },
     assignmentTimer: { enabled: false, durationMinutes: 10 }
   });
@@ -1907,7 +1927,7 @@ function createAdminSimulationRoom(payload = {}) {
   state.roomSettings.simulatedChat = Boolean(payload.aiChatEnabled);
   state.chat.enabled = Boolean(payload.aiChatEnabled);
   state.players.forEach((player, index) => {
-    player.name = '';
+    player.name = adminSimulationName(index);
     player.nameSet = true;
     player.slotLabel = `IA ${String(index + 1).padStart(2, '0')}`;
     player.virtual = true;
@@ -2195,7 +2215,7 @@ function sanitizeGame(game) {
     rules,
     drawMode: game.drawMode || 'manual',
     autoSeconds: Number(game.autoSeconds) || 6,
-    presenter: game.presenter || 'vero',
+    presenter: PRESENTER_ID,
     theme: game.theme || 'clasico',
     phase: game.phase || 'READY',
     drawn: uniqueNumbers(game.drawn).filter(n => n >= 1 && n <= mode),
@@ -2267,7 +2287,7 @@ function configureRoom(payload) {
       nameSet: false,
       slotNumber: index + 1,
       slotLabel: `Acceso ${index + 1}`,
-      personalPresenter: PLAYER_PRESENTERS.has(payload.game.presenter) ? payload.game.presenter : 'vero',
+      personalPresenter: PRESENTER_ID,
       code: nextPlayerCode(),
       allowedCardCount,
       cardIds,
@@ -2320,8 +2340,8 @@ function configureRoom(payload) {
       roomType: payload.roomSettings?.roomType === 'test' ? 'test' : 'official',
       joinOpen: Boolean(payload.roomSettings?.joinOpen),
       maxOpenPlayers: Math.max(2, Math.min(10, Number(payload.roomSettings?.maxOpenPlayers) || 10)),
-      presenterVoiceGender: payload.roomSettings?.presenterVoiceGender === 'male' ? 'male' : 'female',
-      transmission: { enabled: true, showChat: payload.roomSettings?.transmission?.showChat !== false, showCards: payload.roomSettings?.transmission?.showCards !== false, showNames: payload.roomSettings?.transmission?.showNames !== false, showProgress: payload.roomSettings?.transmission?.showProgress !== false, rotationSeconds: [15,20,30,60].includes(Number(payload.roomSettings?.transmission?.rotationSeconds)) ? Number(payload.roomSettings.transmission.rotationSeconds) : 30 }
+      presenterVoiceGender: 'female',
+      transmission: normalizeTransmissionSettings(payload.roomSettings?.transmission)
     },
     assignmentTimer: {
       enabled: Boolean(payload.assignmentTimer?.enabled),
@@ -2639,6 +2659,56 @@ function updateDrawSettings(payload = {}) {
   return adminPayload();
 }
 
+const claimAutoResumeTimers = new Map();
+
+function claimAutoResumePayload() {
+  const workspace = currentWorkspace();
+  const resumesAtMs = Number(workspace.claimAutoResumeAtMs) || 0;
+  if (!resumesAtMs || state.status !== 'paused' || state.pauseReason !== 'claim') return null;
+  return {
+    active: true,
+    resumesAt: new Date(resumesAtMs).toISOString(),
+    remainingMs: Math.max(0, resumesAtMs - Date.now()),
+    mode: workspace.claimAutoResumeMode || state.game?.drawMode || 'automatic'
+  };
+}
+
+function clearClaimAutoResume(workspace = currentWorkspace(), reason = '') {
+  const timer = claimAutoResumeTimers.get(workspace.id);
+  if (timer) clearTimeout(timer);
+  claimAutoResumeTimers.delete(workspace.id);
+  const hadSchedule = Boolean(workspace.claimAutoResumeAtMs);
+  workspace.claimAutoResumeAtMs = 0;
+  workspace.claimAutoResumeMode = null;
+  if (hadSchedule && reason) logEvent('claim_auto_resume_cancelled', { reason });
+}
+
+function scheduleClaimAutoResume() {
+  const workspace = currentWorkspace();
+  clearClaimAutoResume(workspace);
+  if (workspace.isDemo || !state.active || !state.game || state.status !== 'paused' || state.pauseReason !== 'claim') return;
+  if (state.claims.some(claim => claim.status === 'pending') || prizeStatusPayload().bingo.closed || state.game.drawn.length >= state.game.mode) return;
+  const mode = state.game.drawMode === 'manual' ? 'manual' : 'automatic';
+  const resumesAtMs = Date.now() + (TEST_MODE ? 250 : CLAIM_AUTO_RESUME_MS);
+  workspace.claimAutoResumeAtMs = resumesAtMs;
+  workspace.claimAutoResumeMode = mode;
+  logEvent('claim_auto_resume_scheduled', { resumesAt: new Date(resumesAtMs).toISOString(), mode });
+  const timer = setTimeout(() => workspaceContext.run(workspace, () => {
+    claimAutoResumeTimers.delete(workspace.id);
+    workspace.claimAutoResumeAtMs = 0;
+    workspace.claimAutoResumeMode = null;
+    try {
+      if (!state.active || !state.game || state.status !== 'paused' || state.pauseReason !== 'claim') return;
+      if (state.claims.some(claim => claim.status === 'pending') || prizeStatusPayload().bingo.closed) return;
+      logEvent('claim_auto_resume_started', { mode });
+      resumeRoom({ mode, automaticAfterClaim: true, immediate: true });
+    } catch (error) {
+      console.error(`No se pudo reanudar automáticamente ${workspace.id}:`, error.message);
+    }
+  }), Math.max(0, resumesAtMs - Date.now()));
+  claimAutoResumeTimers.set(workspace.id, timer);
+}
+
 const transitionTimers = new Map();
 
 function clearWorkspaceTransitionTimer(workspace = currentWorkspace()) {
@@ -2706,14 +2776,15 @@ function completeTransition() {
   if (state.status === 'playing') scheduleAutomaticDraw();
 }
 
-function startRoom() {
+function startRoom(payload = {}) {
   if (state.roomSettings) state.roomSettings.joinOpen = false;
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'waiting') return adminPayload();
   const hasPendingSelections = state.players.some(player => !(player.nameSet && player.selectionConfirmed && player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount));
   if (hasPendingSelections) autoAssignPendingPlayers('game_start');
   const preflight = preflightPayload();
-  if (!preflight.ok) throw new Error(preflight.errors[0] || 'La sala todavía no está lista para iniciar.');
+  const forcedSimulationStart = Boolean(state.roomSettings?.adminSimulation && payload?.force === true);
+  if (!preflight.ok && !forcedSimulationStart) throw new Error(preflight.errors[0] || 'La sala todavía no está lista para iniciar.');
   if (state.game.drawn.length) throw new Error('La ronda ya contiene bolillas. Reiniciala antes de empezar.');
   enforceAutoMarkPolicy();
   if (!(TEST_MODE && state.testDrawOrderFixed && Array.isArray(state.drawOrder) && state.drawOrder.length === state.game.mode)) {
@@ -2734,9 +2805,9 @@ function startRoom() {
     completedAt: state.assignmentTimer?.completedAt || nowIso()
   };
   const startedAt = nowIso();
-  const largeRoomNotice = state.players.length > LARGE_ROOM_NOTICE_THRESHOLD;
+  const largeRoomNotice = !forcedSimulationStart && state.players.length > LARGE_ROOM_NOTICE_THRESHOLD;
   const largeRoomNoticeMs = largeRoomNotice ? (TEST_MODE ? 30 : LARGE_ROOM_NOTICE_MS) : 0;
-  const baseStartSequenceMs = currentWorkspace().isDemo ? (TEST_MODE ? 100 : DEMO_START_SEQUENCE_MS) : START_SEQUENCE_MS;
+  const baseStartSequenceMs = forcedSimulationStart ? (TEST_MODE ? 50 : 900) : currentWorkspace().isDemo ? (TEST_MODE ? 100 : DEMO_START_SEQUENCE_MS) : START_SEQUENCE_MS;
   state.status = 'starting';
   state.pauseReason = null;
   state.startedAt = startedAt;
@@ -2750,12 +2821,13 @@ function startRoom() {
     noticeDurationMs: largeRoomNoticeMs,
     priorityNotice: largeRoomNotice ? { title: LARGE_ROOM_NOTICE_TITLE, text: LARGE_ROOM_NOTICE_TEXT } : null
   };
-  logEvent('game_start_sequence', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0), largeRoomNotice });
+  logEvent('game_start_sequence', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0), largeRoomNotice, forcedSimulationStart });
   saveState(); broadcast(); scheduleTransition();
   return adminPayload();
 }
 
 function pauseRoom() {
+  clearClaimAutoResume(currentWorkspace(), 'manual_pause');
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'playing') throw new Error('La partida solo se puede pausar mientras está en juego.');
   clearWorkspaceTransitionTimer();
@@ -2770,11 +2842,22 @@ function pauseRoom() {
 }
 
 function resumeRoom(payload = {}) {
+  const wasClaimPause = state.pauseReason === 'claim';
+  clearClaimAutoResume(currentWorkspace(), payload?.automaticAfterClaim ? '' : 'manual_resume');
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'paused') throw new Error('La partida no está pausada.');
   clearAutomaticDrawTimer();
   const mode = payload.mode === 'manual' ? 'manual' : payload.mode === 'automatic' ? 'automatic' : state.game.drawMode;
   state.game.drawMode = mode;
+  if (payload.immediate === true && wasClaimPause) {
+    state.status = 'playing';
+    state.pauseReason = null;
+    state.transition = null;
+    state.game.phase = mode === 'automatic' ? 'DRAWING' : 'READY';
+    logEvent('game_resumed', { round: state.round, mode, immediateAfterClaim: true, automaticAfterClaim: Boolean(payload.automaticAfterClaim) });
+    saveState(); broadcast(); scheduleAutomaticDraw();
+    return adminPayload();
+  }
   const startedAt = nowIso();
   state.status = 'resuming';
   state.pauseReason = null;
@@ -2808,14 +2891,7 @@ function updateRoomSettings(payload) {
   if (payload.whatsapp !== undefined) state.roomSettings.whatsapp = String(payload.whatsapp || '').slice(0, 40);
   if (payload.showMercadoPago !== undefined) state.roomSettings.showMercadoPago = payload.showMercadoPago !== false;
   if (payload.argentinaHint !== undefined) state.roomSettings.argentinaHint = payload.argentinaHint !== false;
-  if (payload.transmission && typeof payload.transmission === 'object') state.roomSettings.transmission = {
-    enabled: true,
-    showChat: payload.transmission.showChat !== false,
-    showCards: payload.transmission.showCards !== false,
-    showNames: payload.transmission.showNames !== false,
-    showProgress: payload.transmission.showProgress !== false,
-    rotationSeconds: [15,20,30,60].includes(Number(payload.transmission.rotationSeconds)) ? Number(payload.transmission.rotationSeconds) : 30
-  };
+  if (payload.transmission && typeof payload.transmission === 'object') state.roomSettings.transmission = normalizeTransmissionSettings(payload.transmission);
   state.roomSettings.broadcastToken ||= randomId('live');
   state.roomSettings.broadcastAlias ||= freshBroadcastAlias(currentWorkspace().id);
   if (payload.broadcastAlias !== undefined) {
@@ -2824,7 +2900,6 @@ function updateRoomSettings(payload) {
     if (broadcastAliasTaken(alias, currentWorkspace().id)) throw new Error('Ese link corto ya está en uso. Elegí otro.');
     state.roomSettings.broadcastAlias = alias;
   }
-  state.roomSettings.transmission.enabled = true;
   logEvent('room_settings_updated', { ...state.roomSettings });
   saveState();
   broadcast();
@@ -2923,6 +2998,7 @@ function archiveCurrentResults() {
 
 function finishRoom() {
   clearAutomaticDrawTimer();
+  clearClaimAutoResume(currentWorkspace());
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status === 'finished') return adminPayload();
   if (!['playing', 'paused', 'finalizing'].includes(state.status)) throw new Error('El sorteo todavía no comenzó.');
@@ -3037,6 +3113,7 @@ function sendTestEvent(payload) {
 }
 
 function newRoomState() {
+  clearClaimAutoResume(currentWorkspace());
   if (state.active && state.status !== 'finished') throw new Error('Primero finalizá el sorteo actual antes de crear una sala nueva.');
   if (state.active) logEvent('new_room_requested');
   replaceCurrentState(blankState());
@@ -3047,6 +3124,7 @@ function newRoomState() {
 
 function closeRoom() {
   clearAutomaticDrawTimer();
+  clearClaimAutoResume(currentWorkspace());
   clearWorkspaceTransitionTimer();
   logEvent('room_closed');
   state.active = false;
@@ -3086,7 +3164,7 @@ function restoreBackup(payload) {
       nameSet: rawPlayer.nameSet === undefined ? Boolean(normalizePlayerName(rawPlayer.name || '')) : Boolean(rawPlayer.nameSet),
       slotNumber: Math.max(1, Number(rawPlayer.slotNumber) || index + 1),
       slotLabel: String(rawPlayer.slotLabel || `Acceso ${index + 1}`).slice(0, 80),
-      personalPresenter: PLAYER_PRESENTERS.has(rawPlayer.personalPresenter) ? rawPlayer.personalPresenter : null,
+      personalPresenter: PRESENTER_ID,
       virtual: Boolean(rawPlayer.virtual),
       code,
       allowedCardCount,
@@ -3163,7 +3241,7 @@ function loginPlayer(payload) {
   if (player.sessionToken && player.sessionDeviceId && deviceId && player.sessionDeviceId !== deviceId) {
     return { conflict: true, playerId: player.id, playerName: playerDisplayName(player), message: 'Tu sesión está activa en otro dispositivo.' };
   }
-  player.personalPresenter = PLAYER_PRESENTERS.has(player.personalPresenter) ? player.personalPresenter : (PLAYER_PRESENTERS.has(state.game?.presenter) ? state.game.presenter : 'vero');
+  player.personalPresenter = PRESENTER_ID;
   player.sessionToken = player.sessionToken || randomId('session');
   player.sessionDeviceId = deviceId || player.sessionDeviceId || randomId('device');
   player.lastLoginAt = nowIso();
@@ -3381,17 +3459,6 @@ function setAutoMark(player, payload) {
   return playerPayload(player);
 }
 
-function setPlayerPresenter(player, payload) {
-  if (!state.active || !state.game) throw new Error('La sala no está activa.');
-  const presenter = String(payload?.presenter || '').toLowerCase();
-  if (!PLAYER_PRESENTERS.has(presenter)) throw new Error('Ese presentador no está disponible.');
-  player.personalPresenter = presenter;
-  logEvent('player_presenter_changed', { playerId: player.id, playerName: playerDisplayName(player), presenter });
-  saveState();
-  broadcast();
-  return playerPayload(player);
-}
-
 function createClaim(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
   const requested = String(payload.type || '');
@@ -3587,6 +3654,8 @@ function resolveClaim(payload) {
   } else {
     state.status = 'paused';
     state.game.phase = 'PAUSED';
+    const winnerApprovedInWindow = state.claims.some(item => item.claimWindowId === claim.claimWindowId && item.status === 'confirmed');
+    if (winnerApprovedInWindow) scheduleClaimAutoResume();
   }
   saveState();
   broadcast();
@@ -3670,7 +3739,7 @@ function actaPayload() {
   };
   return {
     version: APP_PUBLIC_VERSION, roomCode: state.roomCode, round: state.round, gameNumber: state.game.number, mode,
-    status: state.status, presenter: state.game.presenter, createdAt: state.createdAt, startedAt: state.startedAt, endedAt: state.endedAt,
+    status: state.status, presenter: PRESENTER_ID, createdAt: state.createdAt, startedAt: state.startedAt, endedAt: state.endedAt,
     totalPlayers: state.players.length,
     activeCards: state.players.reduce((sum, player) => sum + (player.selectionConfirmed ? player.cardIds.length : 0), 0),
     balls: officialBallRows(),
@@ -4202,7 +4271,6 @@ function serveFile(res, filePath) {
     path.join(ROOT, 'admin-principal.html'),
     path.join(ROOT, 'transmision.html'),
     path.join(ROOT, 'reglamento.html'),
-    path.join(ROOT, 'reglamento.pdf'),
     path.join(ROOT, 'demo.html'),
     path.join(ROOT, 'comunidad.html')
   ]);
@@ -4470,10 +4538,6 @@ function communityAdminPayload() {
   };
 }
 
-function masterStatePayload() {
-  return { version: APP_PUBLIC_VERSION, now: nowIso(), ownerUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/admin`, communityUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/comunidad`, operatorsEnabled: false };
-}
-
 async function handleMasterApi(req, res, url) {
   if (url.pathname === '/api/master/login' && req.method === 'POST') {
     if (!consumeRate(req, 'master-login', 15, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
@@ -4488,14 +4552,12 @@ async function handleMasterApi(req, res, url) {
     return sendJson(res, 200, { token: masterToken, adminToken, expiresInHours: 24 });
   }
   if (!isMasterAuthorized(req, url)) return sendJson(res, 401, { error: 'Ingresá al panel principal.' });
-  if (url.pathname === '/api/master/state' && req.method === 'GET') return sendJson(res, 200, masterStatePayload());
   if (url.pathname === '/api/master/community' && req.method === 'GET') return sendJson(res, 200, communityAdminPayload());
   if (url.pathname === '/api/master/community/settings' && req.method === 'POST') return sendJson(res, 200, updateCommunitySettings(await readJson(req)));
   if (url.pathname === '/api/master/community/moderate' && req.method === 'POST') return sendJson(res, 200, moderateCommunity(await readJson(req)));
   if (url.pathname === '/api/master/admin-session' && req.method === 'POST') {
     return sendJson(res, 200, { adminToken: createAdminSession({ workspaceId: 'owner', role: 'owner' }) });
   }
-  if (url.pathname.startsWith('/api/master/operators')) return sendJson(res, 410, { error: 'Los administradores temporales están deshabilitados en esta versión.' });
   if (url.pathname === '/api/master/logout' && req.method === 'POST') {
     masterSessions.delete(masterTokenFrom(req, url));
     return sendJson(res, 200, { ok: true });
@@ -4526,7 +4588,8 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/draw' && req.method === 'POST') return sendJson(res, 200, drawNextBall((await readJson(req)).source || 'manual'));
   if (url.pathname === '/api/admin/draw-settings' && req.method === 'POST') return sendJson(res, 200, updateDrawSettings(await readJson(req)));
   if (url.pathname === '/api/admin/test/draw-order' && req.method === 'POST') return sendJson(res, 200, setTestDrawOrder(await readJson(req)));
-  if (url.pathname === '/api/admin/start' && req.method === 'POST') return sendJson(res, 200, startRoom());
+  if (url.pathname === '/api/admin/start' && req.method === 'POST') return sendJson(res, 200, startRoom(await readJson(req)));
+  if (url.pathname === '/api/admin/cancel-claim-auto-resume' && req.method === 'POST') { clearClaimAutoResume(currentWorkspace(), 'kept_paused_by_admin'); saveState(); broadcast(); return sendJson(res, 200, adminPayload()); }
   if (url.pathname === '/api/admin/pause' && req.method === 'POST') return sendJson(res, 200, pauseRoom());
   if (url.pathname === '/api/admin/resume' && req.method === 'POST') return sendJson(res, 200, resumeRoom(await readJson(req)));
   if (url.pathname === '/api/admin/resolve-device-transfer' && req.method === 'POST') return sendJson(res, 200, resolveDeviceTransfer(await readJson(req)));
@@ -4666,7 +4729,6 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/release' && req.method === 'POST') return sendJson(res, 200, releaseOwnSelection(player));
         if (url.pathname === '/api/player/mark' && req.method === 'POST') return sendJson(res, 200, markNumber(player, await readJson(req)));
         if (url.pathname === '/api/player/automark' && req.method === 'POST') return sendJson(res, 200, setAutoMark(player, await readJson(req)));
-        if (url.pathname === '/api/player/presenter' && req.method === 'POST') return sendJson(res, 200, setPlayerPresenter(player, await readJson(req)));
         if (url.pathname === '/api/player/claim' && req.method === 'POST') return sendJson(res, 200, createClaim(player, await readJson(req)));
         if (url.pathname === '/api/player/waiting-game/score' && req.method === 'POST') return sendJson(res, 200, submitWaitingGameScore(player, await readJson(req)));
         if (url.pathname === '/api/player/chat' && req.method === 'POST') {
@@ -4742,7 +4804,6 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/cast-receiver' || url.pathname === '/cast-receiver/') return serveFile(res, path.join(ROOT, 'cast-receiver.html'));
   if (url.pathname === '/jugador' || url.pathname === '/jugador/') return serveFile(res, path.join(ROOT, 'jugador.html'));
   if (url.pathname === '/reglamento' || url.pathname === '/reglamento/' || url.pathname === '/reglamento.html') return serveFile(res, path.join(ROOT, 'reglamento.html'));
-  if (url.pathname === '/reglamento.pdf') return serveFile(res, path.join(ROOT, 'reglamento.pdf'));
   const relative = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
   if (!(relative.startsWith('assets/') || relative.startsWith('js/'))) return sendJson(res, 404, { error: 'Archivo no encontrado.' });
   return serveFile(res, path.join(ROOT, relative));
@@ -4763,7 +4824,7 @@ setInterval(() => {
   for (const [token, expiresAt] of masterSessions) if (expiresAt <= now) masterSessions.delete(token);
   for (const workspace of [...workspaces.values()]) {
     if (workspace.isDemo && ((workspace.expiresAt && workspace.expiresAt <= now) || (workspace.lastActivityAt && now - workspace.lastActivityAt > DEMO_IDLE_TTL_MS))) {
-      clearAutomaticDrawTimer(workspace); clearWorkspaceTransitionTimer(workspace); clearDemoAutomationTimers(workspace); workspaces.delete(workspace.id);
+      clearAutomaticDrawTimer(workspace); clearWorkspaceTransitionTimer(workspace); clearClaimAutoResume(workspace); clearDemoAutomationTimers(workspace); workspaces.delete(workspace.id);
       try { fs.rmSync(path.dirname(workspace.stateFile), { recursive: true, force: true }); } catch {}
       continue;
     }

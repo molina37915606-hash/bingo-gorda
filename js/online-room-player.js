@@ -62,7 +62,7 @@ class PlayerApp {
     this.ticketTouchStartX = null;
     this.guideSteps = [
       { icon:'🧾', title:'Tus cartones', text:'Usá las pestañas para cambiar de cartón. Las marcas oficiales se conservan en todos.' },
-      { icon:'⚙', title:'Ajustes', text:'Desde la tuerca podés controlar sonido, voz, tamaño de números, automarcado y tu cantador de la suerte.' },
+      { icon:'⚙', title:'Ajustes', text:'Desde la tuerca podés controlar sonidos, la voz de Vero, tamaño de números y automarcado.' },
       { icon:'›', title:'Ganadores y números', text:'La flecha lateral muestra los premios confirmados y los números salidos ordenados de menor a mayor.' },
       { icon:'💬', title:'Chat público', text:'El chat separa emojis comunes para el texto y 12 stickers premium de envío directo. Tocá un sticker recibido para repetir su animación.' },
       { icon:'🏆', title:'Tenés que cantar', text:'Aunque el sistema marque solo, el premio se reclama tocando manualmente el botón correspondiente.' },
@@ -98,7 +98,6 @@ class PlayerApp {
     $('volumeRange').oninput = event => this.setVolume(Number(event.target.value) / 100);
     $('numberSizeToggle').onclick = () => this.setLargeNumbers(!this.largeNumbers);
     $('autoMarkToggle').onclick = () => this.setAutoMark(!Boolean(this.state?.player?.autoMark));
-    $('changeLuckBtn').onclick = () => this.openPresenterChoice();
     $('helpBtn').onclick = () => this.openGuide(true);
     $('closeGuideBtn').onclick = () => this.closeGuide();
     $('guideNoBtn').onclick = () => this.closeGuide();
@@ -126,7 +125,6 @@ class PlayerApp {
     $('drawerNumbersTab').onclick = () => this.setDrawerTab('numbers');
     $('partialKeepChoosingBtn').onclick = () => this.closeModal('partialChoiceOverlay');
     $('partialContinueBtn').onclick = () => { this.closeModal('partialChoiceOverlay'); this.confirmChoice(true); };
-    $('closePresenterChoiceBtn').onclick = () => this.closeModal('presenterChoiceOverlay');
     $('roomClosedBtn').onclick = () => this.logout(true);
     $('closeWinnerBtn').onclick = () => this.closeModal('winnerOverlay');
     $('watchBtn').onclick = () => this.openWatchPanel();
@@ -135,7 +133,7 @@ class PlayerApp {
     $('copyWatchBtn').onclick = () => this.copyWatchLink();
     $('castWatchBtn').onclick = () => this.castWatch();
     $('fullScreenBtn').onclick = () => this.setFocusMode(!this.focusMode);
-    ['winnerOverlay','partialChoiceOverlay','presenterChoiceOverlay','watchOverlay'].forEach(id => $(id)?.addEventListener('click', event => { if (event.target === $(id)) this.closeModal(id); }));
+    ['winnerOverlay','partialChoiceOverlay','watchOverlay'].forEach(id => $(id)?.addEventListener('click', event => { if (event.target === $(id)) this.closeModal(id); }));
     $('ticketPanel').addEventListener('touchstart', event => this.beginTicketSwipe(event), { passive:true });
     $('ticketPanel').addEventListener('touchend', event => this.endTicketSwipe(event), { passive:true });
     document.addEventListener('keydown', event => {
@@ -144,7 +142,7 @@ class PlayerApp {
       if ($('settingsOverlay').classList.contains('show')) return this.closeSettings();
       if ($('infoDrawer').classList.contains('show')) return this.closeInfoDrawer();
       if ($('playerChatPanel')?.classList.contains('show')) return this.closeChat();
-      this.closeModal('winnerOverlay'); this.closeModal('partialChoiceOverlay'); this.closeModal('presenterChoiceOverlay'); this.closeModal('watchOverlay'); this.closeGuide();
+      this.closeModal('winnerOverlay'); this.closeModal('partialChoiceOverlay'); this.closeModal('watchOverlay'); this.closeGuide();
       if (this.focusMode) this.setFocusMode(false);
     });
     document.addEventListener('fullscreenchange', () => {
@@ -675,14 +673,14 @@ class PlayerApp {
     this.renderNotice(); this.updateQuickTools(); this.renderInfoDrawer();
   }
 
-  personalPresenterId() {
-    return this.state?.player?.personalPresenter || this.state?.game?.presenter || 'vero';
-  }
+  personalPresenterId() { return 'vero'; }
 
   renderPresenter() {
-    const id = this.personalPresenterId();
-    const presenter = PRESENTERS[id] || PRESENTERS.vero || { name:'Presentador', phrase:'Mucha suerte.' };
-    $('presenterImage').src = `assets/${id}.png`; $('presenterName').textContent = `${presenter.name} te acompaña`; $('presenterPhrase').textContent = presenter.phrase;
+    const presenter = PRESENTERS.vero || { name:'Vero', phrase:'Mucha suerte.' };
+    $('presenterImage').src = 'assets/vero.png';
+    $('presenterImage').alt = 'Vero';
+    $('presenterName').textContent = 'Vero te acompaña';
+    $('presenterPhrase').textContent = presenter.phrase;
     $('autoMarkToggle').classList.toggle('active', Boolean(this.state.player.autoMark));
     $('autoMarkToggle').disabled = Boolean(this.state.player.autoMarkForced || this.state.markingPolicy?.automaticRequired);
     $('autoMarkToggle').title = this.state.markingPolicy?.automaticRequired ? this.state.markingPolicy.reason : 'Activar o desactivar automarcado';
@@ -693,7 +691,7 @@ class PlayerApp {
   renderAdminMessage() {
     const bubble = $('adminSpeechBubble'), message = this.state?.adminMessage;
     if (!message?.text) { bubble.classList.add('hidden'); this.lastAdminMessageId = ''; return; }
-    $('adminSpeechAuthor').textContent = `${(PRESENTERS[this.personalPresenterId()] || PRESENTERS.vero).name} dice:`;
+    $('adminSpeechAuthor').textContent = 'Vero dice:';
     $('adminSpeechText').textContent = message.text; bubble.classList.remove('hidden');
     if (message.id !== this.lastAdminMessageId) { bubble.classList.remove('show'); void bubble.offsetWidth; bubble.classList.add('show'); this.lastAdminMessageId = message.id; }
   }
@@ -749,7 +747,7 @@ class PlayerApp {
       : this.selectedOffers.size > 0 && this.selectedOffers.size <= player.allowedCardCount;
     const canContinue = ready && (player.nameSet || this.validPlayerNameDraft());
     const confirmation = ready
-      ? `<div class="regulationBlock"><div class="regulationActions"><button id="readRules" class="btn secondary" type="button">LEER REGLAMENTO</button><button id="downloadRules" class="btn secondary" type="button">DESCARGAR PDF</button></div><button id="continueChoice" class="btn primary" style="margin:0" ${canContinue ? '' : 'disabled'}>CONFIRMAR CARTONES</button><small>Al confirmar, aceptás el reglamento general y las condiciones de la partida.</small></div>`
+      ? `<div class="regulationBlock"><div class="regulationActions single"><button id="readRules" class="btn secondary" type="button">LEER REGLAMENTO</button></div><button id="continueChoice" class="btn primary" style="margin:0" ${canContinue ? '' : 'disabled'}>CONFIRMAR CARTONES</button><small>Al confirmar, aceptás el reglamento general y las condiciones de la partida.</small></div>`
       : '<button id="continueChoice" class="btn primary" disabled>CONFIRMAR CARTONES</button>';
     const selectionTitle = exactSelection ? `Elegí ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}` : `Elegí hasta ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}`;
     $('waitingPanel').innerHTML = `${timerHtml}<h2>${selectionTitle}</h2><div class="waitingLead">Tenés ${offers.length} vistas previas. Podés recargarlas; los cartones que ya elegiste se conservan. Si comienza la partida antes de confirmar, el sistema completará tu asignación automáticamente.</div>${nameSection}<div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="renewChoice" class="btn secondary">RECARGAR CARTONES</button></div>${confirmation}${this.waitingMiniGameHtml()}`;
@@ -759,7 +757,6 @@ class PlayerApp {
     $('renewChoice').onclick = () => this.renewOffers();
     $('continueChoice').onclick = () => this.confirmChoice();
     if ($('readRules')) $('readRules').onclick = () => window.open('/reglamento.html', '_blank', 'noopener,noreferrer');
-    if ($('downloadRules')) $('downloadRules').onclick = () => this.downloadRules();
     this.bindWaitingMiniGame();
   }
 
@@ -1007,28 +1004,21 @@ class PlayerApp {
     catch (error) { this.showMessage(error.message, 'error'); }
   }
 
-  async downloadRules() {
-    try {
-      const response = await fetch('/reglamento.pdf', { cache:'no-store' });
-      if (!response.ok) throw new Error('El reglamento todavía no fue cargado. Se incorporará antes de publicar la partida.');
-      const blob = await response.blob(), link = document.createElement('a');
-      link.href = URL.createObjectURL(blob); link.download = 'Reglamento_LA_GORDA_BINGO_ONLINE.pdf'; document.body.appendChild(link); link.click(); link.remove();
-      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-    } catch (error) { this.showMessage(error.message, 'error'); }
-  }
-
   showGreetingOnce() {
     if (!this.state) return;
     const key = `bingoGreeting:${this.state.roomCode}:${this.state.player.id}`;
     if (sessionStorage.getItem(key)) return;
     sessionStorage.setItem(key, '1');
+    const demoNames = (this.state.demo?.participants || []).filter(item => item.virtual && ['Zoe','Mateo','Owen'].includes(item.name)).map(item => item.name);
+    const joinedNames = demoNames.length <= 1 ? (demoNames[0] || '') : demoNames.length === 2 ? `${demoNames[0]} y ${demoNames[1]}` : `${demoNames.slice(0,-1).join(', ')} y ${demoNames.at(-1)}`;
+    const greeting = joinedNames ? this.phrases.event('vero', 'demoIntro', { names: joinedNames }) : ((PRESENTERS.vero || {}).greeting || 'Hola, soy Vero. Te acompaño durante toda la partida. Mucha suerte.');
+    this.speak(greeting, true);
   }
 
   openGuide(manual = true) {
     if (!this.state) return;
     this.closeOtherPanels();
-    const id = this.personalPresenterId(), profile = PRESENTERS[id] || PRESENTERS.vero;
-    $('guidePresenter').src = `assets/${id}.png`;
+    $('guidePresenter').src = 'assets/vero.png';
     $('guideGreeting').textContent = 'Guía rápida';
     $('guideIntro').textContent = 'Lo esencial para jugar sin llenar la pantalla de controles.';
     $('guideQuestion').classList.add('hidden');
@@ -1282,47 +1272,27 @@ class PlayerApp {
   }
 
   showSequence(title, text, count, notice = false) {
-    $('sequencePresenter').src = `assets/${this.personalPresenterId()}.png`; $('sequenceTitle').textContent = title; $('sequenceText').textContent = text; $('sequenceCount').textContent = count; $('sequenceCard')?.classList.toggle('noticeMode', Boolean(notice)); $('sequenceOverlay').classList.add('show');
+    $('sequencePresenter').src = 'assets/vero.png'; $('sequenceTitle').textContent = title; $('sequenceText').textContent = text; $('sequenceCount').textContent = count; $('sequenceCard')?.classList.toggle('noticeMode', Boolean(notice)); $('sequenceOverlay').classList.add('show');
   }
 
   speakSequenceOnce(key, event, replacements) { if (sessionStorage.getItem(`spoken:${key}`)) return; sessionStorage.setItem(`spoken:${key}`,'1'); this.speakEvent(event, replacements, true); }
   speakTextOnce(key, text) { if (sessionStorage.getItem(`spoken:${key}`)) return; sessionStorage.setItem(`spoken:${key}`,'1'); this.speak(text, true); }
 
   refreshVoices() { this.voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : []; }
-  preferredVoice(id) {
+  preferredVoice() {
     const spanish = this.voices.filter(voice => /^es([-_]|$)/i.test(voice.lang) || /spanish|español|espanol/i.test(voice.name));
-    if (id === 'josu') return spanish.find(voice => /male|mascul|hombre|jorge|diego|pablo|carlos|juan|luis|miguel/i.test(voice.name)) || spanish[1] || spanish[0] || this.voices[0];
-    return spanish.find(voice => /female|femen|mujer|sofia|paulina|paloma|ximena|laura|lucia|maria|camila|valentina/i.test(voice.name)) || spanish[0] || this.voices[0];
+    return spanish.find(voice => /female|femen|mujer|sofia|paulina|paloma|ximena|laura|lucia|mar[ií]a|camila|valentina|monica|m[oó]nica|sabina/i.test(voice.name)) || spanish[0] || this.voices[0];
   }
   speak(text, priority = false) {
     if (!this.voiceEnabled || this.state?.roomSettings?.playerAudioAllowed === false || !window.speechSynthesis || !text) return;
-    const id = this.personalPresenterId(), profile = PRESENTERS[id] || { rate:1,pitch:1 };
-    const utterance = new SpeechSynthesisUtterance(text), voice = this.preferredVoice(id);
+    const profile = PRESENTERS.vero || { rate:1,pitch:1 };
+    const utterance = new SpeechSynthesisUtterance(text), voice = this.preferredVoice();
     if (voice) { utterance.voice = voice; utterance.lang = voice.lang; } else utterance.lang = 'es-AR';
     utterance.rate = profile.rate || 1; utterance.pitch = profile.pitch || 1; utterance.volume = this.audioVolume;
     if (priority) window.speechSynthesis.cancel(); window.speechSynthesis.speak(utterance);
   }
-  speakBall(number) { const id = this.personalPresenterId(); this.speak(this.phrases.ball(id, number, this.state.game.drawn.length, this.state.game.mode)); }
-  speakEvent(name, replacements = {}, priority = true) { const id = this.personalPresenterId(); this.speak(this.phrases.event(id, name, replacements), priority); }
-
-  openPresenterChoice() {
-    if (!this.state) return;
-    this.closeSettings();
-    const current = this.personalPresenterId();
-    $('presenterChoices').innerHTML = Object.entries(PRESENTERS).map(([id, profile]) => `<button class="presenterChoice ${id === current ? 'active' : ''}" data-presenter="${esc(id)}"><img src="assets/${esc(id)}.png" alt="${esc(profile.name)}"><span>${esc(profile.name)}<br><small>Cambiar mi suerte</small></span></button>`).join('');
-    $('presenterChoices').querySelectorAll('[data-presenter]').forEach(button => button.onclick = () => this.changePresenter(button.dataset.presenter));
-    $('presenterChoiceOverlay').classList.add('show');
-  }
-
-  async changePresenter(presenter) {
-    try {
-      this.applyState(await this.request('/api/player/presenter', { method:'POST', body:JSON.stringify({ presenter }) }));
-      this.closeModal('presenterChoiceOverlay');
-      const profile = PRESENTERS[presenter] || PRESENTERS.vero;
-      this.speak(`Ahora juego con vos. Vamos a cambiar la suerte.`, true);
-      this.showMessage(`${profile.name} ahora te acompaña.`, 'notice');
-    } catch (error) { this.showMessage(error.message, 'error'); }
-  }
+  speakBall(number) { this.speak(this.phrases.ball('vero', number, this.state.game.drawn.length, this.state.game.mode)); }
+  speakEvent(name, replacements = {}, priority = true) { this.speak(this.phrases.event('vero', name, replacements), priority); }
 
   setAudioEnabled(enabled) {
     this.audioEnabled = Boolean(enabled);
@@ -1336,7 +1306,7 @@ class PlayerApp {
     localStorage.setItem('bingoPlayerVoice', String(this.voiceEnabled));
     if (!this.voiceEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
     this.updateQuickTools();
-    if (this.voiceEnabled && this.state) this.speak((PRESENTERS[this.personalPresenterId()] || PRESENTERS.vero).preview, true);
+    if (this.voiceEnabled && this.state) this.speak((PRESENTERS.vero || {}).preview || 'Hola, soy Vero.', true);
   }
 
   setVolume(value, persist = true) {
@@ -1376,7 +1346,14 @@ class PlayerApp {
     const label = String(claim.prizeLabel || this.claimLabel(claim.type)).toUpperCase();
     if (claim.status === 'pending') {
       this.showClaimOverlay({ kind:claim.type, icon:'', title:`${claim.playerName} cantó ${label}`, text:`Cartón ${claim.cardNumber}. Esperando verificación del administrador.`, duration:6500, badge:'assets/celebrations/verificando-jugada.png', force:true });
-      this.playAlertSound(claim.type); this.speakEvent(claim.type === 'ambo' ? 'claimAmbo' : claim.type === 'bingo' ? 'claimBingo' : 'claimLine'); return;
+      this.playAlertSound(claim.type);
+      const demoRival = Boolean(this.state?.demo?.active && ['Zoe','Mateo','Owen'].includes(claim.playerName));
+      if (demoRival) this.speakEvent('demoClaim', { name: claim.playerName, prize: label });
+      else {
+        const claimEvent = ({ ambo:'claimAmbo', doubleLine:'claimDoubleLine', tripleLine:'claimTripleLine', corners:'claimCorners', bingo:'claimBingo' })[claim.type] || 'claimLine';
+        this.speakEvent(claimEvent);
+      }
+      return;
     }
     if (claim.status === 'confirmed') {
       const badges = {
@@ -1391,7 +1368,14 @@ class PlayerApp {
       };
       const badge = badges[claim.type] || badges.line;
       this.showClaimOverlay({ kind:'confirmed spectacular', icon:'', title:`${label} CONFIRMADO`, text:`Ganador: ${claim.playerName} · Cartón ${claim.cardNumber}.`, duration:claim.type === 'bingo' ? 9000 : 6000, badge, mascot:claim.type === 'bingo', force:true });
-      this.playAlertSound('confirmed'); this.speakEvent(claim.type === 'ambo' ? 'amboConfirmed' : claim.type === 'bingo' ? 'bingoConfirmed' : 'lineConfirmed'); return;
+      this.playAlertSound('confirmed');
+      const demoRival = Boolean(this.state?.demo?.active && ['Zoe','Mateo','Owen'].includes(claim.playerName));
+      if (demoRival) this.speakEvent('demoWinner', { name: claim.playerName, prize: label, card: claim.cardNumber || '' });
+      else {
+        const confirmedEvent = ({ ambo:'amboConfirmed', doubleLine:'doubleLineConfirmed', tripleLine:'tripleLineConfirmed', corners:'cornersConfirmed', bingo:'bingoConfirmed' })[claim.type] || 'lineConfirmed';
+        this.speakEvent(confirmedEvent, { name: claim.playerName || 'el ganador', card: claim.cardNumber || '' });
+      }
+      return;
     }
     this.showClaimOverlay({ kind:'rejected', icon:'', title:'PREMIO NO CONFIRMADO', text:`${claim.playerName} · Cartón ${claim.cardNumber}.`, duration:5000, badge:'assets/celebrations/premio-no-confirmado.png', force:true });
     this.playAlertSound('rejected'); this.speakEvent('rejected');

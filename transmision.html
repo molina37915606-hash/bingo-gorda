@@ -59,7 +59,7 @@ button,input{font:inherit}
       <img src="/assets/logo.png" alt="La Gorda">
       <div class="brandText"><h1>LA GORDA - BINGO ONLINE</h1><small id="roomInfo">Transmisión</small></div>
     </div>
-    <div class="rightZone"><div class="statusWrap"><span id="liveDot" class="liveDot"></span><div id="status" class="status">CONECTANDO…</div></div><div class="txControls"><button id="soundBtn" class="iconBtn" type="button" title="Activar o silenciar sonido" aria-label="Activar o silenciar sonido">🔊</button><button id="castBtn" class="iconBtn" type="button" title="Transmitir con Chromecast" aria-label="Transmitir con Chromecast">📺</button><button id="fullBtn" class="iconBtn" type="button" title="Pantalla completa" aria-label="Pantalla completa">⛶</button></div></div>
+    <div class="rightZone"><div class="statusWrap"><span id="liveDot" class="liveDot"></span><div id="status" class="status">CONECTANDO…</div></div><div class="txControls"><button id="soundBtn" class="iconBtn" type="button" title="Activar o silenciar efectos" aria-label="Activar o silenciar efectos">🔊</button><button id="voiceBtn" class="iconBtn" type="button" title="Activar o silenciar voz de Vero" aria-label="Activar o silenciar voz de Vero">🗣</button><button id="castBtn" class="iconBtn" type="button" title="Transmitir con Chromecast" aria-label="Transmitir con Chromecast">📺</button><button id="fullBtn" class="iconBtn" type="button" title="Pantalla completa" aria-label="Pantalla completa">⛶</button></div></div>
   </header>
   <div id="layout" class="layout">
     <section id="mainPanel" class="main">
@@ -82,7 +82,7 @@ button,input{font:inherit}
     <aside id="chatPanel" class="chat"><div class="chatHead"><h2>CHAT DE LA SALA</h2><small>EN VIVO</small></div><div id="chatList" class="chatList"></div></aside>
   </div>
 </main>
-<div id="soundHint" class="soundHint">Tocá 🔊 para activar el sonido</div>
+<div id="soundHint" class="soundHint">Tocá 🔊 o 🗣 para activar el audio</div>
 <div id="leaderToast" class="leaderToast"><div class="leaderFlame">🔥</div><div><b>NUEVO LÍDER</b><span id="leaderToastText"></span></div></div>
 <div id="claimToast" class="claimToast"><div class="claimIcon">!</div><div><b id="claimToastTitle">RECLAMO RECIBIDO</b><span id="claimToastText"></span></div></div>
 <div id="prizeBanner" class="prizeBanner"><strong>¡HAY PREMIO!</strong><span id="prizeBannerText"></span><small id="prizeBannerType"></small></div>
@@ -91,7 +91,8 @@ button,input{font:inherit}
   <section class="bingoCard"><div class="bingoKicker">PREMIO CONFIRMADO</div><div class="bingoTitle">¡BINGO!</div><div id="bingoWinner" class="bingoWinner"></div><div id="bingoCardNo" class="bingoCardNo"></div></section>
 </div>
 <script src="/js/emoji-stickers.js?v=2.0.0"></script>
+<script src="/js/presenter-scripts.js?v=2.0.0"></script>
 <script src="/js/cast-sender.js?v=1.0.0"></script>
-<script src="/js/transmision.js?v=2.3.0"></script>
+<script src="/js/transmision.js?v=2.4.0"></script>
 </body>
 </html>

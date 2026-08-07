@@ -1,7 +1,7 @@
-ACTUALIZAR GITHUB CON LA GORDA - BINGO ONLINE
+ACTUALIZAR GITHUB CON BINGO DE LA GORDA
 
 1. Descomprimí LA_GORDA_BINGO_ONLINE.zip.
-2. Reemplazá los archivos del repositorio por el contenido de la carpeta LA GORDA - BINGO ONLINE.
+2. Reemplazá los archivos del repositorio por el contenido de la carpeta BINGO DE LA GORDA.
 3. Conservá en Render las variables MASTER_ADMIN_PASSWORD, PUBLIC_URL y BINGO_DATA_DIR.
 4. Ejecutá npm test.
 5. Subí los cambios y verificá que la acción automática termine correctamente.

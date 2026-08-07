@@ -74,7 +74,7 @@ function winningLines(grid, mode) {
 }
 
 async function demoCards(mode, players, cardsPerPlayer) {
-  const aiCount = Number(players) === 2 ? 2 : 3;
+  const aiCount = Math.max(1, Math.min(3, Number(players) || 2));
   const playerCardCount = Math.max(1, Math.min(4, Number(cardsPerPlayer) || 2));
   const result = await json('/api/demo/create', {
     method: 'POST',
@@ -95,7 +95,7 @@ async function demoCards(mode, players, cardsPerPlayer) {
   const aiNames = state.players.slice(1).map(player => player.name);
   assert.equal(aiNames.length, aiCount);
   assert.equal(new Set(aiNames).size, aiCount, 'Los nombres IA de demo deben ser únicos en cada partida.');
-  assert(aiNames.every(name => name && name !== 'Vos'), 'Cada IA de demo debe recibir un nombre visible.');
+  assert(aiNames.every(name => ['Zoe','Mateo','Owen'].includes(name)), 'Las demos solo deben usar Zoe, Mateo y Owen.');
   assert(state.players.every(player => player.nameSet && player.autoMark));
   const login = await json('/api/player/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -191,10 +191,12 @@ async function drawMany(adminHeaders, count) {
       await json('/api/admin/close', { method: 'POST', headers: adminHeaders, body: '{}' });
     }
 
+    const demo75solo = await demoCards(75, 1, 1);
+    assert.equal(demo75solo.state.players.length, 2);
     const demo75 = await demoCards(75, 2, 1);
 
     // La demo debe sortear sola y resolver los reclamos de IA sin administrador.
-    const demo90Flow = await demoCards(90, 2, 1);
+    const demo90Flow = await demoCards(90, 3, 1);
     const aiPlayer = demo90Flow.state.players[1];
     const aiCard = demo90Flow.state.game.cards.find(card => aiPlayer.cardIds.includes(card.id));
     const amboRow = aiCard.grid.find(row => row.filter(Number.isFinite).length === 5).filter(Number.isFinite);

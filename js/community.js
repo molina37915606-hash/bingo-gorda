@@ -23,6 +23,7 @@ function toast(text){$('toast').textContent=text;$('toast').classList.add('show'
 function validName(value){const n=String(value||'').trim().replace(/\s+/g,' ').slice(0,20);return n.length>=2&&!/^(la\s*gorda|administraci[oó]n|admin|administrador(?:a)?|sistema|moderador(?:a)?|staff|oficial)$/i.test(n)}
 function focusNameInput(){const input=$('nameInput');if(!input)return;input.disabled=false;input.readOnly=false;try{input.focus({preventScroll:true})}catch{input.focus()}try{const end=input.value.length;input.setSelectionRange(end,end)}catch{}}
 function askName(){
+  if(validName(name)) return Promise.resolve(true);
   if(nameResolve) return Promise.resolve(false);
   return new Promise(resolve=>{
     nameResolve=resolve;
@@ -35,9 +36,9 @@ function askName(){
   });
 }
 function closeName(result=false){$('nameOverlay').classList.add('hidden');const resolve=nameResolve;nameResolve=null;if(resolve)resolve(result)}
-function saveName(){const input=$('nameInput');const n=String(input.value||'').trim().replace(/\s+/g,' ').slice(0,20);if(!validName(n)){$('nameError').textContent='Usá entre 2 y 20 caracteres y evitá nombres oficiales como LA GORDA o ADMIN.';focusNameInput();return false}name=n;safeStorage.set(storage.name,name);renderIdentity();closeName(true);toast(`Hola, ${name}`);return true}
+function saveName(){if(validName(name)){closeName(true);return true}const input=$('nameInput');const n=String(input.value||'').trim().replace(/\s+/g,' ').slice(0,20);if(!validName(n)){$('nameError').textContent='Usá entre 2 y 20 caracteres y evitá nombres oficiales como LA GORDA o ADMIN.';focusNameInput();return false}name=n;safeStorage.set(storage.name,name);renderIdentity();closeName(true);toast(`Hola, ${name}`);return true}
 async function ensureName(){if(validName(name))return true;return await askName()}
-function renderIdentity(){$('identityBtn').textContent=validName(name)?`${name} · CAMBIAR`:'ELEGIR NOMBRE';$('previewIdentity').textContent=validName(name)?`Estás como ${name}`:'Entrá con tu nombre';$('drawerIdentity').textContent=validName(name)?`Estás como ${name}`:'Elegí un nombre para participar';$('miniName').textContent=validName(name)?`Jugás como ${name}`:''}
+function renderIdentity(){const locked=validName(name),button=$('identityBtn');button.textContent=locked?`👤 ${name}`:'ELEGIR NOMBRE';button.disabled=locked;button.classList.toggle('locked',locked);button.classList.toggle('needsName',!locked);button.title=locked?'Nombre guardado en este dispositivo':'Elegí tu nombre para participar';$('previewIdentity').textContent=locked?`Estás como ${name} · nombre guardado`:'Entrá con tu nombre';$('drawerIdentity').textContent=locked?`Estás como ${name} · nombre guardado en este dispositivo`:'Elegí un nombre para participar';$('miniName').textContent=locked?`Jugás como ${name}`:''}
 function timeLabel(iso){try{return new Date(iso).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}catch{return ''}}
 function stickers(){return window.BingoEmojiStickers||null}
 function isStickerMessage(m){return Boolean(stickers()?.isStickerMessage(m))}
@@ -81,7 +82,7 @@ function bind(){
   $('cancelNameBtn').onclick=()=>closeName(false);
   $('nameInput').addEventListener('pointerdown',()=>setTimeout(focusNameInput,0));
   $('nameInput').addEventListener('touchend',()=>setTimeout(focusNameInput,0),{passive:true});
-  $('identityBtn').onclick=()=>askName();
+  $('identityBtn').onclick=()=>{if(!validName(name))askName()};
   $('sendBtn').onclick=()=>sendFrom($('chatInput'));$('chatInput').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();sendFrom($('chatInput'))}};
   $('drawerSendBtn').onclick=()=>sendFrom($('drawerInput'));$('drawerInput').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();sendFrom($('drawerInput'))}};
   $('emojiBtn').onclick=()=>renderPicker('desktop','emoji');$('stickerBtn').onclick=()=>renderPicker('desktop','sticker');$('drawerEmojiBtn').onclick=()=>renderPicker('drawer','emoji');$('drawerStickerBtn').onclick=()=>renderPicker('drawer','sticker');

@@ -22,7 +22,7 @@
   </div></div>
 
   <div class="field"><span>Rivales IA</span><div class="choices">
-    <div class="choice"><input id="ai2" name="aiCount" type="radio" value="2" checked><label for="ai2">2 rivales</label></div>
+    <div class="choice"><input id="ai1" name="aiCount" type="radio" value="1"><label for="ai1">1 rival</label></div><div class="choice"><input id="ai2" name="aiCount" type="radio" value="2" checked><label for="ai2">2 rivales</label></div>
     <div class="choice"><input id="ai3" name="aiCount" type="radio" value="3"><label for="ai3">3 rivales</label></div>
   </div></div>
 
@@ -49,18 +49,21 @@
 </main>
 <script>
 const form=document.getElementById('demoForm'),button=document.getElementById('start'),error=document.getElementById('error'),participants=document.getElementById('participants');
+const familyNames=['Zoe','Mateo','Owen'];
+const shuffledNames=()=>{const names=[...familyNames];for(let i=names.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[names[i],names[j]]=[names[j],names[i]]}return names};
+let demoNameOrder=shuffledNames();
 const value=name=>Number(document.querySelector(`input[name="${name}"]:checked`).value);
 function escapeHtml(value){return String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));}
 function renderParticipants(){
   const count=value('aiCount');
-  const names=['Zoe','Mateo','Owen'].slice(0,count);
+  const names=demoNameOrder.slice(0,count);
   participants.innerHTML=`<div class="participant"><strong>Vos</strong><span>${value('playerCardCount')} cartón${value('playerCardCount')===1?'':'es'}</span></div>`+names.map(name=>`<div class="participant"><strong>${name} <span class="ai">IA</span></strong><span>2 cartones</span></div>`).join('');
 }
-document.querySelectorAll('input').forEach(input=>input.addEventListener('change',renderParticipants));renderParticipants();
+document.querySelectorAll('input').forEach(input=>input.addEventListener('change',renderParticipants));document.querySelectorAll('input[name="aiCount"]').forEach(input=>input.addEventListener('change',()=>{demoNameOrder=shuffledNames();renderParticipants()}));renderParticipants();
 form.addEventListener('submit',async event=>{
   event.preventDefault();error.innerHTML='';button.disabled=true;button.textContent='GENERANDO CARTONES…';
   try{
-    const response=await fetch('/api/demo/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:value('mode'),aiCount:value('aiCount'),playerCardCount:value('playerCardCount'),autoSeconds:value('autoSeconds'),sound:true})});
+    const response=await fetch('/api/demo/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:value('mode'),aiCount:value('aiCount'),aiNames:demoNameOrder.slice(0,value('aiCount')),playerCardCount:value('playerCardCount'),autoSeconds:value('autoSeconds'),sound:true})});
     const data=await response.json();
     if(!response.ok)throw new Error(data.error||'No se pudo crear la demostración.');
     localStorage.removeItem('bingoOnlineToken');

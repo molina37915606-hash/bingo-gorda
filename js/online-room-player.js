@@ -49,6 +49,8 @@ class PlayerApp {
     this.drawerTab = 'winners';
     this.selectedWinnerId = '';
     this.resultsViewerUrl = '';
+    this.resultsViewerObjectUrl = '';
+    this.stickerSendTimes = [];
     this.openJoinMode = false;
     this.openJoinCardCount = 2;
     this.waitingMini = {
@@ -60,7 +62,7 @@ class PlayerApp {
       { icon:'🧾', title:'Tus cartones', text:'Usá las pestañas para cambiar de cartón. Las marcas oficiales se conservan en todos.' },
       { icon:'⚙', title:'Ajustes', text:'Desde la tuerca podés controlar sonido, voz, tamaño de números, automarcado y tu cantador de la suerte.' },
       { icon:'›', title:'Ganadores y números', text:'La flecha lateral muestra los premios confirmados y los números salidos ordenados de menor a mayor.' },
-      { icon:'💬', title:'Chat público', text:'El chat incluye mensajes breves y ocho stickers grandes con animaciones propias. No tapa los botones de reclamo.' },
+      { icon:'💬', title:'Chat público', text:'El chat separa emojis comunes para el texto y 12 stickers premium de envío directo. Tocá un sticker recibido para repetir su animación.' },
       { icon:'🏆', title:'Tenés que cantar', text:'Aunque el sistema marque solo, el premio se reclama tocando manualmente el botón correspondiente.' },
       { icon:'📄', title:'Acta oficial', text:'Al terminar la partida podés ver el PDF completo dentro del juego y descargarlo solo si lo necesitás.' }
     ];
@@ -204,25 +206,17 @@ class PlayerApp {
     if ($('playerChatDock')) return;
     const style = document.createElement('style');
     style.textContent = `
-      .playerChatDock{position:fixed;right:9px;bottom:9px;z-index:105}.playerChatToggle{min-height:44px;border:0;border-radius:999px;padding:10px 14px;background:#5a167b;color:#fff;font-weight:1000;box-shadow:0 10px 35px #0008}.playerChatPanel{display:none;position:fixed;left:50%;bottom:8px;transform:translateX(-50%);width:min(520px,calc(100vw - 16px));height:min(570px,76dvh);background:var(--panel);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 25px 70px #000b}.playerChatPanel.show{display:grid;grid-template-rows:auto 1fr auto auto}.playerChatPanel header{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;background:#5a167b;color:#fff}.playerChatPanel header button{border:0;background:transparent;color:#fff;font-size:24px}.playerChatMessages{overflow:auto;padding:10px;display:grid;align-content:start;gap:8px;background:var(--panel3)}.playerChatMessage{padding:9px 10px;border-radius:11px;background:var(--panel2);color:var(--text);border:1px solid var(--border)}.playerChatMessage.admin{background:#3b2454;color:#fff;border-color:#9867b2}.playerChatMessage small{display:flex;justify-content:space-between;gap:8px;color:var(--muted);margin-bottom:4px}.playerChatMessage.admin small{color:#e3cdeb}.playerChatMessage p{margin:0;word-break:break-word}.playerChatComposer{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:end;border-top:1px solid var(--border);background:var(--panel)}.playerChatEmojiButton{width:46px;height:52px;border:0;background:var(--panel2);color:var(--text);font-size:22px}.playerChatPanel textarea{resize:none;min-height:52px;max-height:94px;padding:10px;border:0;background:var(--panel);color:var(--text);outline:none}.playerChatSend{height:52px;border:0;padding:0 14px;background:#ffca2f;color:#1b1405;font-weight:1000}.playerChatNotice{padding:8px 10px;background:#3f2c0a;color:#ffe39a;font-size:12px}.playerEmojiMenu{display:none;grid-template-columns:repeat(8,1fr);gap:4px;padding:8px;border-top:1px solid var(--border);background:var(--panel2)}.playerEmojiMenu.show{display:grid}.playerEmojiMenu button{height:70px;border:1px solid var(--border);border-radius:13px;background:var(--panel3);transition:transform .16s ease,background .16s ease}.playerEmojiMenu button:active{transform:scale(.94)}.playerChatEmojiButton .bingoSticker{width:32px;height:32px;margin:0}.playerChatMessage p.stickerOnly{padding:2px 0}.playerChatBadge:not(:empty){display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:999px;background:#e83e87;margin-left:5px}.playerChatToggle:focus-visible,.playerEmojiMenu button:focus-visible{outline:3px solid #ffca2f;outline-offset:2px}
-      @media(max-width:620px){.playerChatDock{right:7px;bottom:7px}.playerChatPanel{bottom:0;width:100%;height:min(650px,78dvh);border-radius:20px 20px 0 0}.playerEmojiMenu{grid-template-columns:repeat(4,1fr)}.playerEmojiMenu button{height:64px}}
+      .playerChatDock{position:fixed;right:9px;bottom:9px;z-index:105}.playerChatToggle{min-height:44px;border:0;border-radius:999px;padding:10px 14px;background:#5a167b;color:#fff;font-weight:1000;box-shadow:0 10px 35px #0008}.playerChatPanel{display:none;position:fixed;left:50%;bottom:8px;transform:translateX(-50%);width:min(540px,calc(100vw - 16px));height:min(620px,80dvh);background:var(--panel);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 25px 70px #000b}.playerChatPanel.show{display:grid;grid-template-rows:auto 1fr auto auto}.playerChatPanel header{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;background:linear-gradient(135deg,#5a167b,#7b2494);color:#fff}.playerChatPanel header button{border:0;background:transparent;color:#fff;font-size:24px}.playerChatMessages{overflow:auto;padding:10px;display:grid;align-content:start;gap:8px;background:var(--panel3)}.playerChatMessage{padding:9px 10px;border-radius:11px;background:var(--panel2);color:var(--text);border:1px solid var(--border)}.playerChatMessage.admin{background:#3b2454;color:#fff;border-color:#9867b2}.playerChatMessage small{display:flex;justify-content:space-between;gap:8px;color:var(--muted);margin-bottom:4px}.playerChatMessage.admin small{color:#e3cdeb}.playerChatMessage p{margin:0;word-break:break-word}.playerChatMessage.stickerMessage{background:transparent;border-color:transparent;padding:5px 8px}.playerChatMessage.stickerMessage small{margin-bottom:1px}.playerChatMessage.stickerMessage p{display:flex;align-items:center;min-height:104px}.playerChatComposer{display:grid;grid-template-columns:46px 46px minmax(0,1fr) auto;align-items:end;border-top:1px solid var(--border);background:var(--panel)}.playerChatToolButton{width:46px;height:52px;border:0;border-right:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:22px;font-weight:900;cursor:pointer}.playerChatToolButton.active{background:#5a167b;color:#fff}.playerChatPanel textarea{resize:none;min-height:52px;max-height:94px;padding:10px;border:0;background:var(--panel);color:var(--text);outline:none}.playerChatSend{height:52px;border:0;padding:0 14px;background:#ffca2f;color:#1b1405;font-weight:1000}.playerChatNotice{padding:8px 10px;background:#3f2c0a;color:#ffe39a;font-size:12px}.playerPicker{display:none;padding:9px;border-top:1px solid var(--border);background:var(--panel2);max-height:260px;overflow:auto}.playerPicker.show{display:grid}.playerEmojiMenu{grid-template-columns:repeat(5,1fr);gap:5px}.playerEmojiMenu button{height:48px;border:1px solid var(--border);border-radius:11px;background:var(--panel3);color:var(--text);font-size:25px;cursor:pointer}.playerEmojiMenu button:active{transform:scale(.92)}.playerStickerMenu{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.playerStickerMenu .premiumStickerButton{min-height:88px}.playerStickerHint{grid-column:1/-1;color:var(--muted);font-size:11px;line-height:1.35;padding:2px 3px 5px}.playerChatBadge:not(:empty){display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:999px;background:#e83e87;margin-left:5px}.playerChatToggle:focus-visible,.playerPicker button:focus-visible,.playerChatToolButton:focus-visible{outline:3px solid #ffca2f;outline-offset:2px}
+      @media(max-width:620px){.playerChatDock{right:7px;bottom:7px}.playerChatPanel{bottom:0;width:100%;height:min(690px,84dvh);border-radius:20px 20px 0 0}.playerEmojiMenu{grid-template-columns:repeat(5,1fr)}.playerStickerMenu{grid-template-columns:repeat(3,minmax(0,1fr))}.playerStickerMenu .premiumStickerButton{min-height:82px}.playerChatComposer{grid-template-columns:44px 44px minmax(0,1fr) auto}.playerChatToolButton{width:44px}}
     `;
     document.head.appendChild(style);
     const dock = document.createElement('aside');
     dock.id = 'playerChatDock'; dock.className = 'playerChatDock';
     const stickers = window.BingoEmojiStickers;
-    const emojiButtons = [
-      `<button class="stickerMenuButton" type="button" data-emoji="😀" aria-label="Alegría">${stickers?.icon('😀', { className:'stickerMenuIcon' }) || '😀'}</button>`,
-      `<button class="stickerMenuButton" type="button" data-emoji="😂" aria-label="Risa">${stickers?.icon('😂', { className:'stickerMenuIcon' }) || '😂'}</button>`,
-      `<button class="stickerMenuButton" type="button" data-emoji="😭" aria-label="Llanto">${stickers?.icon('😭', { className:'stickerMenuIcon' }) || '😭'}</button>`,
-      `<button class="stickerMenuButton" type="button" data-emoji="👏" aria-label="Aplausos">${stickers?.icon('👏', { className:'stickerMenuIcon' }) || '👏'}</button>`,
-      `<button class="stickerMenuButton" type="button" data-emoji="❤️" aria-label="Corazón">${stickers?.icon('❤️', { className:'stickerMenuIcon' }) || '❤️'}</button>`,
-      `<button class="stickerMenuButton" type="button" data-emoji="🍀" aria-label="Suerte">${stickers?.icon('🍀', { className:'stickerMenuIcon' }) || '🍀'}</button>`,
-      `<button class="stickerMenuButton" type="button" data-emoji="🎱" aria-label="Bolilla">${stickers?.icon('🎱', { className:'stickerMenuIcon' }) || '🎱'}</button>`,
-      `<button class="stickerMenuButton" type="button" data-emoji="🎉" aria-label="Fiesta">${stickers?.icon('🎉', { className:'stickerMenuIcon' }) || '🎉'}</button>`
-    ].join('');
-    const composerIcon = stickers?.icon('😀', { className:'stickerComposerIcon' }) || '☺';
-    dock.innerHTML = `<button id="playerChatToggle" class="playerChatToggle" type="button">💬 CHAT <span id="playerChatBadge" class="playerChatBadge"></span></button><section id="playerChatPanel" class="playerChatPanel" aria-label="Chat público"><header><b>CHAT PÚBLICO</b><button id="playerChatClose" type="button" aria-label="Cerrar">×</button></header><div id="playerChatMessages" class="playerChatMessages"></div><div id="playerChatNotice" class="playerChatNotice hidden"></div><div id="playerEmojiMenu" class="playerEmojiMenu" aria-label="Stickers animados">${emojiButtons}</div><div class="playerChatComposer"><button id="playerChatEmojiButton" class="playerChatEmojiButton" type="button" aria-label="Elegir sticker">${composerIcon}</button><textarea id="playerChatInput" maxlength="160" placeholder="Escribí un mensaje"></textarea><button id="playerChatSend" class="playerChatSend" type="button">ENVIAR</button></div></section>`;
+    const commonEmojis = stickers?.commonEmojis || ['😀','😁','😂','😉','😊','😎','😮','😭','😤','🤞','🙏','👏','👍','❤️','🔥','🎉','🍀','🎱','⭐','💰'];
+    const emojiButtons = commonEmojis.map(emoji => `<button type="button" data-common-emoji="${emoji}" aria-label="Emoji ${emoji}">${emoji}</button>`).join('');
+    const stickerButtons = (stickers?.stickers || []).map(item => `<button class="premiumStickerButton" type="button" data-send-sticker="${item.id}" aria-label="Enviar sticker ${item.label}">${stickers.sticker(item.id,{className:'premiumStickerMenuIcon',replay:false})}</button>`).join('');
+    dock.innerHTML = `<button id="playerChatToggle" class="playerChatToggle" type="button">💬 CHAT <span id="playerChatBadge" class="playerChatBadge"></span></button><section id="playerChatPanel" class="playerChatPanel" aria-label="Chat público"><header><b>CHAT PÚBLICO</b><button id="playerChatClose" type="button" aria-label="Cerrar">×</button></header><div id="playerChatMessages" class="playerChatMessages"></div><div id="playerChatNotice" class="playerChatNotice hidden"></div><div id="playerEmojiMenu" class="playerPicker playerEmojiMenu" aria-label="Emojis comunes">${emojiButtons}</div><div id="playerStickerMenu" class="playerPicker playerStickerMenu" aria-label="Stickers premium"><div class="playerStickerHint">Los stickers se envían solos con un toque. Tocá un sticker recibido para repetir su animación.</div>${stickerButtons}</div><div class="playerChatComposer"><button id="playerChatEmojiButton" class="playerChatToolButton" type="button" aria-label="Emojis comunes">☺</button><button id="playerChatStickerButton" class="playerChatToolButton" type="button" aria-label="Stickers premium">✦</button><textarea id="playerChatInput" maxlength="160" placeholder="Escribí un mensaje"></textarea><button id="playerChatSend" class="playerChatSend" type="button">ENVIAR</button></div></section>`;
     document.body.appendChild(dock);
     $('playerChatToggle').onclick = () => {
       const opening = !$('playerChatPanel').classList.contains('show');
@@ -233,22 +227,41 @@ class PlayerApp {
       if (opening) setTimeout(() => $('playerChatInput').focus({ preventScroll:true }), 80);
     };
     $('playerChatClose').onclick = () => this.closeChat();
-    $('playerChatEmojiButton').onclick = () => $('playerEmojiMenu').classList.toggle('show');
-    $('playerEmojiMenu').querySelectorAll('[data-emoji]').forEach(button => button.onclick = () => { const sticker=button.querySelector('.bingoSticker'); if(sticker){sticker.classList.remove('preview');void sticker.offsetWidth;sticker.classList.add('preview');setTimeout(()=>sticker.classList.remove('preview'),850)} this.insertChatEmoji(button.dataset.emoji); });
+    $('playerChatEmojiButton').onclick = () => this.toggleChatPicker('emoji');
+    $('playerChatStickerButton').onclick = () => this.toggleChatPicker('sticker');
+    $('playerEmojiMenu').querySelectorAll('[data-common-emoji]').forEach(button => button.onclick = () => this.insertChatEmoji(button.dataset.commonEmoji));
+    $('playerStickerMenu').querySelectorAll('[data-send-sticker]').forEach(button => button.onclick = () => {
+      const preview = button.querySelector('.premiumSticker');
+      if (preview) { preview.classList.remove('preview'); void preview.offsetWidth; preview.classList.add('preview'); }
+      setTimeout(() => this.sendSticker(button.dataset.sendSticker), 150);
+    });
+    $('playerChatMessages').addEventListener('click', event => window.BingoEmojiStickers?.replay(event.target));
     $('playerChatSend').onclick = () => this.sendChat();
     $('playerChatInput').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); this.sendChat(); } });
+  }
+
+  toggleChatPicker(which) {
+    const emoji = $('playerEmojiMenu'), sticker = $('playerStickerMenu');
+    const showEmoji = which === 'emoji' && !emoji.classList.contains('show');
+    const showSticker = which === 'sticker' && !sticker.classList.contains('show');
+    emoji.classList.toggle('show', showEmoji); sticker.classList.toggle('show', showSticker);
+    $('playerChatEmojiButton').classList.toggle('active', showEmoji);
+    $('playerChatStickerButton').classList.toggle('active', showSticker);
   }
 
   closeChat() {
     $('playerChatPanel')?.classList.remove('show');
     $('playerEmojiMenu')?.classList.remove('show');
+    $('playerStickerMenu')?.classList.remove('show');
+    $('playerChatEmojiButton')?.classList.remove('active');
+    $('playerChatStickerButton')?.classList.remove('active');
   }
 
   insertChatEmoji(emoji) {
     const input = $('playerChatInput');
-    if (!input || input.disabled) return;
-    const allowed = ['😀','😂','😭','👏','❤️','🍀','🎱','🎉'];
-    const used = allowed.reduce((total, item) => total + (input.value.split(item).length - 1), 0);
+    if (!input || input.disabled || !window.BingoEmojiStickers?.commonEmojis.includes(emoji)) return;
+    const allowed = window.BingoEmojiStickers.commonEmojis;
+    const used = [...input.value].filter(char => allowed.includes(char)).length + (input.value.match(/❤️/g)?.length || 0);
     if (used >= 4) return this.showMessage('Podés agregar hasta 4 emojis del menú por mensaje.', 'error');
     const start = input.selectionStart ?? input.value.length;
     const end = input.selectionEnd ?? start;
@@ -273,9 +286,9 @@ class PlayerApp {
     const freshIds = new Set(messages.filter(message => !this.seenChatMessageIds.has(message.id)).map(message => message.id));
     host.innerHTML = messages.map(message => {
       const animate = Boolean(incoming && freshIds.has(message.id));
-      const body = stickers ? stickers.renderText(message.text, { animate }) : esc(message.text);
-      const only = stickers?.isStickerOnly(message.text) ? ' stickerOnly' : '';
-      return `<article class="playerChatMessage ${message.role === 'admin' ? 'admin' : ''}"><small><b>${esc(message.name)}</b><span>${esc(this.chatTime(message.createdAt))}</span></small><p class="${only.trim()}">${body}</p></article>`;
+      const isSticker = Boolean(stickers?.isStickerMessage(message));
+      const body = stickers ? stickers.renderMessage(message, { animate }) : esc(message.text || '');
+      return `<article class="playerChatMessage ${message.role === 'admin' ? 'admin' : ''} ${isSticker ? 'stickerMessage' : ''}"><small><b>${esc(message.name)}</b><span>${esc(this.chatTime(message.createdAt))}</span></small><p>${body}</p></article>`;
     }).join('') || '<div style="text-align:center;color:#aeb8cd;padding:25px">Todavía no hay mensajes.</div>';
     messages.forEach(message => this.seenChatMessageIds.add(message.id));
     if (incoming || $('playerChatPanel').classList.contains('show')) host.scrollTop = host.scrollHeight;
@@ -283,6 +296,7 @@ class PlayerApp {
     $('playerChatInput').disabled = blocked;
     $('playerChatSend').disabled = blocked;
     $('playerChatEmojiButton').disabled = blocked;
+    $('playerChatStickerButton').disabled = blocked;
     const notice = $('playerChatNotice');
     notice.classList.toggle('hidden', !blocked);
     notice.textContent = chat.enabled === false ? 'El chat está deshabilitado.' : chat.muted ? 'El administrador silenció tu participación.' : chat.locked ? 'El chat está pausado temporalmente.' : '';
@@ -293,10 +307,31 @@ class PlayerApp {
     const input = $('playerChatInput');
     const text = String(input?.value || '').trim();
     if (!text) return;
-    try { await this.request('/api/player/chat', { method:'POST', body:JSON.stringify({ text }) }); input.value = ''; $('playerEmojiMenu').classList.remove('show'); }
-    catch (error) { this.showMessage(error.message, 'error'); }
+    try {
+      await this.request('/api/player/chat', { method:'POST', body:JSON.stringify({ text }) });
+      input.value = '';
+      $('playerEmojiMenu').classList.remove('show');
+      $('playerChatEmojiButton').classList.remove('active');
+    } catch (error) { this.showMessage(error.message, 'error'); }
   }
 
+  async sendSticker(stickerId) {
+    if (!$('playerChatStickerButton') || $('playerChatStickerButton').disabled) return;
+    if (!window.BingoEmojiStickers?.get(stickerId)) return;
+    const now = Date.now();
+    this.stickerSendTimes = this.stickerSendTimes.filter(at => now - at < 10000);
+    const last = this.stickerSendTimes.at(-1) || 0;
+    if (now - last < 1200 || this.stickerSendTimes.length >= 4) return this.showMessage('Esperá un momento antes de enviar otro sticker.', 'error');
+    this.stickerSendTimes.push(now);
+    try {
+      await this.request('/api/player/chat', { method:'POST', body:JSON.stringify({ stickerId }) });
+      $('playerStickerMenu').classList.remove('show');
+      $('playerChatStickerButton').classList.remove('active');
+    } catch (error) {
+      this.stickerSendTimes.pop();
+      this.showMessage(error.message, 'error');
+    }
+  }
 
   closeOtherPanels(except = '') {
     if (except !== 'chat') this.closeChat();
@@ -385,21 +420,34 @@ class PlayerApp {
     return this.state?.roomCode ? `/api/results.pdf?sala=${encodeURIComponent(this.state.roomCode)}` : '';
   }
 
-  openResultsViewer() {
+  async openResultsViewer() {
     if (this.state?.status !== 'finished') return this.showMessage('El acta estará disponible cuando finalice la partida.', 'error');
     this.closeOtherPanels();
-    this.resultsViewerUrl = this.resultsUrl();
-    $('resultsViewerFrame').src = this.resultsViewerUrl;
     $('resultsViewerOverlay').classList.add('show');
+    $('resultsViewerFrame').src = 'about:blank';
+    try {
+      const response = await fetch(`${this.resultsUrl()}&preview=1`, { cache:'no-store' });
+      if (!response.ok) throw new Error((await response.json().catch(()=>({}))).error || 'No se pudo abrir el acta.');
+      const blob = await response.blob();
+      if (this.resultsViewerObjectUrl) URL.revokeObjectURL(this.resultsViewerObjectUrl);
+      this.resultsViewerObjectUrl = URL.createObjectURL(new Blob([blob], { type:'application/pdf' }));
+      this.resultsViewerUrl = this.resultsViewerObjectUrl;
+      $('resultsViewerFrame').src = this.resultsViewerObjectUrl;
+    } catch (error) {
+      this.closeResultsViewer();
+      this.showMessage(error.message, 'error');
+    }
   }
 
   closeResultsViewer() {
     $('resultsViewerOverlay')?.classList.remove('show');
     if ($('resultsViewerFrame')) $('resultsViewerFrame').src = 'about:blank';
+    if (this.resultsViewerObjectUrl) { URL.revokeObjectURL(this.resultsViewerObjectUrl); this.resultsViewerObjectUrl = ''; }
+    this.resultsViewerUrl = '';
   }
 
   openResultsInNewTab() {
-    const url = this.resultsViewerUrl || this.resultsUrl();
+    const url = this.resultsViewerUrl || `${this.resultsUrl()}&preview=1`;
     if (url) window.open(url, '_blank', 'noopener');
   }
 

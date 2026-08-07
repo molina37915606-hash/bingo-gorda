@@ -137,7 +137,9 @@ async function drawMany(adminHeaders, count) {
     assert(demoHtml.includes('Zoe, Mateo y Owen'));
     const adminHtml = await (await fetch(base + '/admin')).text();
     assert(adminHtml.includes('LA GORDA - BINGO ONLINE'));
-    assert(adminHtml.includes('.ballNumber{color:#fff'));
+    assert(adminHtml.includes('.ballNumber{display:block;color:#fff'));
+    assert(adminHtml.includes('id="actaPreview"'));
+    assert(!adminHtml.includes('id="pdfFrame"'));
     assert(adminHtml.includes('id="pdfOpenTab"'));
     assert.equal((await fetch(base + '/admin-avanzado.html')).status, 404);
     assert.equal((await fetch(base + '/js/app-v8.js')).status, 404);
@@ -149,8 +151,13 @@ async function drawMany(adminHeaders, count) {
     assert(playerHtml.includes('id="resultsViewerOverlay"'));
     assert(playerHtml.includes('id="voiceToggle"'));
     assert(playerHtml.includes('VER ACTA COMPLETA'));
+    const stickerAsset = await fetch(base + '/assets/stickers/corazon.webp');
+    assert.equal(stickerAsset.status, 200);
+    assert.equal(stickerAsset.headers.get('content-type'), 'image/webp');
     const playerJs = await (await fetch(base + '/js/online-room-player.js')).text();
-    for (const emoji of ['😀','😂','😭','👏','❤️','🍀','🎱','🎉']) assert(playerJs.includes(`data-emoji="${emoji}"`));
+    for (const emoji of ['😀','😁','😂','😉','😊','😎','😮','😭','😤','🤞','🙏','👏','👍','❤️','🔥','🎉','🍀','🎱','⭐','💰']) assert(playerJs.includes(emoji));
+    assert(playerJs.includes('data-send-sticker'));
+    assert(playerJs.includes('sendSticker(stickerId)'));
     assert(playerJs.includes('renderSortedNumbers'));
 
     result = await json('/api/master/login', {
@@ -254,6 +261,14 @@ async function drawMany(adminHeaders, count) {
     state = (await json('/api/admin/state', { headers: adminHeaders })).data;
     assert.equal(state.chat.messages.length, 2);
     assert.equal(state.chat.messages[0].name, 'Ana');
+    result = await json('/api/player/chat', { method: 'POST', headers: p1, body: JSON.stringify({ stickerId: 'gorda-risa' }) });
+    assert.equal(result.response.status, 200, JSON.stringify(result.data));
+    assert.equal(result.data.type, 'sticker');
+    assert.equal(result.data.stickerId, 'gorda-risa');
+    result = await json('/api/player/chat', { method: 'POST', headers: p1, body: JSON.stringify({ stickerId: 'corazon' }) });
+    assert.equal(result.response.status, 400, 'El anti-spam de stickers debe bloquear el segundo envío inmediato.');
+    state = (await json('/api/admin/state', { headers: adminHeaders })).data;
+    assert.equal(state.chat.messages.length, 3);
     assert.equal((await json('/api/admin/chat/moderate', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ action: 'lock' }) })).response.status, 200);
     assert.equal((await json('/api/player/chat', { method: 'POST', headers: p2, body: JSON.stringify({ text: 'No debería entrar' }) })).response.status, 400);
     await json('/api/admin/chat/moderate', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ action: 'unlock' }) });

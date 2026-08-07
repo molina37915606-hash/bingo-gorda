@@ -1,8 +1,8 @@
 {
   "name": "la-gorda-bingo-online",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "LA GORDA - BINGO ONLINE: bingo de 75 y 90 bolas con salas de prueba y oficiales, selección de cartones, chat, transmisión, minijuegos y actas auditables.",
+  "description": "LA GORDA - BINGO ONLINE: bingo de 75 y 90 bolas con chat de emojis y stickers premium, salas de prueba y oficiales, selección de cartones, transmisión, minijuegos y actas auditables.",
   "engines": {
     "node": ">=18"
   },

@@ -1,44 +1,46 @@
-LA GORDA - BINGO ONLINE - CAMBIOS PRINCIPALES
+LA GORDA - BINGO ONLINE - ACTUALIZACIÓN 2.0
 
-IDENTIDAD Y LIMPIEZA
-- Nuevo nombre visible: LA GORDA - BINGO ONLINE.
-- Administrador simplificado en admin.html.
-- Se retiraron dos scripts antiguos que no se cargaban, un enlace roto a un importador inexistente y recursos gráficos sin referencias.
-- Se conservaron respaldo, restauración, auditoría, recuperación y pruebas de escala.
+CHAT PREMIUM
+- El chat del jugador separa texto, emojis comunes y stickers premium.
+- Panel de 20 emojis comunes para insertar dentro de mensajes de texto.
+- Panel independiente de 12 stickers premium de envío directo.
+- Los stickers son mensajes individuales grandes; no se mezclan con el texto.
+- Los stickers se animan al enviarse/recibirse y vuelven a animarse al tocarlos dentro del chat.
+- La animación no queda en loop y respeta prefers-reduced-motion.
+- Anti-spam de stickers validado en cliente y servidor: mínimo 1,2 s entre stickers y máximo 4 en 10 s por jugador.
+- El administrador puede eliminar mensajes, silenciar jugadores y pausar el chat.
+- Administrador y transmisión renderizan los mismos stickers premium y reciben los mensajes de chat en tiempo real.
 
-ADMINISTRACIÓN
-- Home con CREAR SALA y CONTINUAR.
-- Configuración de sala en una sola pantalla.
-- Sala de prueba por enlace, hasta 10 jugadores y 40 cartones.
-- Sala oficial con códigos individuales y de 1 a 4 cartones por jugador.
-- Modalidad, premios, cantador, voz, intervalo y transmisión en un mismo menú.
-- Generación de 25 a 250 cartones, en pasos de 25.
-- Consola compacta con bolilla actual, últimas bolillas, pausa, extracción inmediata e intervalo.
-- En Bingo 75, la bolilla grande muestra una letra gruesa y el número en blanco con alto contraste.
-- Cada bolilla nueva tiene una animación breve, desactivable mediante la preferencia de reducción de movimiento.
-- Los reclamos se resuelven desde un panel flotante sin ocultar la bolilla actual.
-- Confirmar y rechazar se habilitan automáticamente al cerrar la ventana de auditoría.
+STICKERS CON LA GORDA
+- Risa.
+- Festejos.
+- Dinero.
+- AY NO.
+- Enojada.
 
-SALA DE ESPERA
-- Los minijuegos Rojo/Negro y Mayor/Menor están siempre activos.
-- El jugador puede alternar entre ambos y cada juego conserva su clasificación.
-- En salas de prueba se muestran 10 vistas previas de cartones.
-- El jugador puede recargar, reservar y confirmar los cartones elegidos.
-- Si el administrador inicia con una selección pendiente, el sistema completa automáticamente los cartones faltantes.
+STICKERS DE ELEMENTOS PREMIUM
+- Corazón.
+- Aplausos.
+- Suerte.
+- Símbolo dinero.
+- Ira.
+- Explosión.
+- Cerveza.
 
-CHAT
-- Ocho stickers SVG grandes, modernos y animados.
-- Los mensajes siguen guardando los emojis Unicode originales para conservar compatibilidad.
-- El mismo set se usa en jugador, administrador y transmisión.
+ACTA DE RESULTADOS
+- VER ACTA ya no navega directamente al PDF.
+- El administrador recibe una vista previa HTML interna con resultados, bolillas, ganadores, auditoría de reclamos y participantes.
+- ABRIR PDF y DESCARGAR PDF quedan como acciones separadas.
+- En el jugador, el visor obtiene el PDF mediante fetch y lo muestra con una URL Blob para evitar que Content-Disposition fuerce una descarga.
+- La ruta PDF mantiene modo inline para apertura y attachment para descarga.
 
-RESULTADOS
-- VER ACTA abre una vista previa interna del PDF.
-- La vista previa se entrega como PDF inline y permite abrir en otra pestaña o descargar.
-- DESCARGAR PDF conserva la descarga directa.
-- Actas PDF y CSV auditables con secuencia y milisegundos de los reclamos.
+BOLILLERO DEL ADMINISTRADOR
+- El número de la bolilla es el elemento dominante dentro del círculo.
+- En Bingo 75, la letra B/I/N/G/O queda arriba como insignia secundaria.
+- Se mantienen color por columna, alto contraste y animación breve.
 
-BASE TÉCNICA
-- Bolillero criptográfico controlado por el servidor.
-- Validación y diversidad de cartones.
-- Automarcado obligatorio por encima de 10 jugadores o 40 cartones.
-- Prueba de escala con 60 jugadores y 240 cartones.
+RENDIMIENTO Y COMPATIBILIDAD
+- Los 12 stickers se optimizaron a WebP transparente para reducir el peso de red.
+- Se agregó soporte MIME image/webp en el servidor.
+- Los mensajes antiguos de texto y emojis siguen siendo compatibles.
+- Se mantienen respaldo, recuperación, auditoría, transmisión y pruebas de escala.

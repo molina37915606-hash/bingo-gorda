@@ -60,6 +60,10 @@ const MANUAL_MARK_MAX_CARDS = 40;
 const CHAT_MAX_MESSAGES = 100;
 const CHAT_MAX_LENGTH = 160;
 const CHAT_COOLDOWN_MS = 2000;
+const CHAT_STICKER_COOLDOWN_MS = 1200;
+const CHAT_STICKER_WINDOW_MS = 10 * 1000;
+const CHAT_STICKER_WINDOW_MAX = 4;
+const CHAT_STICKER_IDS = new Set(['gorda-risa','gorda-festejo','gorda-dinero','gorda-ay-no','gorda-enojada','corazon','aplausos','suerte','dinero','ira','explosion','cerveza']);
 const DEMO_TTL_MS = 30 * 60 * 1000;
 const DEMO_IDLE_TTL_MS = 15 * 60 * 1000;
 const DEMO_CLAIM_WINDOW_MS = 1600;
@@ -1638,10 +1642,12 @@ function createDemoRoom(payload = {}) {
 }
 
 function ensureChatState() {
-  state.chat ||= { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} };
+  state.chat ||= { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {}, lastStickerAt: {}, stickerSentAt: {} };
   state.chat.messages ||= [];
   state.chat.mutedPlayerIds ||= [];
   state.chat.lastSentAt ||= {};
+  state.chat.lastStickerAt ||= {};
+  state.chat.stickerSentAt ||= {};
   return state.chat;
 }
 
@@ -1663,29 +1669,45 @@ function emitChatEvent(event, data) {
   }
 }
 
-function appendChatMessage({ role, player = null, text }) {
+function appendChatMessage({ role, player = null, text = '', stickerId = '' }) {
   const chat = ensureChatState();
-  const clean = String(text || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_LENGTH);
-  if (!clean) throw new Error('Escribí un mensaje.');
+  const normalizedStickerId = String(stickerId || '').trim().toLowerCase();
+  const isSticker = Boolean(normalizedStickerId);
+  if (isSticker && !CHAT_STICKER_IDS.has(normalizedStickerId)) throw new Error('Sticker no válido.');
+  const clean = isSticker ? '' : String(text || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_LENGTH);
+  if (!isSticker && !clean) throw new Error('Escribí un mensaje.');
   if (chat.enabled === false) throw new Error('El chat está deshabilitado.');
   if (role === 'player') {
     if (chat.locked) throw new Error('El administrador pausó el chat.');
     if (chat.mutedPlayerIds.includes(player.id)) throw new Error('Tu participación en el chat está silenciada.');
-    const last = Number(chat.lastSentAt[player.id]) || 0;
-    if (Date.now() - last < CHAT_COOLDOWN_MS) throw new Error('Esperá dos segundos antes de enviar otro mensaje.');
-    chat.lastSentAt[player.id] = Date.now();
+    const now = Date.now();
+    if (isSticker) {
+      const lastSticker = Number(chat.lastStickerAt[player.id]) || 0;
+      if (now - lastSticker < CHAT_STICKER_COOLDOWN_MS) throw new Error('Esperá un momento antes de enviar otro sticker.');
+      const windowTimes = (Array.isArray(chat.stickerSentAt[player.id]) ? chat.stickerSentAt[player.id] : []).map(Number).filter(at => now - at < CHAT_STICKER_WINDOW_MS);
+      if (windowTimes.length >= CHAT_STICKER_WINDOW_MAX) throw new Error('Esperá un momento antes de enviar otro sticker.');
+      windowTimes.push(now);
+      chat.stickerSentAt[player.id] = windowTimes;
+      chat.lastStickerAt[player.id] = now;
+    } else {
+      const last = Number(chat.lastSentAt[player.id]) || 0;
+      if (now - last < CHAT_COOLDOWN_MS) throw new Error('Esperá dos segundos antes de enviar otro mensaje.');
+      chat.lastSentAt[player.id] = now;
+    }
   }
   const message = {
     id: randomId('chat'),
     role,
     playerId: player?.id || null,
     name: role === 'admin' ? 'Administración' : playerDisplayName(player),
+    type: isSticker ? 'sticker' : 'text',
     text: clean,
+    stickerId: isSticker ? normalizedStickerId : null,
     createdAt: nowIso()
   };
   chat.messages.push(message);
   if (chat.messages.length > CHAT_MAX_MESSAGES) chat.messages.splice(0, chat.messages.length - CHAT_MAX_MESSAGES);
-  logEvent('chat_message', { messageId: message.id, role, playerId: message.playerId, length: clean.length });
+  logEvent('chat_message', { messageId: message.id, role, playerId: message.playerId, type: message.type, stickerId: message.stickerId, length: clean.length });
   emitChatEvent('chat', message);
   return message;
 }
@@ -3741,6 +3763,7 @@ const MIME_TYPES = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
   '.json': 'application/json; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
@@ -3854,7 +3877,7 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/assignment-timer' && req.method === 'POST') return sendJson(res, 200, controlAssignmentTimer(await readJson(req)));
   if (url.pathname === '/api/admin/settings' && req.method === 'POST') return sendJson(res, 200, updateRoomSettings(await readJson(req)));
   if (url.pathname === '/api/admin/message' && req.method === 'POST') return sendJson(res, 200, updateAdminMessage(await readJson(req)));
-  if (url.pathname === '/api/admin/chat' && req.method === 'POST') return sendJson(res, 200, appendChatMessage({ role: 'admin', text: (await readJson(req)).text }));
+  if (url.pathname === '/api/admin/chat' && req.method === 'POST') { const payload = await readJson(req); appendChatMessage({ role: 'admin', text: payload.text, stickerId: payload.stickerId }); return sendJson(res, 200, adminPayload()); }
   if (url.pathname === '/api/admin/chat/moderate' && req.method === 'POST') return sendJson(res, 200, moderateChat(await readJson(req)));
   if (url.pathname === '/api/admin/release-selection' && req.method === 'POST') return sendJson(res, 200, releasePlayerSelection(await readJson(req)));
   if (url.pathname === '/api/admin/assign-player' && req.method === 'POST') return sendJson(res, 200, assignCardsToPlayer(await readJson(req)));
@@ -3977,7 +4000,8 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/waiting-game/score' && req.method === 'POST') return sendJson(res, 200, submitWaitingGameScore(player, await readJson(req)));
         if (url.pathname === '/api/player/chat' && req.method === 'POST') {
           if (!consumeRate(req, `chat-${player.id}`, 30, 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados mensajes. Esperá un momento.' });
-          return sendJson(res, 200, appendChatMessage({ role: 'player', player, text: (await readJson(req)).text }));
+          const payload = await readJson(req);
+          return sendJson(res, 200, appendChatMessage({ role: 'player', player, text: payload.text, stickerId: payload.stickerId }));
         }
         return sendJson(res, 404, { error: 'Acción de jugador no encontrada.' });
       });

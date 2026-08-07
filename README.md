@@ -22,7 +22,7 @@ La configuración simplificada permite elegir modalidad, premios, cantador, voz,
 - Chat público con moderación, 20 emojis comunes y 12 stickers premium de envío directo.
 - Sala de espera con Mayor/Menor y Rojo/Negro siempre activos, con cambio libre entre ambos.
 - En salas de prueba, el jugador ve 10 cartones, puede recargarlos y elegir los suyos. Si el administrador inicia antes de la confirmación, la asignación se completa automáticamente.
-- Transmisión con chat y cuatro cartones destacados.
+- Transmisión con chat, pantalla completa, sonido y carrera dinámica de hasta cuatro cartones según cercanía a los premios.
 - Actas PDF y CSV consultables desde el juego. En administración, VER ACTA muestra una vista previa HTML que nunca fuerza descarga; el PDF queda separado.
 - Copias de seguridad y recuperación.
 - Bolilla administrativa con número de alto contraste, color por columna y animación breve.

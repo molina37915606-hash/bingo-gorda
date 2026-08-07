@@ -1,0 +1,15 @@
+LA GORDA - BINGO ONLINE
+ARREGLO CHAT DE COMUNIDAD - 2026-08-07
+
+- Corregido el ingreso de nombre/apodo en la Comunidad, con foco y teclado más robustos en móvil.
+- El formulario de nombre ahora usa envío nativo y mantiene validación de nombres reservados.
+- El almacenamiento local del nombre y del identificador del visitante ya no puede detener la interfaz si el navegador restringe localStorage.
+- Agregados al chat público los mismos emojis comunes del chat del bingo.
+- Agregados los mismos 12 stickers premium del chat del bingo, con animaciones y repetición al tocarlos.
+- Los stickers se envían como mensajes de tipo sticker, no como texto.
+- Límite anti-spam de stickers: 1 cada 1,2 segundos y hasta 4 cada 10 segundos por dispositivo.
+- Escritorio y móvil tienen selector de emojis y stickers propio.
+- El administrador puede ver correctamente los stickers dentro de los últimos mensajes de Comunidad y eliminarlos.
+- Los filtros de palabras, teléfonos y enlaces de WhatsApp continúan aplicándose a los mensajes de texto.
+
+Pruebas: batería completa npm test OK.

@@ -120,6 +120,11 @@ async function waitServer(){for(let i=0;i<100;i++){try{const x=await json('/heal
     const tx = await json(`/api/broadcast/state?token=${encodeURIComponent(txToken)}`);
     assert.equal(tx.response.status, 200, JSON.stringify(tx.data));
     assert(tx.data.highlightedCards.length > 0 && tx.data.highlightedCards.length <= 4);
+    tx.data.highlightedCards.forEach((card, index) => {
+      assert.equal(card.rank, index + 1);
+      assert(Number.isFinite(Number(card.raceMissing)), 'La transmisión debe indicar cuántos números faltan para el premio más cercano.');
+      assert(card.racePrizeLabel && card.racePrizeType, 'La transmisión debe indicar el premio por el que corre cada cartón.');
+    });
 
     await json('/api/admin/new-room', { method:'POST', headers:admin, body:'{}' });
     result = await json('/api/admin/create-simple-room', { method:'POST', headers:admin, body:JSON.stringify({ roomType:'official', mode:90, cardCount:25, autoSeconds:6, presenter:'josu', presenterVoiceGender:'male', rules:{ line:true, ambocabeza:true, bingo:true } }) });

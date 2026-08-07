@@ -72,6 +72,9 @@ const CHAT_STICKER_IDS = new Set(['gorda-risa','gorda-festejo','gorda-dinero','g
 const COMMUNITY_CHAT_MAX_MESSAGES = 120;
 const COMMUNITY_CHAT_MAX_LENGTH = 180;
 const COMMUNITY_CHAT_COOLDOWN_MS = 1800;
+const COMMUNITY_STICKER_COOLDOWN_MS = 1200;
+const COMMUNITY_STICKER_WINDOW_MS = 10 * 1000;
+const COMMUNITY_STICKER_WINDOW_MAX = 4;
 const COMMUNITY_ONLINE_TTL_MS = 45 * 1000;
 const COMMUNITY_FILTER_MAX_TERMS = 200;
 const COMMUNITY_FILTER_TERM_MAX_LENGTH = 60;
@@ -568,6 +571,8 @@ const masterSessions = new Map();
 const rateBuckets = new Map();
 const communityVisitors = new Map();
 const communityLastSentAt = new Map();
+const communityLastStickerAt = new Map();
+const communityStickerSentAt = new Map();
 
 function currentResultFiles() {
   const workspace = currentWorkspace();
@@ -1636,17 +1641,80 @@ function submitWaitingGameScore(player, payload = {}) {
   saveState(); broadcast(); return playerPayload(player);
 }
 
+function missingNumbersForLineCount(card, drawnValues, targetCount) {
+  const drawn = new Set(uniqueNumbers(drawnValues));
+  const definitions = lineDefinitions(card).map(line => new Set(line.values.filter(number => !drawn.has(number))));
+  const needed = Math.max(1, Math.min(Number(targetCount) || 1, definitions.length));
+  let best = Infinity;
+  const visit = (start, chosen, union) => {
+    if (chosen === needed) { best = Math.min(best, union.size); return; }
+    if (union.size >= best) return;
+    for (let index = start; index <= definitions.length - (needed - chosen); index++) {
+      const next = new Set(union);
+      for (const value of definitions[index]) next.add(value);
+      visit(index + 1, chosen + 1, next);
+    }
+  };
+  visit(0, 0, new Set());
+  return Number.isFinite(best) ? best : 99;
+}
+
+function amboMissingForCard(card, drawnValues) {
+  if (Number(card.mode) !== 90) return 99;
+  const drawn = new Set(uniqueNumbers(drawnValues));
+  let best = 99;
+  for (const row of card.grid || []) {
+    const values = row.filter(Number.isFinite);
+    if (values.length !== 5) continue;
+    if (values.slice(1, -1).some(number => drawn.has(number))) continue;
+    const missing = Number(!drawn.has(values[0])) + Number(!drawn.has(values.at(-1)));
+    best = Math.min(best, missing);
+  }
+  return best;
+}
+
+function broadcastRaceForCard(card, analysis, prizes) {
+  const candidates = [];
+  const add = (type, missing, enabled = true) => {
+    const prize = prizes?.[type];
+    const betName = claimBetName(type);
+    if (!enabled || !prize || prize.closed || card.bets?.[betName] === false || !Number.isFinite(Number(missing))) return;
+    const importance = { bingo: 0, tripleLine: 1, doubleLine: 2, corners: 3, line: 4, ambo: 5 }[type] ?? 9;
+    const prizeNumber = type === 'line' ? Number(prize.nextNumber) || 1 : 1;
+    candidates.push({ type, missing: Math.max(0, Number(missing) || 0), importance, prizeNumber, label: prize.nextLabel || prizeLabelFor(type, prizeNumber, card.mode) });
+  };
+  add('ambo', amboMissingForCard(card, state.game.drawn), Number(card.mode) === 90);
+  add('line', analysis.lineMissing);
+  const mode75 = Number(card.mode) === 75;
+  add('doubleLine', mode75 && prizes?.doubleLine && !prizes.doubleLine.closed ? missingNumbersForLineCount(card, state.game.drawn, 2) : 99, mode75);
+  add('tripleLine', mode75 && prizes?.tripleLine && !prizes.tripleLine.closed ? missingNumbersForLineCount(card, state.game.drawn, 3) : 99, mode75);
+  add('corners', analysis.cornersMissing, Number(card.mode) === 75);
+  add('bingo', analysis.bingoMissing);
+  candidates.sort((a, b) => a.missing - b.missing || a.importance - b.importance);
+  return candidates[0] || { type: 'bingo', missing: Number(analysis.bingoMissing) || 99, importance: 9, prizeNumber: 1, label: prizeLabelFor('bingo', 1, card.mode) };
+}
+
 function highlightedBroadcastCards() {
   if (!state.game || state.roomSettings?.transmission?.showCards === false) return [];
   const connected = connectedPlayerIds();
+  const prizes = prizeStatusPayload();
   const rows = [];
   for (const player of state.players) for (const cardId of player.cardIds || []) {
     const card = state.game.cards.find(item => item.id === cardId); if (!card) continue;
     const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
-    const score = analysis.hasBingo ? -100 : Math.min(analysis.bingoMissing ?? 99, analysis.lineMissing ?? 99);
-    rows.push({ playerId: player.id, playerName: playerDisplayName(player), connected: connected.has(player.id), cardId, cardNumber: card.number, grid: card.grid, mode: card.mode, score, lineMissing: analysis.lineMissing, bingoMissing: analysis.bingoMissing, marked: analysis.officialMarked || [] });
+    const race = broadcastRaceForCard(card, analysis, prizes);
+    const score = race.missing * 10 + race.importance;
+    rows.push({
+      playerId: player.id, playerName: playerDisplayName(player), connected: connected.has(player.id), cardId,
+      cardNumber: card.number, grid: card.grid, mode: card.mode, score,
+      racePrizeType: race.type, racePrizeNumber: race.prizeNumber, racePrizeLabel: race.label, raceMissing: race.missing,
+      lineMissing: analysis.lineMissing, bingoMissing: analysis.bingoMissing, marked: analysis.officialMarked || []
+    });
   }
-  return rows.sort((a,b) => a.score - b.score || a.bingoMissing - b.bingoMissing || String(a.cardNumber).localeCompare(String(b.cardNumber))).slice(0, 4);
+  return rows
+    .sort((a,b) => a.score - b.score || a.bingoMissing - b.bingoMissing || String(a.cardNumber).localeCompare(String(b.cardNumber)))
+    .slice(0, 4)
+    .map((item, index) => ({ ...item, rank: index + 1 }));
 }
 
 
@@ -4218,15 +4286,28 @@ function appendCommunityMessage(req, payload = {}) {
   const name = normalizeCommunityName(payload.name);
   const visitorId = String(payload.visitorId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
   if (!visitorId) throw new Error('No se pudo identificar este dispositivo. Recargá la página.');
-  const text = String(payload.text || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, COMMUNITY_CHAT_MAX_LENGTH);
-  if (!text) throw new Error('Escribí un mensaje.');
-  validateCommunityMessageContent(text, community);
+  const stickerId = String(payload.stickerId || '').trim().toLowerCase();
+  const isSticker = Boolean(stickerId);
+  if (isSticker && !CHAT_STICKER_IDS.has(stickerId)) throw new Error('Sticker no válido.');
+  const text = isSticker ? '' : String(payload.text || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, COMMUNITY_CHAT_MAX_LENGTH);
+  if (!isSticker && !text) throw new Error('Escribí un mensaje.');
+  if (!isSticker) validateCommunityMessageContent(text, community);
   const now = Date.now();
-  const last = Number(communityLastSentAt.get(visitorId)) || 0;
-  if (now - last < COMMUNITY_CHAT_COOLDOWN_MS) throw new Error('Esperá un momento antes de enviar otro mensaje.');
-  communityLastSentAt.set(visitorId, now);
+  if (isSticker) {
+    const lastSticker = Number(communityLastStickerAt.get(visitorId)) || 0;
+    if (now - lastSticker < COMMUNITY_STICKER_COOLDOWN_MS) throw new Error('Esperá un momento antes de enviar otro sticker.');
+    const windowTimes = (communityStickerSentAt.get(visitorId) || []).map(Number).filter(at => now - at < COMMUNITY_STICKER_WINDOW_MS);
+    if (windowTimes.length >= COMMUNITY_STICKER_WINDOW_MAX) throw new Error('Esperá un momento antes de enviar otro sticker.');
+    windowTimes.push(now);
+    communityStickerSentAt.set(visitorId, windowTimes);
+    communityLastStickerAt.set(visitorId, now);
+  } else {
+    const last = Number(communityLastSentAt.get(visitorId)) || 0;
+    if (now - last < COMMUNITY_CHAT_COOLDOWN_MS) throw new Error('Esperá un momento antes de enviar otro mensaje.');
+    communityLastSentAt.set(visitorId, now);
+  }
   communityVisitors.set(visitorId, now);
-  const message = { id: randomId('community'), role: 'guest', visitorId, name, text, createdAt: nowIso() };
+  const message = { id: randomId('community'), role: 'guest', visitorId, name, type: isSticker ? 'sticker' : 'text', text, stickerId: isSticker ? stickerId : null, createdAt: nowIso() };
   community.messages ||= [];
   community.messages.push(message);
   if (community.messages.length > COMMUNITY_CHAT_MAX_MESSAGES) community.messages.splice(0, community.messages.length - COMMUNITY_CHAT_MAX_MESSAGES);

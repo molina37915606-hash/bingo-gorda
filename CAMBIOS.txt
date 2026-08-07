@@ -44,3 +44,10 @@ RENDIMIENTO Y COMPATIBILIDAD
 - Se agregó soporte MIME image/webp en el servidor.
 - Los mensajes antiguos de texto y emojis siguen siendo compatibles.
 - Se mantienen respaldo, recuperación, auditoría, transmisión y pruebas de escala.
+
+TRANSMISIÓN EN VIVO · CARRERA POR EL PREMIO
+- Botón de pantalla completa y control de sonido para espectadores.
+- Sonidos para bolillas, cambios de líder, reclamos, premios y Bingo.
+- Ranking dinámico de cartones según cercanía real a premios todavía abiertos.
+- Líder siempre visible, animaciones de cambios de posición y destello de nuevas marcas.
+

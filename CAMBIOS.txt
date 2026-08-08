@@ -47,3 +47,19 @@ CIERRE OFICIAL Y TRANSMISIÓN DE GANADORES
 - Al finalizar, la transmisión pasa a un carrusel de cartones ganadores con nombre, premios y jugadas resaltadas.
 - Cada cartón permanece 10 segundos antes de pasar al siguiente y el carrusel queda en loop hasta cerrar la sala.
 - Agregada prueba automática específica del cierre, bloqueo temprano del acta y carrusel de ganadores.
+
+RESILIENCIA, LEGIBILIDAD Y VERIFICACIÓN PÚBLICA · V2.1
+- El selector de cartones usa tarjetas más compactas y números sensiblemente más grandes para mejorar la lectura en celular.
+- Jugador y transmisión solicitan Screen Wake Lock mientras la partida está activa para evitar que la pantalla se suspenda cuando el navegador lo permite.
+- Reforzada la reconexión del jugador con reintentos escalonados y recuperación del estado actual.
+- Se detecta la pérdida de la conexión SSE del administrador y se informa públicamente con una cuenta regresiva.
+- Si el administrador no vuelve en 60 segundos, se activa la verificación automática de reclamos desde el servidor.
+- Los reclamos válidos se confirman y los inválidos se rechazan automáticamente; el motivo queda registrado en la auditoría.
+- Si el sorteo era automático, continúa sin depender de que el navegador del administrador permanezca conectado.
+- Cuando el administrador vuelve a conectarse, recupera el control y se desactiva la contingencia.
+- El sello SHA-256 del orden del bolillero se muestra durante la partida; al finalizar se revela el orden original y se comprueba el sello.
+- El acta CSV incluye sello, resultado de verificación y orden sellado.
+- Agregado acceso por QR desde la sala de administración.
+- Al reiniciar el servidor se recupera la partida persistida y se vuelve a programar el sorteo automático si correspondía.
+- Eliminadas referencias visibles a pagos confirmados: el juego administra jugadores/cartones y no gestiona cobros.
+- Agregadas pruebas automáticas de contingencia del administrador y recuperación tras reinicio.

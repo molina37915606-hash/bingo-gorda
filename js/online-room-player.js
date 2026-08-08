@@ -15,6 +15,7 @@ class PlayerApp {
     this.activeCardId = localStorage.getItem('bingoOnlineCard') || '';
     this.events = null;
     this.reconnectRefreshTimer = null;
+    this.reconnectAttempts = 0;
     this.selectedOffers = new Set();
     this.pendingReservation = new Set();
     this.pendingMark = new Set();
@@ -60,6 +61,8 @@ class PlayerApp {
       score: 0, best: 0, bestByType: { red_black: 0, higher_lower: 0 }, current: null, ended: false, busy: false, message: ''
     };
     this.ticketTouchStartX = null;
+    this.wakeLock = null;
+    this.systemClockTimer = null;
     this.guideSteps = [
       { icon:'🧾', title:'Tus cartones', text:'Usá las pestañas para cambiar de cartón. Las marcas oficiales se conservan en todos.' },
       { icon:'⚙', title:'Ajustes', text:'Desde la tuerca podés controlar sonidos, la voz de Vero, tamaño de números y automarcado.' },
@@ -77,6 +80,9 @@ class PlayerApp {
   async init() {
     this.injectDemoUi();
     this.injectChatUi();
+    this.systemClockTimer = setInterval(() => this.renderSystemTrust(), 1000);
+    document.addEventListener('visibilitychange', () => this.updateWakeLock());
+    window.addEventListener('pagehide', () => this.releaseWakeLock());
     $('loginBtn').onclick = () => this.login();
     $('lastResultBtn').onclick = () => this.downloadLastPublicResult();
     $('accessCode').addEventListener('keydown', event => { if (event.key === 'Enter') this.login(); });
@@ -362,6 +368,51 @@ class PlayerApp {
 
   closeSettings() { $('settingsOverlay')?.classList.remove('show'); }
 
+  async requestWakeLock() {
+    if (!('wakeLock' in navigator) || document.visibilityState !== 'visible' || !this.state?.active) return;
+    if (this.wakeLock && !this.wakeLock.released) return;
+    try {
+      this.wakeLock = await navigator.wakeLock.request('screen');
+      this.wakeLock.addEventListener('release', () => { this.wakeLock = null; });
+    } catch {}
+  }
+
+  async releaseWakeLock() {
+    try { if (this.wakeLock && !this.wakeLock.released) await this.wakeLock.release(); } catch {}
+    this.wakeLock = null;
+  }
+
+  updateWakeLock() {
+    if (this.state?.active && document.visibilityState === 'visible') this.requestWakeLock();
+    else this.releaseWakeLock();
+  }
+
+  renderSystemTrust() {
+    const host = $('systemTrust');
+    if (!host || !this.state?.active) { if (host) host.classList.add('hidden'); return; }
+    const admin = this.state.adminPresence;
+    const integrity = this.state.integrity;
+    const messages = [];
+    let level = '';
+    if (admin && !admin.connected && !['waiting','finished'].includes(this.state.status)) {
+      if (admin.autoVerificationActive) {
+        messages.push('⚙ VERIFICACIÓN AUTOMÁTICA ACTIVA · El servidor valida los reclamos mientras vuelve el administrador.');
+        level = 'warn';
+      } else if (admin.activatesAt) {
+        const seconds = Math.max(0, Math.ceil((new Date(admin.activatesAt).getTime() - Date.now()) / 1000));
+        messages.push(`⚠ Administrador sin conexión · verificación automática en ${seconds} s si no regresa.`);
+        level = 'warn';
+      }
+    }
+    if (integrity?.commitment && this.state.status !== 'waiting') {
+      if (integrity.revealed) messages.push(integrity.verified ? `✓ Sorteo verificado · sello ${integrity.shortCommitment}` : '⚠ No se pudo verificar el sello del sorteo.');
+      else messages.push(`🔒 Sorteo sellado antes de comenzar · ${integrity.shortCommitment}`);
+    }
+    host.className = `systemTrust ${level}`.trim();
+    host.classList.toggle('hidden', !messages.length);
+    host.textContent = messages.join(' · ');
+  }
+
   openInfoDrawer(tab = this.drawerTab) {
     if (!this.state?.active) return;
     this.closeOtherPanels('info');
@@ -425,10 +476,20 @@ class PlayerApp {
       return;
     }
     const chips = numbers => `<div class="sortedNumbers">${numbers.map(number => `<span class="${number === last ? 'last' : ''}">${String(number).padStart(2,'0')}</span>`).join('')}</div>`;
+    let content = '';
     if (Number(this.state.game.mode) === 75) {
       const groups = [['B',1,15],['I',16,30],['N',31,45],['G',46,60],['O',61,75]];
-      host.innerHTML = `<div class="drawGroups">${groups.map(([letter,min,max]) => `<div class="drawGroup"><strong>${letter}</strong>${chips(drawn.filter(number => number >= min && number <= max))}</div>`).join('')}</div>`;
-    } else host.innerHTML = chips(drawn);
+      content = `<div class="drawGroups">${groups.map(([letter,min,max]) => `<div class="drawGroup"><strong>${letter}</strong>${chips(drawn.filter(number => number >= min && number <= max))}</div>`).join('')}</div>`;
+    } else content = chips(drawn);
+    const integrity = this.state.integrity;
+    if (integrity?.commitment) {
+      const order = integrity.revealed && Array.isArray(integrity.drawOrder)
+        ? `<div class="drawOrderSequence">${integrity.drawOrder.map(number => `<span>${String(number).padStart(2,'0')}</span>`).join('')}</div>` : '';
+      content += integrity.revealed
+        ? `<section class="integrityBox"><b>${integrity.verified ? '✓ SORTEO VERIFICADO' : '⚠ VERIFICACIÓN NO COINCIDENTE'}</b><small>SHA-256: ${esc(integrity.commitment)}</small>${order}</section>`
+        : `<section class="integrityBox pending"><b>🔒 SORTEO SELLADO</b><small>SHA-256: ${esc(integrity.commitment)}</small><small>El orden completo se revela al finalizar para comprobar que no fue modificado.</small></section>`;
+    }
+    host.innerHTML = content;
   }
 
   resultsUrl() {
@@ -596,6 +657,7 @@ class PlayerApp {
     this.events = new EventSource(`/api/events?role=player&token=${encodeURIComponent(this.token)}`);
     this.events.addEventListener('state', event => {
       clearTimeout(this.reconnectRefreshTimer);
+      this.reconnectAttempts = 0;
       $('connectionMask').classList.remove('show');
       this.applyState(JSON.parse(event.data));
     });
@@ -617,19 +679,29 @@ class PlayerApp {
     this.events.addEventListener('logout', () => this.logout());
     this.events.onerror = () => {
       $('connectionStatus').className = 'status off'; $('connectionStatus').textContent = 'SIN CONEXIÓN'; $('connectionMask').classList.add('show');
-      clearTimeout(this.reconnectRefreshTimer);
-      this.reconnectRefreshTimer = setTimeout(async () => {
-        if (!this.token) return;
-        try {
-          const data = await this.request('/api/player/state');
-          this.applyState(data);
-          $('connectionMask').classList.remove('show');
-          if (this.events?.readyState === EventSource.CLOSED) this.connectEvents();
-        } catch (error) {
-          if (error?.status === 401 || error?.status === 403) this.logout(false);
-        }
-      }, 1200);
+      this.scheduleReconnectRefresh();
     };
+  }
+
+  scheduleReconnectRefresh() {
+    clearTimeout(this.reconnectRefreshTimer);
+    if (!this.token) return;
+    const delays = [1200, 2000, 3000, 5000, 8000];
+    const delay = delays[Math.min(this.reconnectAttempts, delays.length - 1)];
+    this.reconnectAttempts += 1;
+    this.reconnectRefreshTimer = setTimeout(async () => {
+      if (!this.token) return;
+      try {
+        const data = await this.request('/api/player/state');
+        this.reconnectAttempts = 0;
+        this.applyState(data);
+        $('connectionMask').classList.remove('show');
+        if (!this.events || this.events.readyState === EventSource.CLOSED) this.connectEvents();
+      } catch (error) {
+        if (error?.status === 401 || error?.status === 403) return this.logout(false);
+        this.scheduleReconnectRefresh();
+      }
+    }, delay);
   }
 
   applyState(data) {
@@ -652,6 +724,7 @@ class PlayerApp {
     document.body.classList.add('playerLogged');
     $('infoDrawerToggle').classList.remove('hidden');
     this.render(); this.renderDemoUi(); this.renderChat(); this.renderPublicClaim(); this.handleOwnPrizeReadiness(); this.handleTestEvent(); this.handleSequence(previous); this.renderInfoDrawer();
+    this.renderSystemTrust(); this.updateWakeLock();
     if ($('winnerOverlay').classList.contains('show')) this.renderWinnerCard(this.selectedWinnerId);
     const currentCount = data.game.drawn.length;
     if (previousCount !== undefined && data.status === 'playing' && currentCount > previousCount && data.game.lastBall != null) this.speakBall(data.game.lastBall);
@@ -1506,6 +1579,7 @@ class PlayerApp {
   }
 
   logout(reload=true) {
+    this.releaseWakeLock();
     this.events?.close(); clearTimeout(this.reconnectRefreshTimer); clearInterval(this.sequenceTimer); this.setFocusMode(false); this.closeOtherPanels(); this.closeResultsViewer(); this.token=''; this.tokenRoom=''; this.state=null; this.roomClosedShown=false; localStorage.removeItem('bingoOnlineToken'); localStorage.removeItem('bingoOnlineRoom'); localStorage.removeItem('bingoOnlineCard');
     document.body.classList.remove('playerLogged'); $('infoDrawerToggle').classList.add('hidden');
     if(reload) location.reload(); else { $('gameView').classList.add('hidden'); $('loginView').classList.remove('hidden'); }

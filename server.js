@@ -60,6 +60,7 @@ const LARGE_ROOM_NOTICE_TITLE = 'CRITERIO DE ADJUDICACIÓN DE PREMIOS';
 const LARGE_ROOM_NOTICE_TEXT = 'Si varios cartones completan el mismo premio con una misma bolilla, tendrá prioridad el reclamo que sea recibido y validado primero por el servidor central. Los reclamos válidos recibidos posteriormente quedarán registrados en el acta oficial como “VÁLIDA POSTERIOR”, conservando su orden de recepción. Este procedimiento permite determinar de forma objetiva y transparente la prioridad entre reclamos simultáneos.';
 const RESUME_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_RESUME_SEQUENCE_MS || 5_000));
 const CLAIM_AUTO_RESUME_MS = Math.max(1_000, Number(process.env.BINGO_CLAIM_AUTO_RESUME_MS || 5_000));
+const ADMIN_CONTINGENCY_MS = Math.max(TEST_MODE ? 100 : 5_000, Number(process.env.BINGO_ADMIN_CONTINGENCY_MS || 60_000));
 const FINAL_BALLS_SEQUENCE_MS = Math.max(250, Number(process.env.BINGO_FINAL_BALLS_SEQUENCE_MS || 8_000));
 const FINAL_BALLS_LEAD_IN_MS = Math.max(250, Number(process.env.BINGO_FINAL_BALLS_LEAD_IN_MS || 5_500));
 const FINAL_BALLS_MIN_INTERVAL_MS = Math.max(80, Number(process.env.BINGO_FINAL_BALLS_MIN_INTERVAL_MS || 180));
@@ -279,7 +280,6 @@ function blankState() {
       gameType: 'real',
       prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 },
       whatsapp: '',
-      showMercadoPago: true,
       argentinaHint: true,
       broadcastToken: null,
       broadcastAlias: null,
@@ -299,6 +299,7 @@ function blankState() {
       completedAt: null
     },
     adminMessage: null,
+    adminContingency: { disconnectedSince: null, activatesAt: null, autoVerificationActive: false, activatedAt: null },
     transition: null,
     pauseReason: null,
     deviceTransferRequests: [],
@@ -333,7 +334,8 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       eventLog: parsed.eventLog || [],
       transition: parsed.transition || null,
       pauseReason: parsed.pauseReason || null,
-      deviceTransferRequests: Array.isArray(parsed.deviceTransferRequests) ? parsed.deviceTransferRequests : []
+      deviceTransferRequests: Array.isArray(parsed.deviceTransferRequests) ? parsed.deviceTransferRequests : [],
+      adminContingency: { ...defaults.adminContingency, ...(parsed.adminContingency || {}) }
     };
     if (merged.active && !parsed.status) merged.status = merged.game?.drawn?.length ? 'playing' : 'waiting';
     if (!['closed', 'waiting', 'starting', 'playing', 'verifying', 'paused', 'resuming', 'finalizing', 'finished'].includes(merged.status)) merged.status = 'closed';
@@ -351,7 +353,6 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       bingo: Math.max(0, Number(merged.roomSettings.prizeAmounts?.bingo) || 0)
     };
     merged.roomSettings.whatsapp = String(merged.roomSettings.whatsapp || '').slice(0, 40);
-    merged.roomSettings.showMercadoPago = merged.roomSettings.showMercadoPago !== false;
     merged.roomSettings.argentinaHint = merged.roomSettings.argentinaHint !== false;
     merged.roomSettings.broadcastToken = merged.roomSettings.broadcastToken ? String(merged.roomSettings.broadcastToken) : null;
     merged.roomSettings.broadcastAlias = merged.roomSettings.broadcastAlias ? String(merged.roomSettings.broadcastAlias).trim().toLowerCase() : null;
@@ -1217,6 +1218,39 @@ function finalShowcasePayload() {
   }));
 }
 
+function adminConnectionCount(workspace = currentWorkspace()) {
+  return [...workspace.sseClients].filter(client => client.role === 'admin').length;
+}
+
+function adminPresencePayload(workspace = currentWorkspace()) {
+  const contingency = workspace.state.adminContingency || blankState().adminContingency;
+  const connected = adminConnectionCount(workspace) > 0;
+  return {
+    connected,
+    disconnectedSince: connected ? null : (contingency.disconnectedSince || null),
+    activatesAt: connected ? null : (contingency.activatesAt || null),
+    autoVerificationActive: Boolean(contingency.autoVerificationActive),
+    activatedAt: contingency.activatedAt || null,
+    thresholdSeconds: Math.round(ADMIN_CONTINGENCY_MS / 1000)
+  };
+}
+
+function publicIntegrityPayload() {
+  const integrity = state.game?.integrity;
+  if (!integrity?.drawOrderCommitment) return null;
+  const revealed = state.status === 'finished';
+  const recomputed = revealed ? crypto.createHash('sha256').update((state.drawOrder || []).join(',')).digest('hex') : null;
+  return {
+    algorithm: 'SHA-256',
+    sealedAt: integrity.lockedAt || null,
+    commitment: integrity.drawOrderCommitment,
+    shortCommitment: String(integrity.drawOrderCommitment).slice(0, 12).toUpperCase(),
+    revealed,
+    drawOrder: revealed ? [...(state.drawOrder || [])] : null,
+    verified: revealed ? recomputed === integrity.drawOrderCommitment : null
+  };
+}
+
 function broadcastPayload() {
   if (!state.active || !state.game) return { active: false, version: APP_PUBLIC_VERSION };
   const pendingClaim = state.claims.find(claim => claim.status === 'pending') || null;
@@ -1227,6 +1261,7 @@ function broadcastPayload() {
     active: true, version: APP_PUBLIC_VERSION, status: state.status, pauseReason: state.pauseReason || null, roomCode: state.roomCode, round: state.round, demo: Boolean(currentWorkspace().isDemo || state.demo),
     playersTotal: state.players.length, playersReady: state.players.filter(player => player.selectionConfirmed).length, playersConnected: connectedPlayerIds().size,
     roomSettings: state.roomSettings, transition: state.transition, publicClaims: publicClaimsPayload(), markingPolicy: markingPolicyPayload(),
+    adminPresence: adminPresencePayload(), integrity: publicIntegrityPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES) },
     game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: PRESENTER_ID, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, total: state.game.mode },
     pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, createdAt: pendingClaim.createdAt } : null,
@@ -1292,6 +1327,7 @@ function adminPayload() {
     active: true,
     status: state.status,
     pauseReason: state.pauseReason || null,
+    adminPresence: adminPresencePayload(), integrity: publicIntegrityPayload(),
     claimAutoResume: claimAutoResumePayload(),
     readyToStart: preflightPayload().ok,
     preflight: preflightPayload(),
@@ -1352,6 +1388,7 @@ function playerPayload(player) {
     active: true,
     status: state.status,
     pauseReason: state.pauseReason || null,
+    adminPresence: adminPresencePayload(), integrity: publicIntegrityPayload(),
     roomCode: state.roomCode,
     round: state.round,
     startedAt: state.startedAt,
@@ -1588,7 +1625,6 @@ function emptyRoomPlayer({ name = '', cardIds = [], allowedCardCount = 1, code =
     marks: Object.fromEntries(cardIds.map(cardId => [cardId, []])),
     autoMark: true,
     notices: [],
-    paymentStatus: openJoin ? 'not_applicable' : 'confirmed',
     codeStatus: openJoin ? 'link' : 'generated'
   };
 }
@@ -1705,7 +1741,7 @@ function addOfficialPlayer(payload = {}) {
   const player = emptyRoomPlayer({ name, cardIds: chosen.map(card => card.id), allowedCardCount: cardCount, code });
   player.slotNumber = state.players.length + 1; player.slotLabel = name; player.autoMark = true;
   state.players.push(player); syncAutoMarksForPlayer(player); enforceAutoMarkPolicy(); updateCardDisplayNames();
-  logEvent('official_player_added', { playerId: player.id, playerName: name, cards: cardCount, paymentStatus: 'confirmed' });
+  logEvent('official_player_added', { playerId: player.id, playerName: name, cards: cardCount });
   saveState(); broadcast();
   return { state: adminPayload(), player: { id: player.id, name, code: player.code, cardNumbers: chosen.map(card => card.number), cardCount } };
 }
@@ -1894,7 +1930,6 @@ function createDemoRoom(payload = {}) {
         tiePolicy: 'first_claim',
         gameType: 'test',
         prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 },
-        showMercadoPago: false,
         argentinaHint: true
       },
       assignmentTimer: { enabled: false, durationMinutes: 10 }
@@ -1979,7 +2014,6 @@ function createAdminSimulationRoom(payload = {}) {
       joinOpen: false,
       maxOpenPlayers: 0,
       prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 },
-      showMercadoPago: false,
       argentinaHint: true,
       presenterVoiceGender: 'female',
       transmission: normalizeTransmissionSettings({ showNames: false })
@@ -2398,7 +2432,6 @@ function configureRoom(payload) {
         bingo: Math.max(0, Number(payload.roomSettings?.prizeAmounts?.bingo) || 0)
       },
       whatsapp: String(payload.roomSettings?.whatsapp || '').slice(0, 40),
-      showMercadoPago: payload.roomSettings?.showMercadoPago !== false,
       argentinaHint: payload.roomSettings?.argentinaHint !== false,
       broadcastToken: randomId('live'),
       broadcastAlias: freshBroadcastAlias(currentWorkspace().id),
@@ -3011,7 +3044,6 @@ function updateRoomSettings(payload) {
     bingo: Math.max(0, Number(payload.prizeAmounts.bingo) || 0)
   };
   if (payload.whatsapp !== undefined) state.roomSettings.whatsapp = String(payload.whatsapp || '').slice(0, 40);
-  if (payload.showMercadoPago !== undefined) state.roomSettings.showMercadoPago = payload.showMercadoPago !== false;
   if (payload.argentinaHint !== undefined) state.roomSettings.argentinaHint = payload.argentinaHint !== false;
   if (payload.transmission && typeof payload.transmission === 'object') state.roomSettings.transmission = normalizeTransmissionSettings(payload.transmission);
   state.roomSettings.broadcastToken ||= randomId('live');
@@ -3652,6 +3684,7 @@ function createClaim(player, payload) {
   saveState();
   broadcast();
   if (currentWorkspace().isDemo) scheduleDemoClaimResolution(claim.claimWindowId);
+  if (state.adminContingency?.autoVerificationActive) scheduleAutomaticClaimVerification(currentWorkspace());
   return claim;
 }
 
@@ -3726,7 +3759,9 @@ function resolveClaim(payload) {
   claim.status = resolution;
   claim.resolvedAt = nowIso();
   claim.adminNote = String(payload.note || '').slice(0, 240);
-  claim.resolutionReason = resolution === 'confirmed' ? 'first_valid_received' : (claim.officialValid ? 'rejected_by_admin' : 'invalid_card');
+  claim.resolutionReason = resolution === 'confirmed'
+    ? (payload.automaticVerification ? 'automatic_verified' : 'first_valid_received')
+    : (claim.officialValid ? (payload.automaticVerification ? 'automatic_rejected' : 'rejected_by_admin') : 'invalid_card');
   addClaimNotice(claim, resolution);
 
   if (resolution === 'confirmed' && state.roomSettings.tiePolicy !== 'same_ball') {
@@ -3886,7 +3921,7 @@ function actaPayload() {
     claimAlerts: state.claims.slice().sort((a, b) => Number(a.receivedSequence || 0) - Number(b.receivedSequence || 0)).map(claim => ({
       sequence: Number(claim.receivedSequence) || null, type: claim.type, prizeLabel: claim.prizeLabel, playerName: claim.playerName, cardNumber: claim.cardNumber, receivedAt: claim.receivedAt || claim.createdAt || null, deltaMs: Number(claim.deltaFromFirstMs) || 0, officialValid: Boolean(claim.officialValid), status: claim.status, resolutionReason: claim.resolutionReason || null
     })),
-    integrity: state.game.integrity || null,
+    integrity: publicIntegrityPayload(),
     demo: Boolean(state.demo || currentWorkspace().isDemo),
     markingPolicy: markingPolicyPayload(),
     categories: Object.fromEntries(Object.entries(categories).map(([key, category]) => [key, { ...category, status: !category.enabled ? 'not_drawn' : category.winners.length ? 'confirmed' : 'no_confirmed_winner' }]))
@@ -3956,6 +3991,8 @@ function formatDuration(startedAt, endedAt) {
 }
 
 function claimAuditResultLabel(alert) {
+  if (alert?.resolutionReason === 'automatic_verified') return 'GANADOR · VERIFICACIÓN AUTOMÁTICA';
+  if (alert?.resolutionReason === 'automatic_rejected') return 'RECHAZADO · VERIFICACIÓN AUTOMÁTICA';
   if (alert?.status === 'confirmed') return 'GANADOR';
   if (alert?.resolutionReason === 'valid_but_received_later') return 'VÁLIDA POSTERIOR';
   if (alert?.resolutionReason === 'rejected_by_admin') return alert?.officialValid ? 'VÁLIDO · RECHAZADO POR ADMIN' : 'RECHAZADO POR ADMIN';
@@ -3975,6 +4012,9 @@ function actaCsv() {
     ['Finalización', formatLocalTimestamp(acta.endedAt)],
     ['Jugadores', acta.totalPlayers],
     ['Cartones activos', acta.activeCards],
+    ['Sello SHA-256', acta.integrity?.commitment || ''],
+    ['Sorteo verificado', acta.integrity?.verified ? 'SÍ' : 'NO'],
+    ['Orden sellado', (acta.integrity?.drawOrder || []).join(' · ')],
     [],
     ['ORDEN', 'BOLILLA', 'FECHA Y HORA'],
     ...acta.balls.map(row => [row.order, row.number, formatLocalTimestamp(row.at)]),
@@ -4878,6 +4918,100 @@ async function handleApi(req, res, url) {
   }
 }
 
+const adminContingencyTimers = new Map();
+const automaticClaimVerificationTimers = new Map();
+
+function clearAdminContingencyTimer(workspace = currentWorkspace()) {
+  const timer = adminContingencyTimers.get(workspace.id);
+  if (timer) clearTimeout(timer);
+  adminContingencyTimers.delete(workspace.id);
+}
+
+function clearAutomaticClaimVerificationTimer(workspace = currentWorkspace()) {
+  const timer = automaticClaimVerificationTimers.get(workspace.id);
+  if (timer) clearTimeout(timer);
+  automaticClaimVerificationTimers.delete(workspace.id);
+}
+
+function resetAdminPresence(workspace = currentWorkspace()) {
+  clearAdminContingencyTimer(workspace);
+  return workspaceContext.run(workspace, () => {
+    const previous = state.adminContingency || blankState().adminContingency;
+    const changed = Boolean(previous.disconnectedSince || previous.activatesAt || previous.autoVerificationActive);
+    state.adminContingency = { disconnectedSince: null, activatesAt: null, autoVerificationActive: false, activatedAt: null };
+    if (changed) {
+      logEvent('admin_reconnected', { automaticVerificationWasActive: Boolean(previous.autoVerificationActive) });
+      saveState(); broadcast();
+    }
+  });
+}
+
+function scheduleAutomaticClaimVerification(workspace = currentWorkspace()) {
+  clearAutomaticClaimVerificationTimer(workspace);
+  workspaceContext.run(workspace, () => {
+    if (!state.adminContingency?.autoVerificationActive) return;
+    const pending = state.claims.filter(item => item.status === 'pending');
+    if (!pending.length) return;
+    const waitMs = state.claimWindow ? Math.max(0, Number(state.claimWindow.expiresAtMs || 0) - Date.now()) + 15 : 15;
+    const timer = setTimeout(() => workspaceContext.run(workspace, () => {
+      automaticClaimVerificationTimers.delete(workspace.id);
+      if (!state.adminContingency?.autoVerificationActive) return;
+      const queue = state.claims.filter(item => item.status === 'pending').sort((a,b) => Number(a.receivedSequence||0)-Number(b.receivedSequence||0));
+      for (const claim of queue) {
+        if (claim.status !== 'pending') continue;
+        try {
+          resolveClaim({ claimId: claim.id, resolution: claim.officialValid ? 'confirmed' : 'rejected', automaticVerification: true, note: 'Verificación automática por contingencia de administrador.' });
+        } catch (error) {
+          if (claim.status === 'pending') {
+            try { resolveClaim({ claimId: claim.id, resolution: 'rejected', automaticVerification: true, note: `Verificación automática: ${error.message}` }); }
+            catch {}
+          }
+        }
+      }
+      if (state.adminContingency?.autoVerificationActive && state.status === 'paused' && state.pauseReason === 'claim' && state.game?.drawMode === 'automatic' && !confirmedClaims('bingo').length) {
+        try { resumeRoom({ mode: 'automatic', immediate: true, automaticAfterClaim: true }); } catch {}
+      }
+    }), waitMs);
+    automaticClaimVerificationTimers.set(workspace.id, timer);
+  });
+}
+
+function activateAdminContingency(workspace = currentWorkspace()) {
+  return workspaceContext.run(workspace, () => {
+    if (adminConnectionCount(workspace) > 0 || !state.active || !state.game || ['closed','finished','waiting'].includes(state.status)) return;
+    const contingency = state.adminContingency || blankState().adminContingency;
+    if (contingency.autoVerificationActive) return;
+    state.adminContingency = { ...contingency, autoVerificationActive: true, activatedAt: nowIso() };
+    logEvent('admin_contingency_activated', { thresholdMs: ADMIN_CONTINGENCY_MS, status: state.status, drawMode: state.game.drawMode });
+    saveState(); broadcast();
+    scheduleAutomaticClaimVerification(workspace);
+  });
+}
+
+function markAdminDisconnected(workspace = currentWorkspace()) {
+  return workspaceContext.run(workspace, () => {
+    if (adminConnectionCount(workspace) > 0 || !state.active || !state.game || ['closed','finished','waiting'].includes(state.status)) return;
+    const contingency = state.adminContingency || blankState().adminContingency;
+    if (!contingency.disconnectedSince) {
+      const now = Date.now();
+      state.adminContingency = {
+        ...contingency,
+        disconnectedSince: new Date(now).toISOString(),
+        activatesAt: new Date(now + ADMIN_CONTINGENCY_MS).toISOString(),
+        autoVerificationActive: false,
+        activatedAt: null
+      };
+      logEvent('admin_disconnected', { contingencySeconds: Math.round(ADMIN_CONTINGENCY_MS/1000) });
+      saveState(); broadcast();
+    }
+    clearAdminContingencyTimer(workspace);
+    const target = new Date(state.adminContingency.activatesAt || 0).getTime();
+    const delay = Math.max(0, target - Date.now());
+    const timer = setTimeout(() => activateAdminContingency(workspace), delay);
+    adminContingencyTimers.set(workspace.id, timer);
+  });
+}
+
 function handleEvents(req, res, url) {
   const role = url.searchParams.get('role');
   let workspace = null;
@@ -4907,10 +5041,14 @@ function handleEvents(req, res, url) {
     res.write(': conectado\n\n');
     const client = { res, role, token, playerId: player?.id || null };
     sseClients.add(client);
+    if (role === 'admin') resetAdminPresence(workspace);
     if (role === 'admin') writeSse(res, 'state', adminPayload());
     else if (role === 'broadcast') writeSse(res, 'state', broadcastPayload());
     else writeSse(res, 'state', playerPayload(player));
-    req.on('close', () => workspaceContext.run(workspace, () => sseClients.delete(client)));
+    req.on('close', () => workspaceContext.run(workspace, () => {
+      sseClients.delete(client);
+      if (role === 'admin') markAdminDisconnected(workspace);
+    }));
   });
 }
 
@@ -4973,7 +5111,12 @@ setInterval(() => {
   }
 }, 20_000).unref();
 
-for (const workspace of workspaces.values()) workspaceContext.run(workspace, () => scheduleTransition());
+for (const workspace of workspaces.values()) workspaceContext.run(workspace, () => {
+  scheduleTransition();
+  if (state.active && state.game && state.status === 'playing' && state.game.drawMode === 'automatic') scheduleAutomaticDraw();
+  if (state.active && state.game && state.status === 'paused' && state.pauseReason === 'claim' && state.game.drawMode === 'automatic' && !confirmedClaims('bingo').length) scheduleClaimAutoResume();
+  if (state.active && state.game && !['closed','finished','waiting'].includes(state.status) && adminConnectionCount(workspace) === 0) markAdminDisconnected(workspace);
+});
 
 server.listen(PORT, HOST, () => {
   console.log('\nLA GORDA - BINGO ONLINE');

@@ -84,29 +84,43 @@ async function demoCards(mode, players, cardsPerPlayer) {
   assert.equal(result.response.status, 200, JSON.stringify(result.data));
   assert(result.data.playerUrl.includes('/jugador'));
   assert.equal(result.data.participants[0].name, 'Vos');
-  assert.equal(result.data.participants[0].cardCount, playerCardCount);
+  assert.equal(result.data.participants[0].cardCount, 0, 'La demo debe entrar sin cartones confirmados para recorrer la sala de espera.');
   assert(result.data.participants.slice(1).every(player => player.cardCount === 2));
   const headers = { 'Content-Type': 'application/json', 'X-Admin-Token': result.data.testAdminToken };
-  const state = (await json('/api/admin/state', { headers })).data;
+  let state = (await json('/api/admin/state', { headers })).data;
   assert.equal(state.demo, true);
   assert.equal(state.game.drawMode, 'automatic');
   assert.equal(state.status, 'waiting');
   assert.equal(state.players[0].name, 'Vos');
+  assert.equal(state.players[0].nameSet, false);
+  assert.equal(state.players[0].selectionConfirmed, false);
+  assert.equal(state.players[0].allowedCardCount, playerCardCount);
+  assert.equal(state.players[0].autoMark, false);
   const aiNames = state.players.slice(1).map(player => player.name);
   assert.equal(aiNames.length, aiCount);
   assert.equal(new Set(aiNames).size, aiCount, 'Los nombres IA de demo deben ser únicos en cada partida.');
   assert(aiNames.every(name => ['Zoe','Mateo','Owen'].includes(name)), 'Las demos solo deben usar Zoe, Mateo y Owen.');
-  assert(state.players.every(player => player.nameSet && player.autoMark));
+  assert(state.players.slice(1).every(player => player.nameSet && player.autoMark && player.selectionConfirmed));
+  assert((state.chat?.messages || []).some(message => message.role === 'player'), 'La demo debe mostrar chat IA ya en la sala de espera.');
   const login = await json('/api/player/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code: result.data.playerCode, roomCode: result.data.roomCode, deviceId: `demo-${mode}-${Date.now()}` })
   });
   assert.equal(login.response.status, 200, JSON.stringify(login.data));
   assert.equal(login.data.state.player.name, 'Vos');
-  assert.equal(login.data.state.player.cards.length, playerCardCount);
-  assert.equal(login.data.state.player.autoMarkForced, true);
+  assert.equal(login.data.state.player.cards.length, 0);
+  assert(login.data.state.player.offeredCards.length >= playerCardCount);
+  assert.equal(login.data.state.player.autoMarkForced, false);
+  assert.equal(login.data.state.player.demoHuman, true);
   assert.equal(login.data.state.demo.participants.length, aiCount + 1);
-  return { state, headers, response: result.data, playerState: login.data.state };
+  const playerHeaders = { 'Content-Type': 'application/json', 'X-Player-Token': login.data.token };
+  const chosenIds = login.data.state.player.offeredCards.slice(0, playerCardCount).map(card => card.id);
+  const chosen = await json('/api/player/choose', { method:'POST', headers:playerHeaders, body:JSON.stringify({ name:'Vos Demo', cardIds:chosenIds }) });
+  assert.equal(chosen.response.status, 200, JSON.stringify(chosen.data));
+  assert.equal(chosen.data.player.selectionConfirmed, true);
+  assert.equal(chosen.data.player.cards.length, playerCardCount);
+  state = (await json('/api/admin/state', { headers })).data;
+  return { state, headers, response: result.data, playerState: chosen.data, playerHeaders };
 }
 
 async function playerLogin(state, playerIndex, deviceId) {
@@ -137,8 +151,8 @@ async function drawMany(adminHeaders, count) {
     assert.equal(result.data.version, 'LA GORDA - BINGO ONLINE');
     const demoHtml = await (await fetch(base + '/demo')).text();
     assert(demoHtml.includes('Jugá una partida real y rápida'));
-    assert(demoHtml.includes('CREAR Y COMENZAR PARTIDA'));
-    assert(demoHtml.includes('Zoe, Mateo y Owen'));
+    assert(demoHtml.includes('CREAR DEMO Y ENTRAR A LA SALA'));
+    assert(demoHtml.includes('Las IA usan dos cartones'));
     const adminHtml = await (await fetch(base + '/admin')).text();
     assert(adminHtml.includes('LA GORDA - BINGO ONLINE'));
     assert(adminHtml.includes('.ballNumber{display:block;color:#fff'));

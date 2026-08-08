@@ -1,3 +1,29 @@
+
+VERSIÓN 2.3 · DEMO COMPLETA Y TUTORIAL DE SALA DE ESPERA
+- La demostración ahora entra primero a una sala de espera real: nombre, minijuegos y elección de cartones antes del sorteo.
+- El tutorial de espera señala nombre/apodo, minijuegos, cantidad de cartones disponibles, selección, recarga y confirmación.
+- Al confirmar cartones, el tutorial continúa sobre la pantalla real de juego y al terminar inicia la demo.
+- El Automarcado ya no está forzado en demos pequeñas: se puede activar y desactivar para aprender su funcionamiento.
+- Las demos incluyen chat IA desde la sala de espera y siguen generando mensajes durante la partida.
+- Las simulaciones IA del administrador incorporan VISTA JUGADOR IA para abrir y controlar la interfaz real de cualquier jugador virtual.
+- Mientras una IA está conectada desde esa vista, se suspenden sus reclamos y mensajes automáticos para permitir control manual.
+- La vista de jugador IA muestra un acceso VOLVER A ADMIN sin contaminar la interfaz normal.
+
+VERSIÓN 2.2.0 — TUTORIAL CONTEXTUAL Y JUEGO MÁS LIMPIO
+
+- Tutorial automático desde el ingreso a la sala, dividido entre elección de cartones y herramientas de juego.
+- Globos contextuales apuntan al control real, con foco visual, flecha y animaciones breves.
+- Tutorial explica elegir y recargar cartones, marcar/desmarcar con un toque, Automarcado, reclamos, regla del primer reclamo válido, última bolilla, flecha lateral, sonido, voz, pantalla completa, TV, chat, ajustes y ayuda.
+- El botón ? queda siempre disponible para repetir el tutorial si fue saltado o se quiere consultar de nuevo.
+- Una vez confirmados los cartones se muestra una vista previa real de la pantalla de juego antes de empezar el sorteo, para poder aprender sin perder tiempo durante la partida.
+- Automarcado ahora tiene control compacto AUTO ON/OFF junto al juego y respuesta visual inmediata; soporta toques rápidos para activar y desactivar.
+- Al activar Automarcado se conserva la sincronización existente que recupera todos los números oficiales ya sorteados.
+- Sonido y voz tienen iconos directos en la barra superior.
+- La regla “Gana el primer reclamo válido” queda visible de forma compacta durante la espera confirmada y la partida.
+- La flecha lateral de información se mantiene sin cambios y el tutorial explica que abre ganadores y números salidos.
+- El tema claro/oscuro pasa a Ajustes para reducir contaminación visual en la barra principal.
+- Si la partida comienza mientras el tutorial está abierto, el tutorial se cierra para no tapar el juego ni los reclamos.
+
 BINGO DE LA GORDA - BASE LIMPIA
 
 Esta carpeta representa la base actual del proyecto. Se retiraron notas históricas de parches y configuraciones obsoletas sin modificar las funciones vigentes.

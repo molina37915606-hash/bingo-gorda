@@ -1447,6 +1447,7 @@ function playerPayload(player) {
       marks: player.marks || {},
       autoMark: Boolean(player.autoMark),
       autoMarkForced: autoMarkRequired(),
+      demoHuman: Boolean(player.demoHuman),
       notices: (player.notices || []).slice(-10)
     }
   };
@@ -1896,23 +1897,18 @@ function createDemoRoom(payload = {}) {
   const requestedAiNames = Array.isArray(payload.aiNames) ? [...new Set(payload.aiNames.map(name => String(name || '').trim()).filter(name => DEMO_AI_NAME_POOL.includes(name)))] : [];
   const aiNames = requestedAiNames.length === aiCount ? requestedAiNames : shuffle(DEMO_AI_NAME_POOL).slice(0, aiCount);
   const totalCards = playerCardCount + aiCount * 2;
-  const pool = generateDiverseCardsServer(Math.max(25, totalCards), mode, rules);
-  const groups = partitionDiverseCardGroups(pool, [playerCardCount, ...Array(aiCount).fill(2)], mode);
-  const cards = groups.flat().map((card, index) => ({ ...card, number: String(index + 1).padStart(3, '0'), name: `Cartón ${index + 1}`, originalName: `Cartón ${index + 1}` }));
+  const pool = generateDiverseCardsServer(Math.max(25, totalCards + 8), mode, rules);
+  const aiGroups = partitionDiverseCardGroups(pool, Array(aiCount).fill(2), mode);
+  const cards = pool.map((card, index) => ({ ...card, number: String(index + 1).padStart(3, '0'), name: `Cartón ${index + 1}`, originalName: `Cartón ${index + 1}` }));
+  const mappedAiGroups = aiGroups.map(group => group.map(card => cards[pool.indexOf(card)]));
   const game = {
     id: randomId('demo_game'), number: 1, mode, rules, drawMode: 'automatic', autoSeconds,
     presenter: PRESENTER_ID,
     theme: 'clasico', phase: 'READY', drawn: [], createdAt: nowIso(), updatedAt: nowIso(), cards
   };
-  let offset = 0;
-  const assignments = [{
-    allowedCardCount: playerCardCount,
-    cardIds: cards.slice(offset, offset + playerCardCount).map(card => card.id)
-  }];
-  offset += playerCardCount;
+  const assignments = [{ allowedCardCount: playerCardCount, cardIds: [] }];
   for (let index = 0; index < aiCount; index++) {
-    assignments.push({ allowedCardCount: 2, cardIds: cards.slice(offset, offset + 2).map(card => card.id) });
-    offset += 2;
+    assignments.push({ allowedCardCount: 2, cardIds: mappedAiGroups[index].map(card => card.id) });
   }
   const workspace = ensureWorkspace(`demo_${randomCode(10).toLowerCase()}`);
   workspace.isDemo = true;
@@ -1929,18 +1925,25 @@ function createDemoRoom(payload = {}) {
         allowSamePlayerSecondLine: true,
         tiePolicy: 'first_claim',
         gameType: 'test',
+        roomType: 'test',
+        joinOpen: false,
+        maxOpenPlayers: 4,
         prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 },
         argentinaHint: true
       },
       assignmentTimer: { enabled: false, durationMinutes: 10 }
     });
     const human = state.players[0];
-    human.name = 'Vos';
-    human.nameSet = true;
+    human.name = '';
+    human.nameSet = false;
+    human.slotLabel = 'Vos';
     human.virtual = false;
     human.demoHuman = true;
-    human.autoMark = true;
-    human.selectionConfirmed = true;
+    human.autoMark = false;
+    human.selectionConfirmed = false;
+    human.cardIds = [];
+    human.marks = {};
+    refreshOffersForPlayer(human, true);
     state.players.slice(1).forEach((player, index) => {
       player.name = aiNames[index];
       player.nameSet = true;
@@ -1948,6 +1951,8 @@ function createDemoRoom(payload = {}) {
       player.autoMark = true;
       player.selectionConfirmed = true;
     });
+    state.roomSettings.simulatedChat = true;
+    state.chat.enabled = true;
     state.demo = {
       active: true,
       label: 'DEMOSTRACIÓN — SIN VALIDEZ OFICIAL',
@@ -1962,16 +1967,19 @@ function createDemoRoom(payload = {}) {
     };
     syncAllAutoMarks();
     updateCardDisplayNames();
-    logEvent('demo_created', { aiNames, aiCount, playerCardCount, cardsPerAi: 2, mode, autoSeconds });
+    const demoChatOpeners = ['Hola 👋', 'Suerte para todos 🍀', 'Vamos que empieza 😄'];
+    state.players.filter(player => player.virtual).slice(0, 2).forEach((player, index) => {
+      try { appendChatMessage({ role: 'player', player, text: demoChatOpeners[index % demoChatOpeners.length] }); } catch {}
+    });
+    logEvent('demo_created', { aiNames, aiCount, playerCardCount, cardsPerAi: 2, mode, autoSeconds, waitingRoom: true, simulatedChat: true });
     saveState();
-    if (!(TEST_MODE && payload.testHoldStart)) startRoom();
     const response = {
       workspaceId: workspace.id,
       roomCode: state.roomCode,
       playerCode: human.code,
       expiresAt: new Date(workspace.expiresAt).toISOString(),
       playerUrl: `/jugador?demo=1&sala=${encodeURIComponent(state.roomCode)}&codigo=${encodeURIComponent(human.code)}`,
-      participants: [{ name: human.name, virtual: false, cardCount: human.cardIds.length }, ...state.players.slice(1).map(player => ({ name: player.name, virtual: true, cardCount: player.cardIds.length }))],
+      participants: [{ name: playerDisplayName(human), virtual: false, cardCount: human.cardIds.length }, ...state.players.slice(1).map(player => ({ name: player.name, virtual: true, cardCount: player.cardIds.length }))],
       mode,
       autoSeconds
     };
@@ -2248,7 +2256,7 @@ function activeCardCount() {
 }
 
 function autoMarkRequired() {
-  return Boolean(currentWorkspace().isDemo) || activePlayerCount() > MANUAL_MARK_MAX_PLAYERS || activeCardCount() > MANUAL_MARK_MAX_CARDS;
+  return activePlayerCount() > MANUAL_MARK_MAX_PLAYERS || activeCardCount() > MANUAL_MARK_MAX_CARDS;
 }
 
 function markingPolicyPayload() {
@@ -2572,8 +2580,9 @@ const SIMULATED_CHAT_TEXTS = [
 const SIMULATED_CHAT_STICKERS = ['gorda-risa','gorda-festejo','gorda-ay-no','corazon','aplausos','suerte','ira','explosion'];
 
 function scheduleSimulatedAiChat() {
-  if (!state.roomSettings?.adminSimulation || !state.roomSettings?.simulatedChat || state.chat?.enabled === false || state.chat?.locked) return 0;
-  const players = state.players.filter(player => player.virtual);
+  if (!(currentWorkspace().isDemo || state.roomSettings?.adminSimulation) || !state.roomSettings?.simulatedChat || state.chat?.enabled === false || state.chat?.locked) return 0;
+  const connected = connectedPlayerIds();
+  const players = state.players.filter(player => player.virtual && !connected.has(player.id));
   if (!players.length) return 0;
   const workspace = currentWorkspace();
   const maxBurst = Math.min(4, Math.max(1, Math.ceil(players.length / 20)));
@@ -2586,7 +2595,7 @@ function scheduleSimulatedAiChat() {
     const timer = setTimeout(() => workspaceContext.run(workspace, () => {
       forgetDemoTimer(workspace, timer);
       try {
-        if (!state.active || !state.roomSettings?.adminSimulation || !state.roomSettings?.simulatedChat || state.chat?.enabled === false || state.chat?.locked) return;
+        if (!state.active || !(currentWorkspace().isDemo || state.roomSettings?.adminSimulation) || !state.roomSettings?.simulatedChat || state.chat?.enabled === false || state.chat?.locked) return;
         if (crypto.randomInt(0, 100) < 24) {
           const stickerId = SIMULATED_CHAT_STICKERS[crypto.randomInt(0, SIMULATED_CHAT_STICKERS.length)];
           appendChatMessage({ role: 'player', player, stickerId });
@@ -2613,7 +2622,7 @@ function scheduleVirtualPlayerClaims() {
     if (!isPrizeEnabled(type) || prizeStatusPayload()[type]?.closed) continue;
     const typeCandidates = [];
     for (const player of state.players) {
-      if (!player.virtual) continue;
+      if (!player.virtual || connectedPlayerIds().has(player.id)) continue;
       const card = (player.cardIds || [])
         .map(cardId => state.game.cards.find(item => item.id === cardId))
         .find(candidate => {
@@ -3403,6 +3412,15 @@ function loginPlayer(payload) {
   logEvent('player_login', { playerId: player.id, playerName: playerDisplayName(player) });
   saveState(); broadcast();
   return { token: player.sessionToken, state: playerPayload(player) };
+}
+
+
+function startDemoFromPlayer(player) {
+  if (!currentWorkspace().isDemo || !player?.demoHuman) throw new Error('Esta acción solo está disponible en la demostración.');
+  if (state.status !== 'waiting') return playerPayload(player);
+  if (!player.nameSet || !player.selectionConfirmed || !(player.cardIds || []).length) throw new Error('Primero confirmá tu nombre y tus cartones.');
+  startRoom();
+  return playerPayload(player);
 }
 
 function requestDeviceTransfer(payload) {
@@ -4899,6 +4917,7 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
         if (url.pathname === '/api/player/name' && req.method === 'POST') return sendJson(res, 200, setPlayerName(player, await readJson(req)));
         if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
+        if (url.pathname === '/api/player/demo/start' && req.method === 'POST') return sendJson(res, 200, startDemoFromPlayer(player));
         if (url.pathname === '/api/player/release' && req.method === 'POST') return sendJson(res, 200, releaseOwnSelection(player));
         if (url.pathname === '/api/player/mark' && req.method === 'POST') return sendJson(res, 200, markNumber(player, await readJson(req)));
         if (url.pathname === '/api/player/automark' && req.method === 'POST') return sendJson(res, 200, setAutoMark(player, await readJson(req)));

@@ -47,6 +47,15 @@ class PlayerApp {
     this.focusMode = false;
     this.fullscreenApiActive = false;
     this.guideStep = 0;
+    this.guideStage = '';
+    this.guideSteps = [];
+    this.guideOpen = false;
+    this.guideManual = false;
+    this.guideTarget = null;
+    this.guidePositionTimer = null;
+    this.guideAutoTimer = null;
+    this.autoMarkDesired = null;
+    this.autoMarkSyncing = false;
     this.finalOverlayDismissedFor = '';
     this.roomClosedShown = false;
     this.drawerTab = 'winners';
@@ -63,14 +72,6 @@ class PlayerApp {
     this.ticketTouchStartX = null;
     this.wakeLock = null;
     this.systemClockTimer = null;
-    this.guideSteps = [
-      { icon:'🧾', title:'Tus cartones', text:'Usá las pestañas para cambiar de cartón. Las marcas oficiales se conservan en todos.' },
-      { icon:'⚙', title:'Ajustes', text:'Desde la tuerca podés controlar sonidos, la voz de Vero, tamaño de números y automarcado.' },
-      { icon:'›', title:'Ganadores y números', text:'La flecha lateral muestra los premios confirmados y los números salidos ordenados de menor a mayor.' },
-      { icon:'💬', title:'Chat público', text:'El chat separa emojis comunes para el texto y 12 stickers premium de envío directo. Tocá un sticker recibido para repetir su animación.' },
-      { icon:'🏆', title:'Tenés que cantar', text:'Aunque el sistema marque solo, el premio se reclama tocando manualmente el botón correspondiente.' },
-      { icon:'📄', title:'Acta oficial', text:'Al terminar la partida podés ver el PDF completo dentro del juego y descargarlo solo si lo necesitás.' }
-    ];
   }
 
   makeDeviceId() {
@@ -83,6 +84,8 @@ class PlayerApp {
     this.systemClockTimer = setInterval(() => this.renderSystemTrust(), 1000);
     document.addEventListener('visibilitychange', () => this.updateWakeLock());
     window.addEventListener('pagehide', () => this.releaseWakeLock());
+    window.addEventListener('resize', () => this.guideOpen && this.positionGuide());
+    window.addEventListener('scroll', () => this.guideOpen && this.positionGuide(), { passive:true });
     $('loginBtn').onclick = () => this.login();
     $('lastResultBtn').onclick = () => this.downloadLastPublicResult();
     $('accessCode').addEventListener('keydown', event => { if (event.key === 'Enter') this.login(); });
@@ -101,15 +104,17 @@ class PlayerApp {
     $('settingsOverlay').addEventListener('click', event => { if (event.target === $('settingsOverlay')) this.closeSettings(); });
     $('soundToggle').onclick = () => this.setAudioEnabled(!this.audioEnabled);
     $('voiceToggle').onclick = () => this.setVoiceEnabled(!this.voiceEnabled);
+    $('quickSoundBtn').onclick = () => this.setAudioEnabled(!this.audioEnabled);
+    $('quickVoiceBtn').onclick = () => this.setVoiceEnabled(!this.voiceEnabled);
     $('volumeRange').oninput = event => this.setVolume(Number(event.target.value) / 100);
     $('numberSizeToggle').onclick = () => this.setLargeNumbers(!this.largeNumbers);
-    $('autoMarkToggle').onclick = () => this.setAutoMark(!Boolean(this.state?.player?.autoMark));
+    $('autoMarkToggle').onclick = () => this.queueAutoMark(!this.autoMarkVisualState());
+    $('quickAutoMarkBtn').onclick = () => this.queueAutoMark(!this.autoMarkVisualState());
     $('helpBtn').onclick = () => this.openGuide(true);
-    $('closeGuideBtn').onclick = () => this.closeGuide();
-    $('guideNoBtn').onclick = () => this.closeGuide();
-    $('guideYesBtn').onclick = () => this.startGuide();
+    $('closeGuideBtn').onclick = () => this.closeGuide(true);
+    $('guideSkipBtn').onclick = () => this.skipGuide();
     $('guidePrevBtn').onclick = () => { this.guideStep = Math.max(0, this.guideStep - 1); this.renderGuideStep(); };
-    $('guideNextBtn').onclick = () => { if (this.guideStep >= this.guideSteps.length - 1) this.closeGuide(); else { this.guideStep++; this.renderGuideStep(); } };
+    $('guideNextBtn').onclick = () => this.nextGuideStep();
     $('requestTransferBtn').onclick = () => this.requestDeviceTransfer();
     $('cancelTransferBtn').onclick = () => this.closeTransfer();
     $('showDrawnBtn').onclick = () => this.openInfoDrawer('numbers');
@@ -168,6 +173,7 @@ class PlayerApp {
     if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => this.refreshVoices();
 
     const params = new URLSearchParams(location.search);
+    if (params.get('simcontrol') === '1') this.injectSimulationControlBadge();
     const directCode = String(params.get('acceso') || params.get('codigo') || params.get('code') || '').trim().toUpperCase();
     const roomCode = String(params.get('sala') || '').trim().toUpperCase();
     this.openJoinMode = params.get('prueba') === '1' && Boolean(roomCode);
@@ -195,6 +201,19 @@ class PlayerApp {
     this.assignmentClockTimer = setInterval(() => this.updateAssignmentCountdown(), 1000);
   }
 
+  injectSimulationControlBadge() {
+    if ($('simulationControlBadge')) return;
+    const style = document.createElement('style');
+    style.textContent = `.simulationControlBadge{position:fixed;left:8px;bottom:8px;z-index:118;display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:12px;background:#151a2cdd;border:1px solid #ffca2f88;box-shadow:0 8px 25px #0008;color:#fff;font-size:10px;font-weight:1000;backdrop-filter:blur(10px)}.simulationControlBadge button{border:0;border-radius:8px;background:#ffca2f;color:#241600;padding:7px 9px;font-weight:1000;cursor:pointer}`;
+    document.head.appendChild(style);
+    const badge = document.createElement('div');
+    badge.id = 'simulationControlBadge';
+    badge.className = 'simulationControlBadge';
+    badge.innerHTML = `<span>🎮 VISTA JUGADOR IA</span><button type="button">VOLVER A ADMIN</button>`;
+    badge.querySelector('button').onclick = () => { try { window.close(); } catch {} setTimeout(() => { if (!document.hidden) location.href = '/admin'; }, 120); };
+    document.body.appendChild(badge);
+  }
+
   injectDemoUi() {
     if ($('demoPlayerBanner')) return;
     const style = document.createElement('style');
@@ -217,7 +236,7 @@ class PlayerApp {
     if (!demo?.active) return;
     const participants = demo.participants || [];
     const rivals = participants.filter(item => item.virtual).length;
-    $('demoPlayerSummary').textContent = `${this.state.game.mode} bolas · ${rivals} rival${rivals === 1 ? '' : 'es'} IA · automarcado obligatorio`;
+    $('demoPlayerSummary').textContent = `${this.state.game.mode} bolas · ${rivals} rival${rivals === 1 ? '' : 'es'} IA · tutorial completo`;
     $('demoPlayerSpeed').textContent = `${Number(demo.autoSeconds) || 4} s por bolilla`;
     $('demoParticipants').innerHTML = participants.map(item => `<span class="demoParticipant ${item.virtual ? '' : 'you'}">${esc(item.name)}${item.virtual ? '<span class="demoAiTag">IA</span>' : ''} · ${Number(item.cardCount) || 0} cartón${Number(item.cardCount) === 1 ? '' : 'es'}</span>`).join('');
   }
@@ -725,6 +744,13 @@ class PlayerApp {
     $('infoDrawerToggle').classList.remove('hidden');
     this.render(); this.renderDemoUi(); this.renderChat(); this.renderPublicClaim(); this.handleOwnPrizeReadiness(); this.handleTestEvent(); this.handleSequence(previous); this.renderInfoDrawer();
     this.renderSystemTrust(); this.updateWakeLock();
+    const justConfirmedSelection = !Boolean(previous?.player?.selectionConfirmed) && Boolean(data.player?.selectionConfirmed && data.player?.nameSet);
+    if (this.guideOpen && this.guideStage === 'selection' && justConfirmedSelection) {
+      this.setGuideProgress('selection');
+      this.closeGuide(false);
+    }
+    if (previous && ['waiting','starting'].includes(previous.status) && !['waiting','starting'].includes(data.status) && this.guideOpen) this.closeGuide(false);
+    this.maybeAutoStartGuide(previous);
     if ($('winnerOverlay').classList.contains('show')) this.renderWinnerCard(this.selectedWinnerId);
     const currentCount = data.game.drawn.length;
     if (previousCount !== undefined && data.status === 'playing' && currentCount > previousCount && data.game.lastBall != null) this.speakBall(data.game.lastBall);
@@ -741,6 +767,7 @@ class PlayerApp {
     document.body.classList.toggle('isPaused', data.status === 'paused');
     document.body.classList.toggle('isTransitioning', ['starting','resuming'].includes(data.status));
     if (data.status === 'waiting' || data.status === 'starting') this.renderWaiting(); else this.renderPlaying();
+    $('playerEssentialTools').classList.toggle('hidden', !Boolean(data.player.selectionConfirmed));
     if (data.status !== 'finished') { this.finalOverlayDismissedFor = ''; $('finalResultsOverlay').classList.remove('show'); }
     else $('finalResultsOverlay').classList.toggle('show', this.finalOverlayDismissedFor !== data.roomCode);
     this.renderNotice(); this.updateQuickTools(); this.renderInfoDrawer();
@@ -754,7 +781,8 @@ class PlayerApp {
     $('presenterImage').alt = 'Vero';
     $('presenterName').textContent = 'Vero te acompaña';
     $('presenterPhrase').textContent = presenter.phrase;
-    $('autoMarkToggle').classList.toggle('active', Boolean(this.state.player.autoMark));
+    const autoVisual = this.autoMarkVisualState();
+    $('autoMarkToggle').classList.toggle('active', autoVisual);
     $('autoMarkToggle').disabled = Boolean(this.state.player.autoMarkForced || this.state.markingPolicy?.automaticRequired);
     $('autoMarkToggle').title = this.state.markingPolicy?.automaticRequired ? this.state.markingPolicy.reason : 'Activar o desactivar automarcado';
     $('autoMarkHint').textContent = this.state.markingPolicy?.automaticRequired ? this.state.markingPolicy.reason : 'Marca las bolillas oficiales';
@@ -807,9 +835,12 @@ class PlayerApp {
         return;
       }
       const canChange = this.state.status === 'waiting' && !this.state.assignmentTimer?.selectionClosed;
-      $('waitingPanel').innerHTML = `${timerHtml}<div class="waitingConfirmed waitingStateHero"><b>ESPERANDO SORTEO</b><div>Tus cartones están confirmados y reservados para vos.</div><div class="chosenList">${player.cards.map(card => `<span class="chosenBadge">Cartón ${esc(card.number)}</span>`).join('')}</div>${canChange ? '<button id="changeChoice" class="btn secondary" style="margin-top:10px">CAMBIAR CARTONES</button>' : ''}</div>${this.waitingMiniGameHtml()}`;
+      const demoStart = this.state?.demo?.active && player.demoHuman ? '<button id="demoStartBtn" class="btn primary" style="margin-top:10px">COMENZAR DEMO</button>' : '';
+      $('waitingPanel').innerHTML = `${timerHtml}<div class="waitingConfirmed waitingStateHero"><b>${this.state?.demo?.active ? 'LISTO PARA LA DEMO' : 'ESPERANDO SORTEO'}</b><div>Tus cartones están confirmados y reservados para vos.</div><div class="chosenList">${player.cards.map(card => `<span class="chosenBadge">Cartón ${esc(card.number)}</span>`).join('')}</div>${canChange ? '<button id="changeChoice" class="btn secondary" style="margin-top:10px">CAMBIAR CARTONES</button>' : ''}${demoStart}</div>${this.waitingMiniGameHtml()}`;
       if ($('changeChoice')) $('changeChoice').onclick = () => this.releaseChoice();
+      if ($('demoStartBtn')) $('demoStartBtn').onclick = () => this.startDemoFromPlayer();
       this.bindWaitingMiniGame();
+      this.renderPregamePreview();
       return;
     }
     const offers = player.offeredCards || [], valid = new Set(offers.map(card => card.id));
@@ -833,6 +864,18 @@ class PlayerApp {
     this.bindWaitingMiniGame();
   }
 
+  renderPregamePreview() {
+    $('playPanel').classList.remove('hidden');
+    const ballHost = $('lastBall');
+    ballHost.className = 'lastBall';
+    ballHost.textContent = '—';
+    $('ballCount').textContent = 'Esperando la primera bolilla';
+    $('recent').innerHTML = '';
+    this.renderTabs();
+    this.renderTicket();
+    this.renderInfoDrawer();
+  }
+
   waitingMiniGameHtml() {
     if (this.state?.status !== 'waiting') return '';
     const type = ['red_black','higher_lower'].includes(this.waitingMini.activeType) ? this.waitingMini.activeType : 'red_black';
@@ -849,7 +892,7 @@ class PlayerApp {
     const result = this.waitingMini.message || defaultMessage;
     const choicesClass = `miniGameChoices${this.waitingMini.ended ? ' hidden' : ''}`;
     const restartClass = `btn secondary${this.waitingMini.ended ? '' : ' hidden'}`;
-    return `<section class="waitMiniGame"><div class="miniGameTabs"><button type="button" data-mini-game="red_black" class="${type === 'red_black' ? 'active' : ''}">ROJO O NEGRO</button><button type="button" data-mini-game="higher_lower" class="${type === 'higher_lower' ? 'active' : ''}">MAYOR O MENOR</button></div><h3>${title}</h3><div class="muted">Los dos juegos están siempre disponibles durante la espera. Cambiá de juego cuando quieras. No afectan el bingo.</div><div class="miniGameLayout"><div id="miniPlayingCard" class="playingCard back"></div><div class="miniGameControls"><div class="miniScore">Racha: <span id="miniScore">${this.waitingMini.score}</span> · Mejor: <span id="miniBest">${this.waitingMini.best}</span></div><div id="miniResult" class="miniResult">${result}</div><div id="miniChoices" class="${choicesClass}">${type === 'red_black' ? '<button type="button" class="redChoice" data-mini="red">ROJO</button><button type="button" class="blackChoice" data-mini="black">NEGRO</button>' : '<button type="button" class="higherChoice" data-mini="higher">MAYOR</button><button type="button" class="lowerChoice" data-mini="lower">MENOR</button>'}</div><button id="miniRestart" class="${restartClass}" type="button">VOLVER A JUGAR</button></div></div><div class="miniLeaderboard"><b>Mejores rachas en ${title.toLowerCase()}:</b> ${leaders.length ? leaders.map((item,index)=>`${index+1}. ${esc(item.name)} ${Number(item.bestScore)||0}`).join(' · ') : 'todavía no hay puntajes'}</div></section>`;
+    return `<section id="waitMiniGame" class="waitMiniGame"><div class="miniGameTabs"><button type="button" data-mini-game="red_black" class="${type === 'red_black' ? 'active' : ''}">ROJO O NEGRO</button><button type="button" data-mini-game="higher_lower" class="${type === 'higher_lower' ? 'active' : ''}">MAYOR O MENOR</button></div><h3>${title}</h3><div class="muted">Los dos juegos están siempre disponibles durante la espera. Cambiá de juego cuando quieras. No afectan el bingo.</div><div class="miniGameLayout"><div id="miniPlayingCard" class="playingCard back"></div><div class="miniGameControls"><div class="miniScore">Racha: <span id="miniScore">${this.waitingMini.score}</span> · Mejor: <span id="miniBest">${this.waitingMini.best}</span></div><div id="miniResult" class="miniResult">${result}</div><div id="miniChoices" class="${choicesClass}">${type === 'red_black' ? '<button type="button" class="redChoice" data-mini="red">ROJO</button><button type="button" class="blackChoice" data-mini="black">NEGRO</button>' : '<button type="button" class="higherChoice" data-mini="higher">MAYOR</button><button type="button" class="lowerChoice" data-mini="lower">MENOR</button>'}</div><button id="miniRestart" class="${restartClass}" type="button">VOLVER A JUGAR</button></div></div><div class="miniLeaderboard"><b>Mejores rachas en ${title.toLowerCase()}:</b> ${leaders.length ? leaders.map((item,index)=>`${index+1}. ${esc(item.name)} ${Number(item.bestScore)||0}`).join(' · ') : 'todavía no hay puntajes'}</div></section>`;
   }
 
   randomMiniCard() {
@@ -1077,6 +1120,13 @@ class PlayerApp {
     catch (error) { this.showMessage(error.message, 'error'); }
   }
 
+  async startDemoFromPlayer() {
+    if (!this.state?.demo?.active || !this.state?.player?.demoHuman || this.state.status !== 'waiting') return;
+    try {
+      this.applyState(await this.request('/api/player/demo/start', { method:'POST', body:'{}' }));
+    } catch (error) { this.showMessage(error.message, 'error'); }
+  }
+
   showGreetingOnce() {
     if (!this.state) return;
     const key = `bingoGreeting:${this.state.roomCode}:${this.state.player.id}`;
@@ -1088,26 +1138,166 @@ class PlayerApp {
     this.speak(greeting, true);
   }
 
-  openGuide(manual = true) {
+  guideStorageKey() {
+    if (!this.state?.roomCode) return 'bingoPlayerGuide:unknown';
+    return `bingoPlayerGuide:${this.state.roomCode}:${this.state.game?.number || 0}`;
+  }
+
+  guideProgress() {
+    try { return localStorage.getItem(this.guideStorageKey()) || ''; } catch { return ''; }
+  }
+
+  setGuideProgress(value) {
+    try { localStorage.setItem(this.guideStorageKey(), value); } catch {}
+  }
+
+  guideElementVisible(element) {
+    if (!element) return false;
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 3 && rect.height > 3;
+  }
+
+  guideStepsFor(stage) {
+    const steps = stage === 'selection' ? [
+      { target:'#selectionPlayerName', when:()=>!this.state?.player?.nameSet, title:'Primero, tu nombre', text:'Escribí tu nombre o apodo. Así aparecés en tus cartones, el chat y los resultados.' },
+      { target:'#waitMiniGame', title:'Jugá mientras esperás', text:'Tenés minijuegos para pasar el rato. No cambian el Bingo ni tus posibilidades de ganar.' },
+      { target:'.choiceCounter', title:'Cuántos podés elegir', text:`Acá ves cuántos cartones llevás elegidos y cuántos tenés disponibles: <strong>${Number(this.state?.player?.allowedCardCount || 1)}</strong>.` },
+      { target:'#offerGrid .offer', title:'Elegí tus cartones', text:'Tocá un cartón para elegirlo. Si lo tocás otra vez, lo soltás.' },
+      { target:'#renewChoice', title:'Podés recargar', text:'Si no te gustan, tocá <strong>Recargar cartones</strong>. Los que ya elegiste se conservan.' },
+      { target:'#continueChoice', title:'Confirmá tu elección', text:'Cuando completes tu selección, confirmala. Después el tutorial sigue en tu pantalla de juego.' }
+    ] : [
+      { target:'#cardTabs', when:()=>Number(this.state?.player?.cards?.length || 0) > 1, title:'Tus cartones', text:'Si tenés varios, cambiá entre ellos desde estas pestañas o deslizando el cartón.' },
+      { target:'#ticketPanel .cell.number', demo:'mark', title:'Marcar y desmarcar', text:'Durante el sorteo tocá un número para marcarlo. Tocá otra vez para desmarcarlo.' },
+      { target:'#quickAutoMarkBtn', title:'Automarcado instantáneo', text:'Un toque lo activa y otro lo apaga. Si te dormiste números, al activarlo marca todo lo oficial que ya salió.' },
+      { target:'#claimBar', title:'Los premios se reclaman', text:'Aunque uses Automarcado, el premio <strong>no se reclama solo</strong>. Tocá Línea, Bingo o el premio habilitado.' },
+      { target:'#firstClaimReminder', title:'La regla más importante', text:'<strong>Gana el primer reclamo válido.</strong> No alcanza con completar el premio: hay que reclamarlo antes que los demás.' },
+      { target:'#lastBall', title:'Última bolilla', text:'Acá ves grande la última bolilla. Al lado aparecen también las más recientes.' },
+      { target:'#infoDrawerToggle', title:'Ganadores y números salidos', text:'Esta flecha abre el panel lateral. Ahí podés ver cartones ganadores y todos los números que ya salieron.' },
+      { target:'#quickSoundBtn', title:'Sonidos', text:'Tocá este icono para activar o silenciar rápidamente los sonidos del juego.' },
+      { target:'#quickVoiceBtn', title:'Voz del cantador', text:'Tocá acá para escuchar o silenciar la voz que canta las bolillas.' },
+      { target:'#fullScreenBtn', title:'Pantalla completa', text:'Usá este botón para aprovechar toda la pantalla del celular, tablet o TV.' },
+      { target:'#watchBtn', title:'Ver partida / TV', text:'Desde acá podés abrir o compartir el modo espectador y enviarlo a una TV compatible.' },
+      { target:'#playerChatToggle', title:'Chat público', text:'El chat queda apartado del cartón. Podés escribir, usar emojis y mandar stickers sin tapar el juego.' },
+      { target:'#settingsToggle', title:'Más ajustes', text:'La tuerca guarda volumen, tamaño de números, tema y también los controles de sonido, voz y Automarcado.' },
+      { target:'#helpBtn', title:'¿Lo saltaste?', text:'Este <strong>?</strong> queda siempre disponible. Tocándolo podés volver a abrir el tutorial cuando quieras.' }
+    ];
+    return steps.filter(step => (!step.when || step.when()) && this.guideElementVisible(document.querySelector(step.target)));
+  }
+
+  maybeAutoStartGuide(previous) {
+    if (!this.state || this.guideOpen || !['waiting','starting'].includes(this.state.status)) return;
+    const progress = this.guideProgress();
+    if (['complete','skipped'].includes(progress)) return;
+    const confirmed = Boolean(this.state.player?.selectionConfirmed && this.state.player?.nameSet);
+    if (!confirmed && !progress) {
+      if (this.guideAutoTimer) return;
+      this.guideAutoTimer = setTimeout(() => { this.guideAutoTimer = null; this.openGuide(false, 'selection'); }, 350);
+      return;
+    }
+    const justConfirmed = !Boolean(previous?.player?.selectionConfirmed) && confirmed;
+    if (confirmed && (progress === 'selection' || (!previous && !progress) || justConfirmed)) {
+      if (this.guideAutoTimer) clearTimeout(this.guideAutoTimer);
+      this.guideAutoTimer = setTimeout(() => { this.guideAutoTimer = null; this.openGuide(false, 'controls'); }, 500);
+    }
+  }
+
+  openGuide(manual = true, requestedStage = '') {
     if (!this.state) return;
     this.closeOtherPanels();
-    $('guidePresenter').src = 'assets/vero.png';
-    $('guideGreeting').textContent = 'Guía rápida';
-    $('guideIntro').textContent = 'Lo esencial para jugar sin llenar la pantalla de controles.';
-    $('guideQuestion').classList.add('hidden');
-    $('guideSteps').classList.remove('hidden');
-    $('guideOverlay').classList.add('show');
+    const stage = requestedStage || (this.state.player?.selectionConfirmed && this.state.player?.nameSet ? 'controls' : 'selection');
+    const steps = this.guideStepsFor(stage);
+    if (!steps.length) return;
+    this.guideManual = Boolean(manual);
+    this.guideStage = stage;
+    this.guideSteps = steps;
     this.guideStep = 0;
+    this.guideOpen = true;
+    $('guideOverlay').classList.add('show');
+    $('guideOverlay').setAttribute('aria-hidden', 'false');
     this.renderGuideStep();
   }
 
-  startGuide() { $('guideQuestion').classList.add('hidden'); $('guideSteps').classList.remove('hidden'); this.guideStep = 0; this.renderGuideStep(); }
-  renderGuideStep() {
-    const step = this.guideSteps[this.guideStep];
-    $('guideStepContent').innerHTML = `<div class="guideStepIcon">${step.icon}</div><div class="guideStepTitle">${esc(step.title)}</div><div class="guideStepText">${esc(step.text)}</div>`;
-    $('guidePrevBtn').disabled = this.guideStep === 0; $('guideNextBtn').textContent = this.guideStep === this.guideSteps.length - 1 ? 'TERMINAR' : 'SIGUIENTE';
+  clearGuideTarget() {
+    document.querySelectorAll('.guideTargetPulse,.guideDemoMark').forEach(el => el.classList.remove('guideTargetPulse','guideDemoMark'));
+    this.guideTarget = null;
   }
-  closeGuide() { $('guideOverlay').classList.remove('show'); }
+
+  renderGuideStep() {
+    if (!this.guideOpen) return;
+    this.clearGuideTarget();
+    let step = this.guideSteps[this.guideStep];
+    let target = step ? document.querySelector(step.target) : null;
+    if (!step || !this.guideElementVisible(target)) {
+      this.guideSteps = this.guideStepsFor(this.guideStage);
+      if (!this.guideSteps.length) return this.closeGuide(false);
+      this.guideStep = Math.min(this.guideStep, this.guideSteps.length - 1);
+      step = this.guideSteps[this.guideStep];
+      target = document.querySelector(step.target);
+    }
+    this.guideTarget = target;
+    target.classList.add(step.demo === 'mark' ? 'guideDemoMark' : 'guideTargetPulse');
+    $('guideStepContent').innerHTML = `<div class="guideStepTitle">${esc(step.title)}</div><div class="guideStepText">${step.text}</div>`;
+    $('guideProgress').textContent = `${this.guideStep + 1}/${this.guideSteps.length}`;
+    $('guidePrevBtn').disabled = this.guideStep === 0;
+    $('guideNextBtn').textContent = this.guideStep === this.guideSteps.length - 1 ? 'LISTO' : 'SIGUIENTE';
+    try { target.scrollIntoView({ behavior:'smooth', block:'center', inline:'nearest' }); } catch {}
+    clearTimeout(this.guidePositionTimer);
+    this.guidePositionTimer = setTimeout(() => this.positionGuide(), 180);
+  }
+
+  positionGuide() {
+    if (!this.guideOpen || !this.guideTarget || !this.guideElementVisible(this.guideTarget)) return;
+    const rect = this.guideTarget.getBoundingClientRect();
+    const pad = 6;
+    const spot = $('guideSpotlight');
+    spot.style.left = `${Math.max(3, rect.left - pad)}px`;
+    spot.style.top = `${Math.max(3, rect.top - pad)}px`;
+    spot.style.width = `${Math.min(innerWidth - 6, rect.width + pad * 2)}px`;
+    spot.style.height = `${Math.min(innerHeight - 6, rect.height + pad * 2)}px`;
+    const bubble = $('guideBubble');
+    const gap = 14;
+    const bubbleRect = bubble.getBoundingClientRect();
+    const roomBelow = innerHeight - rect.bottom;
+    const placeBelow = roomBelow >= bubbleRect.height + gap || rect.top < bubbleRect.height + gap;
+    bubble.classList.toggle('below', placeBelow);
+    bubble.classList.toggle('above', !placeBelow);
+    const top = placeBelow ? rect.bottom + gap : rect.top - bubbleRect.height - gap;
+    const left = Math.max(8, Math.min(innerWidth - bubbleRect.width - 8, rect.left + rect.width / 2 - bubbleRect.width / 2));
+    bubble.style.top = `${Math.max(8, Math.min(innerHeight - bubbleRect.height - 8, top))}px`;
+    bubble.style.left = `${left}px`;
+    const arrowLeft = Math.max(18, Math.min(bubbleRect.width - 30, rect.left + rect.width / 2 - left - 7));
+    bubble.style.setProperty('--guide-arrow-left', `${arrowLeft}px`);
+  }
+
+  nextGuideStep() {
+    if (!this.guideOpen) return;
+    if (this.guideStep < this.guideSteps.length - 1) {
+      this.guideStep += 1;
+      this.renderGuideStep();
+      return;
+    }
+    const shouldStartDemo = !this.guideManual && this.guideStage === 'controls' && this.state?.demo?.active && this.state?.player?.demoHuman && this.state?.status === 'waiting';
+    if (!this.guideManual) this.setGuideProgress(this.guideStage === 'selection' ? 'selection' : 'complete');
+    this.closeGuide(false);
+    if (shouldStartDemo) this.startDemoFromPlayer();
+  }
+
+  skipGuide() {
+    const shouldStartDemo = !this.guideManual && this.guideStage === 'controls' && this.state?.demo?.active && this.state?.player?.demoHuman && this.state?.status === 'waiting';
+    this.setGuideProgress('skipped');
+    this.closeGuide(false);
+    if (shouldStartDemo) this.startDemoFromPlayer();
+  }
+
+  closeGuide(markSkipped = false) {
+    if (markSkipped && !this.guideManual) this.setGuideProgress('skipped');
+    clearTimeout(this.guidePositionTimer);
+    this.clearGuideTarget();
+    this.guideOpen = false;
+    $('guideOverlay').classList.remove('show');
+    $('guideOverlay').setAttribute('aria-hidden', 'true');
+  }
 
   renderPlaying() {
     $('waitingPanel').classList.add('hidden'); $('playPanel').classList.remove('hidden');
@@ -1236,12 +1426,39 @@ class PlayerApp {
     finally { this.pendingMark.delete(key); }
   }
 
-  async setAutoMark(enabled) {
+  autoMarkVisualState() {
+    return this.autoMarkDesired == null ? Boolean(this.state?.player?.autoMark) : Boolean(this.autoMarkDesired);
+  }
+
+  queueAutoMark(enabled) {
     if (!this.state?.active) return;
-    $('autoMarkToggle').disabled = true;
-    try { this.applyState(await this.request('/api/player/automark', { method:'POST', body:JSON.stringify({ enabled }) })); }
-    catch (error) { this.showMessage(error.message, 'error'); }
-    finally { $('autoMarkToggle').disabled = false; }
+    if (this.state.player?.autoMarkForced || this.state.markingPolicy?.automaticRequired) {
+      this.showMessage(this.state.markingPolicy?.reason || 'El automarcado es obligatorio en esta sala.', 'notice');
+      return;
+    }
+    this.autoMarkDesired = Boolean(enabled);
+    this.updateQuickTools();
+    this.syncAutoMark();
+  }
+
+  async syncAutoMark() {
+    if (this.autoMarkSyncing || this.autoMarkDesired == null) return;
+    this.autoMarkSyncing = true;
+    try {
+      while (this.autoMarkDesired != null && Boolean(this.state?.player?.autoMark) !== Boolean(this.autoMarkDesired)) {
+        const requested = Boolean(this.autoMarkDesired);
+        const response = await this.request('/api/player/automark', { method:'POST', body:JSON.stringify({ enabled:requested }) });
+        this.applyState(response);
+        if (this.autoMarkDesired === requested && Boolean(this.state?.player?.autoMark) === requested) this.autoMarkDesired = null;
+      }
+    } catch (error) {
+      this.autoMarkDesired = null;
+      this.showMessage(error.message, 'error');
+    } finally {
+      this.autoMarkSyncing = false;
+      this.updateQuickTools();
+      if (this.autoMarkDesired != null && Boolean(this.state?.player?.autoMark) !== Boolean(this.autoMarkDesired)) this.syncAutoMark();
+    }
   }
 
   async claim(type) {
@@ -1411,7 +1628,20 @@ class PlayerApp {
     update('soundToggle', this.audioEnabled, 'ACTIVADOS', 'DESACTIVADOS');
     update('voiceToggle', this.voiceEnabled, 'ACTIVADA', 'DESACTIVADA');
     update('numberSizeToggle', this.largeNumbers, 'GRANDES', 'NORMAL');
-    update('autoMarkToggle', Boolean(this.state?.player?.autoMark), 'ACTIVADO', 'DESACTIVADO');
+    const autoVisual = this.autoMarkVisualState();
+    update('autoMarkToggle', autoVisual, 'ACTIVADO', 'DESACTIVADO');
+    const autoQuick = $('quickAutoMarkBtn');
+    if (autoQuick) {
+      autoQuick.classList.toggle('active', autoVisual);
+      autoQuick.setAttribute('aria-pressed', String(autoVisual));
+      autoQuick.disabled = Boolean(this.state?.player?.autoMarkForced || this.state?.markingPolicy?.automaticRequired);
+      $('quickAutoMarkState').textContent = autoVisual ? 'ON' : 'OFF';
+      autoQuick.title = this.state?.markingPolicy?.automaticRequired ? this.state.markingPolicy.reason : `${autoVisual ? 'Desactivar' : 'Activar'} marcado automático`;
+    }
+    const quickSound = $('quickSoundBtn');
+    if (quickSound) { quickSound.textContent = this.audioEnabled ? '🔊' : '🔇'; quickSound.classList.toggle('active', this.audioEnabled); quickSound.setAttribute('aria-label', this.audioEnabled ? 'Desactivar sonidos' : 'Activar sonidos'); }
+    const quickVoice = $('quickVoiceBtn');
+    if (quickVoice) { quickVoice.textContent = this.voiceEnabled ? '🎙' : '🔕'; quickVoice.classList.toggle('active', this.voiceEnabled); quickVoice.setAttribute('aria-label', this.voiceEnabled ? 'Desactivar voz' : 'Activar voz'); }
     $('alertsToggle')?.classList.toggle('active', this.alertsEnabled);
     this.setVolume(this.audioVolume, false);
   }
@@ -1552,7 +1782,8 @@ class PlayerApp {
   toggleTheme() { this.theme=this.theme==='day'?'night':'day'; localStorage.setItem('bingoPlayerTheme',this.theme); this.applyTheme(); }
   applyTheme() {
     document.documentElement.dataset.theme=this.theme;
-    $('themeToggle').textContent=this.theme==='day'?'☾':'☀';
+    $('themeToggle').textContent=this.theme==='day'?'CLARO':'OSCURO';
+    $('themeToggle').classList.toggle('active', this.theme === 'day');
     $('themeToggle').title=this.theme==='day'?'Activar modo nocturno':'Activar modo claro';
   }
 

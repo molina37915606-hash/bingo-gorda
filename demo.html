@@ -10,11 +10,11 @@
 <body>
 <main class="shell">
 <section class="brand">
-  <div><span class="tag">DEMOSTRACIÓN SIN VALIDEZ OFICIAL</span><h1>Jugá una partida real y rápida</h1><p>Entrás directamente a tus cartones, competís contra jugadores IA y el bolillero funciona automáticamente desde el servidor.</p></div>
+  <div><span class="tag">DEMOSTRACIÓN SIN VALIDEZ OFICIAL</span><h1>Jugá una partida real y rápida</h1><p>Entrás primero a la sala de espera, aprendés a usarla con el tutorial, elegís tus cartones y después competís contra jugadores IA en una partida automática.</p></div>
   <img src="/assets/logo.png" alt="El Bingo de la Gorda">
 </section>
 <form class="form" id="demoForm">
-  <div><h2>Prepará tu partida</h2><p>Todos reciben cartones nuevos y aleatorios. Zoe, Mateo y Owen usan dos cartones cada uno; vos elegís entre uno y cuatro.</p></div>
+  <div><h2>Prepará tu partida</h2><p>La demo reproduce el recorrido real: sala de espera, nombre, minijuegos, elección de cartones, chat y pantalla de juego. Las IA usan dos cartones cada una.</p></div>
 
   <div class="field"><span>Modo de juego</span><div class="choices">
     <div class="choice"><input id="mode75" name="mode" type="radio" value="75" checked><label for="mode75">75 bolas</label></div>
@@ -26,7 +26,7 @@
     <div class="choice"><input id="ai3" name="aiCount" type="radio" value="3"><label for="ai3">3 rivales</label></div>
   </div></div>
 
-  <div class="field"><span>Tus cartones</span><div class="choices four">
+  <div class="field"><span>Cartones que podrás elegir</span><div class="choices four">
     <div class="choice"><input id="cards1" name="playerCardCount" type="radio" value="1"><label for="cards1">1</label></div>
     <div class="choice"><input id="cards2" name="playerCardCount" type="radio" value="2" checked><label for="cards2">2</label></div>
     <div class="choice"><input id="cards3" name="playerCardCount" type="radio" value="3"><label for="cards3">3</label></div>
@@ -41,9 +41,9 @@
   </div></div>
 
   <div class="participants" id="participants"></div>
-  <div class="notice">El automarcado estará activado. Cuando tu cartón complete un premio, vos debés tocar el botón de reclamo antes que las IA.</div>
+  <div class="notice">En la sala vas a elegir tus cartones y aprender a activar o desactivar Automarcado. Los premios siempre deben reclamarse: gana el primer reclamo válido.</div>
   <div id="error"></div>
-  <button class="start" id="start" type="submit">CREAR Y COMENZAR PARTIDA</button>
+  <button class="start" id="start" type="submit">CREAR DEMO Y ENTRAR A LA SALA</button>
   <div class="fine">La sala es temporal, no usa dinero real y se elimina automáticamente. Cada partida genera cartones y una secuencia de bolillas diferentes.</div>
 </form>
 </main>
@@ -61,7 +61,7 @@ function renderParticipants(){
 }
 document.querySelectorAll('input').forEach(input=>input.addEventListener('change',renderParticipants));document.querySelectorAll('input[name="aiCount"]').forEach(input=>input.addEventListener('change',()=>{demoNameOrder=shuffledNames();renderParticipants()}));renderParticipants();
 form.addEventListener('submit',async event=>{
-  event.preventDefault();error.innerHTML='';button.disabled=true;button.textContent='GENERANDO CARTONES…';
+  event.preventDefault();error.innerHTML='';button.disabled=true;button.textContent='PREPARANDO SALA…';
   try{
     const response=await fetch('/api/demo/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:value('mode'),aiCount:value('aiCount'),aiNames:demoNameOrder.slice(0,value('aiCount')),playerCardCount:value('playerCardCount'),autoSeconds:value('autoSeconds'),sound:true})});
     const data=await response.json();
@@ -69,7 +69,7 @@ form.addEventListener('submit',async event=>{
     localStorage.removeItem('bingoOnlineToken');
     localStorage.removeItem('bingoOnlineCard');
     location.href=data.playerUrl||`/jugador?sala=${encodeURIComponent(data.roomCode)}&codigo=${encodeURIComponent(data.playerCode)}`;
-  }catch(e){error.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;button.disabled=false;button.textContent='CREAR Y COMENZAR PARTIDA';}
+  }catch(e){error.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;button.disabled=false;button.textContent='CREAR DEMO Y ENTRAR A LA SALA';}
 });
 </script>
 </body>

@@ -1,6 +1,6 @@
 {
   "name": "bingo-de-la-gorda",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "private": true,
   "description": "BINGO DE LA GORDA: bingo de 75 y 90 bolas con administración, jugadores, comunidad, modo espectador, minijuegos y actas auditables.",
   "engines": {
@@ -8,6 +8,6 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/structure-audit.js && node tests/core-smoke.js && node tests/community-ui.js && node tests/online-flows.js && node tests/urgent-regressions.js && node tests/waiting-games-ui.js && node tests/animated-stickers.js && node tests/admin-simulation.js && node tests/claim-auto-resume.js && node tests/final-showcase.js && node tests/simulation-stress.js && node tests/admin-live-ui.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
+    "test": "node tests/player-tutorial-ui.js && node tests/demo-experience.js && node tests/structure-audit.js && node tests/core-smoke.js && node tests/community-ui.js && node tests/online-flows.js && node tests/urgent-regressions.js && node tests/waiting-games-ui.js && node tests/animated-stickers.js && node tests/admin-simulation.js && node tests/claim-auto-resume.js && node tests/final-showcase.js && node tests/simulation-stress.js && node tests/admin-live-ui.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
   }
 }

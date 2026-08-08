@@ -2581,11 +2581,17 @@ const SIMULATED_CHAT_STICKERS = ['gorda-risa','gorda-festejo','gorda-ay-no','cor
 
 function scheduleSimulatedAiChat() {
   if (!(currentWorkspace().isDemo || state.roomSettings?.adminSimulation) || !state.roomSettings?.simulatedChat || state.chat?.enabled === false || state.chat?.locked) return 0;
+  const workspace = currentWorkspace();
+  if (currentWorkspace().isDemo && !TEST_MODE) {
+    const now = Date.now();
+    if (workspace.lastDemoChatAt && now - workspace.lastDemoChatAt < 9000) return 0;
+    if (crypto.randomInt(0, 100) >= 18) return 0;
+    workspace.lastDemoChatAt = now;
+  }
   const connected = connectedPlayerIds();
   const players = state.players.filter(player => player.virtual && !connected.has(player.id));
   if (!players.length) return 0;
-  const workspace = currentWorkspace();
-  const maxBurst = Math.min(4, Math.max(1, Math.ceil(players.length / 20)));
+  const maxBurst = currentWorkspace().isDemo ? 1 : Math.min(4, Math.max(1, Math.ceil(players.length / 20)));
   const messageCount = 1 + crypto.randomInt(0, maxBurst);
   const chosen = [];
   const pool = [...players];
@@ -3421,6 +3427,19 @@ function startDemoFromPlayer(player) {
   if (!player.nameSet || !player.selectionConfirmed || !(player.cardIds || []).length) throw new Error('Primero confirmá tu nombre y tus cartones.');
   startRoom();
   return playerPayload(player);
+}
+
+function restartDemoFromPlayer(player) {
+  if (!currentWorkspace().isDemo || !player?.demoHuman) throw new Error('Esta acción solo está disponible en la demostración.');
+  const demo = state.demo || {};
+  return createDemoRoom({
+    mode: Number(demo.mode || state.game?.mode) === 90 ? 90 : 75,
+    aiCount: Math.max(1, Math.min(3, Number(demo.aiCount) || (state.players.filter(item => item.virtual).length || 2))),
+    aiNames: Array.isArray(demo.aiNames) ? demo.aiNames : state.players.filter(item => item.virtual).map(item => item.name),
+    playerCardCount: Math.max(1, Math.min(4, Number(demo.playerCardCount || player.allowedCardCount) || 2)),
+    autoSeconds: Number(demo.autoSeconds || state.game?.autoSeconds) || 4,
+    sound: state.roomSettings?.playerAudioDefault !== false
+  });
 }
 
 function requestDeviceTransfer(payload) {
@@ -4918,6 +4937,7 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/name' && req.method === 'POST') return sendJson(res, 200, setPlayerName(player, await readJson(req)));
         if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
         if (url.pathname === '/api/player/demo/start' && req.method === 'POST') return sendJson(res, 200, startDemoFromPlayer(player));
+        if (url.pathname === '/api/player/demo/reset' && req.method === 'POST') return sendJson(res, 200, restartDemoFromPlayer(player));
         if (url.pathname === '/api/player/release' && req.method === 'POST') return sendJson(res, 200, releaseOwnSelection(player));
         if (url.pathname === '/api/player/mark' && req.method === 'POST') return sendJson(res, 200, markNumber(player, await readJson(req)));
         if (url.pathname === '/api/player/automark' && req.method === 'POST') return sendJson(res, 200, setAutoMark(player, await readJson(req)));

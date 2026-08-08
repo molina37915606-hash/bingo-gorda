@@ -21,3 +21,7 @@ Cobertura principal:
 - Respaldos, restauración, PDF y CSV.
 - Transmisión y prueba de escala con 60 jugadores y 240 cartones.
 - Verificación de que scripts, rutas y recursos retirados no vuelvan a servirse.
+
+V2.4 · PRUEBA DE JUGADOR APURADO
+- `node tests/player-rush-regressions.js`
+- Verifica alternancia rápida de Automarcado, protección de doble reclamo, reinicio de demo, memoria del tutorial, conexión visible y controles accesibles.

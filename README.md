@@ -27,6 +27,11 @@ Aplicación web para partidas de bingo de 75 y 90 bolas con administración, jug
 - Sello SHA-256 público del bolillero, con revelación y comprobación del orden al finalizar.
 - Wake Lock en jugador y modo espectador para mantener la pantalla activa cuando el navegador lo soporta.
 - Selector de cartones optimizado para números más grandes y mejor lectura en pantallas pequeñas.
+- Tutorial contextual con memoria de paso, adaptación táctil/PC/TV y acceso permanente desde ?.
+- Indicador independiente de calidad de conexión y modo concentración durante el sorteo.
+- Reclamos con feedback inmediato, bloqueo de doble toque y barra flotante cuando hay un premio listo.
+- Automarcado rápido con aviso de cuántos números atrasados recuperó.
+- Demo reiniciable desde la sala para repetir el recorrido completo.
 - Acceso por QR desde la sala de administración.
 - Recuperación del sorteo automático después de reiniciar el servidor.
 - Cada partida crea automáticamente su modo espectador público.

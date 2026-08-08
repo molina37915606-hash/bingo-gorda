@@ -1,3 +1,17 @@
+VERSIÓN 2.4 · JUGADOR MÁS RÁPIDO, TUTORIAL CON MEMORIA Y MODO CONCENTRACIÓN
+- Reclamos con respuesta visual inmediata y protección local contra doble toque; el servidor sigue rechazando duplicados.
+- Indicador de conexión separado del estado de la partida: verde, amarillo y rojo con reconexión automática.
+- El tutorial recuerda etapa y paso exactos; el botón ? permite continuar donde se dejó o reiniciar.
+- Tutorial adaptado a táctil, PC y TV, con instrucciones de gesto/clic según el dispositivo.
+- Automarcado muestra cuántos números oficiales atrasados recuperó al activarse y tolera alternancia rápida ON/OFF.
+- Cambio de cartón circular por gesto y flechas de teclado, con feedback breve.
+- Última bolilla con animación corta de llegada y prioridad visual reforzada.
+- Modo concentración durante el sorteo: herramientas secundarias y chat bajan de protagonismo sin desaparecer.
+- Si aparece un premio listo para reclamar, la barra de reclamos se vuelve flotante para evitar perder tiempo.
+- Números grandes activados por defecto en dispositivos nuevos, marcas accesibles con check y estado aria-pressed, y foco de teclado visible.
+- Demo reiniciable desde la propia pantalla; vuelve a crear una sala limpia desde nombre, minijuegos y elección de cartones.
+- Chat IA de demo menos invasivo: mensajes espaciados y sin ráfagas continuas.
+- Nueva prueba de “jugador apurado”: alternancia rápida de AUTO, doble reclamo y reinicio de demo.
 
 VERSIÓN 2.3 · DEMO COMPLETA Y TUTORIAL DE SALA DE ESPERA
 - La demostración ahora entra primero a una sala de espera real: nombre, minijuegos y elección de cartones antes del sorteo.

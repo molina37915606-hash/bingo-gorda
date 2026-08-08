@@ -19,6 +19,8 @@ class PlayerApp {
     this.selectedOffers = new Set();
     this.pendingReservation = new Set();
     this.pendingMark = new Set();
+    this.pendingClaims = new Set();
+    this.claimClickGuard = new Map();
     this.voices = [];
     this.phrases = Scripts.PhraseEngine ? new Scripts.PhraseEngine() : { ball:(id,n)=>`Número ${n}`, event:()=>'' };
     this.audioPreferenceLoaded = localStorage.getItem('bingoPlayerSound') !== null;
@@ -26,7 +28,7 @@ class PlayerApp {
     this.voiceEnabled = localStorage.getItem('bingoPlayerVoice') !== 'false';
     this.alertsEnabled = localStorage.getItem('bingoPlayerAlerts') !== 'false';
     this.audioVolume = Math.max(0, Math.min(1, Number(localStorage.getItem('bingoPlayerVolume') ?? .92)));
-    this.largeNumbers = localStorage.getItem('bingoPlayerLargeNumbers') === 'true';
+    this.largeNumbers = localStorage.getItem('bingoPlayerLargeNumbers') === null ? true : localStorage.getItem('bingoPlayerLargeNumbers') === 'true';
     this.lastPublicClaimKey = '';
     this.lastAdminMessageId = '';
     this.seenChatMessageIds = new Set();
@@ -54,7 +56,9 @@ class PlayerApp {
     this.guideTarget = null;
     this.guidePositionTimer = null;
     this.guideAutoTimer = null;
+    this.guideResumeStep = 0;
     this.autoMarkDesired = null;
+    this.autoMarkFeedback = null;
     this.autoMarkSyncing = false;
     this.finalOverlayDismissedFor = '';
     this.roomClosedShown = false;
@@ -72,6 +76,11 @@ class PlayerApp {
     this.ticketTouchStartX = null;
     this.wakeLock = null;
     this.systemClockTimer = null;
+    this.networkTimer = null;
+    this.networkState = 'connecting';
+    this.lastNetworkSuccessAt = 0;
+    this.lastDrawCount = 0;
+    this.lastBallAnimationTimer = null;
   }
 
   makeDeviceId() {
@@ -82,6 +91,9 @@ class PlayerApp {
     this.injectDemoUi();
     this.injectChatUi();
     this.systemClockTimer = setInterval(() => this.renderSystemTrust(), 1000);
+    this.networkTimer = setInterval(() => this.refreshNetworkIndicator(), 1800);
+    window.addEventListener('online', () => { this.setNetworkState('connecting'); this.scheduleReconnectRefresh(true); });
+    window.addEventListener('offline', () => this.setNetworkState('bad'));
     document.addEventListener('visibilitychange', () => this.updateWakeLock());
     window.addEventListener('pagehide', () => this.releaseWakeLock());
     window.addEventListener('resize', () => this.guideOpen && this.positionGuide());
@@ -110,7 +122,11 @@ class PlayerApp {
     $('numberSizeToggle').onclick = () => this.setLargeNumbers(!this.largeNumbers);
     $('autoMarkToggle').onclick = () => this.queueAutoMark(!this.autoMarkVisualState());
     $('quickAutoMarkBtn').onclick = () => this.queueAutoMark(!this.autoMarkVisualState());
-    $('helpBtn').onclick = () => this.openGuide(true);
+    $('helpBtn').onclick = () => this.openTutorialChoice();
+    $('tutorialContinueBtn').onclick = () => this.continueGuideFromMemory();
+    $('tutorialRestartBtn').onclick = () => this.restartGuide();
+    $('tutorialChoiceClose').onclick = () => this.closeModal('tutorialChoiceOverlay');
+    $('tutorialChoiceOverlay').addEventListener('click', event => { if (event.target === $('tutorialChoiceOverlay')) this.closeModal('tutorialChoiceOverlay'); });
     $('closeGuideBtn').onclick = () => this.closeGuide(true);
     $('guideSkipBtn').onclick = () => this.skipGuide();
     $('guidePrevBtn').onclick = () => { this.guideStep = Math.max(0, this.guideStep - 1); this.renderGuideStep(); };
@@ -148,7 +164,12 @@ class PlayerApp {
     $('ticketPanel').addEventListener('touchstart', event => this.beginTicketSwipe(event), { passive:true });
     $('ticketPanel').addEventListener('touchend', event => this.endTicketSwipe(event), { passive:true });
     document.addEventListener('keydown', event => {
+      if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && this.state?.player?.cards?.length > 1 && !this.guideOpen && !$('settingsOverlay').classList.contains('show') && !$('playerChatPanel')?.classList.contains('show')) {
+        this.switchCard(event.key === 'ArrowRight' ? 1 : -1, 'keyboard');
+        return;
+      }
       if (event.key !== 'Escape') return;
+      if ($('tutorialChoiceOverlay').classList.contains('show')) return this.closeModal('tutorialChoiceOverlay');
       if ($('resultsViewerOverlay').classList.contains('show')) return this.closeResultsViewer();
       if ($('settingsOverlay').classList.contains('show')) return this.closeSettings();
       if ($('infoDrawer').classList.contains('show')) return this.closeInfoDrawer();
@@ -168,6 +189,7 @@ class PlayerApp {
     this.setLargeNumbers(this.largeNumbers, false);
     this.setVolume(this.audioVolume, false);
     this.updateQuickTools();
+    this.setNetworkState(navigator.onLine === false ? 'bad' : 'connecting');
     await this.loadPublicInfo();
     this.refreshVoices();
     if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => this.refreshVoices();
@@ -218,13 +240,14 @@ class PlayerApp {
     if ($('demoPlayerBanner')) return;
     const style = document.createElement('style');
     style.textContent = `
-      .demoPlayerBanner{display:none;margin:0 0 14px;padding:12px 14px;border-radius:15px;background:linear-gradient(135deg,#4b1764,#7e1f73);border:1px solid #d79de6;color:#fff;box-shadow:0 12px 34px #0005}.demoPlayerBanner.show{display:grid;gap:9px}.demoPlayerBannerTop{display:flex;justify-content:space-between;align-items:center;gap:12px}.demoPlayerBanner strong{font-size:14px;letter-spacing:.04em}.demoPlayerBanner small{color:#f2dff5}.demoParticipants{display:flex;flex-wrap:wrap;gap:7px}.demoParticipant{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;background:#ffffff14;border:1px solid #ffffff22;font-size:12px;font-weight:800}.demoParticipant.you{background:#ffca2f;color:#241805;border-color:#ffdf78}.demoAiTag{font-size:9px;padding:2px 5px;border-radius:999px;background:#17243a;color:#d9ebff}html[data-theme="day"] .demoPlayerBanner{background:linear-gradient(135deg,#efe1f3,#f6e8f2);color:#32153d;border-color:#b98ac4}html[data-theme="day"] .demoPlayerBanner small{color:#6f4e75}html[data-theme="day"] .demoParticipant{background:#fff8;border-color:#80588a33}html[data-theme="day"] .demoParticipant.you{background:#ffca2f;color:#241805}
+      .demoPlayerBanner{display:none;margin:0 0 14px;padding:12px 14px;border-radius:15px;background:linear-gradient(135deg,#4b1764,#7e1f73);border:1px solid #d79de6;color:#fff;box-shadow:0 12px 34px #0005}.demoPlayerBanner.show{display:grid;gap:9px}.demoPlayerBannerTop{display:flex;justify-content:space-between;align-items:center;gap:12px}.demoPlayerBanner strong{font-size:14px;letter-spacing:.04em}.demoPlayerBanner small{color:#f2dff5}.demoParticipants{display:flex;flex-wrap:wrap;gap:7px}.demoParticipant{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;background:#ffffff14;border:1px solid #ffffff22;font-size:12px;font-weight:800}.demoParticipant.you{background:#ffca2f;color:#241805;border-color:#ffdf78}.demoPlayerActions{display:flex;gap:7px;align-items:center}.demoAiTag{font-size:9px;padding:2px 5px;border-radius:999px;background:#17243a;color:#d9ebff}html[data-theme="day"] .demoPlayerBanner{background:linear-gradient(135deg,#efe1f3,#f6e8f2);color:#32153d;border-color:#b98ac4}html[data-theme="day"] .demoPlayerBanner small{color:#6f4e75}html[data-theme="day"] .demoParticipant{background:#fff8;border-color:#80588a33}html[data-theme="day"] .demoParticipant.you{background:#ffca2f;color:#241805}
     `;
     document.head.appendChild(style);
     const host = $('gameView') || document.body;
     const banner = document.createElement('section');
     banner.id = 'demoPlayerBanner'; banner.className = 'demoPlayerBanner';
-    banner.innerHTML = `<div class="demoPlayerBannerTop"><div><strong>DEMOSTRACIÓN · SIN VALIDEZ OFICIAL</strong><br><small id="demoPlayerSummary"></small></div><span id="demoPlayerSpeed"></span></div><div id="demoParticipants" class="demoParticipants"></div>`;
+    banner.innerHTML = `<div class="demoPlayerBannerTop"><div><strong>DEMOSTRACIÓN · SIN VALIDEZ OFICIAL</strong><br><small id="demoPlayerSummary"></small></div><div class="demoPlayerActions"><span id="demoPlayerSpeed"></span><button id="demoResetBtn" class="demoResetButton" type="button">REINICIAR DEMO</button></div></div><div id="demoParticipants" class="demoParticipants"></div>`;
+    $('demoResetBtn').onclick = () => this.restartDemo();
     host.prepend(banner);
   }
 
@@ -245,7 +268,7 @@ class PlayerApp {
     if ($('playerChatDock')) return;
     const style = document.createElement('style');
     style.textContent = `
-      .playerChatDock{position:fixed;right:9px;bottom:9px;z-index:105}.playerChatToggle{min-height:44px;border:0;border-radius:999px;padding:10px 14px;background:#5a167b;color:#fff;font-weight:1000;box-shadow:0 10px 35px #0008}.playerChatPanel{display:none;position:fixed;left:50%;bottom:8px;transform:translateX(-50%);width:min(540px,calc(100vw - 16px));height:min(620px,80dvh);background:var(--panel);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 25px 70px #000b}.playerChatPanel.show{display:grid;grid-template-rows:auto 1fr auto auto}.playerChatPanel header{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;background:linear-gradient(135deg,#5a167b,#7b2494);color:#fff}.playerChatPanel header button{border:0;background:transparent;color:#fff;font-size:24px}.playerChatMessages{overflow:auto;padding:10px;display:grid;align-content:start;gap:8px;background:var(--panel3)}.playerChatMessage{padding:9px 10px;border-radius:11px;background:var(--panel2);color:var(--text);border:1px solid var(--border)}.playerChatMessage.admin{background:#3b2454;color:#fff;border-color:#9867b2}.playerChatMessage small{display:flex;justify-content:space-between;gap:8px;color:var(--muted);margin-bottom:4px}.playerChatMessage.admin small{color:#e3cdeb}.playerChatMessage p{margin:0;word-break:break-word}.playerChatMessage.stickerMessage{background:transparent;border-color:transparent;padding:5px 8px}.playerChatMessage.stickerMessage small{margin-bottom:1px}.playerChatMessage.stickerMessage p{display:flex;align-items:center;min-height:104px}.playerChatComposer{display:grid;grid-template-columns:46px 46px minmax(0,1fr) auto;align-items:end;border-top:1px solid var(--border);background:var(--panel)}.playerChatToolButton{width:46px;height:52px;border:0;border-right:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:22px;font-weight:900;cursor:pointer}.playerChatToolButton.active{background:#5a167b;color:#fff}.playerChatPanel textarea{resize:none;min-height:52px;max-height:94px;padding:10px;border:0;background:var(--panel);color:var(--text);outline:none}.playerChatSend{height:52px;border:0;padding:0 14px;background:#ffca2f;color:#1b1405;font-weight:1000}.playerChatNotice{padding:8px 10px;background:#3f2c0a;color:#ffe39a;font-size:12px}.playerPicker{display:none;padding:9px;border-top:1px solid var(--border);background:var(--panel2);max-height:260px;overflow:auto}.playerPicker.show{display:grid}.playerEmojiMenu{grid-template-columns:repeat(5,1fr);gap:5px}.playerEmojiMenu button{height:48px;border:1px solid var(--border);border-radius:11px;background:var(--panel3);color:var(--text);font-size:25px;cursor:pointer}.playerEmojiMenu button:active{transform:scale(.92)}.playerStickerMenu{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.playerStickerMenu .premiumStickerButton{min-height:88px}.playerStickerHint{grid-column:1/-1;color:var(--muted);font-size:11px;line-height:1.35;padding:2px 3px 5px}.playerChatBadge:not(:empty){display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:999px;background:#e83e87;margin-left:5px}.playerChatToggle:focus-visible,.playerPicker button:focus-visible,.playerChatToolButton:focus-visible{outline:3px solid #ffca2f;outline-offset:2px}
+      .playerChatDock{position:fixed;right:9px;bottom:9px;z-index:105}.playerChatToggle{min-height:44px;border:0;border-radius:999px;padding:10px 14px;background:#5a167b;color:#fff;font-weight:1000;box-shadow:0 10px 35px #0008}.playerChatPanel{display:none;position:fixed;left:50%;bottom:8px;transform:translateX(-50%);width:min(540px,calc(100vw - 16px));height:min(620px,80dvh);background:var(--panel);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 25px 70px #000b}.playerChatPanel.show{display:grid;grid-template-rows:auto 1fr auto auto}.playerChatPanel header{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;background:linear-gradient(135deg,#5a167b,#7b2494);color:#fff}.playerChatPanel header button{border:0;background:transparent;color:#fff;font-size:24px}.playerChatMessages{overflow:auto;padding:10px;display:grid;align-content:start;gap:8px;background:var(--panel3)}.playerChatMessage{padding:9px 10px;border-radius:11px;background:var(--panel2);color:var(--text);border:1px solid var(--border)}.playerChatMessage.admin{background:#3b2454;color:#fff;border-color:#9867b2}.playerChatMessage small{display:flex;justify-content:space-between;gap:8px;color:var(--muted);margin-bottom:4px}.playerChatMessage.admin small{color:#e3cdeb}.playerChatMessage p{margin:0;word-break:break-word}.playerChatMessage.stickerMessage{background:transparent;border-color:transparent;padding:5px 8px}.playerChatMessage.stickerMessage small{margin-bottom:1px}.playerChatMessage.stickerMessage p{display:flex;align-items:center;min-height:104px}.playerChatComposer{display:grid;grid-template-columns:46px 46px minmax(0,1fr) auto;align-items:end;border-top:1px solid var(--border);background:var(--panel)}.playerChatToolButton{width:46px;height:52px;border:0;border-right:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:22px;font-weight:900;cursor:pointer}.playerChatToolButton.active{background:#5a167b;color:#fff}.playerChatPanel textarea{resize:none;min-height:52px;max-height:94px;padding:10px;border:0;background:var(--panel);color:var(--text);outline:none}.playerChatSend{height:52px;border:0;padding:0 14px;background:#ffca2f;color:#1b1405;font-weight:1000}.playerChatNotice{padding:8px 10px;background:#3f2c0a;color:#ffe39a;font-size:12px}.playerPicker{display:none;padding:9px;border-top:1px solid var(--border);background:var(--panel2);max-height:260px;overflow:auto}.playerPicker.show{display:grid}.playerEmojiMenu{grid-template-columns:repeat(5,1fr);gap:5px}.playerEmojiMenu button{height:48px;border:1px solid var(--border);border-radius:11px;background:var(--panel3);color:var(--text);font-size:25px;cursor:pointer}.playerEmojiMenu button:active{transform:scale(.92)}.playerStickerMenu{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.playerStickerMenu .premiumStickerButton{min-height:88px}.playerStickerHint{grid-column:1/-1;color:var(--muted);font-size:11px;line-height:1.35;padding:2px 3px 5px}.playerChatBadge:not(:empty){display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:999px;background:#e83e87;margin-left:5px}.playerChatToggle:focus-visible,.playerPicker button:focus-visible,.playerChatToolButton:focus-visible{outline:3px solid #ffca2f;outline-offset:2px}.concentrationMode .playerChatDock{opacity:.68;transition:opacity .15s}.concentrationMode .playerChatDock:hover,.concentrationMode .playerChatDock:focus-within{opacity:1}
       @media(max-width:620px){.playerChatDock{right:7px;bottom:7px}.playerChatPanel{bottom:0;width:100%;height:min(690px,84dvh);border-radius:20px 20px 0 0}.playerEmojiMenu{grid-template-columns:repeat(5,1fr)}.playerStickerMenu{grid-template-columns:repeat(3,minmax(0,1fr))}.playerStickerMenu .premiumStickerButton{min-height:82px}.playerChatComposer{grid-template-columns:44px 44px minmax(0,1fr) auto}.playerChatToolButton{width:44px}}
       @media(min-width:1100px){.playerLogged .playerChatDock{position:fixed;right:10px;top:10px;bottom:10px;width:340px;z-index:60}.playerLogged .playerChatToggle{display:none}.playerLogged .playerChatPanel,.playerLogged .playerChatPanel.show{display:grid;position:static;transform:none;width:100%;height:100%;grid-template-rows:auto minmax(0,1fr) auto auto auto auto;border-radius:18px}.playerLogged .playerChatPanel header button{display:none}.playerLogged .playerChatMessages{min-height:0}.playerLogged .playerChatPanel textarea{min-width:0}.playerLogged .playerChatSend{padding:0 10px;font-size:11px}}
     `;
@@ -558,14 +581,25 @@ class PlayerApp {
     const delta = touch.clientX - this.ticketTouchStartX;
     this.ticketTouchStartX = null;
     if (Math.abs(delta) < 55) return;
+    this.switchCard(delta < 0 ? 1 : -1, 'swipe');
+  }
+
+  switchCard(direction = 1, source = 'control') {
     const cards = this.state?.player?.cards || [];
     const index = cards.findIndex(card => card.id === this.activeCardId);
-    if (index < 0 || cards.length < 2) return;
-    const next = delta < 0 ? Math.min(cards.length - 1, index + 1) : Math.max(0, index - 1);
-    if (next === index) return;
+    if (index < 0 || cards.length < 2) return false;
+    const next = (index + (direction >= 0 ? 1 : -1) + cards.length) % cards.length;
     this.activeCardId = cards[next].id;
     localStorage.setItem('bingoOnlineCard', this.activeCardId);
     this.renderTabs(); this.renderTicket();
+    const active = $('ticketPanel')?.querySelector('.ticketInstance.active');
+    if (active) {
+      active.style.setProperty('--switch-dir', direction >= 0 ? '18px' : '-18px');
+      active.classList.add('cardSwitchFlash');
+      setTimeout(() => active.classList.remove('cardSwitchFlash'), 240);
+    }
+    if (source === 'keyboard') this.showMessage(`Cartón ${next + 1} de ${cards.length}.`, 'notice', 1800);
+    return true;
   }
 
   async loadPublicInfo() {
@@ -579,13 +613,20 @@ class PlayerApp {
   }
 
   async request(url, options = {}) {
-    const response = await fetch(url, {
-      ...options,
-      headers: { 'Content-Type':'application/json', ...(this.token ? { 'X-Player-Token':this.token } : {}), ...(options.headers || {}) }
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) { const error = new Error(data.error || data.message || 'No se pudo completar la acción.'); error.status = response.status; error.data = data; throw error; }
-    return data;
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: { 'Content-Type':'application/json', ...(this.token ? { 'X-Player-Token':this.token } : {}), ...(options.headers || {}) }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) { const error = new Error(data.error || data.message || 'No se pudo completar la acción.'); error.status = response.status; error.data = data; throw error; }
+      this.lastNetworkSuccessAt = Date.now();
+      this.setNetworkState('good');
+      return data;
+    } catch (error) {
+      if (!error?.status) this.setNetworkState(navigator.onLine === false ? 'bad' : 'warn');
+      throw error;
+    }
   }
 
   async login(codeOverride = '', roomOverride = '') {
@@ -670,13 +711,42 @@ class PlayerApp {
     clearTimeout(this.transferPollTimer); this.pendingTransfer = null; $('transferOverlay').classList.remove('show'); $('requestTransferBtn').disabled = false;
   }
 
+  setNetworkState(level = 'connecting') {
+    this.networkState = level;
+    const indicator = $('networkIndicator');
+    const label = $('networkLabel');
+    if (!indicator || !label) return;
+    indicator.className = `networkIndicator ${level}`;
+    const text = level === 'good' ? 'Internet OK' : level === 'warn' ? 'Inestable' : level === 'bad' ? 'Sin Internet' : 'Conectando';
+    label.textContent = text;
+    indicator.title = level === 'good' ? 'Conexión estable con la sala' : level === 'warn' ? 'La conexión está inestable. Evitá cerrar la página.' : level === 'bad' ? 'Sin conexión. El juego intentará reconectarse.' : 'Conectando con la sala';
+    indicator.setAttribute('aria-label', indicator.title);
+  }
+
+  refreshNetworkIndicator() {
+    if (navigator.onLine === false) return this.setNetworkState('bad');
+    if (!this.token || !this.state?.active) return this.setNetworkState('connecting');
+    if (this.events?.readyState === EventSource.OPEN) return this.setNetworkState('good');
+    if (this.events?.readyState === EventSource.CONNECTING) return this.setNetworkState('warn');
+    if (this.lastNetworkSuccessAt && Date.now() - this.lastNetworkSuccessAt < 10000) return this.setNetworkState('warn');
+    this.setNetworkState('bad');
+  }
+
+  connectionIsRisky() {
+    return navigator.onLine === false || this.networkState === 'bad';
+  }
+
   connectEvents() {
     this.events?.close();
     clearTimeout(this.reconnectRefreshTimer);
     this.events = new EventSource(`/api/events?role=player&token=${encodeURIComponent(this.token)}`);
+    this.setNetworkState('connecting');
+    this.events.addEventListener('open', () => { this.lastNetworkSuccessAt = Date.now(); this.setNetworkState('good'); });
     this.events.addEventListener('state', event => {
       clearTimeout(this.reconnectRefreshTimer);
       this.reconnectAttempts = 0;
+      this.lastNetworkSuccessAt = Date.now();
+      this.setNetworkState('good');
       $('connectionMask').classList.remove('show');
       this.applyState(JSON.parse(event.data));
     });
@@ -697,22 +767,25 @@ class PlayerApp {
     });
     this.events.addEventListener('logout', () => this.logout());
     this.events.onerror = () => {
-      $('connectionStatus').className = 'status off'; $('connectionStatus').textContent = 'SIN CONEXIÓN'; $('connectionMask').classList.add('show');
+      this.setNetworkState(navigator.onLine === false ? 'bad' : 'warn');
+      $('connectionMask').classList.add('show');
       this.scheduleReconnectRefresh();
     };
   }
 
-  scheduleReconnectRefresh() {
+  scheduleReconnectRefresh(immediate = false) {
     clearTimeout(this.reconnectRefreshTimer);
     if (!this.token) return;
     const delays = [1200, 2000, 3000, 5000, 8000];
-    const delay = delays[Math.min(this.reconnectAttempts, delays.length - 1)];
+    const delay = immediate ? 50 : delays[Math.min(this.reconnectAttempts, delays.length - 1)];
     this.reconnectAttempts += 1;
     this.reconnectRefreshTimer = setTimeout(async () => {
       if (!this.token) return;
       try {
         const data = await this.request('/api/player/state');
         this.reconnectAttempts = 0;
+        this.lastNetworkSuccessAt = Date.now();
+        this.setNetworkState('good');
         this.applyState(data);
         $('connectionMask').classList.remove('show');
         if (!this.events || this.events.readyState === EventSource.CLOSED) this.connectEvents();
@@ -747,6 +820,7 @@ class PlayerApp {
     const justConfirmedSelection = !Boolean(previous?.player?.selectionConfirmed) && Boolean(data.player?.selectionConfirmed && data.player?.nameSet);
     if (this.guideOpen && this.guideStage === 'selection' && justConfirmedSelection) {
       this.setGuideProgress('selection');
+      this.saveGuideMemory('in_progress', 'controls', 0);
       this.closeGuide(false);
     }
     if (previous && ['waiting','starting'].includes(previous.status) && !['waiting','starting'].includes(data.status) && this.guideOpen) this.closeGuide(false);
@@ -761,9 +835,11 @@ class PlayerApp {
     const data = this.state;
     $('playerName').textContent = data.player.name;
     $('roomInfo').textContent = `Sala ${data.roomCode} · Juego ${String(data.game.number).padStart(4,'0')} · ${data.game.mode} bolas`;
-    $('connectionStatus').className = 'status on'; $('connectionStatus').textContent = data.status === 'waiting' ? 'EN ESPERA' : data.status === 'verifying' ? 'VERIFICANDO' : data.status === 'paused' ? 'PAUSADO' : data.status === 'finalizing' ? 'CIERRE FINAL' : data.status === 'starting' || data.status === 'resuming' ? 'PREPARANDO' : data.status === 'finished' ? 'FINALIZADO' : 'CONECTADO';
+    $('connectionStatus').className = `status ${data.status === 'waiting' || data.status === 'paused' ? 'wait' : 'on'}`; $('connectionStatus').textContent = data.status === 'waiting' ? 'EN ESPERA' : data.status === 'verifying' ? 'VERIFICANDO' : data.status === 'paused' ? 'PAUSADO' : data.status === 'finalizing' ? 'CIERRE FINAL' : data.status === 'starting' || data.status === 'resuming' ? 'PREPARANDO' : data.status === 'finished' ? 'FINALIZADO' : 'EN JUEGO';
+    $('connectionStatus').title = `Estado de la partida: ${$('connectionStatus').textContent}`;
     this.renderPresenter();
     document.body.classList.toggle('isPlaying', ['playing','verifying','paused','resuming','finalizing','finished'].includes(data.status));
+    document.body.classList.toggle('concentrationMode', ['playing','verifying','paused','resuming','finalizing'].includes(data.status));
     document.body.classList.toggle('isPaused', data.status === 'paused');
     document.body.classList.toggle('isTransitioning', ['starting','resuming'].includes(data.status));
     if (data.status === 'waiting' || data.status === 'starting') this.renderWaiting(); else this.renderPlaying();
@@ -1127,6 +1203,24 @@ class PlayerApp {
     } catch (error) { this.showMessage(error.message, 'error'); }
   }
 
+  async restartDemo() {
+    if (!this.state?.demo?.active || !this.state?.player?.demoHuman) return;
+    const button = $('demoResetBtn');
+    if (button) { button.disabled = true; button.textContent = 'REINICIANDO…'; }
+    try {
+      const next = await this.request('/api/player/demo/reset', { method:'POST', body:'{}' });
+      this.events?.close();
+      this.releaseWakeLock();
+      localStorage.removeItem('bingoOnlineToken');
+      localStorage.removeItem('bingoOnlineRoom');
+      localStorage.removeItem('bingoOnlineCard');
+      location.href = next.playerUrl || '/demo';
+    } catch (error) {
+      if (button) { button.disabled = false; button.textContent = 'REINICIAR DEMO'; }
+      this.showMessage(error.message, 'error');
+    }
+  }
+
   showGreetingOnce() {
     if (!this.state) return;
     const key = `bingoGreeting:${this.state.roomCode}:${this.state.player.id}`;
@@ -1151,6 +1245,60 @@ class PlayerApp {
     try { localStorage.setItem(this.guideStorageKey(), value); } catch {}
   }
 
+  guideMemoryKey() { return `${this.guideStorageKey()}:position`; }
+
+  guideMemory() {
+    try {
+      const raw = localStorage.getItem(this.guideMemoryKey());
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed || typeof parsed !== 'object') return null;
+      return { stage: parsed.stage === 'selection' ? 'selection' : 'controls', step: Math.max(0, Number(parsed.step) || 0), status: String(parsed.status || 'in_progress') };
+    } catch { return null; }
+  }
+
+  saveGuideMemory(status = 'in_progress', stage = this.guideStage, step = this.guideStep) {
+    if (!this.state?.roomCode || !stage) return;
+    try { localStorage.setItem(this.guideMemoryKey(), JSON.stringify({ status, stage, step:Math.max(0,Number(step)||0), at:Date.now() })); } catch {}
+  }
+
+  deviceProfile() {
+    const ua = navigator.userAgent || '';
+    const tv = /SMART-TV|SmartTV|Tizen|Web0S|NetCast|HbbTV|CrKey|AFT[A-Z]|BRAVIA/i.test(ua);
+    const touch = !tv && (window.matchMedia?.('(pointer: coarse)')?.matches || navigator.maxTouchPoints > 0);
+    return { tv, touch, desktop: !tv && !touch };
+  }
+
+  actionVerb() { return this.deviceProfile().touch ? 'Tocá' : this.deviceProfile().tv ? 'Seleccioná' : 'Hacé clic en'; }
+
+  openTutorialChoice() {
+    if (!this.state) return;
+    this.closeOtherPanels();
+    const memory = this.guideMemory();
+    const currentStage = this.state.player?.selectionConfirmed && this.state.player?.nameSet ? 'controls' : 'selection';
+    const canContinue = Boolean(memory && memory.status !== 'complete' && (memory.stage === currentStage || currentStage === 'controls'));
+    $('tutorialContinueBtn').classList.toggle('hidden', !canContinue);
+    $('tutorialChoiceText').textContent = canContinue
+      ? `Quedaste en el paso ${Number(memory.step || 0) + 1}. Podés continuar o empezar esta parte de nuevo.`
+      : 'Podés volver a recorrer el tutorial desde el comienzo de esta pantalla.';
+    $('tutorialChoiceOverlay').classList.add('show');
+  }
+
+  continueGuideFromMemory() {
+    const memory = this.guideMemory();
+    this.closeModal('tutorialChoiceOverlay');
+    const currentStage = this.state.player?.selectionConfirmed && this.state.player?.nameSet ? 'controls' : 'selection';
+    if (!memory) return this.openGuide(true, currentStage, 0);
+    const stage = currentStage === 'controls' && memory.stage === 'selection' ? 'controls' : memory.stage;
+    this.openGuide(true, stage, stage === memory.stage ? memory.step : 0);
+  }
+
+  restartGuide() {
+    this.closeModal('tutorialChoiceOverlay');
+    const stage = this.state.player?.selectionConfirmed && this.state.player?.nameSet ? 'controls' : 'selection';
+    this.saveGuideMemory('in_progress', stage, 0);
+    this.openGuide(true, stage, 0);
+  }
+
   guideElementVisible(element) {
     if (!element) return false;
     const style = getComputedStyle(element);
@@ -1159,28 +1307,38 @@ class PlayerApp {
   }
 
   guideStepsFor(stage) {
+    const device = this.deviceProfile();
+    const tap = device.touch ? 'Tocá' : device.tv ? 'Seleccioná' : 'Hacé clic en';
+    const switchText = device.touch
+      ? 'Si tenés varios, cambiá desde estas pestañas o deslizá el cartón hacia los costados.'
+      : device.tv
+        ? 'Si tenés varios, movete entre estas pestañas para elegir cuál mirar.'
+        : 'Si tenés varios, cambiá desde estas pestañas o usá las flechas izquierda/derecha del teclado.';
+    const markText = `${tap} un número para marcarlo. ${tap} el mismo número otra vez para desmarcarlo.`;
     const steps = stage === 'selection' ? [
       { target:'#selectionPlayerName', when:()=>!this.state?.player?.nameSet, title:'Primero, tu nombre', text:'Escribí tu nombre o apodo. Así aparecés en tus cartones, el chat y los resultados.' },
-      { target:'#waitMiniGame', title:'Jugá mientras esperás', text:'Tenés minijuegos para pasar el rato. No cambian el Bingo ni tus posibilidades de ganar.' },
+      { target:'#waitMiniGame', when:()=>!device.tv, title:'Jugá mientras esperás', text:'Tenés minijuegos para pasar el rato. No cambian el Bingo ni tus posibilidades de ganar.' },
       { target:'.choiceCounter', title:'Cuántos podés elegir', text:`Acá ves cuántos cartones llevás elegidos y cuántos tenés disponibles: <strong>${Number(this.state?.player?.allowedCardCount || 1)}</strong>.` },
-      { target:'#offerGrid .offer', title:'Elegí tus cartones', text:'Tocá un cartón para elegirlo. Si lo tocás otra vez, lo soltás.' },
-      { target:'#renewChoice', title:'Podés recargar', text:'Si no te gustan, tocá <strong>Recargar cartones</strong>. Los que ya elegiste se conservan.' },
+      { target:'#offerGrid .offer', title:'Elegí tus cartones', text:`${tap} un cartón para elegirlo. Repetí sobre el mismo para soltarlo.` },
+      { target:'#renewChoice', title:'Podés recargar', text:'Si no te gustan, usá <strong>Recargar cartones</strong>. Los que ya elegiste se conservan.' },
       { target:'#continueChoice', title:'Confirmá tu elección', text:'Cuando completes tu selección, confirmala. Después el tutorial sigue en tu pantalla de juego.' }
     ] : [
-      { target:'#cardTabs', when:()=>Number(this.state?.player?.cards?.length || 0) > 1, title:'Tus cartones', text:'Si tenés varios, cambiá entre ellos desde estas pestañas o deslizando el cartón.' },
-      { target:'#ticketPanel .cell.number', demo:'mark', title:'Marcar y desmarcar', text:'Durante el sorteo tocá un número para marcarlo. Tocá otra vez para desmarcarlo.' },
-      { target:'#quickAutoMarkBtn', title:'Automarcado instantáneo', text:'Un toque lo activa y otro lo apaga. Si te dormiste números, al activarlo marca todo lo oficial que ya salió.' },
-      { target:'#claimBar', title:'Los premios se reclaman', text:'Aunque uses Automarcado, el premio <strong>no se reclama solo</strong>. Tocá Línea, Bingo o el premio habilitado.' },
+      { target:'#cardTabs', when:()=>Number(this.state?.player?.cards?.length || 0) > 1, title:'Tus cartones', text:switchText },
+      { target:'#ticketPanel .cell.number', demo:'mark', title:'Marcar y desmarcar', text:markText },
+      { target:'#quickAutoMarkBtn', title:'Automarcado instantáneo', text:'Un toque lo activa y otro lo apaga. Si te dormiste números, al activarlo marca todo lo oficial que ya salió y te dice cuántos recuperó.' },
+      { target:'#claimBar', title:'Los premios se reclaman', text:'Aunque uses Automarcado, el premio <strong>no se reclama solo</strong>. Línea, Bingo y cualquier premio activo se reclaman desde acá.' },
       { target:'#firstClaimReminder', title:'La regla más importante', text:'<strong>Gana el primer reclamo válido.</strong> No alcanza con completar el premio: hay que reclamarlo antes que los demás.' },
-      { target:'#lastBall', title:'Última bolilla', text:'Acá ves grande la última bolilla. Al lado aparecen también las más recientes.' },
+      { target:'#lastBall', title:'Última bolilla', text:'Esta es la referencia principal: la última bolilla aparece grande y hace una animación breve cuando cambia.' },
       { target:'#infoDrawerToggle', title:'Ganadores y números salidos', text:'Esta flecha abre el panel lateral. Ahí podés ver cartones ganadores y todos los números que ya salieron.' },
-      { target:'#quickSoundBtn', title:'Sonidos', text:'Tocá este icono para activar o silenciar rápidamente los sonidos del juego.' },
-      { target:'#quickVoiceBtn', title:'Voz del cantador', text:'Tocá acá para escuchar o silenciar la voz que canta las bolillas.' },
-      { target:'#fullScreenBtn', title:'Pantalla completa', text:'Usá este botón para aprovechar toda la pantalla del celular, tablet o TV.' },
+      { target:'#networkIndicator', title:'Tu conexión', text:'Verde: todo bien. Amarillo: conexión inestable. Rojo: sin Internet. Si falla, la sala intenta reconectarse sola.' },
+      { target:'#quickSoundBtn', title:'Sonidos', text:`${tap} este icono para activar o silenciar rápidamente los sonidos del juego.` },
+      { target:'#quickVoiceBtn', title:'Voz del cantador', text:`${tap} acá para escuchar o silenciar la voz que canta las bolillas.` },
+      { target:'#fullScreenBtn', when:()=>Boolean(document.documentElement.requestFullscreen), title:'Pantalla completa', text:'Usá este botón para aprovechar toda la pantalla del celular, tablet, PC o TV.' },
       { target:'#watchBtn', title:'Ver partida / TV', text:'Desde acá podés abrir o compartir el modo espectador y enviarlo a una TV compatible.' },
       { target:'#playerChatToggle', title:'Chat público', text:'El chat queda apartado del cartón. Podés escribir, usar emojis y mandar stickers sin tapar el juego.' },
-      { target:'#settingsToggle', title:'Más ajustes', text:'La tuerca guarda volumen, tamaño de números, tema y también los controles de sonido, voz y Automarcado.' },
-      { target:'#helpBtn', title:'¿Lo saltaste?', text:'Este <strong>?</strong> queda siempre disponible. Tocándolo podés volver a abrir el tutorial cuando quieras.' }
+      { target:'#settingsToggle', title:'Más ajustes', text:'La tuerca guarda volumen, tamaño de números, tema y otras preferencias menos frecuentes.' },
+      { target:'#demoResetBtn', when:()=>Boolean(this.state?.demo?.active), title:'Reiniciar la demo', text:'En una demostración podés volver a empezar desde la sala de espera para repetir todo el recorrido.' },
+      { target:'#helpBtn', title:'¿Lo saltaste?', text:'Este <strong>?</strong> queda siempre disponible. Guarda tu avance para continuar donde quedaste o reiniciar el tutorial.' }
     ];
     return steps.filter(step => (!step.when || step.when()) && this.guideElementVisible(document.querySelector(step.target)));
   }
@@ -1188,21 +1346,29 @@ class PlayerApp {
   maybeAutoStartGuide(previous) {
     if (!this.state || this.guideOpen || !['waiting','starting'].includes(this.state.status)) return;
     const progress = this.guideProgress();
-    if (['complete','skipped'].includes(progress)) return;
+    const memory = this.guideMemory();
+    if (['complete','skipped'].includes(progress) || memory?.status === 'complete' || memory?.status === 'skipped') return;
     const confirmed = Boolean(this.state.player?.selectionConfirmed && this.state.player?.nameSet);
+    const currentStage = confirmed ? 'controls' : 'selection';
+    if (memory?.status === 'in_progress' && memory.stage === currentStage) {
+      if (this.guideAutoTimer) return;
+      this.guideAutoTimer = setTimeout(() => { this.guideAutoTimer = null; this.openGuide(false, currentStage, memory.step); }, 350);
+      return;
+    }
     if (!confirmed && !progress) {
       if (this.guideAutoTimer) return;
-      this.guideAutoTimer = setTimeout(() => { this.guideAutoTimer = null; this.openGuide(false, 'selection'); }, 350);
+      this.guideAutoTimer = setTimeout(() => { this.guideAutoTimer = null; this.openGuide(false, 'selection', 0); }, 350);
       return;
     }
     const justConfirmed = !Boolean(previous?.player?.selectionConfirmed) && confirmed;
     if (confirmed && (progress === 'selection' || (!previous && !progress) || justConfirmed)) {
       if (this.guideAutoTimer) clearTimeout(this.guideAutoTimer);
-      this.guideAutoTimer = setTimeout(() => { this.guideAutoTimer = null; this.openGuide(false, 'controls'); }, 500);
+      this.saveGuideMemory('in_progress', 'controls', 0);
+      this.guideAutoTimer = setTimeout(() => { this.guideAutoTimer = null; this.openGuide(false, 'controls', 0); }, 500);
     }
   }
 
-  openGuide(manual = true, requestedStage = '') {
+  openGuide(manual = true, requestedStage = '', requestedStep = 0) {
     if (!this.state) return;
     this.closeOtherPanels();
     const stage = requestedStage || (this.state.player?.selectionConfirmed && this.state.player?.nameSet ? 'controls' : 'selection');
@@ -1211,7 +1377,7 @@ class PlayerApp {
     this.guideManual = Boolean(manual);
     this.guideStage = stage;
     this.guideSteps = steps;
-    this.guideStep = 0;
+    this.guideStep = Math.max(0, Math.min(Number(requestedStep) || 0, steps.length - 1));
     this.guideOpen = true;
     $('guideOverlay').classList.add('show');
     $('guideOverlay').setAttribute('aria-hidden', 'false');
@@ -1236,6 +1402,7 @@ class PlayerApp {
       target = document.querySelector(step.target);
     }
     this.guideTarget = target;
+    this.saveGuideMemory('in_progress', this.guideStage, this.guideStep);
     target.classList.add(step.demo === 'mark' ? 'guideDemoMark' : 'guideTargetPulse');
     $('guideStepContent').innerHTML = `<div class="guideStepTitle">${esc(step.title)}</div><div class="guideStepText">${step.text}</div>`;
     $('guideProgress').textContent = `${this.guideStep + 1}/${this.guideSteps.length}`;
@@ -1279,6 +1446,7 @@ class PlayerApp {
     }
     const shouldStartDemo = !this.guideManual && this.guideStage === 'controls' && this.state?.demo?.active && this.state?.player?.demoHuman && this.state?.status === 'waiting';
     if (!this.guideManual) this.setGuideProgress(this.guideStage === 'selection' ? 'selection' : 'complete');
+    this.saveGuideMemory(this.guideStage === 'selection' ? 'in_progress' : 'complete', this.guideStage === 'selection' ? 'controls' : this.guideStage, 0);
     this.closeGuide(false);
     if (shouldStartDemo) this.startDemoFromPlayer();
   }
@@ -1286,12 +1454,16 @@ class PlayerApp {
   skipGuide() {
     const shouldStartDemo = !this.guideManual && this.guideStage === 'controls' && this.state?.demo?.active && this.state?.player?.demoHuman && this.state?.status === 'waiting';
     this.setGuideProgress('skipped');
+    this.saveGuideMemory('skipped', this.guideStage, this.guideStep);
     this.closeGuide(false);
     if (shouldStartDemo) this.startDemoFromPlayer();
   }
 
   closeGuide(markSkipped = false) {
-    if (markSkipped && !this.guideManual) this.setGuideProgress('skipped');
+    if (markSkipped) {
+      if (!this.guideManual) this.setGuideProgress('skipped');
+      this.saveGuideMemory('skipped', this.guideStage, this.guideStep);
+    }
     clearTimeout(this.guidePositionTimer);
     this.clearGuideTarget();
     this.guideOpen = false;
@@ -1304,6 +1476,7 @@ class PlayerApp {
     const drawn = this.state.game.drawn || [];
     const last = this.state.game.lastBall;
     const ballHost = $('lastBall');
+    const drawCountChanged = drawn.length > this.lastDrawCount;
     ballHost.className = 'lastBall';
     if (last == null) ballHost.textContent = '—';
     else if (Number(this.state.game.mode) === 75) {
@@ -1312,6 +1485,12 @@ class PlayerApp {
       ballHost.innerHTML = `<span class="ballLetter">${info.letter}</span><strong>${last}</strong>`;
     } else ballHost.innerHTML = `<strong>${last}</strong>`;
     $('ballCount').textContent = `${drawn.length} de ${this.state.game.mode} sorteadas`;
+    if (drawCountChanged && last != null) {
+      ballHost.classList.add('newBall');
+      clearTimeout(this.lastBallAnimationTimer);
+      this.lastBallAnimationTimer = setTimeout(() => ballHost.classList.remove('newBall'), 850);
+    }
+    this.lastDrawCount = drawn.length;
     $('recent').innerHTML = [...drawn].reverse().slice(0,7).map(number => {
       if (Number(this.state.game.mode) !== 75) return `<i>${number}</i>`;
       const info = this.ballInfo75(number);
@@ -1366,7 +1545,7 @@ class PlayerApp {
       ? '<div class="cell blank">·</div>'
       : value === 'LIBRE'
         ? '<div class="cell free"><img src="assets/celebrations/la-gorda-festejando.png" alt="La Gorda"><span>LIBRE</span></div>'
-        : `<button class="cell number ${marks.has(value) ? 'marked' : ''}" data-card-id="${esc(card.id)}" data-number="${value}" ${auto || markLocked ? 'disabled' : ''}>${value}</button>`).join('');
+        : `<button class="cell number ${marks.has(value) ? 'marked' : ''}" data-card-id="${esc(card.id)}" data-number="${value}" aria-pressed="${marks.has(value)}" aria-label="Número ${value}, ${marks.has(value) ? 'marcado' : 'sin marcar'}" ${auto || markLocked ? 'disabled' : ''}>${value}</button>`).join('');
     const readyInfo = this.readinessFor(card.id);
     const progress = Number(card.mode) === 75 ? ` · ${readyInfo?.lineCount || 0} líneas completas` : '';
     const bingoHead = Number(card.mode) === 75 ? '<div class="bingoLetters" aria-hidden="true"><span class="bingo-col-b">B</span><span class="bingo-col-i">I</span><span class="bingo-col-n">N</span><span class="bingo-col-g">G</span><span class="bingo-col-o">O</span></div>' : '';
@@ -1409,13 +1588,17 @@ class PlayerApp {
       item.button.style.display = item.enabled ? '' : 'none';
       const label = this.claimLabel(item.type);
       item.button.textContent = `CANTAR ${label}`;
+      const localPending = this.pendingClaims.has(item.type);
+      item.button.classList.toggle('claimSending', localPending);
+      if (localPending) item.button.textContent = 'RECLAMO ENVIADO…';
       const ready = this.eligibleCard(item.type);
       const alreadyWon = (item.prize.winners || []).some(winner => winner.cardId === card.id);
       const ownPending = (this.state.publicClaims || []).some(claim => claim.status === 'pending' && claim.type === item.type && ownCardNumbers.has(String(claim.cardNumber)));
-      item.button.disabled = locked || ownPending || item.prize.closed || (alreadyWon && !ready);
+      item.button.disabled = localPending || locked || ownPending || item.prize.closed || (alreadyWon && !ready);
       item.button.classList.toggle('prizeReady', Boolean(ready) && !item.button.disabled);
       if (ready && !item.button.disabled) item.button.textContent = `¡TENÉS ${label}! TOCÁ ACÁ`;
     });
+    $('claimBar').classList.toggle('urgentClaimBar', definitions.some(item => Boolean(this.eligibleCard(item.type)) && item.enabled && !item.button.disabled));
   }
 
   async toggleMark(cardId, number, marked) {
@@ -1430,13 +1613,26 @@ class PlayerApp {
     return this.autoMarkDesired == null ? Boolean(this.state?.player?.autoMark) : Boolean(this.autoMarkDesired);
   }
 
+  countRecoverableAutoMarks() {
+    if (!this.state?.player?.cards?.length) return 0;
+    const drawn = new Set((this.state.game?.drawn || []).map(Number));
+    let count = 0;
+    for (const card of this.state.player.cards) {
+      const marks = new Set((this.state.player.marks?.[card.id] || []).map(Number));
+      for (const value of card.grid.flat()) if (Number.isFinite(Number(value)) && drawn.has(Number(value)) && !marks.has(Number(value))) count += 1;
+    }
+    return count;
+  }
+
   queueAutoMark(enabled) {
     if (!this.state?.active) return;
     if (this.state.player?.autoMarkForced || this.state.markingPolicy?.automaticRequired) {
       this.showMessage(this.state.markingPolicy?.reason || 'El automarcado es obligatorio en esta sala.', 'notice');
       return;
     }
-    this.autoMarkDesired = Boolean(enabled);
+    const desired = Boolean(enabled);
+    this.autoMarkFeedback = { desired, recoverable: desired ? this.countRecoverableAutoMarks() : 0 };
+    this.autoMarkDesired = desired;
     this.updateQuickTools();
     this.syncAutoMark();
   }
@@ -1449,10 +1645,19 @@ class PlayerApp {
         const requested = Boolean(this.autoMarkDesired);
         const response = await this.request('/api/player/automark', { method:'POST', body:JSON.stringify({ enabled:requested }) });
         this.applyState(response);
-        if (this.autoMarkDesired === requested && Boolean(this.state?.player?.autoMark) === requested) this.autoMarkDesired = null;
+        if (this.autoMarkDesired === requested && Boolean(this.state?.player?.autoMark) === requested) {
+          const feedback = this.autoMarkFeedback;
+          this.autoMarkDesired = null;
+          this.autoMarkFeedback = null;
+          if (requested) {
+            const recovered = Number(feedback?.recoverable || 0);
+            this.showMessage(recovered > 0 ? `AUTO ACTIVADO · ${recovered} número${recovered === 1 ? '' : 's'} recuperado${recovered === 1 ? '' : 's'}.` : 'AUTO ACTIVADO · Todo al día.', 'notice', 2600);
+          } else this.showMessage('AUTO DESACTIVADO · Marcado manual.', 'notice', 2200);
+        }
       }
     } catch (error) {
       this.autoMarkDesired = null;
+      this.autoMarkFeedback = null;
       this.showMessage(error.message, 'error');
     } finally {
       this.autoMarkSyncing = false;
@@ -1462,20 +1667,32 @@ class PlayerApp {
   }
 
   async claim(type) {
-    if (!this.claimInputOpen()) return;
+    if (!this.claimInputOpen() || this.pendingClaims.has(type)) return;
+    const now = Date.now();
+    if (now - Number(this.claimClickGuard.get(type) || 0) < 900) return;
+    this.claimClickGuard.set(type, now);
     const ready = this.eligibleCard(type);
     if (ready) { this.activeCardId = ready.cardId; localStorage.setItem('bingoOnlineCard', this.activeCardId); this.renderTabs(); this.renderTicket(); }
     const card = this.state?.player.cards.find(item => item.id === this.activeCardId); if (!card) return;
     const label = this.claimLabel(type);
-    [$('claimAmbo'),$('claimCorners'),$('claimLine'),$('claimDoubleLine'),$('claimTripleLine'),$('claimBingo')].forEach(button => button.disabled = true);
+    this.pendingClaims.add(type);
+    this.renderTicket();
+    this.showMessage(`RECLAMO ENVIADO · ${label}. Esperando recepción del servidor…`, 'notice', 5000);
+    if (this.connectionIsRisky()) this.showMessage('Conexión débil: el reclamo quedó enviado y el sistema está intentando confirmarlo.', 'error', 5200);
     try {
       const claim = await this.request('/api/player/claim', { method:'POST', body:JSON.stringify({ cardId:card.id, type }) });
       const receiptTime = claim.receivedAt ? new Date(claim.receivedAt).toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', second:'2-digit', fractionalSecondDigits:3 }) : '';
       const receipt = claim.receivedSequence ? ` · Recepción #${claim.receivedSequence}` : '';
-      this.showMessage(`${label} recibido${receipt}${receiptTime ? ` · ${receiptTime}` : ''}.`, 'notice');
-      if (!claim.officialValid) this.showMessage(`El control oficial todavía no detecta ${label}.`, 'error');
-    } catch (error) { this.showMessage(error.message, 'error'); }
-    finally { this.renderTicket(); }
+      this.showMessage(`${label} RECIBIDO${receipt}${receiptTime ? ` · ${receiptTime}` : ''}.`, 'notice', 5200);
+      if (!claim.officialValid) this.showMessage(`El control oficial todavía no detecta ${label}.`, 'error', 5200);
+    } catch (error) {
+      const duplicate = /ya reclamó|pendiente|entregado/i.test(error.message || '');
+      this.showMessage(duplicate ? `${label}: el reclamo ya estaba registrado.` : error.message, duplicate ? 'notice' : 'error', 5200);
+    } finally {
+      this.pendingClaims.delete(type);
+      setTimeout(() => this.claimClickGuard.delete(type), 1000);
+      this.renderTicket();
+    }
   }
 
   handleOwnPrizeReadiness() {
@@ -1762,7 +1979,7 @@ class PlayerApp {
   renderNotice() {
     const latest=(this.state?.player?.notices||[]).at(-1); if(!latest) return; const key=`noticeSeen:${latest.id}`; if(sessionStorage.getItem(key)) return; sessionStorage.setItem(key,'1'); this.showMessage(latest.text,latest.result==='confirmed'?'notice':'error');
   }
-  showMessage(text,kind='notice') { $('playerNotice').innerHTML=`<div class="${kind}">${esc(text)}</div>`; clearTimeout(this.messageTimer); this.messageTimer=setTimeout(()=>{$('playerNotice').innerHTML='';},8000); }
+  showMessage(text,kind='notice',duration=8000) { $('playerNotice').innerHTML=`<div class="${kind}">${esc(text)}</div>`; clearTimeout(this.messageTimer); this.messageTimer=setTimeout(()=>{$('playerNotice').innerHTML='';},Math.max(900,Number(duration)||8000)); }
   closeModal(id) { $(id)?.classList.remove('show'); }
   openWatchPanel() {
     if(!this.state?.broadcastUrl) return this.showMessage('El modo espectador todavía no está disponible.','error');

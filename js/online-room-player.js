@@ -686,6 +686,7 @@ class PlayerApp {
       this.tokenRoom = String(data?.roomCode || '').trim().toUpperCase();
       if (this.tokenRoom) localStorage.setItem('bingoOnlineRoom', this.tokenRoom);
       this.applyState(data);
+      delete document.documentElement.dataset.demoBoot;
       this.connectEvents();
     } catch {
       const demoEntry = new URLSearchParams(location.search).get('demo') === '1';

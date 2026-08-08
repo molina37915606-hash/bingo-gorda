@@ -4504,7 +4504,7 @@ function serveFile(res, filePath) {
     res.writeHead(200, {
       'Content-Type': MIME_TYPES[path.extname(normalized).toLowerCase()] || 'application/octet-stream',
       'Content-Length': stat.size,
-      'Cache-Control': path.extname(normalized) === '.html' ? 'no-store' : 'public, max-age=300',
+      'Cache-Control': ['.html', '.js'].includes(path.extname(normalized).toLowerCase()) ? 'no-store, max-age=0' : 'public, max-age=300',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'same-origin'
     });

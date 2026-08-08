@@ -1,3 +1,12 @@
+VERSIÓN 2.6 · ENTRADA DEMO SIN CÓDIGO Y SIN CACHÉ VIEJA
+
+- La sesión temporal de DEMO se guarda antes de cargar la aplicación del jugador.
+- La pantalla de código privado queda oculta desde el primer render cuando la URL corresponde a una DEMO.
+- online-room-player.js sube a v2.6.0 para invalidar cachés anteriores.
+- Los HTML y JavaScript de la aplicación se sirven con no-store para evitar mezclar interfaz nueva con lógica vieja.
+- Si una sesión DEMO falla, el jugador vuelve a /demo en lugar de caer al ingreso por código.
+- Se agrega una prueba específica de entrada DEMO que valida URL, bootstrap y cabeceras anti-caché.
+
 VERSIÓN 2.5 · DEMO INDIVIDUAL, PREMIOS CONFIGURABLES Y FLUJO SEGURO
 
 - El enlace /demo crea una demostración independiente para cada persona/dispositivo; varias demos pueden ejecutarse simultáneamente sin mezclarse.

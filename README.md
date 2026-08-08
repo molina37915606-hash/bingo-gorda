@@ -8,7 +8,7 @@ Aplicación web para partidas de bingo de 75 y 90 bolas con administración, jug
 - Administración de partida: `http://localhost:3210/admin`
 - Jugadores: `http://localhost:3210/jugador`
 - Comunidad: `http://localhost:3210/comunidad`
-- Demostración: `http://localhost:3210/demo`
+- Demostración: `http://localhost:3210/demo` — cada visitante crea su propia demo independiente, sin código privado, con premios configurables.
 
 ## Funcionamiento actual
 

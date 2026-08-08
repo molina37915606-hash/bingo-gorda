@@ -1,3 +1,17 @@
+VERSIÓN 2.5 · DEMO INDIVIDUAL, PREMIOS CONFIGURABLES Y FLUJO SEGURO
+
+- El enlace /demo crea una demostración independiente para cada persona/dispositivo; varias demos pueden ejecutarse simultáneamente sin mezclarse.
+- La demo ya no pide ni muestra código privado: entra con una sesión temporal automática.
+- Antes de crear la demo se pueden elegir los premios activos según el modo de 75 o 90 bolas.
+- En 90 bolas también se puede elegir si se premia 1 o 2 líneas cuando Línea está habilitada.
+- La sala de espera de DEMO ya no muestra minijuegos: se concentra en nombre, cartones, recarga, confirmación y tutorial.
+- El tutorial de DEMO omite el paso de minijuegos y conserva el resto del recorrido de aprendizaje.
+- Terminar o saltar el tutorial ya no inicia el sorteo automáticamente; el jugador debe tocar COMENZAR DEMO.
+- Se agregaron bloqueos visuales durante recarga, confirmación y arranque para evitar dobles acciones accidentales.
+- Reiniciar DEMO conserva su configuración de modalidad y premios, pero crea una demo nueva y limpia.
+- Se amplió el límite razonable de creación de demos por conexión para soportar enlaces compartidos en grupos, manteniendo protección contra abuso.
+- Las pruebas verifican aislamiento entre demos, sesión sin código, premios configurables y ausencia de minijuegos en DEMO.
+
 VERSIÓN 2.4 · JUGADOR MÁS RÁPIDO, TUTORIAL CON MEMORIA Y MODO CONCENTRACIÓN
 - Reclamos con respuesta visual inmediata y protección local contra doble toque; el servidor sigue rechazando duplicados.
 - Indicador de conexión separado del estado de la partida: verde, amarillo y rojo con reconexión automática.

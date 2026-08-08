@@ -4,25 +4,39 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Demostración · El Bingo de la Gorda</title>
 <style>
-:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff;background:#090b18;--gold:#ffca2f;--purple:#6f1d83;--panel:#11172a}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 15% 10%,#5a167b66,transparent 40%),radial-gradient(circle at 85% 85%,#e83e8740,transparent 38%),#090b18}.shell{width:min(940px,100%);display:grid;grid-template-columns:.82fr 1.18fr;background:var(--panel);border:1px solid #ffffff25;border-radius:28px;overflow:hidden;box-shadow:0 30px 90px #000a}.brand{padding:34px;background:linear-gradient(145deg,#541570,#831b69);display:flex;flex-direction:column;justify-content:space-between;min-height:610px}.brand img{width:150px;max-width:70%;filter:drop-shadow(0 10px 25px #0005)}h1{font-size:clamp(34px,5vw,58px);line-height:.96;margin:28px 0 14px}.brand p{color:#f3dced;line-height:1.55;font-size:17px}.tag{display:inline-flex;align-self:flex-start;background:var(--gold);color:#231505;padding:8px 11px;border-radius:999px;font-weight:1000;font-size:12px}.form{padding:34px;display:grid;gap:20px}.form h2{margin:0;font-size:29px}.form>div>p{margin:7px 0 0;color:#b9c2d7;line-height:1.5}.field{display:grid;gap:9px}.field>span{color:#dbe2f0;font-weight:900}.choices{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.choices.four{grid-template-columns:repeat(4,1fr)}.choice{position:relative}.choice input{position:absolute;opacity:0;pointer-events:none}.choice label{display:grid;place-items:center;min-height:54px;padding:10px;border-radius:13px;border:1px solid #ffffff2a;background:#0b1020;color:#dce4f3;font-weight:900;cursor:pointer;transition:.16s ease}.choice input:checked+label{background:#5a167b;border-color:#d99cff;box-shadow:0 0 0 2px #d99cff38;color:#fff}.participants{display:grid;gap:8px;padding:14px;border-radius:15px;background:#0b1020;border:1px solid #ffffff1c}.participant{display:flex;justify-content:space-between;align-items:center;gap:12px;color:#cdd6e7}.participant strong{color:#fff}.participant .ai{font-size:11px;padding:4px 7px;border-radius:999px;background:#24344f;color:#cfe6ff;font-weight:1000}.notice{padding:13px;border-radius:13px;background:#182742;border:1px solid #375a8e;color:#dcecff;line-height:1.45}.error{padding:12px;border-radius:12px;background:#561b2a;border:1px solid #ba405c;color:#ffdce5}.start{border:0;border-radius:14px;padding:16px;background:var(--gold);color:#221605;font-size:17px;font-weight:1000;cursor:pointer}.start:disabled{opacity:.55;cursor:wait}.fine{color:#8f9bb2;font-size:12px;line-height:1.5}@media(max-width:720px){body{padding:10px}.shell{grid-template-columns:1fr;border-radius:20px}.brand{padding:24px;min-height:auto}.brand img{display:none}h1{font-size:38px}.brand p{font-size:15px}.form{padding:24px}.choices.four{grid-template-columns:repeat(2,1fr)}}
+:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff;background:#090b18;--gold:#ffca2f;--purple:#6f1d83;--panel:#11172a}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 15% 10%,#5a167b66,transparent 40%),radial-gradient(circle at 85% 85%,#e83e8740,transparent 38%),#090b18}.shell{width:min(960px,100%);display:grid;grid-template-columns:.78fr 1.22fr;background:var(--panel);border:1px solid #ffffff25;border-radius:28px;overflow:hidden;box-shadow:0 30px 90px #000a}.brand{padding:34px;background:linear-gradient(145deg,#541570,#831b69);display:flex;flex-direction:column;justify-content:space-between;min-height:650px}.brand img{width:150px;max-width:70%;filter:drop-shadow(0 10px 25px #0005)}h1{font-size:clamp(34px,5vw,58px);line-height:.96;margin:28px 0 14px}.brand p{color:#f3dced;line-height:1.55;font-size:17px}.tag{display:inline-flex;align-self:flex-start;background:var(--gold);color:#231505;padding:8px 11px;border-radius:999px;font-weight:1000;font-size:12px}.form{padding:32px;display:grid;gap:18px}.form h2{margin:0;font-size:29px}.form>div>p{margin:7px 0 0;color:#b9c2d7;line-height:1.45}.field{display:grid;gap:9px}.field>span{color:#dbe2f0;font-weight:900}.choices{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.choices.four{grid-template-columns:repeat(4,1fr)}.choice,.prizeChoice{position:relative}.choice input,.prizeChoice input{position:absolute;opacity:0;pointer-events:none}.choice label,.prizeChoice label{display:grid;place-items:center;min-height:52px;padding:10px;border-radius:13px;border:1px solid #ffffff2a;background:#0b1020;color:#dce4f3;font-weight:900;cursor:pointer;transition:.16s ease;text-align:center}.choice input:checked+label,.prizeChoice input:checked+label{background:#5a167b;border-color:#d99cff;box-shadow:0 0 0 2px #d99cff38;color:#fff}.prizeGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.prizeChoice.hidden{display:none}.lineCount{display:none;grid-template-columns:auto 1fr;gap:10px;align-items:center;margin-top:2px;padding:10px 12px;border-radius:12px;background:#0b1020;border:1px solid #ffffff1c}.lineCount.show{display:grid}.lineCount select{width:100%;border:1px solid #ffffff30;background:#151c31;color:#fff;border-radius:10px;padding:9px;font-weight:900}.participants{display:grid;gap:8px;padding:13px;border-radius:15px;background:#0b1020;border:1px solid #ffffff1c}.participant{display:flex;justify-content:space-between;align-items:center;gap:12px;color:#cdd6e7}.participant strong{color:#fff}.participant .ai{font-size:11px;padding:4px 7px;border-radius:999px;background:#24344f;color:#cfe6ff;font-weight:1000}.notice{padding:13px;border-radius:13px;background:#182742;border:1px solid #375a8e;color:#dcecff;line-height:1.45}.error{padding:12px;border-radius:12px;background:#561b2a;border:1px solid #ba405c;color:#ffdce5}.start{border:0;border-radius:14px;padding:16px;background:var(--gold);color:#221605;font-size:17px;font-weight:1000;cursor:pointer}.start:disabled{opacity:.55;cursor:wait}.fine{color:#8f9bb2;font-size:12px;line-height:1.5}.tiny{font-size:12px;color:#94a0b7}.hidden{display:none!important}@media(max-width:720px){body{padding:10px}.shell{grid-template-columns:1fr;border-radius:20px}.brand{padding:24px;min-height:auto}.brand img{display:none}h1{font-size:38px}.brand p{font-size:15px}.form{padding:22px}.choices.four,.prizeGrid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
 <main class="shell">
 <section class="brand">
-  <div><span class="tag">DEMOSTRACIÓN SIN VALIDEZ OFICIAL</span><h1>Jugá una partida real y rápida</h1><p>Entrás primero a la sala de espera, aprendés a usarla con el tutorial, elegís tus cartones y después competís contra jugadores IA en una partida automática.</p></div>
+  <div><span class="tag">DEMO INDIVIDUAL</span><h1>Probá una partida completa</h1><p>Este enlace crea una demostración distinta para cada persona. Elegís la modalidad y los premios, entrás a una espera breve, elegís tus cartones y jugás contra IA.</p></div>
   <img src="/assets/logo.png" alt="El Bingo de la Gorda">
 </section>
 <form class="form" id="demoForm">
-  <div><h2>Prepará tu partida</h2><p>La demo reproduce el recorrido real: sala de espera, nombre, minijuegos, elección de cartones, chat y pantalla de juego. Las IA usan dos cartones cada una.</p></div>
+  <div><h2>Prepará tu demo</h2><p>Es rápida y privada para este dispositivo. No pide código de acceso y no incluye minijuegos.</p></div>
 
   <div class="field"><span>Modo de juego</span><div class="choices">
-    <div class="choice"><input id="mode75" name="mode" type="radio" value="75" checked><label for="mode75">75 bolas</label></div>
-    <div class="choice"><input id="mode90" name="mode" type="radio" value="90"><label for="mode90">90 bolas</label></div>
+    <div class="choice"><input id="mode75" name="mode" type="radio" value="75"><label for="mode75">75 bolas</label></div>
+    <div class="choice"><input id="mode90" name="mode" type="radio" value="90" checked><label for="mode90">90 bolas</label></div>
   </div></div>
 
+  <div class="field"><span>Premios que querés probar</span>
+    <div class="prizeGrid" id="prizeGrid">
+      <div class="prizeChoice p90"><input id="prizeAmbo" type="checkbox" checked><label for="prizeAmbo">Ambocabeza</label></div>
+      <div class="prizeChoice pAll"><input id="prizeLine" type="checkbox" checked><label for="prizeLine">Línea</label></div>
+      <div class="prizeChoice p75"><input id="prizeDouble" type="checkbox" checked><label for="prizeDouble">Doble línea</label></div>
+      <div class="prizeChoice p75"><input id="prizeTriple" type="checkbox" checked><label for="prizeTriple">Triple línea</label></div>
+      <div class="prizeChoice p75"><input id="prizeCorners" type="checkbox" checked><label for="prizeCorners">4 esquinas</label></div>
+      <div class="prizeChoice pAll"><input id="prizeBingo" type="checkbox" checked><label for="prizeBingo">Bingo</label></div>
+    </div>
+    <div id="lineCountWrap" class="lineCount show"><b>Líneas a premiar</b><select id="linePrizeCount"><option value="1">1 línea</option><option value="2" selected>2 líneas</option></select></div>
+    <small class="tiny">Podés activar o desactivar premios. Tiene que quedar al menos uno.</small>
+  </div>
+
   <div class="field"><span>Rivales IA</span><div class="choices">
-    <div class="choice"><input id="ai1" name="aiCount" type="radio" value="1"><label for="ai1">1 rival</label></div><div class="choice"><input id="ai2" name="aiCount" type="radio" value="2" checked><label for="ai2">2 rivales</label></div>
+    <div class="choice"><input id="ai1" name="aiCount" type="radio" value="1"><label for="ai1">1 rival</label></div>
+    <div class="choice"><input id="ai2" name="aiCount" type="radio" value="2" checked><label for="ai2">2 rivales</label></div>
     <div class="choice"><input id="ai3" name="aiCount" type="radio" value="3"><label for="ai3">3 rivales</label></div>
   </div></div>
 
@@ -41,10 +55,10 @@
   </div></div>
 
   <div class="participants" id="participants"></div>
-  <div class="notice">En la sala vas a elegir tus cartones y aprender a activar o desactivar Automarcado. Los premios siempre deben reclamarse: gana el primer reclamo válido.</div>
+  <div class="notice">Después de crearla: ponés tu nombre, elegís o recargás cartones, confirmás y hacés el tutorial. <b>La partida no empieza sola:</b> vos decidís cuándo tocar COMENZAR DEMO.</div>
   <div id="error"></div>
-  <button class="start" id="start" type="submit">CREAR DEMO Y ENTRAR A LA SALA</button>
-  <div class="fine">La sala es temporal, no usa dinero real y se elimina automáticamente. Cada partida genera cartones y una secuencia de bolillas diferentes.</div>
+  <button class="start" id="start" type="submit">CREAR MI DEMO</button>
+  <div class="fine">Si muchas personas abren este mismo enlace, cada una recibe su propia demo independiente. Las demos inactivas se eliminan automáticamente.</div>
 </form>
 </main>
 <script>
@@ -53,23 +67,26 @@ const familyNames=['Zoe','Mateo','Owen'];
 const shuffledNames=()=>{const names=[...familyNames];for(let i=names.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[names[i],names[j]]=[names[j],names[i]]}return names};
 let demoNameOrder=shuffledNames();
 const value=name=>Number(document.querySelector(`input[name="${name}"]:checked`).value);
+const checked=id=>Boolean(document.getElementById(id)?.checked);
 function escapeHtml(value){return String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));}
-function renderParticipants(){
-  const count=value('aiCount');
-  const names=demoNameOrder.slice(0,count);
-  participants.innerHTML=`<div class="participant"><strong>Vos</strong><span>${value('playerCardCount')} cartón${value('playerCardCount')===1?'':'es'}</span></div>`+names.map(name=>`<div class="participant"><strong>${name} <span class="ai">IA</span></strong><span>2 cartones</span></div>`).join('');
-}
-document.querySelectorAll('input').forEach(input=>input.addEventListener('change',renderParticipants));document.querySelectorAll('input[name="aiCount"]').forEach(input=>input.addEventListener('change',()=>{demoNameOrder=shuffledNames();renderParticipants()}));renderParticipants();
+function currentMode(){return value('mode')===75?75:90;}
+function currentRules(){const mode=currentMode();return mode===75?{ambocabeza:false,line:checked('prizeLine'),doubleLine:checked('prizeDouble'),tripleLine:checked('prizeTriple'),corners:checked('prizeCorners'),bingo:checked('prizeBingo')}:{ambocabeza:checked('prizeAmbo'),line:checked('prizeLine'),doubleLine:false,tripleLine:false,corners:false,bingo:checked('prizeBingo')};}
+function updateModeUi(){const mode=currentMode();document.querySelectorAll('.p75').forEach(el=>el.classList.toggle('hidden',mode!==75));document.querySelectorAll('.p90').forEach(el=>el.classList.toggle('hidden',mode!==90));document.getElementById('lineCountWrap').classList.toggle('show',mode===90&&checked('prizeLine'));renderParticipants();}
+function renderParticipants(){const count=value('aiCount');const names=demoNameOrder.slice(0,count);participants.innerHTML=`<div class="participant"><strong>Vos</strong><span>hasta ${value('playerCardCount')} cartón${value('playerCardCount')===1?'':'es'}</span></div>`+names.map(name=>`<div class="participant"><strong>${escapeHtml(name)} <span class="ai">IA</span></strong><span>2 cartones</span></div>`).join('');}
+document.querySelectorAll('input').forEach(input=>input.addEventListener('change',()=>{if(input.name==='mode'||input.id==='prizeLine')updateModeUi();else renderParticipants();}));
+document.querySelectorAll('input[name="aiCount"]').forEach(input=>input.addEventListener('change',()=>{demoNameOrder=shuffledNames();renderParticipants()}));
+updateModeUi();
 form.addEventListener('submit',async event=>{
-  event.preventDefault();error.innerHTML='';button.disabled=true;button.textContent='PREPARANDO SALA…';
+  event.preventDefault();error.innerHTML='';
+  const rules=currentRules();if(!Object.values(rules).some(Boolean)){error.innerHTML='<div class="error">Elegí al menos un premio.</div>';return;}
+  button.disabled=true;button.textContent='PREPARANDO TU DEMO…';
   try{
-    const response=await fetch('/api/demo/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:value('mode'),aiCount:value('aiCount'),aiNames:demoNameOrder.slice(0,value('aiCount')),playerCardCount:value('playerCardCount'),autoSeconds:value('autoSeconds'),sound:true})});
-    const data=await response.json();
-    if(!response.ok)throw new Error(data.error||'No se pudo crear la demostración.');
-    localStorage.removeItem('bingoOnlineToken');
-    localStorage.removeItem('bingoOnlineCard');
-    location.href=data.playerUrl||`/jugador?sala=${encodeURIComponent(data.roomCode)}&codigo=${encodeURIComponent(data.playerCode)}`;
-  }catch(e){error.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;button.disabled=false;button.textContent='CREAR DEMO Y ENTRAR A LA SALA';}
+    const payload={mode:currentMode(),rules,linePrizeCount:currentMode()===90?Number(document.getElementById('linePrizeCount').value):1,aiCount:value('aiCount'),aiNames:demoNameOrder.slice(0,value('aiCount')),playerCardCount:value('playerCardCount'),autoSeconds:value('autoSeconds'),sound:true};
+    const response=await fetch('/api/demo/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await response.json();if(!response.ok)throw new Error(data.error||'No se pudo crear la demostración.');
+    localStorage.removeItem('bingoOnlineToken');localStorage.removeItem('bingoOnlineRoom');localStorage.removeItem('bingoOnlineCard');
+    location.href=data.playerUrl||'/demo';
+  }catch(e){error.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;button.disabled=false;button.textContent='CREAR MI DEMO';}
 });
 </script>
 </body>

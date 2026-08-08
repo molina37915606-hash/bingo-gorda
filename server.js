@@ -1891,9 +1891,12 @@ function createDemoRoom(payload = {}) {
   const allowedIntervals = new Set([2, 4, 6, 8]);
   const requestedInterval = Number(payload.autoSeconds) || 4;
   const autoSeconds = allowedIntervals.has(requestedInterval) ? requestedInterval : 4;
-  const rules = mode === 75
+  const defaultRules = mode === 75
     ? { ambocabeza: false, line: true, doubleLine: true, tripleLine: true, corners: true, bingo: true }
     : { ambocabeza: true, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true };
+  const rules = payload.rules && typeof payload.rules === 'object' ? roomRulesFor(mode, payload.rules) : defaultRules;
+  if (!Object.values(rules).some(Boolean)) throw new Error('Elegí al menos un premio para la demostración.');
+  const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.floor(Number(payload.linePrizeCount) || 2))) : 1;
   const requestedAiNames = Array.isArray(payload.aiNames) ? [...new Set(payload.aiNames.map(name => String(name || '').trim()).filter(name => DEMO_AI_NAME_POOL.includes(name)))] : [];
   const aiNames = requestedAiNames.length === aiCount ? requestedAiNames : shuffle(DEMO_AI_NAME_POOL).slice(0, aiCount);
   const totalCards = playerCardCount + aiCount * 2;
@@ -1907,9 +1910,7 @@ function createDemoRoom(payload = {}) {
     theme: 'clasico', phase: 'READY', drawn: [], createdAt: nowIso(), updatedAt: nowIso(), cards
   };
   const assignments = [{ allowedCardCount: playerCardCount, cardIds: [] }];
-  for (let index = 0; index < aiCount; index++) {
-    assignments.push({ allowedCardCount: 2, cardIds: mappedAiGroups[index].map(card => card.id) });
-  }
+  for (let index = 0; index < aiCount; index++) assignments.push({ allowedCardCount: 2, cardIds: mappedAiGroups[index].map(card => card.id) });
   const workspace = ensureWorkspace(`demo_${randomCode(10).toLowerCase()}`);
   workspace.isDemo = true;
   workspace.expiresAt = Date.now() + DEMO_TTL_MS;
@@ -1921,7 +1922,7 @@ function createDemoRoom(payload = {}) {
       roomSettings: {
         playerAudioAllowed: true,
         playerAudioDefault: payload.sound !== false,
-        linePrizeCount: mode === 90 ? 2 : 1,
+        linePrizeCount,
         allowSamePlayerSecondLine: true,
         tiePolicy: 'first_claim',
         gameType: 'test',
@@ -1943,6 +1944,10 @@ function createDemoRoom(payload = {}) {
     human.selectionConfirmed = false;
     human.cardIds = [];
     human.marks = {};
+    // La demo entra con una sesión temporal propia: nunca pide ni expone un código privado.
+    human.sessionToken = randomId('demo_session');
+    human.sessionDeviceId = '';
+    human.lastLoginAt = nowIso();
     refreshOffersForPlayer(human, true);
     state.players.slice(1).forEach((player, index) => {
       player.name = aiNames[index];
@@ -1963,7 +1968,10 @@ function createDemoRoom(payload = {}) {
       playerCardCount,
       cardsPerAi: 2,
       autoSeconds,
-      mode
+      mode,
+      rules: { ...rules },
+      linePrizeCount,
+      noWaitingGames: true
     };
     syncAllAutoMarks();
     updateCardDisplayNames();
@@ -1971,16 +1979,19 @@ function createDemoRoom(payload = {}) {
     state.players.filter(player => player.virtual).slice(0, 2).forEach((player, index) => {
       try { appendChatMessage({ role: 'player', player, text: demoChatOpeners[index % demoChatOpeners.length] }); } catch {}
     });
-    logEvent('demo_created', { aiNames, aiCount, playerCardCount, cardsPerAi: 2, mode, autoSeconds, waitingRoom: true, simulatedChat: true });
+    logEvent('demo_created', { aiNames, aiCount, playerCardCount, cardsPerAi: 2, mode, autoSeconds, rules, linePrizeCount, waitingRoom: true, simulatedChat: true, waitingGames: false });
     saveState();
     const response = {
       workspaceId: workspace.id,
       roomCode: state.roomCode,
       playerCode: human.code,
+      playerSessionToken: human.sessionToken,
       expiresAt: new Date(workspace.expiresAt).toISOString(),
-      playerUrl: `/jugador?demo=1&sala=${encodeURIComponent(state.roomCode)}&codigo=${encodeURIComponent(human.code)}`,
+      playerUrl: `/jugador?demo=1&demoSession=${encodeURIComponent(human.sessionToken)}`,
       participants: [{ name: playerDisplayName(human), virtual: false, cardCount: human.cardIds.length }, ...state.players.slice(1).map(player => ({ name: player.name, virtual: true, cardCount: player.cardIds.length }))],
       mode,
+      rules: { ...rules },
+      linePrizeCount,
       autoSeconds
     };
     if (TEST_MODE) response.testAdminToken = createAdminSession({ workspaceId: workspace.id, role: 'owner', hardExpiresAt: workspace.expiresAt });
@@ -3438,6 +3449,8 @@ function restartDemoFromPlayer(player) {
     aiNames: Array.isArray(demo.aiNames) ? demo.aiNames : state.players.filter(item => item.virtual).map(item => item.name),
     playerCardCount: Math.max(1, Math.min(4, Number(demo.playerCardCount || player.allowedCardCount) || 2)),
     autoSeconds: Number(demo.autoSeconds || state.game?.autoSeconds) || 4,
+    rules: demo.rules || state.game?.rules || {},
+    linePrizeCount: Number(demo.linePrizeCount || state.roomSettings?.linePrizeCount) || 1,
     sound: state.roomSettings?.playerAudioDefault !== false
   });
 }
@@ -4844,7 +4857,7 @@ async function handleApi(req, res, url) {
     }
 
     if (url.pathname === '/api/demo/create' && req.method === 'POST') {
-      if (!consumeRate(req, 'demo-create', 5, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Se alcanzó el límite de demostraciones. Probá más tarde.' });
+      if (!consumeRate(req, 'demo-create', 40, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Se crearon muchas demostraciones desde esta conexión. Esperá unos minutos y probá de nuevo.' });
       return sendJson(res, 200, createDemoRoom(await readJson(req)));
     }
 

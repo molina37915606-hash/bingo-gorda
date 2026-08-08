@@ -150,9 +150,12 @@ async function drawMany(adminHeaders, count) {
     let result = await json('/healthz');
     assert.equal(result.data.version, 'LA GORDA - BINGO ONLINE');
     const demoHtml = await (await fetch(base + '/demo')).text();
-    assert(demoHtml.includes('Jugá una partida real y rápida'));
-    assert(demoHtml.includes('CREAR DEMO Y ENTRAR A LA SALA'));
-    assert(demoHtml.includes('Las IA usan dos cartones'));
+    assert(demoHtml.includes('Probá una partida completa')); 
+    assert(demoHtml.includes('CREAR MI DEMO'));
+    assert(demoHtml.includes('Premios que querés probar'));
+    assert(demoHtml.includes('no incluye minijuegos')); 
+    assert(demoHtml.includes('2 cartones'));
+    assert(demoHtml.includes('cada una recibe su propia demo independiente')); 
     const adminHtml = await (await fetch(base + '/admin')).text();
     assert(adminHtml.includes('LA GORDA - BINGO ONLINE'));
     assert(adminHtml.includes('.ballNumber{display:block;color:#fff'));

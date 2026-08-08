@@ -31,29 +31,43 @@ async function waitServer() {
 (async () => {
   try {
     await waitServer();
+    const rules = { ambocabeza: false, line: true, doubleLine: false, tripleLine: true, corners: false, bingo: true };
     const created = await json('/api/demo/create', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 75, aiCount: 3, playerCardCount: 2, autoSeconds: 4 })
+      body: JSON.stringify({ mode: 75, rules, aiCount: 3, playerCardCount: 2, autoSeconds: 4 })
     });
     assert.equal(created.response.status, 200, JSON.stringify(created.data));
     assert.equal(created.data.participants[0].cardCount, 0);
+    assert(created.data.playerSessionToken, 'La demo debe entregar una sesión temporal directa.');
+    assert(!created.data.playerUrl.includes('codigo='), 'La URL de demo no debe exponer ni pedir código privado.');
+    assert(created.data.playerUrl.includes('demoSession='), 'La URL debe usar sesión temporal de demo.');
+    assert.deepEqual(created.data.rules, rules);
 
-    const login = await json('/api/player/login', {
+    const secondDemo = await json('/api/demo/create', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomCode: created.data.roomCode, code: created.data.playerCode, deviceId: 'demo-player-test' })
+      body: JSON.stringify({ mode: 90, rules: { ambocabeza: true, line: false, bingo: true }, linePrizeCount: 1, aiCount: 2, playerCardCount: 1, autoSeconds: 4 })
     });
-    assert.equal(login.response.status, 200, JSON.stringify(login.data));
-    assert.equal(login.data.state.status, 'waiting');
-    assert.equal(login.data.state.player.nameSet, false);
-    assert.equal(login.data.state.player.selectionConfirmed, false);
-    assert.equal(login.data.state.player.allowedCardCount, 2);
-    assert(login.data.state.player.offeredCards.length >= 2);
-    assert.equal(login.data.state.player.autoMarkForced, false);
-    assert.equal(login.data.state.player.demoHuman, true);
-    assert((login.data.state.chat?.messages || []).some(message => message.role === 'player'), 'Debe haber chat IA visible desde la espera.');
+    assert.equal(secondDemo.response.status, 200, JSON.stringify(secondDemo.data));
+    assert.notEqual(secondDemo.data.roomCode, created.data.roomCode, 'Cada apertura debe crear una demo independiente.');
+    assert.notEqual(secondDemo.data.playerSessionToken, created.data.playerSessionToken, 'Las demos no deben compartir sesión.');
+    assert.equal(secondDemo.data.rules.line, false);
+    assert.equal(secondDemo.data.rules.ambocabeza, true);
+    assert.equal(secondDemo.data.linePrizeCount, 1);
 
-    const playerHeaders = { 'Content-Type': 'application/json', 'X-Player-Token': login.data.token };
-    const chosenIds = login.data.state.player.offeredCards.slice(0, 2).map(card => card.id);
+    const playerHeaders = { 'Content-Type': 'application/json', 'X-Player-Token': created.data.playerSessionToken };
+    const playerState = await json('/api/player/state', { headers: playerHeaders });
+    assert.equal(playerState.response.status, 200, JSON.stringify(playerState.data));
+    const initial = playerState.data;
+    assert.equal(initial.status, 'waiting');
+    assert.equal(initial.player.nameSet, false);
+    assert.equal(initial.player.selectionConfirmed, false);
+    assert.equal(initial.player.allowedCardCount, 2);
+    assert(initial.player.offeredCards.length >= 2);
+    assert.equal(initial.player.autoMarkForced, false);
+    assert.equal(initial.player.demoHuman, true);
+    assert((initial.chat?.messages || []).some(message => message.role === 'player'), 'Debe haber chat IA visible desde la espera.');
+
+    const chosenIds = initial.player.offeredCards.slice(0, 2).map(card => card.id);
     const choose = await json('/api/player/choose', {
       method: 'POST', headers: playerHeaders,
       body: JSON.stringify({ name: 'Invitado Demo', cardIds: chosenIds })
@@ -66,15 +80,17 @@ async function waitServer() {
     assert.equal(start.response.status, 200, JSON.stringify(start.data));
     assert.equal(start.data.status, 'starting');
     await wait(180);
-    const playerState = await json('/api/player/state', { headers: playerHeaders });
-    assert.equal(playerState.response.status, 200);
-    assert(['playing', 'starting'].includes(playerState.data.status));
+    const liveState = await json('/api/player/state', { headers: playerHeaders });
+    assert.equal(liveState.response.status, 200);
+    assert(['playing', 'starting'].includes(liveState.data.status));
 
     const playerJs = fs.readFileSync(path.join(__dirname, '..', 'js', 'online-room-player.js'), 'utf8');
     const adminJs = fs.readFileSync(path.join(__dirname, '..', 'js', 'admin-simplificado.js'), 'utf8');
     const adminHtml = fs.readFileSync(path.join(__dirname, '..', 'admin.html'), 'utf8');
     assert(playerJs.includes("target:'#selectionPlayerName'"));
-    assert(playerJs.includes("target:'#waitMiniGame'"));
+    assert(playerJs.includes("when:()=>!device.tv && !this.state?.demo?.active"), 'El tutorial no debe enseñar minijuegos dentro de la demo.');
+    assert(playerJs.includes("if (this.state?.status !== 'waiting' || this.state?.demo?.active) return '';"), 'La demo no debe renderizar minijuegos.');
+    assert(playerJs.includes("params.get('demoSession')"), 'El jugador debe aceptar la sesión temporal de demo.');
     assert(playerJs.includes("target:'.choiceCounter'"));
     assert(playerJs.includes("'/api/player/demo/start'"));
     assert(playerJs.includes("params.get('simcontrol') === '1'"));

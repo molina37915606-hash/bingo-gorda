@@ -196,6 +196,7 @@ class PlayerApp {
 
     const params = new URLSearchParams(location.search);
     if (params.get('simcontrol') === '1') this.injectSimulationControlBadge();
+    const demoSession = String(params.get('demoSession') || '').trim();
     const directCode = String(params.get('acceso') || params.get('codigo') || params.get('code') || '').trim().toUpperCase();
     const roomCode = String(params.get('sala') || '').trim().toUpperCase();
     this.openJoinMode = params.get('prueba') === '1' && Boolean(roomCode);
@@ -205,7 +206,16 @@ class PlayerApp {
       $('loginIntro').textContent = 'Escribí tu nombre, elegí tus cartones y entrá directamente a la sala de prueba.';
       $('loginBtn').textContent = 'ENTRAR A LA SALA';
     }
-    if (directCode) {
+    if (demoSession) {
+      // La demostración usa una sesión temporal directa: nunca muestra ni pide código privado.
+      this.token = demoSession;
+      this.tokenRoom = '';
+      localStorage.setItem('bingoOnlineToken', this.token);
+      localStorage.removeItem('bingoOnlineRoom');
+      localStorage.removeItem('bingoOnlineCard');
+      this.cleanDirectAccessUrl();
+      await this.resume();
+    } else if (directCode) {
       $('accessCode').value = directCode;
       await this.login(directCode, roomCode);
     } else if (this.token && (!roomCode || (this.tokenRoom && this.tokenRoom === roomCode))) {
@@ -666,13 +676,27 @@ class PlayerApp {
   cleanDirectAccessUrl() {
     const url = new URL(location.href);
     let changed = false;
-    ['acceso','codigo','code'].forEach(key => { if (url.searchParams.has(key)) { url.searchParams.delete(key); changed = true; } });
+    ['acceso','codigo','code','demoSession'].forEach(key => { if (url.searchParams.has(key)) { url.searchParams.delete(key); changed = true; } });
     if (changed) history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
   }
 
   async resume() {
-    try { const data = await this.request('/api/player/state'); this.applyState(data); this.connectEvents(); }
-    catch { this.logout(false); }
+    try {
+      const data = await this.request('/api/player/state');
+      this.tokenRoom = String(data?.roomCode || '').trim().toUpperCase();
+      if (this.tokenRoom) localStorage.setItem('bingoOnlineRoom', this.tokenRoom);
+      this.applyState(data);
+      this.connectEvents();
+    } catch {
+      const demoEntry = new URLSearchParams(location.search).get('demo') === '1';
+      if (demoEntry) {
+        this.token = ''; this.tokenRoom = ''; this.activeCardId = '';
+        localStorage.removeItem('bingoOnlineToken'); localStorage.removeItem('bingoOnlineRoom'); localStorage.removeItem('bingoOnlineCard');
+        location.replace('/demo');
+        return;
+      }
+      this.logout(false);
+    }
   }
 
   async requestDeviceTransfer() {
@@ -953,7 +977,7 @@ class PlayerApp {
   }
 
   waitingMiniGameHtml() {
-    if (this.state?.status !== 'waiting') return '';
+    if (this.state?.status !== 'waiting' || this.state?.demo?.active) return '';
     const type = ['red_black','higher_lower'].includes(this.waitingMini.activeType) ? this.waitingMini.activeType : 'red_black';
     const title = type === 'red_black' ? 'ROJO O NEGRO' : 'MAYOR O MENOR';
     const leaders = this.state.waitingGame?.leaderboards?.[type] || this.state.waitingGame?.leaderboard || [];
@@ -1168,8 +1192,12 @@ class PlayerApp {
   }
 
   async renewOffers() {
+    const button = $('renewChoice');
+    if (button?.disabled) return;
+    if (button) { button.disabled = true; button.textContent = 'RECARGANDO…'; }
     try { this.applyState(await this.request('/api/player/renew-offers', { method:'POST', body:'{}' })); }
     catch (error) { this.showMessage(error.message, 'error'); }
+    finally { if (button && document.contains(button)) { button.disabled = false; button.textContent = 'RECARGAR CARTONES'; } }
   }
 
   async confirmChoice(force = false) {
@@ -1185,10 +1213,16 @@ class PlayerApp {
       $('partialChoiceOverlay').classList.add('show');
       return;
     }
+    const button = $('continueChoice');
+    if (button?.dataset.busy === '1') return;
+    if (button) { button.dataset.busy = '1'; button.disabled = true; button.textContent = 'CONFIRMANDO…'; }
     try {
       this.applyState(await this.request('/api/player/choose', { method:'POST', body:JSON.stringify({ cardIds:[...this.selectedOffers], ...(name ? { name } : {}) }) }));
       this.pendingPlayerName = '';
-    } catch (error) { this.showMessage(error.message, 'error'); }
+    } catch (error) {
+      this.showMessage(error.message, 'error');
+      if (button && document.contains(button)) { button.dataset.busy = '0'; button.disabled = false; button.textContent = 'CONFIRMAR CARTONES'; }
+    }
   }
 
   async releaseChoice() {
@@ -1197,10 +1231,17 @@ class PlayerApp {
   }
 
   async startDemoFromPlayer() {
-    if (!this.state?.demo?.active || !this.state?.player?.demoHuman || this.state.status !== 'waiting') return;
+    if (!this.state?.demo?.active || !this.state?.player?.demoHuman || this.state.status !== 'waiting' || this.demoStartBusy) return;
+    const button = $('demoStartBtn');
+    this.demoStartBusy = true;
+    if (button) { button.disabled = true; button.textContent = 'PREPARANDO PARTIDA…'; }
     try {
       this.applyState(await this.request('/api/player/demo/start', { method:'POST', body:'{}' }));
-    } catch (error) { this.showMessage(error.message, 'error'); }
+    } catch (error) {
+      this.demoStartBusy = false;
+      if (button && document.contains(button)) { button.disabled = false; button.textContent = 'COMENZAR DEMO'; }
+      this.showMessage(error.message, 'error');
+    }
   }
 
   async restartDemo() {
@@ -1317,7 +1358,7 @@ class PlayerApp {
     const markText = `${tap} un número para marcarlo. ${tap} el mismo número otra vez para desmarcarlo.`;
     const steps = stage === 'selection' ? [
       { target:'#selectionPlayerName', when:()=>!this.state?.player?.nameSet, title:'Primero, tu nombre', text:'Escribí tu nombre o apodo. Así aparecés en tus cartones, el chat y los resultados.' },
-      { target:'#waitMiniGame', when:()=>!device.tv, title:'Jugá mientras esperás', text:'Tenés minijuegos para pasar el rato. No cambian el Bingo ni tus posibilidades de ganar.' },
+      { target:'#waitMiniGame', when:()=>!device.tv && !this.state?.demo?.active, title:'Jugá mientras esperás', text:'Tenés minijuegos para pasar el rato. No cambian el Bingo ni tus posibilidades de ganar.' },
       { target:'.choiceCounter', title:'Cuántos podés elegir', text:`Acá ves cuántos cartones llevás elegidos y cuántos tenés disponibles: <strong>${Number(this.state?.player?.allowedCardCount || 1)}</strong>.` },
       { target:'#offerGrid .offer', title:'Elegí tus cartones', text:`${tap} un cartón para elegirlo. Repetí sobre el mismo para soltarlo.` },
       { target:'#renewChoice', title:'Podés recargar', text:'Si no te gustan, usá <strong>Recargar cartones</strong>. Los que ya elegiste se conservan.' },
@@ -1444,19 +1485,17 @@ class PlayerApp {
       this.renderGuideStep();
       return;
     }
-    const shouldStartDemo = !this.guideManual && this.guideStage === 'controls' && this.state?.demo?.active && this.state?.player?.demoHuman && this.state?.status === 'waiting';
     if (!this.guideManual) this.setGuideProgress(this.guideStage === 'selection' ? 'selection' : 'complete');
     this.saveGuideMemory(this.guideStage === 'selection' ? 'in_progress' : 'complete', this.guideStage === 'selection' ? 'controls' : this.guideStage, 0);
     this.closeGuide(false);
-    if (shouldStartDemo) this.startDemoFromPlayer();
+    if (this.guideStage === 'controls' && this.state?.demo?.active && this.state?.status === 'waiting') this.showMessage('Tutorial listo. Cuando quieras, tocá COMENZAR DEMO.', 'success');
   }
 
   skipGuide() {
-    const shouldStartDemo = !this.guideManual && this.guideStage === 'controls' && this.state?.demo?.active && this.state?.player?.demoHuman && this.state?.status === 'waiting';
     this.setGuideProgress('skipped');
     this.saveGuideMemory('skipped', this.guideStage, this.guideStep);
     this.closeGuide(false);
-    if (shouldStartDemo) this.startDemoFromPlayer();
+    if (this.state?.demo?.active && this.state?.status === 'waiting') this.showMessage('Tutorial salteado. La demo no empieza hasta que toques COMENZAR DEMO.', 'success');
   }
 
   closeGuide(markSkipped = false) {

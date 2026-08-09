@@ -50,13 +50,12 @@ async function waitServer() {
       body:JSON.stringify({ mode:75, aiCount:2, playerCardCount:1, autoSeconds:2 })
     });
     assert.equal(created.response.status, 200, JSON.stringify(created.data));
-    const login = await json('/api/player/login', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ roomCode:created.data.roomCode, code:created.data.playerCode, deviceId:'rush-player' })
-    });
+    const demoCookie = (created.response.headers.get('set-cookie') || '').split(';')[0];
+    assert(demoCookie.includes('bingo_demo_session='), 'La demo debe autenticar por cookie.');
+    const login = await json('/api/player/state', { headers:{Cookie:demoCookie} });
     assert.equal(login.response.status, 200, JSON.stringify(login.data));
-    const headers = {'Content-Type':'application/json','X-Player-Token':login.data.token};
-    const cardId = login.data.state.player.offeredCards[0].id;
+    const headers = {'Content-Type':'application/json','Cookie':demoCookie};
+    const cardId = login.data.player.offeredCards[0].id;
     const choose = await json('/api/player/choose', { method:'POST', headers, body:JSON.stringify({ name:'Jugador Rápido', cardIds:[cardId] }) });
     assert.equal(choose.response.status, 200, JSON.stringify(choose.data));
 

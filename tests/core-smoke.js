@@ -102,19 +102,18 @@ async function demoCards(mode, players, cardsPerPlayer) {
   assert(aiNames.every(name => ['Zoe','Mateo','Owen'].includes(name)), 'Las demos solo deben usar Zoe, Mateo y Owen.');
   assert(state.players.slice(1).every(player => player.nameSet && player.autoMark && player.selectionConfirmed));
   assert((state.chat?.messages || []).some(message => message.role === 'player'), 'La demo debe mostrar chat IA ya en la sala de espera.');
-  const login = await json('/api/player/login', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: result.data.playerCode, roomCode: result.data.roomCode, deviceId: `demo-${mode}-${Date.now()}` })
-  });
+  const demoCookie = (result.response.headers.get('set-cookie') || '').split(';')[0];
+  assert(demoCookie.includes('bingo_demo_session='));
+  const login = await json('/api/player/state', { headers: { Cookie: demoCookie } });
   assert.equal(login.response.status, 200, JSON.stringify(login.data));
-  assert.equal(login.data.state.player.name, 'Vos');
-  assert.equal(login.data.state.player.cards.length, 0);
-  assert(login.data.state.player.offeredCards.length >= playerCardCount);
-  assert.equal(login.data.state.player.autoMarkForced, false);
-  assert.equal(login.data.state.player.demoHuman, true);
-  assert.equal(login.data.state.demo.participants.length, aiCount + 1);
-  const playerHeaders = { 'Content-Type': 'application/json', 'X-Player-Token': login.data.token };
-  const chosenIds = login.data.state.player.offeredCards.slice(0, playerCardCount).map(card => card.id);
+  assert.equal(login.data.player.name, 'Vos');
+  assert.equal(login.data.player.cards.length, 0);
+  assert(login.data.player.offeredCards.length >= playerCardCount);
+  assert.equal(login.data.player.autoMarkForced, false);
+  assert.equal(login.data.player.demoHuman, true);
+  assert.equal(login.data.demo.participants.length, aiCount + 1);
+  const playerHeaders = { 'Content-Type': 'application/json', 'Cookie': demoCookie };
+  const chosenIds = login.data.player.offeredCards.slice(0, playerCardCount).map(card => card.id);
   const chosen = await json('/api/player/choose', { method:'POST', headers:playerHeaders, body:JSON.stringify({ name:'Vos Demo', cardIds:chosenIds }) });
   assert.equal(chosen.response.status, 200, JSON.stringify(chosen.data));
   assert.equal(chosen.data.player.selectionConfirmed, true);

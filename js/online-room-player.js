@@ -8,6 +8,7 @@ const PRESENTERS = Scripts.profiles || {};
 class PlayerApp {
   constructor() {
     this.token = localStorage.getItem('bingoOnlineToken') || '';
+    this.cookieSession = false;
     this.tokenRoom = String(localStorage.getItem('bingoOnlineRoom') || '').trim().toUpperCase();
     this.deviceId = localStorage.getItem('bingoPlayerDeviceId') || this.makeDeviceId();
     localStorage.setItem('bingoPlayerDeviceId', this.deviceId);
@@ -198,7 +199,7 @@ class PlayerApp {
 
     const params = new URLSearchParams(location.search);
     if (params.get('simcontrol') === '1') this.injectSimulationControlBadge();
-    const demoSession = String(params.get('demoSession') || '').trim();
+    const demoEntry = params.get('demo') === '1';
     const directCode = String(params.get('acceso') || params.get('codigo') || params.get('code') || '').trim().toUpperCase();
     const roomCode = String(params.get('sala') || '').trim().toUpperCase();
     this.openJoinMode = params.get('prueba') === '1' && Boolean(roomCode);
@@ -208,14 +209,15 @@ class PlayerApp {
       $('loginIntro').textContent = 'Escribí tu nombre, elegí tus cartones y entrá directamente a la sala de prueba.';
       $('loginBtn').textContent = 'ENTRAR A LA SALA';
     }
-    if (demoSession) {
-      // La demostración usa una sesión temporal directa: nunca muestra ni pide código privado.
-      this.token = demoSession;
+    if (demoEntry) {
+      // La demostración se autentica con cookie HttpOnly del servidor.
+      // No necesita token visible, código privado ni localStorage para entrar.
+      this.token = '';
       this.tokenRoom = '';
-      localStorage.setItem('bingoOnlineToken', this.token);
+      this.cookieSession = true;
+      localStorage.removeItem('bingoOnlineToken');
       localStorage.removeItem('bingoOnlineRoom');
       localStorage.removeItem('bingoOnlineCard');
-      this.cleanDirectAccessUrl();
       await this.resume({ demoBoot:true });
     } else if (directCode) {
       $('accessCode').value = directCode;
@@ -637,6 +639,7 @@ class PlayerApp {
       const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
       try {
         const response = await fetch(url, {
+          credentials:'same-origin',
           ...fetchOptions,
           ...(controller ? { signal:controller.signal } : {}),
           headers: { 'Content-Type':'application/json', ...(this.token ? { 'X-Player-Token':this.token } : {}), ...(fetchOptions.headers || {}) }
@@ -804,7 +807,7 @@ class PlayerApp {
 
   refreshNetworkIndicator() {
     if (navigator.onLine === false) return this.setNetworkState('bad');
-    if (!this.token || !this.state?.active) return this.setNetworkState('connecting');
+    if (!(this.token || this.cookieSession) || !this.state?.active) return this.setNetworkState('connecting');
     if (this.events?.readyState === EventSource.OPEN) return this.setNetworkState('good');
     if (this.events?.readyState === EventSource.CONNECTING) return this.setNetworkState('warn');
     if (this.lastNetworkSuccessAt && Date.now() - this.lastNetworkSuccessAt < 10000) return this.setNetworkState('warn');
@@ -818,7 +821,8 @@ class PlayerApp {
   connectEvents() {
     this.events?.close();
     clearTimeout(this.reconnectRefreshTimer);
-    this.events = new EventSource(`/api/events?role=player&token=${encodeURIComponent(this.token)}`);
+    const eventUrl = this.token ? `/api/events?role=player&token=${encodeURIComponent(this.token)}` : '/api/events?role=player';
+    this.events = new EventSource(eventUrl);
     this.setNetworkState('connecting');
     this.events.addEventListener('open', () => { this.lastNetworkSuccessAt = Date.now(); this.setNetworkState('good'); });
     this.events.addEventListener('state', event => {
@@ -854,12 +858,12 @@ class PlayerApp {
 
   scheduleReconnectRefresh(immediate = false) {
     clearTimeout(this.reconnectRefreshTimer);
-    if (!this.token) return;
+    if (!(this.token || this.cookieSession)) return;
     const delays = [1200, 2000, 3000, 5000, 8000];
     const delay = immediate ? 50 : delays[Math.min(this.reconnectAttempts, delays.length - 1)];
     this.reconnectAttempts += 1;
     this.reconnectRefreshTimer = setTimeout(async () => {
-      if (!this.token) return;
+      if (!(this.token || this.cookieSession)) return;
       try {
         const data = await this.request('/api/player/state');
         this.reconnectAttempts = 0;
@@ -881,6 +885,7 @@ class PlayerApp {
     const previousCount = previous?.game?.drawn?.length;
     const previousConfirmed = Boolean(previous?.player?.selectionConfirmed);
     this.state = data;
+    if (data.demo?.active && data.player?.demoHuman) this.cookieSession = true;
     if (data.roomCode && this.token) {
       this.tokenRoom = String(data.roomCode).trim().toUpperCase();
       localStorage.setItem('bingoOnlineRoom', this.tokenRoom);
@@ -2122,7 +2127,7 @@ class PlayerApp {
 
   logout(reload=true) {
     this.releaseWakeLock();
-    this.events?.close(); clearTimeout(this.reconnectRefreshTimer); clearInterval(this.sequenceTimer); this.setFocusMode(false); this.closeOtherPanels(); this.closeResultsViewer(); this.token=''; this.tokenRoom=''; this.state=null; this.roomClosedShown=false; localStorage.removeItem('bingoOnlineToken'); localStorage.removeItem('bingoOnlineRoom'); localStorage.removeItem('bingoOnlineCard');
+    this.events?.close(); clearTimeout(this.reconnectRefreshTimer); clearInterval(this.sequenceTimer); this.setFocusMode(false); this.closeOtherPanels(); this.closeResultsViewer(); this.token=''; this.cookieSession=false; this.tokenRoom=''; this.state=null; this.roomClosedShown=false; localStorage.removeItem('bingoOnlineToken'); localStorage.removeItem('bingoOnlineRoom'); localStorage.removeItem('bingoOnlineCard');
     document.body.classList.remove('playerLogged'); $('infoDrawerToggle').classList.add('hidden');
     if(reload) location.reload(); else { $('gameView').classList.add('hidden'); $('loginView').classList.remove('hidden'); }
   }

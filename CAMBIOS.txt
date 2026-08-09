@@ -1,3 +1,16 @@
+VERSIÓN 2.7.0 · ENTRADA DEMO AUTENTICADA POR SERVIDOR
+
+- La DEMO ya no usa demoSession en la URL ni localStorage para autenticarse.
+- Al crear una DEMO, el servidor entrega una cookie temporal HttpOnly + SameSite=Lax y redirige a /jugador?demo=1.
+- La API pública de creación ya no expone token de sesión ni código del jugador.
+- /jugador?demo=1 valida la sesión en el servidor antes de servir la pantalla; si venció, vuelve a /demo.
+- Las llamadas del jugador y EventSource pueden autenticarse directamente con la cookie.
+- Se limpia cualquier sesión normal guardada al entrar en DEMO para evitar cruces de salas.
+- Reiniciar DEMO reemplaza automáticamente la cookie por la de la nueva demostración.
+- Se conserva timeout, reintento y salida recuperable si el servidor no responde.
+- online-room-player.js sube a v2.7.0.
+- Nueva prueba de entrada real: crear DEMO -> recibir cookie -> abrir /jugador?demo=1 -> obtener estado sin código ni token visible.
+
 VERSIÓN 2.6.1 · HOTFIX DE ARRANQUE DEMO
 
 - La entrada de DEMO deja de esperar información pública secundaria antes de validar la sesión.

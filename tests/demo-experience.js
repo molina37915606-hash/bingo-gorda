@@ -38,9 +38,11 @@ async function waitServer() {
     });
     assert.equal(created.response.status, 200, JSON.stringify(created.data));
     assert.equal(created.data.participants[0].cardCount, 0);
-    assert(created.data.playerSessionToken, 'La demo debe entregar una sesión temporal directa.');
-    assert(!created.data.playerUrl.includes('codigo='), 'La URL de demo no debe exponer ni pedir código privado.');
-    assert(created.data.playerUrl.includes('demoSession='), 'La URL debe usar sesión temporal de demo.');
+    const firstCookie = (created.response.headers.get('set-cookie') || '').split(';')[0];
+    assert(firstCookie.includes('bingo_demo_session='), 'La demo debe crear una cookie temporal de sesión.');
+    assert(!created.data.playerSessionToken && !created.data.demoSessionToken, 'La demo no debe exponer el token de sesión en JSON.');
+    assert.equal(created.data.playerUrl, '/jugador?demo=1');
+    assert(!/codigo=|demoSession=|code=|acceso=/i.test(created.data.playerUrl), 'La URL de demo no debe exponer ni pedir credenciales.');
     assert.deepEqual(created.data.rules, rules);
 
     const secondDemo = await json('/api/demo/create', {
@@ -49,12 +51,13 @@ async function waitServer() {
     });
     assert.equal(secondDemo.response.status, 200, JSON.stringify(secondDemo.data));
     assert.notEqual(secondDemo.data.roomCode, created.data.roomCode, 'Cada apertura debe crear una demo independiente.');
-    assert.notEqual(secondDemo.data.playerSessionToken, created.data.playerSessionToken, 'Las demos no deben compartir sesión.');
+    const secondCookie = (secondDemo.response.headers.get('set-cookie') || '').split(';')[0];
+    assert.notEqual(secondCookie, firstCookie, 'Las demos no deben compartir sesión.');
     assert.equal(secondDemo.data.rules.line, false);
     assert.equal(secondDemo.data.rules.ambocabeza, true);
     assert.equal(secondDemo.data.linePrizeCount, 1);
 
-    const playerHeaders = { 'Content-Type': 'application/json', 'X-Player-Token': created.data.playerSessionToken };
+    const playerHeaders = { 'Content-Type': 'application/json', 'Cookie': firstCookie };
     const playerState = await json('/api/player/state', { headers: playerHeaders });
     assert.equal(playerState.response.status, 200, JSON.stringify(playerState.data));
     const initial = playerState.data;
@@ -90,7 +93,8 @@ async function waitServer() {
     assert(playerJs.includes("target:'#selectionPlayerName'"));
     assert(playerJs.includes("when:()=>!device.tv && !this.state?.demo?.active"), 'El tutorial no debe enseñar minijuegos dentro de la demo.');
     assert(playerJs.includes("if (this.state?.status !== 'waiting' || this.state?.demo?.active) return '';"), 'La demo no debe renderizar minijuegos.');
-    assert(playerJs.includes("params.get('demoSession')"), 'El jugador debe aceptar la sesión temporal de demo.');
+    assert(playerJs.includes("const demoEntry = params.get('demo') === '1'"), 'El jugador debe iniciar la demo mediante la sesión del servidor.');
+    assert(playerJs.includes('this.cookieSession = true'), 'La sesión de DEMO debe funcionar sin token visible.');
     assert(playerJs.includes("target:'.choiceCounter'"));
     assert(playerJs.includes("'/api/player/demo/start'"));
     assert(playerJs.includes("params.get('simcontrol') === '1'"));

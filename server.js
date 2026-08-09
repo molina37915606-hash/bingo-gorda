@@ -88,6 +88,7 @@ const COMMUNITY_REPORT_WINDOW_MS = 60 * 60 * 1000;
 const COMMUNITY_REPORT_WINDOW_MAX = 12;
 const COMMUNITY_RESERVED_NAMES = /^(la\s*gorda|administraci[oó]n|admin|administrador(?:a)?|sistema|moderador(?:a)?|staff|oficial)$/i;
 const DEMO_TTL_MS = 30 * 60 * 1000;
+const DEMO_SESSION_COOKIE = 'bingo_demo_session';
 const DEMO_IDLE_TTL_MS = 15 * 60 * 1000;
 const DEMO_CLAIM_WINDOW_MS = 1600;
 const DEMO_START_SEQUENCE_MS = 3200;
@@ -1984,10 +1985,9 @@ function createDemoRoom(payload = {}) {
     const response = {
       workspaceId: workspace.id,
       roomCode: state.roomCode,
-      playerCode: human.code,
-      playerSessionToken: human.sessionToken,
+      demoSessionToken: human.sessionToken,
       expiresAt: new Date(workspace.expiresAt).toISOString(),
-      playerUrl: `/jugador?demo=1&demoSession=${encodeURIComponent(human.sessionToken)}`,
+      playerUrl: '/jugador?demo=1',
       participants: [{ name: playerDisplayName(human), virtual: false, cardCount: human.cardIds.length }, ...state.players.slice(1).map(player => ({ name: player.name, virtual: true, cardCount: player.cardIds.length }))],
       mode,
       rules: { ...rules },
@@ -4518,6 +4518,56 @@ function findWorkspaceByRoomCode(roomCode) {
   return [...workspaces.values()].find(workspace => String(workspace.state.roomCode || '').toUpperCase() === normalized) || null;
 }
 
+
+function cookieValue(req, name) {
+  const header = String(req?.headers?.cookie || '');
+  if (!header || !name) return '';
+  for (const part of header.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator <= 0) continue;
+    const key = part.slice(0, separator).trim();
+    if (key !== name) continue;
+    try { return decodeURIComponent(part.slice(separator + 1).trim()); } catch { return part.slice(separator + 1).trim(); }
+  }
+  return '';
+}
+
+function requestIsSecure(req) {
+  const forwarded = String(req?.headers?.['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+  return forwarded === 'https' || Boolean(req?.socket?.encrypted);
+}
+
+function setDemoSessionCookie(req, res, token) {
+  const value = encodeURIComponent(String(token || ''));
+  const parts = [
+    `${DEMO_SESSION_COOKIE}=${value}`,
+    'Path=/',
+    `Max-Age=${Math.max(60, Math.floor(DEMO_TTL_MS / 1000))}`,
+    'HttpOnly',
+    'SameSite=Lax'
+  ];
+  if (requestIsSecure(req)) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+function clearDemoSessionCookie(req, res) {
+  const parts = [`${DEMO_SESSION_COOKIE}=`, 'Path=/', 'Max-Age=0', 'HttpOnly', 'SameSite=Lax'];
+  if (requestIsSecure(req)) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+function playerTokenFrom(req, url) {
+  return String(req.headers['x-player-token'] || url.searchParams.get('token') || cookieValue(req, DEMO_SESSION_COOKIE) || '');
+}
+
+function publicDemoCreation(result) {
+  const copy = { ...(result || {}) };
+  delete copy.demoSessionToken;
+  delete copy.playerSessionToken;
+  delete copy.playerCode;
+  return copy;
+}
+
 function findWorkspaceByPlayerToken(token) {
   const normalized = String(token || '');
   if (!normalized) return null;
@@ -4858,7 +4908,9 @@ async function handleApi(req, res, url) {
 
     if (url.pathname === '/api/demo/create' && req.method === 'POST') {
       if (!consumeRate(req, 'demo-create', 40, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Se crearon muchas demostraciones desde esta conexión. Esperá unos minutos y probá de nuevo.' });
-      return sendJson(res, 200, createDemoRoom(await readJson(req)));
+      const created = createDemoRoom(await readJson(req));
+      setDemoSessionCookie(req, res, created.demoSessionToken);
+      return sendJson(res, 200, publicDemoCreation(created));
     }
 
     if (url.pathname === '/api/admin/login' && req.method === 'POST') {
@@ -4937,7 +4989,7 @@ async function handleApi(req, res, url) {
       return workspaceContext.run(workspace, () => sendJson(res, 200, deviceTransferStatus(payload)));
     }
     if (url.pathname.startsWith('/api/player/')) {
-      const token = req.headers['x-player-token'] || url.searchParams.get('token');
+      const token = playerTokenFrom(req, url);
       const workspace = findWorkspaceByPlayerToken(token);
       if (!workspace) return sendJson(res, 401, { error: 'La sesión no es válida. Volvé a ingresar con tu código.' });
       return await workspaceContext.run(workspace, async () => {
@@ -4950,7 +5002,11 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/name' && req.method === 'POST') return sendJson(res, 200, setPlayerName(player, await readJson(req)));
         if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
         if (url.pathname === '/api/player/demo/start' && req.method === 'POST') return sendJson(res, 200, startDemoFromPlayer(player));
-        if (url.pathname === '/api/player/demo/reset' && req.method === 'POST') return sendJson(res, 200, restartDemoFromPlayer(player));
+        if (url.pathname === '/api/player/demo/reset' && req.method === 'POST') {
+          const restarted = restartDemoFromPlayer(player);
+          setDemoSessionCookie(req, res, restarted.demoSessionToken);
+          return sendJson(res, 200, publicDemoCreation(restarted));
+        }
         if (url.pathname === '/api/player/release' && req.method === 'POST') return sendJson(res, 200, releaseOwnSelection(player));
         if (url.pathname === '/api/player/mark' && req.method === 'POST') return sendJson(res, 200, markNumber(player, await readJson(req)));
         if (url.pathname === '/api/player/automark' && req.method === 'POST') return sendJson(res, 200, setAutoMark(player, await readJson(req)));
@@ -5068,7 +5124,7 @@ function handleEvents(req, res, url) {
   const role = url.searchParams.get('role');
   let workspace = null;
   let player = null;
-  let token = url.searchParams.get('token') || '';
+  let token = playerTokenFrom(req, url);
   if (role === 'admin') {
     token = url.searchParams.get('adminToken') || '';
     const session = adminSessionFrom(req, url);
@@ -5125,7 +5181,20 @@ const server = http.createServer(async (req, res) => {
   if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return sendJson(res, 404, { error: 'Los accesos temporales están deshabilitados.' });
   if (/^\/transmision\/[^/]+\/?$/.test(url.pathname) || /^\/v\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'transmision.html'));
   if (url.pathname === '/cast-receiver' || url.pathname === '/cast-receiver/') return serveFile(res, path.join(ROOT, 'cast-receiver.html'));
-  if (url.pathname === '/jugador' || url.pathname === '/jugador/') return serveFile(res, path.join(ROOT, 'jugador.html'));
+  if (url.pathname === '/jugador' || url.pathname === '/jugador/') {
+    if (url.searchParams.get('demo') === '1') {
+      const token = cookieValue(req, DEMO_SESSION_COOKIE);
+      const workspace = findWorkspaceByPlayerToken(token);
+      const player = workspace?.state?.players?.find(item => item.sessionToken === token && item.demoHuman);
+      if (!workspace?.isDemo || !player) {
+        clearDemoSessionCookie(req, res);
+        res.writeHead(302, { Location: '/demo?error=session' });
+        return res.end();
+      }
+      workspace.lastActivityAt = Date.now();
+    }
+    return serveFile(res, path.join(ROOT, 'jugador.html'));
+  }
   if (url.pathname === '/reglamento' || url.pathname === '/reglamento/' || url.pathname === '/reglamento.html') return serveFile(res, path.join(ROOT, 'reglamento.html'));
   const relative = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
   if (!(relative.startsWith('assets/') || relative.startsWith('js/'))) return sendJson(res, 404, { error: 'Archivo no encontrado.' });

@@ -82,7 +82,7 @@ form.addEventListener('submit',async event=>{
   button.disabled=true;button.textContent='PREPARANDO TU DEMO…';
   try{
     const payload={mode:currentMode(),rules,linePrizeCount:currentMode()===90?Number(document.getElementById('linePrizeCount').value):1,aiCount:value('aiCount'),aiNames:demoNameOrder.slice(0,value('aiCount')),playerCardCount:value('playerCardCount'),autoSeconds:value('autoSeconds'),sound:true};
-    const response=await fetch('/api/demo/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const response=await fetch('/api/demo/create',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const data=await response.json();if(!response.ok)throw new Error(data.error||'No se pudo crear la demostración.');
     localStorage.removeItem('bingoOnlineToken');localStorage.removeItem('bingoOnlineRoom');localStorage.removeItem('bingoOnlineCard');
     location.href=data.playerUrl||'/demo';

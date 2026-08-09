@@ -9,9 +9,10 @@
 try{
   document.documentElement.dataset.theme=localStorage.getItem('bingoPlayerTheme')==='day'?'day':'night';
   const bootParams=new URLSearchParams(location.search);
-  const demoSession=String(bootParams.get('demoSession')||'').trim();
-  if(bootParams.get('demo')==='1'&&demoSession){
-    localStorage.setItem('bingoOnlineToken',demoSession);
+  if(bootParams.get('demo')==='1'){
+    // La sesión DEMO vive en una cookie HttpOnly creada por el servidor.
+    // Se limpia cualquier sesión normal guardada para que nunca tenga prioridad sobre la demo.
+    localStorage.removeItem('bingoOnlineToken');
     localStorage.removeItem('bingoOnlineRoom');
     localStorage.removeItem('bingoOnlineCard');
     document.documentElement.dataset.demoBoot='1';
@@ -235,5 +236,5 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
 <div id="watchOverlay" class="modalOverlay"><section class="guidePanel"><button id="closeWatchBtn" class="closeBtn" type="button">×</button><div class="guideStepIcon">📺</div><h2>VER PARTIDA / TV</h2><p id="watchLinkText">Abrí el modo espectador de esta misma sala o compartilo.</p><div class="guideActions"><button id="openWatchBtn" class="btn primary" type="button">ABRIR MODO ESPECTADOR</button><button id="copyWatchBtn" class="btn secondary" type="button">COPIAR LINK</button><button id="castWatchBtn" class="btn secondary" type="button">📺 CHROMECAST</button></div></section></div>
 <div id="roomClosedOverlay" class="modalOverlay"><section class="roomClosedCard"><h2>SALA FINALIZADA</h2><p>El administrador cerró la sala. Gracias por participar.</p><button id="roomClosedBtn" class="btn primary" type="button">VOLVER AL INICIO</button></section></div>
 <div id="transferOverlay" class="modalOverlay"><section class="guidePanel"><h2>Cambio de dispositivo</h2><p id="transferText">Tu sesión está activa en otro dispositivo.</p><button id="requestTransferBtn" class="btn primary" type="button">SOLICITAR CAMBIO DE DISPOSITIVO</button><button id="cancelTransferBtn" class="btn secondary" type="button" style="width:100%;margin-top:8px">CANCELAR</button><div id="transferStatus"></div></section></div>
-<script src="js/emoji-stickers.js?v=2.0.0"></script><script src="js/presenter-scripts.js?v=2.0.0"></script><script src="js/cast-sender.js?v=1.0.0"></script><script src="js/online-room-player.js?v=2.6.1"></script>
+<script src="js/emoji-stickers.js?v=2.0.0"></script><script src="js/presenter-scripts.js?v=2.0.0"></script><script src="js/cast-sender.js?v=1.0.0"></script><script src="js/online-room-player.js?v=2.7.0"></script>
 </body>

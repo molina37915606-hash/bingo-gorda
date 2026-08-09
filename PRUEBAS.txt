@@ -25,3 +25,7 @@ Cobertura principal:
 V2.4 · PRUEBA DE JUGADOR APURADO
 - `node tests/player-rush-regressions.js`
 - Verifica alternancia rápida de Automarcado, protección de doble reclamo, reinicio de demo, memoria del tutorial, conexión visible y controles accesibles.
+
+V2.8 · INICIO AUTOMÁTICO DE DEMO
+- `node tests/demo-auto-start-ui.js`
+- Verifica que no exista COMENZAR DEMO, que la cuenta sea de 5 segundos, que requiera nombre/cartones/tutorial y que haya REINTENTAR si falla.

@@ -1,3 +1,14 @@
+VERSIÓN 2.8.0 · DEMO CON INICIO AUTOMÁTICO SEGURO
+
+- Después de confirmar nombre y cartones, la DEMO espera a que el tutorial termine o sea salteado.
+- Una vez resuelto el tutorial aparece una cuenta visible de 5 segundos y la partida inicia automáticamente.
+- Se elimina el botón COMENZAR DEMO: el jugador no necesita realizar una acción extra.
+- Si el tutorial se abre de nuevo durante la cuenta, el inicio se cancela para no arrancar mientras una ayuda tapa la pantalla.
+- Si el jugador cambia sus cartones, la cuenta también se cancela hasta volver a quedar listo.
+- El arranque automático tiene timeout y un reintento de red; si falla muestra REINTENTAR en lugar de quedar en ESPERANDO.
+- El inicio nunca ocurre antes de tener nombre, cartones confirmados y tutorial completado o salteado.
+- online-room-player.js sube a v2.8.0.
+
 VERSIÓN 2.7.0 · ENTRADA DEMO AUTENTICADA POR SERVIDOR
 
 - La DEMO ya no usa demoSession en la URL ni localStorage para autenticarse.

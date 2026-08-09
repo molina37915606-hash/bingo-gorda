@@ -56,7 +56,7 @@ async function waitServer() {
     assert(html.includes('data-demo-boot'), 'Debe ocultar preventivamente el formulario de código durante el arranque DEMO.');
     assert(html.includes('id="demoBootRetryBtn"'), 'El arranque DEMO debe ofrecer REINTENTAR si la sesión tarda o falla.');
     assert(html.includes('id="demoBootBackBtn"'), 'El arranque DEMO debe permitir volver a configurar la demo.');
-    assert(html.includes('online-room-player.js?v=2.7.0'), 'El jugador debe cargar la versión 2.7.0 del JS.');
+    assert(html.includes('online-room-player.js?v=2.8.0'), 'El jugador debe cargar la versión 2.8.0 del JS.');
 
     const stateResponse = await fetch(base + '/api/player/state', { headers: { Cookie: cookie } });
     const state = await stateResponse.json();

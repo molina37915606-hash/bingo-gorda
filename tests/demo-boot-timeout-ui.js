@@ -15,6 +15,6 @@ assert(playerJs.indexOf("await this.resume({ demoBoot:true })") < playerJs.index
 assert(playerHtml.includes('id="demoBootError"'), 'Debe existir un estado visual de error de arranque.');
 assert(playerHtml.includes('id="demoBootRetryBtn"'), 'Debe existir REINTENTAR.');
 assert(playerHtml.includes('id="demoBootBackBtn"'), 'Debe existir VOLVER A DEMO.');
-assert(playerHtml.includes('online-room-player.js?v=2.7.0'), 'Debe invalidarse la caché del JS del jugador.');
+assert(playerHtml.includes('online-room-player.js?v=2.8.0'), 'Debe invalidarse la caché del JS del jugador.');
 
 console.log('PRUEBA TIMEOUT/REINTENTO VISUAL DE DEMO: OK');

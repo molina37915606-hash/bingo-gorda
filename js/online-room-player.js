@@ -83,6 +83,10 @@ class PlayerApp {
     this.lastDrawCount = 0;
     this.lastBallAnimationTimer = null;
     this.demoBootRetrying = false;
+    this.demoStartBusy = false;
+    this.demoAutoStartTimer = null;
+    this.demoAutoStartDeadline = 0;
+    this.demoAutoStartFailure = '';
   }
 
   makeDeviceId() {
@@ -256,7 +260,7 @@ class PlayerApp {
     if ($('demoPlayerBanner')) return;
     const style = document.createElement('style');
     style.textContent = `
-      .demoPlayerBanner{display:none;margin:0 0 14px;padding:12px 14px;border-radius:15px;background:linear-gradient(135deg,#4b1764,#7e1f73);border:1px solid #d79de6;color:#fff;box-shadow:0 12px 34px #0005}.demoPlayerBanner.show{display:grid;gap:9px}.demoPlayerBannerTop{display:flex;justify-content:space-between;align-items:center;gap:12px}.demoPlayerBanner strong{font-size:14px;letter-spacing:.04em}.demoPlayerBanner small{color:#f2dff5}.demoParticipants{display:flex;flex-wrap:wrap;gap:7px}.demoParticipant{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;background:#ffffff14;border:1px solid #ffffff22;font-size:12px;font-weight:800}.demoParticipant.you{background:#ffca2f;color:#241805;border-color:#ffdf78}.demoPlayerActions{display:flex;gap:7px;align-items:center}.demoAiTag{font-size:9px;padding:2px 5px;border-radius:999px;background:#17243a;color:#d9ebff}html[data-theme="day"] .demoPlayerBanner{background:linear-gradient(135deg,#efe1f3,#f6e8f2);color:#32153d;border-color:#b98ac4}html[data-theme="day"] .demoPlayerBanner small{color:#6f4e75}html[data-theme="day"] .demoParticipant{background:#fff8;border-color:#80588a33}html[data-theme="day"] .demoParticipant.you{background:#ffca2f;color:#241805}
+      .demoPlayerBanner{display:none;margin:0 0 14px;padding:12px 14px;border-radius:15px;background:linear-gradient(135deg,#4b1764,#7e1f73);border:1px solid #d79de6;color:#fff;box-shadow:0 12px 34px #0005}.demoPlayerBanner.show{display:grid;gap:9px}.demoPlayerBannerTop{display:flex;justify-content:space-between;align-items:center;gap:12px}.demoPlayerBanner strong{font-size:14px;letter-spacing:.04em}.demoPlayerBanner small{color:#f2dff5}.demoParticipants{display:flex;flex-wrap:wrap;gap:7px}.demoParticipant{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;background:#ffffff14;border:1px solid #ffffff22;font-size:12px;font-weight:800}.demoParticipant.you{background:#ffca2f;color:#241805;border-color:#ffdf78}.demoPlayerActions{display:flex;gap:7px;align-items:center}.demoAiTag{font-size:9px;padding:2px 5px;border-radius:999px;background:#17243a;color:#d9ebff}.demoAutoStart{display:grid;gap:8px;margin-top:12px;padding:12px;border-radius:14px;background:#11182a;border:1px solid #53627f;text-align:center}.demoAutoStart strong{font-size:18px}.demoAutoStart .demoCountdown{font-size:34px;line-height:1;font-weight:1000;color:#ffca2f}.demoAutoStart small{color:#c8d3e8}.demoAutoStart.error{border-color:#d85464;background:#30151b}.demoAutoStart.error strong{color:#ffd6dc}.demoAutoStart button{justify-self:center;min-width:150px}.demoAutoStart.waitingTutorial .demoCountdown{font-size:20px;color:#d9e2f2}html[data-theme="day"] .demoPlayerBanner{background:linear-gradient(135deg,#efe1f3,#f6e8f2);color:#32153d;border-color:#b98ac4}html[data-theme="day"] .demoPlayerBanner small{color:#6f4e75}html[data-theme="day"] .demoParticipant{background:#fff8;border-color:#80588a33}html[data-theme="day"] .demoParticipant.you{background:#ffca2f;color:#241805}html[data-theme="day"] .demoAutoStart{background:#f4f6fb;border-color:#bcc7da;color:#1e2a40}html[data-theme="day"] .demoAutoStart small{color:#53627a}html[data-theme="day"] .demoAutoStart.error{background:#fff0f2;border-color:#d85464}
     `;
     document.head.appendChild(style);
     const host = $('gameView') || document.body;
@@ -909,6 +913,8 @@ class PlayerApp {
     }
     if (previous && ['waiting','starting'].includes(previous.status) && !['waiting','starting'].includes(data.status) && this.guideOpen) this.closeGuide(false);
     this.maybeAutoStartGuide(previous);
+    if (data.status !== 'waiting') this.cancelDemoAutoStart({ keepFailure:true });
+    else if (data.demo?.active && data.player?.demoHuman) queueMicrotask(() => this.ensureDemoAutoStart());
     if ($('winnerOverlay').classList.contains('show')) this.renderWinnerCard(this.selectedWinnerId);
     const currentCount = data.game.drawn.length;
     if (previousCount !== undefined && data.status === 'playing' && currentCount > previousCount && data.game.lastBall != null) this.speakBall(data.game.lastBall);
@@ -994,13 +1000,15 @@ class PlayerApp {
         this.bindWaitingMiniGame();
         return;
       }
-      const canChange = this.state.status === 'waiting' && !this.state.assignmentTimer?.selectionClosed;
-      const demoStart = this.state?.demo?.active && player.demoHuman ? '<button id="demoStartBtn" class="btn primary" style="margin-top:10px">COMENZAR DEMO</button>' : '';
-      $('waitingPanel').innerHTML = `${timerHtml}<div class="waitingConfirmed waitingStateHero"><b>${this.state?.demo?.active ? 'LISTO PARA LA DEMO' : 'ESPERANDO SORTEO'}</b><div>Tus cartones están confirmados y reservados para vos.</div><div class="chosenList">${player.cards.map(card => `<span class="chosenBadge">Cartón ${esc(card.number)}</span>`).join('')}</div>${canChange ? '<button id="changeChoice" class="btn secondary" style="margin-top:10px">CAMBIAR CARTONES</button>' : ''}${demoStart}</div>${this.waitingMiniGameHtml()}`;
-      if ($('changeChoice')) $('changeChoice').onclick = () => this.releaseChoice();
-      if ($('demoStartBtn')) $('demoStartBtn').onclick = () => this.startDemoFromPlayer();
+      const isDemoHuman = Boolean(this.state?.demo?.active && player.demoHuman);
+      const canChange = this.state.status === 'waiting' && !this.state.assignmentTimer?.selectionClosed && !this.demoAutoStartDeadline && !this.demoStartBusy;
+      const demoStart = isDemoHuman ? this.demoAutoStartHtml() : '';
+      $('waitingPanel').innerHTML = `${timerHtml}<div class="waitingConfirmed waitingStateHero"><b>${isDemoHuman ? 'LISTO PARA LA DEMO' : 'ESPERANDO SORTEO'}</b><div>${isDemoHuman ? 'Tus cartones están listos. Terminá o saltá el tutorial y la partida arrancará sola.' : 'Tus cartones están confirmados y reservados para vos.'}</div><div class="chosenList">${player.cards.map(card => `<span class="chosenBadge">Cartón ${esc(card.number)}</span>`).join('')}</div>${canChange ? '<button id="changeChoice" class="btn secondary" style="margin-top:10px">CAMBIAR CARTONES</button>' : ''}${demoStart}</div>${this.waitingMiniGameHtml()}`;
+      if ($('changeChoice')) $('changeChoice').onclick = () => { this.cancelDemoAutoStart(); this.releaseChoice(); };
+      if ($('demoStartRetryBtn')) $('demoStartRetryBtn').onclick = () => this.retryDemoAutoStart();
       this.bindWaitingMiniGame();
       this.renderPregamePreview();
+      if (isDemoHuman) queueMicrotask(() => this.ensureDemoAutoStart());
       return;
     }
     const offers = player.offeredCards || [], valid = new Set(offers.map(card => card.id));
@@ -1286,25 +1294,86 @@ class PlayerApp {
   }
 
   async releaseChoice() {
+    this.cancelDemoAutoStart();
     try { this.applyState(await this.request('/api/player/release', { method:'POST', body:'{}' })); }
     catch (error) { this.showMessage(error.message, 'error'); }
   }
 
+  demoTutorialResolved() {
+    const progress = this.guideProgress();
+    const memory = this.guideMemory();
+    return ['complete','skipped'].includes(progress) || ['complete','skipped'].includes(memory?.status);
+  }
+
+  demoAutoStartEligible() {
+    return Boolean(this.state?.demo?.active && this.state?.player?.demoHuman && this.state.status === 'waiting' && this.state.player.nameSet && this.state.player.selectionConfirmed && (this.state.player.cards || []).length && this.demoTutorialResolved() && !this.guideOpen);
+  }
+
+  demoAutoStartHtml() {
+    if (this.demoStartFailure) return `<div id="demoAutoStart" class="demoAutoStart error"><strong>No pudimos iniciar la demo</strong><small>${esc(this.demoStartFailure)}</small><button id="demoStartRetryBtn" class="btn primary" type="button">REINTENTAR</button></div>`;
+    if (this.demoStartBusy) return '<div id="demoAutoStart" class="demoAutoStart"><strong>Iniciando partida…</strong><div class="demoCountdown">●</div><small>Estamos preparando la primera bolilla.</small></div>';
+    if (!this.demoTutorialResolved()) return '<div id="demoAutoStart" class="demoAutoStart waitingTutorial"><strong>Primero terminá el tutorial</strong><div class="demoCountdown">?</div><small>Podés completarlo o saltarlo. La demo no arrancará mientras esté abierto.</small></div>';
+    const remaining = this.demoAutoStartDeadline ? Math.max(0, Math.ceil((this.demoAutoStartDeadline - Date.now()) / 1000)) : 5;
+    return `<div id="demoAutoStart" class="demoAutoStart"><strong>La demo comienza en</strong><div id="demoStartCountdown" class="demoCountdown">${remaining}</div><small>Ya está todo listo. No necesitás tocar nada más.</small></div>`;
+  }
+
+  updateDemoAutoStartDisplay() {
+    const host = $('demoStartCountdown');
+    if (!host || !this.demoAutoStartDeadline) return;
+    host.textContent = String(Math.max(0, Math.ceil((this.demoAutoStartDeadline - Date.now()) / 1000)));
+  }
+
+  cancelDemoAutoStart({ keepFailure = false } = {}) {
+    if (this.demoAutoStartTimer) clearInterval(this.demoAutoStartTimer);
+    this.demoAutoStartTimer = null;
+    this.demoAutoStartDeadline = 0;
+    if (!keepFailure) this.demoStartFailure = '';
+  }
+
+  ensureDemoAutoStart() {
+    if (!this.demoAutoStartEligible()) {
+      if (this.demoAutoStartDeadline && !this.demoStartBusy) this.cancelDemoAutoStart({ keepFailure:true });
+      return;
+    }
+    if (this.demoStartBusy || this.demoStartFailure || this.demoAutoStartDeadline) { this.updateDemoAutoStartDisplay(); return; }
+    this.demoAutoStartDeadline = Date.now() + 5000;
+    this.renderWaiting();
+    this.demoAutoStartTimer = setInterval(() => {
+      if (!this.demoAutoStartEligible()) { this.cancelDemoAutoStart({ keepFailure:true }); this.renderWaiting(); return; }
+      this.updateDemoAutoStartDisplay();
+      if (Date.now() >= this.demoAutoStartDeadline) {
+        this.cancelDemoAutoStart({ keepFailure:true });
+        this.startDemoFromPlayer();
+      }
+    }, 200);
+  }
+
   async startDemoFromPlayer() {
     if (!this.state?.demo?.active || !this.state?.player?.demoHuman || this.state.status !== 'waiting' || this.demoStartBusy) return;
-    const button = $('demoStartBtn');
+    if (!this.demoTutorialResolved()) return;
+    this.cancelDemoAutoStart({ keepFailure:true });
     this.demoStartBusy = true;
-    if (button) { button.disabled = true; button.textContent = 'PREPARANDO PARTIDA…'; }
+    this.demoStartFailure = '';
+    this.renderWaiting();
     try {
-      this.applyState(await this.request('/api/player/demo/start', { method:'POST', body:'{}' }));
+      this.applyState(await this.request('/api/player/demo/start', { method:'POST', body:'{}', timeoutMs:6500, retries:1, retryDelayMs:450 }));
+      this.demoStartBusy = false;
     } catch (error) {
       this.demoStartBusy = false;
-      if (button && document.contains(button)) { button.disabled = false; button.textContent = 'COMENZAR DEMO'; }
-      this.showMessage(error.message, 'error');
+      this.demoStartFailure = error?.message || 'La partida no respondió a tiempo.';
+      this.renderWaiting();
+      this.showMessage('La demo no pudo iniciar. Tocá REINTENTAR.', 'error');
     }
   }
 
+  async retryDemoAutoStart() {
+    if (this.demoStartBusy) return;
+    this.demoStartFailure = '';
+    await this.startDemoFromPlayer();
+  }
+
   async restartDemo() {
+    this.cancelDemoAutoStart();
     if (!this.state?.demo?.active || !this.state?.player?.demoHuman) return;
     const button = $('demoResetBtn');
     if (button) { button.disabled = true; button.textContent = 'REINICIANDO…'; }
@@ -1471,6 +1540,7 @@ class PlayerApp {
 
   openGuide(manual = true, requestedStage = '', requestedStep = 0) {
     if (!this.state) return;
+    if (this.state?.demo?.active && this.state?.status === 'waiting') this.cancelDemoAutoStart({ keepFailure:true });
     this.closeOtherPanels();
     const stage = requestedStage || (this.state.player?.selectionConfirmed && this.state.player?.nameSet ? 'controls' : 'selection');
     const steps = this.guideStepsFor(stage);
@@ -1548,14 +1618,14 @@ class PlayerApp {
     if (!this.guideManual) this.setGuideProgress(this.guideStage === 'selection' ? 'selection' : 'complete');
     this.saveGuideMemory(this.guideStage === 'selection' ? 'in_progress' : 'complete', this.guideStage === 'selection' ? 'controls' : this.guideStage, 0);
     this.closeGuide(false);
-    if (this.guideStage === 'controls' && this.state?.demo?.active && this.state?.status === 'waiting') this.showMessage('Tutorial listo. Cuando quieras, tocá COMENZAR DEMO.', 'success');
+    if (this.guideStage === 'controls' && this.state?.demo?.active && this.state?.status === 'waiting') { this.showMessage('Tutorial listo. La demo comienza en 5 segundos.', 'success'); this.ensureDemoAutoStart(); }
   }
 
   skipGuide() {
     this.setGuideProgress('skipped');
     this.saveGuideMemory('skipped', this.guideStage, this.guideStep);
     this.closeGuide(false);
-    if (this.state?.demo?.active && this.state?.status === 'waiting') this.showMessage('Tutorial salteado. La demo no empieza hasta que toques COMENZAR DEMO.', 'success');
+    if (this.state?.demo?.active && this.state?.status === 'waiting') { this.showMessage('Tutorial salteado. La demo comienza en 5 segundos.', 'success'); this.ensureDemoAutoStart(); }
   }
 
   closeGuide(markSkipped = false) {

@@ -81,6 +81,7 @@ class PlayerApp {
     this.lastNetworkSuccessAt = 0;
     this.lastDrawCount = 0;
     this.lastBallAnimationTimer = null;
+    this.demoBootRetrying = false;
   }
 
   makeDeviceId() {
@@ -100,6 +101,8 @@ class PlayerApp {
     window.addEventListener('scroll', () => this.guideOpen && this.positionGuide(), { passive:true });
     $('loginBtn').onclick = () => this.login();
     $('lastResultBtn').onclick = () => this.downloadLastPublicResult();
+    $('demoBootRetryBtn')?.addEventListener('click', () => this.retryDemoBoot());
+    $('demoBootBackBtn')?.addEventListener('click', () => location.replace('/demo'));
     $('accessCode').addEventListener('keydown', event => { if (event.key === 'Enter') this.login(); });
     $('openJoinName')?.addEventListener('keydown', event => { if (event.key === 'Enter') this.login(); });
     $('openJoinCardCount')?.querySelectorAll('[data-count]').forEach(button => button.onclick = () => { this.openJoinCardCount = Number(button.dataset.count) || 2; $('openJoinCardCount').querySelectorAll('[data-count]').forEach(item => item.classList.toggle('active', item === button)); });
@@ -190,7 +193,6 @@ class PlayerApp {
     this.setVolume(this.audioVolume, false);
     this.updateQuickTools();
     this.setNetworkState(navigator.onLine === false ? 'bad' : 'connecting');
-    await this.loadPublicInfo();
     this.refreshVoices();
     if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => this.refreshVoices();
 
@@ -214,7 +216,7 @@ class PlayerApp {
       localStorage.removeItem('bingoOnlineRoom');
       localStorage.removeItem('bingoOnlineCard');
       this.cleanDirectAccessUrl();
-      await this.resume();
+      await this.resume({ demoBoot:true });
     } else if (directCode) {
       $('accessCode').value = directCode;
       await this.login(directCode, roomCode);
@@ -229,6 +231,8 @@ class PlayerApp {
       localStorage.removeItem('bingoOnlineCard');
     }
 
+    // Información secundaria: se carga después del intento de entrada y nunca bloquea la DEMO.
+    this.loadPublicInfo();
     this.keepAliveTimer = setInterval(() => { if (this.state?.active) fetch('/api/ping', { cache:'no-store' }).catch(() => {}); }, 5 * 60 * 1000);
     this.assignmentClockTimer = setInterval(() => this.updateAssignmentCountdown(), 1000);
   }
@@ -613,30 +617,51 @@ class PlayerApp {
   }
 
   async loadPublicInfo() {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
     try {
-      const response = await fetch('/api/info', { cache:'no-store' });
+      const response = await fetch('/api/info', { cache:'no-store', signal:controller.signal });
       const data = await response.json();
       this.lastResult = data.lastResult || null;
       $('lastResultBtn').classList.toggle('hidden', !this.lastResult);
       if (this.lastResult) $('lastResultBtn').textContent = 'DESCARGAR ÚLTIMO RESULTADO';
     } catch { $('lastResultBtn').classList.add('hidden'); }
+    finally { clearTimeout(timer); }
   }
 
   async request(url, options = {}) {
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers: { 'Content-Type':'application/json', ...(this.token ? { 'X-Player-Token':this.token } : {}), ...(options.headers || {}) }
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) { const error = new Error(data.error || data.message || 'No se pudo completar la acción.'); error.status = response.status; error.data = data; throw error; }
-      this.lastNetworkSuccessAt = Date.now();
-      this.setNetworkState('good');
-      return data;
-    } catch (error) {
-      if (!error?.status) this.setNetworkState(navigator.onLine === false ? 'bad' : 'warn');
+    const { timeoutMs = 0, retries = 0, retryDelayMs = 350, ...fetchOptions } = options;
+    let lastError = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const controller = timeoutMs > 0 ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+      try {
+        const response = await fetch(url, {
+          ...fetchOptions,
+          ...(controller ? { signal:controller.signal } : {}),
+          headers: { 'Content-Type':'application/json', ...(this.token ? { 'X-Player-Token':this.token } : {}), ...(fetchOptions.headers || {}) }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) { const error = new Error(data.error || data.message || 'No se pudo completar la acción.'); error.status = response.status; error.data = data; throw error; }
+        this.lastNetworkSuccessAt = Date.now();
+        this.setNetworkState('good');
+        return data;
+      } catch (error) {
+        lastError = error;
+        if (!error?.status) this.setNetworkState(navigator.onLine === false ? 'bad' : 'warn');
+        const canRetry = attempt < retries && !error?.status && navigator.onLine !== false;
+        if (!canRetry) break;
+        await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+    if (lastError?.name === 'AbortError') {
+      const error = new Error('La conexión tardó demasiado en responder.');
+      error.code = 'REQUEST_TIMEOUT';
       throw error;
     }
+    throw lastError || new Error('No se pudo completar la acción.');
   }
 
   async login(codeOverride = '', roomOverride = '') {
@@ -680,23 +705,52 @@ class PlayerApp {
     if (changed) history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
   }
 
-  async resume() {
+  async resume({ demoBoot = false } = {}) {
     try {
-      const data = await this.request('/api/player/state');
+      const data = await this.request('/api/player/state', demoBoot ? { timeoutMs:4500, retries:1, retryDelayMs:350 } : {});
       this.tokenRoom = String(data?.roomCode || '').trim().toUpperCase();
       if (this.tokenRoom) localStorage.setItem('bingoOnlineRoom', this.tokenRoom);
       this.applyState(data);
       delete document.documentElement.dataset.demoBoot;
+      delete document.documentElement.dataset.demoBootError;
+      $('demoBootError')?.classList.remove('show');
       this.connectEvents();
-    } catch {
-      const demoEntry = new URLSearchParams(location.search).get('demo') === '1';
-      if (demoEntry) {
-        this.token = ''; this.tokenRoom = ''; this.activeCardId = '';
-        localStorage.removeItem('bingoOnlineToken'); localStorage.removeItem('bingoOnlineRoom'); localStorage.removeItem('bingoOnlineCard');
-        location.replace('/demo');
-        return;
+      return true;
+    } catch (error) {
+      const demoEntry = new URLSearchParams(location.search).get('demo') === '1' || document.documentElement.dataset.demoBoot === '1';
+      if (demoEntry || demoBoot) {
+        this.showDemoBootError(error);
+        return false;
       }
       this.logout(false);
+      return false;
+    }
+  }
+
+  showDemoBootError(error) {
+    document.documentElement.dataset.demoBoot = '1';
+    document.documentElement.dataset.demoBootError = '1';
+    const detail = navigator.onLine === false
+      ? 'No hay conexión a Internet. Revisala y tocá REINTENTAR.'
+      : error?.code === 'REQUEST_TIMEOUT'
+        ? 'El servidor tardó demasiado en responder. Tocá REINTENTAR.'
+        : 'No pudimos abrir tu demo. Tocá REINTENTAR.';
+    if ($('demoBootErrorText')) $('demoBootErrorText').textContent = detail;
+    $('demoBootError')?.classList.add('show');
+    if ($('demoBootRetryBtn')) { $('demoBootRetryBtn').disabled = false; $('demoBootRetryBtn').textContent = 'REINTENTAR'; }
+  }
+
+  async retryDemoBoot() {
+    if (this.demoBootRetrying) return;
+    this.demoBootRetrying = true;
+    if ($('demoBootRetryBtn')) { $('demoBootRetryBtn').disabled = true; $('demoBootRetryBtn').textContent = 'REINTENTANDO…'; }
+    $('demoBootError')?.classList.remove('show');
+    delete document.documentElement.dataset.demoBootError;
+    try {
+      await this.resume({ demoBoot:true });
+    } finally {
+      this.demoBootRetrying = false;
+      if ($('demoBootRetryBtn') && document.documentElement.dataset.demoBoot === '1') { $('demoBootRetryBtn').disabled = false; $('demoBootRetryBtn').textContent = 'REINTENTAR'; }
     }
   }
 

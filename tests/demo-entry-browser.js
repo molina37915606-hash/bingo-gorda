@@ -44,14 +44,19 @@ async function waitServer() {
     assert(html.includes("bootParams.get('demoSession')"), 'El HTML debe capturar la sesión DEMO antes del JS principal.');
     assert(html.includes("localStorage.setItem('bingoOnlineToken',demoSession)"), 'El bootstrap debe guardar el token antes de cargar la app.');
     assert(html.includes('data-demo-boot'), 'Debe ocultar preventivamente el formulario de código durante el arranque DEMO.');
-    assert(html.includes('online-room-player.js?v=2.6.0'), 'El jugador debe cargar la versión 2.6.0 del JS.');
+    assert(html.includes('id="demoBootRetryBtn"'), 'El arranque DEMO debe ofrecer REINTENTAR si la sesión tarda o falla.');
+    assert(html.includes('id="demoBootBackBtn"'), 'El arranque DEMO debe permitir volver a configurar la demo.');
+    assert(html.includes('online-room-player.js?v=2.6.1'), 'El jugador debe cargar la versión 2.6.1 del JS.');
 
     const jsResponse = await fetch(base + '/js/online-room-player.js?v=2.4.0');
     const playerJs = await jsResponse.text();
     assert.equal(jsResponse.status, 200);
     assert(/no-store/i.test(jsResponse.headers.get('cache-control') || ''), 'El JS crítico debe servirse sin caché incluso con una query vieja.');
     assert(playerJs.includes("params.get('demoSession')"), 'El JS actual debe reconocer demoSession.');
-    assert(playerJs.includes("location.replace('/demo')"), 'Una sesión DEMO inválida debe volver a /demo.');
+    assert(playerJs.includes('timeoutMs:4500'), 'La entrada DEMO debe tener un timeout corto.');
+    assert(playerJs.includes('retries:1'), 'La entrada DEMO debe reintentar automáticamente una vez.');
+    assert(playerJs.includes('showDemoBootError'), 'Un fallo de arranque debe mostrar una salida recuperable.');
+    assert(playerJs.includes('retryDemoBoot'), 'Debe poder reintentarse sin pedir código privado.');
 
     console.log('PRUEBA ENTRADA DEMO SIN CÓDIGO/CACHÉ: OK');
   } catch (error) {

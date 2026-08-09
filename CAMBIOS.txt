@@ -1,3 +1,12 @@
+VERSIÓN 2.6.1 · HOTFIX DE ARRANQUE DEMO
+
+- La entrada de DEMO deja de esperar información pública secundaria antes de validar la sesión.
+- La carga inicial de /api/player/state tiene timeout de 4,5 segundos y un reintento automático.
+- Si ambos intentos fallan, ya no queda “Preparando tu demostración…” indefinidamente: aparece un error claro con REINTENTAR y VOLVER A DEMO.
+- El botón REINTENTAR reutiliza la sesión temporal existente y evita dobles reintentos.
+- /api/info tiene su propio timeout corto y se carga fuera del camino crítico de entrada.
+- online-room-player.js sube a v2.6.1 para invalidar cualquier copia anterior.
+
 VERSIÓN 2.6 · ENTRADA DEMO SIN CÓDIGO Y SIN CACHÉ VIEJA
 
 - La sesión temporal de DEMO se guarda antes de cargar la aplicación del jugador.

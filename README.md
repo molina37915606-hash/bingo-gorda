@@ -1,4 +1,4 @@
-# BINGO DE LA GORDA
+# BINGO DE LA GORDA BETA
 
 Aplicación web para partidas de bingo de 75 y 90 bolas con administración, jugadores, comunidad pública, modo espectador, minijuegos y actas auditables.
 
@@ -8,7 +8,7 @@ Aplicación web para partidas de bingo de 75 y 90 bolas con administración, jug
 - Administración de partida: `http://localhost:3210/admin`
 - Jugadores: `http://localhost:3210/jugador`
 - Comunidad: `http://localhost:3210/comunidad`
-- Demostración: `http://localhost:3210/demo` — cada visitante crea su propia demo independiente, sin código privado, con premios configurables.
+- Demostración BETA: `http://localhost:3210/demo` — experiencia independiente que corre en el navegador, sin código privado, sin sala compartida y sin administrador.
 
 ## Funcionamiento actual
 
@@ -20,7 +20,8 @@ Aplicación web para partidas de bingo de 75 y 90 bolas con administración, jug
 - Chat de partida con emojis y 12 stickers.
 - Comunidad con nombre fijo por dispositivo, chat público, stickers, filtros, bloqueo de teléfonos/WhatsApp y reportes revisados por el operador.
 - Minijuegos Rojo o Negro y Mayor o Menor.
-- Demos contra IA con Zoe, Mateo y Owen; la prueba masiva del administrador usa nombres genéricos.
+- DEMO BETA reescrita desde cero: configuración → sala de espera → tutorial → partida local contra IA → final. No usa el login, los estados de espera ni las APIs de las partidas reales.
+- Chat IA local con Zoe, Mateo y Owen; selección/recarga de cartones, Automarcado, reclamos, historial y ganadores funcionan dentro de la propia DEMO.
 - Reanudación automática 5 segundos después de confirmar un premio, con opción del administrador para mantener la pausa.
 - Reconexión reforzada de jugadores y recuperación del estado tras cortes.
 - Contingencia del administrador: tras 60 segundos sin conexión, el servidor verifica reclamos automáticamente y mantiene el sorteo automático si correspondía.
@@ -53,6 +54,6 @@ npm start
 npm test
 ```
 
-La batería incluye pruebas funcionales, regresiones, comunidad, stickers, simulación, estrés, contingencia del administrador, recuperación tras reinicio y una auditoría estructural de archivos/referencias.
+La batería incluye una prueba específica del motor DEMO BETA (sin red), además de pruebas funcionales, regresiones, comunidad, stickers, simulación, estrés, contingencia del administrador, recuperación tras reinicio y auditoría estructural.
 
 Para producción, configurá `BINGO_DATA_DIR` sobre almacenamiento persistente y las variables de `.env.example` en el servicio de hosting.

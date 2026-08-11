@@ -1,3 +1,22 @@
+BINGO DE LA GORDA BETA · NUEVA BASE
+
+- DEMO reescrita desde cero como experiencia independiente de las partidas reales.
+- /demo ya no crea una sala, no usa código privado, cookies, localStorage obligatorio, EventSource, fetch ni APIs del jugador para poder jugar.
+- Cada navegador ejecuta su propia DEMO local: muchas personas pueden abrir el mismo enlace sin compartir partida ni estado.
+- Flujo nuevo: CONFIGURACIÓN → SALA DE ESPERA → TUTORIAL → CUENTA 5 s → JUGANDO → FINAL. No existe el estado ESPERANDO del servidor dentro de la DEMO.
+- Configuración de 75/90 bolas, premios, cantidad de cartones, rivales IA y velocidad.
+- Sala de espera sin minijuegos: nombre, límite de cartones, selección, deselección, recarga conservando elegidos y confirmación.
+- Tutorial contextual con globos y animación: nombre, cartones, recarga, marcado/desmarcado, Automarcado, última bolilla, flecha lateral, reclamos, primer reclamo válido, sonido, voz, pantalla completa, chat y ?.
+- Automarcado ON/OFF inmediato y recuperación de números ya extraídos.
+- IA local con Zoe/Mateo/Owen, chat IA y reclamos automáticos con demora para permitir competir al jugador.
+- Flecha lateral conserva números salidos y ganadores.
+- Wake Lock durante la partida cuando el navegador lo permite.
+- El botón ? queda disponible para repetir el tutorial.
+- Nueva prueba demo-beta-standalone.js valida que la DEMO no dependa de red y verifica generación/análisis de cartones de 75 y 90 bolas.
+- El resto del sistema de partidas reales, Comunidad, administración, contingencia y recuperación se conserva.
+
+--- HISTORIAL DE LA BASE ANTERIOR ---
+
 VERSIÓN 3.1.0 · ARRANQUE DEMO CONTROLADO POR EL SERVIDOR
 
 - El DEMO ya no depende de un temporizador del navegador para pasar de ESPERANDO a JUGANDO.

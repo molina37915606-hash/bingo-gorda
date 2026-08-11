@@ -1,0 +1,20 @@
+BINGO DE LA GORDA BETA
+
+Esta versión inaugura una nueva base para la DEMO.
+
+IMPORTANTE:
+- La DEMO de /demo es independiente de las partidas reales.
+- No existe código privado ni administrador dentro de la DEMO.
+- No existe un estado de sala "ESPERANDO" que pueda bloquear el inicio.
+- La DEMO corre en el navegador: cada dispositivo que abre el mismo enlace obtiene su propia partida.
+- Las partidas normales continúan usando el servidor y mantienen sus funciones anteriores.
+
+Flujo DEMO:
+1. Elegir modalidad y premios.
+2. Entrar a sala de espera local.
+3. Escribir nombre.
+4. Elegir/recargar cartones.
+5. Confirmar.
+6. Completar o saltar tutorial.
+7. Cuenta de 5 segundos.
+8. Jugar contra IA.

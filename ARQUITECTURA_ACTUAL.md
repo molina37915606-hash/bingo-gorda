@@ -9,7 +9,7 @@ La aplicación usa un único servidor Node.js sin dependencias externas obligato
 - `jugador.html` + `js/online-room-player.js`: experiencia del jugador.
 - `comunidad.html` + `js/community.js`: portada, chat y minijuegos.
 - `transmision.html` + `js/transmision.js`: modo espectador de cada sala.
-- `demo.html`: demostración.
+- `demo.html` + `js/demo-beta.js`: DEMO BETA independiente. La configuración, sala de espera, tutorial, bolillero, IA, chat y reclamos corren en el navegador y no dependen de una sala del servidor.
 - `cast-receiver.html`: receptor web preparado para Google Cast.
 
 ## Módulos compartidos

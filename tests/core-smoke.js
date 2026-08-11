@@ -82,7 +82,7 @@ async function demoCards(mode, players, cardsPerPlayer) {
     body: JSON.stringify({ mode, aiCount, playerCardCount, autoSeconds: 8, presenter: 'vero', testHoldStart: true })
   });
   assert.equal(result.response.status, 200, JSON.stringify(result.data));
-  assert(result.data.playerUrl.includes('/jugador'));
+  assert(result.data.playerUrl.includes('/demo/jugar/') && result.data.playerUrl.includes('/partida?demo=1'));
   assert.equal(result.data.participants[0].name, 'Vos');
   assert.equal(result.data.participants[0].cardCount, 0, 'La demo debe entrar sin cartones confirmados para recorrer la sala de espera.');
   assert(result.data.participants.slice(1).every(player => player.cardCount === 2));

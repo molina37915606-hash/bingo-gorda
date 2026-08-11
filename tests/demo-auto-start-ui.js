@@ -16,6 +16,6 @@ assert(player.includes("timeoutMs:6500, retries:1"), 'El arranque debe tener tim
 assert(player.includes('No pudimos iniciar la demo'), 'Un fallo debe mostrar un estado recuperable.');
 assert(player.includes('id="demoStartRetryBtn"'), 'Debe existir REINTENTAR si falla el inicio.');
 assert(player.includes('La demo comienza en'), 'La espera debe explicar claramente la cuenta regresiva.');
-assert(html.includes('online-room-player.js?v=2.9.0'), 'El jugador debe invalidar caché con la versión 2.8.0.');
+assert(html.includes('online-room-player.js?v=3.0.0'), 'El jugador debe invalidar caché con la versión 3.0.0.');
 
 console.log('PRUEBA INICIO AUTOMÁTICO DEMO: OK');

@@ -7,10 +7,10 @@ const fs = require('fs');
 
 const port = 50920 + Math.floor(Math.random() * 200);
 const base = `http://127.0.0.1:${port}`;
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-gorda-demo-entry-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-gorda-demo-entry-v3-'));
 const child = spawn(process.execPath, ['server.js'], {
   cwd: path.join(__dirname, '..'),
-  env: { ...process.env, PORT: String(port), BINGO_TEST_MODE: 'true', BINGO_DATA_DIR: dataDir },
+  env: { ...process.env, PORT: String(port), BINGO_TEST_MODE: 'true', BINGO_DATA_DIR: dataDir, BINGO_START_SEQUENCE_MS:'100' },
   stdio: ['ignore', 'pipe', 'pipe']
 });
 
@@ -22,7 +22,6 @@ async function waitServer() {
   }
   throw new Error('El servidor no inició.');
 }
-
 (async () => {
   try {
     await waitServer();
@@ -30,48 +29,68 @@ async function waitServer() {
       mode:'90', prizeAmbo:'1', prizeLine:'1', prizeBingo:'1', linePrizeCount:'1',
       aiCount:'2', aiNames:'Zoe,Mateo', playerCardCount:'2', autoSeconds:'4'
     });
-    const createdResponse = await fetch(base + '/demo/start', {
-      method:'POST', redirect:'manual',
-      headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
-      body:form.toString()
+    const created = await fetch(base + '/demo/start', {
+      method:'POST', redirect:'manual', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body:form.toString()
     });
-    const setCookie = createdResponse.headers.get('set-cookie') || '';
-    const cookie = setCookie.split(';')[0];
-    assert.equal(createdResponse.status, 303, 'El formulario DEMO debe redirigir directamente desde el servidor.');
-    assert.equal(createdResponse.headers.get('location'), '/jugador?demo=1');
-    assert(/bingo_demo_session=/i.test(setCookie), 'La creación directa debe emitir cookie DEMO.');
-    assert(/HttpOnly/i.test(setCookie));
-    assert(/SameSite=Lax/i.test(setCookie));
+    assert.equal(created.status, 303);
+    const waitingPath = created.headers.get('location');
+    assert(/^\/demo\/jugar\/demoentry_[a-f0-9]{24}$/.test(waitingPath), `Ruta inesperada: ${waitingPath}`);
 
-    const missingCookiePage = await fetch(base + '/jugador?demo=1', { redirect:'manual' });
-    assert.equal(missingCookiePage.status, 302);
-    assert.equal(missingCookiePage.headers.get('location'), '/demo?error=session');
+    const waitingResponse = await fetch(base + waitingPath);
+    const waitingHtml = await waitingResponse.text();
+    assert.equal(waitingResponse.status, 200);
+    assert(waitingHtml.includes('DEMO · SALA DE ESPERA'));
+    assert(waitingHtml.includes('Tu nombre o apodo'));
+    assert(waitingHtml.includes('RECARGAR CARTONES'));
+    assert(waitingHtml.includes('CONFIRMAR Y SEGUIR'));
+    assert(!/Preparando tu (partida|demostración)/i.test(waitingHtml));
+    assert(!/Ingresá.*código privado/i.test(waitingHtml));
 
-    const page = await fetch(base + '/jugador?demo=1', { headers:{ Cookie:cookie } });
-    const html = await page.text();
-    assert.equal(page.status, 200);
-    assert(/no-store/i.test(page.headers.get('cache-control') || ''));
-    assert(!html.includes('window.__BINGO_DEMO_BOOTSTRAP__ = null;'), 'La página DEMO debe recibir el estado inicial embebido.');
-    assert(html.includes('window.__BINGO_DEMO_BOOTSTRAP__ = {'), 'Debe existir bootstrap DEMO del servidor.');
-    assert(html.includes('"demoHuman":true'), 'El bootstrap debe identificar al jugador DEMO.');
-    assert(html.includes('"active":true'), 'El bootstrap debe contener una sala activa.');
-    assert(html.includes('online-room-player.js?v=2.9.0'), 'El jugador debe cargar la versión 2.9.0.');
-    assert(html.includes('setTimeout(()=>{') && html.includes('8000'), 'Debe existir watchdog de arranque independiente del JS principal.');
+    // La sala llega renderizada desde el servidor: aun sin ejecutar JavaScript, ya es utilizable.
+    assert(waitingHtml.includes('type="text" name="name"'));
+    assert(waitingHtml.includes('type="checkbox" name="card_'));
 
-    const demoPage = await fetch(base + '/demo');
-    const demoHtml = await demoPage.text();
-    assert(demoHtml.includes('method="post" action="/demo/start"'), 'CREAR MI DEMO debe usar POST normal del navegador.');
-    assert(!demoHtml.includes("fetch('/api/demo/create'"), 'La creación pública no debe depender de fetch.');
+    let cardMatches = [...waitingHtml.matchAll(/name="card_([^"]+)"/g)].map(match => match[1]);
+    assert(cardMatches.length >= 2, 'La sala debe renderizar cartones desde el servidor.');
 
-    const jsResponse = await fetch(base + '/js/online-room-player.js?v=2.8.0');
-    const playerJs = await jsResponse.text();
-    assert.equal(jsResponse.status, 200);
-    assert(/no-store/i.test(jsResponse.headers.get('cache-control') || ''));
-    assert(playerJs.includes('const initialDemoState = window.__BINGO_DEMO_BOOTSTRAP__'));
-    assert(playerJs.includes('this.applyState(initialDemoState)'), 'La sala debe mostrarse sin pedir /api/player/state primero.');
-    assert(playerJs.includes('await this.resume({ demoBoot:true })'), 'Debe conservarse consulta de respaldo si falta el estado embebido.');
+    const refreshBody = new URLSearchParams({ name:'Jugador Demo', action:'refresh', [`card_${cardMatches[0]}`]:'1' });
+    const refreshed = await fetch(base + waitingPath, {
+      method:'POST', redirect:'manual', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body:refreshBody.toString()
+    });
+    assert.equal(refreshed.status, 303);
+    const refreshedPage = await fetch(base + waitingPath);
+    const refreshedHtml = await refreshedPage.text();
+    assert(refreshedHtml.includes(`name="card_${cardMatches[0]}" value="1" checked`), 'Recargar debe conservar el cartón ya elegido.');
+    cardMatches = [...refreshedHtml.matchAll(/name="card_([^"]+)"/g)].map(match => match[1]);
+    const secondCard = cardMatches.find(id => id !== cardMatches[0]);
+    assert(secondCard, 'Después de recargar debe seguir habiendo más opciones.');
+    const confirmBody = new URLSearchParams({ name:'Jugador Demo', action:'confirm', [`card_${cardMatches[0]}`]:'1', [`card_${secondCard}`]:'1' });
+    const confirm = await fetch(base + waitingPath, {
+      method:'POST', redirect:'manual', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body:confirmBody.toString()
+    });
+    assert.equal(confirm.status, 303);
+    const gamePath = confirm.headers.get('location');
+    assert(/^\/demo\/jugar\/demoentry_[a-f0-9]{24}\/partida\?demo=1$/.test(gamePath), `Ruta de juego inesperada: ${gamePath}`);
 
-    console.log('PRUEBA ENTRADA DEMO DIRECTA + BOOTSTRAP: OK');
+    const gameResponse = await fetch(base + gamePath);
+    const gameHtml = await gameResponse.text();
+    assert.equal(gameResponse.status, 200);
+    assert(gameHtml.includes('window.__BINGO_DEMO_BOOTSTRAP__ = {'));
+    assert(!gameHtml.includes("window.__BINGO_DEMO_DIRECT_TOKEN__ = '';"));
+    assert(gameHtml.includes('online-room-player.js?v=3.0.0'));
+    assert(gameHtml.includes('"selectionConfirmed":true'));
+    const tokenMatch = gameHtml.match(/window\.__BINGO_DEMO_DIRECT_TOKEN__ = "([^"]+)";/);
+    assert(tokenMatch?.[1], 'La ruta de juego debe recibir un token temporal directo.');
+    const directState = await fetch(base + '/api/player/state', { headers:{ 'X-Player-Token':tokenMatch[1] } });
+    assert.equal(directState.status, 200, 'El token embebido debe autenticar la interfaz de juego sin cookie.');
+    const directJson = await directState.json();
+    assert.equal(directJson.player.name, 'Jugador Demo');
+    assert.equal(directJson.player.selectionConfirmed, true);
+
+    assert(gameHtml.includes('Jugador Demo'), 'El bootstrap debe incluir al jugador confirmado.');
+    assert(!gameHtml.includes('Ingresá con tu código privado') || gameHtml.includes('window.__BINGO_DEMO_BOOTSTRAP__ = {'));
+
+    console.log('PRUEBA DEMO V3 · SALA RENDERIZADA SIN JS: OK');
   } catch (error) {
     console.error(error);
     process.exitCode = 1;

@@ -19,7 +19,7 @@ assert(playerHtml.includes('id="demoBootError"'));
 assert(playerHtml.includes('id="demoBootRetryBtn"'));
 assert(playerHtml.includes('id="demoBootBackBtn"'));
 assert(playerHtml.includes('8000'), 'Debe existir watchdog independiente de 8 segundos.');
-assert(playerHtml.includes('online-room-player.js?v=2.9.0'));
+assert(playerHtml.includes('online-room-player.js?v=3.0.0'));
 assert(demoHtml.includes('method="post" action="/demo/start"'));
 assert(!demoHtml.includes("fetch('/api/demo/create'"));
 

@@ -4,16 +4,21 @@ const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[char]));
 const Scripts = window.BingoPresenterScripts || {};
 const PRESENTERS = Scripts.profiles || {};
+const storage = {
+  getItem(key){ try { return window['localStorage'].getItem(key); } catch { return null; } },
+  setItem(key,value){ try { window['localStorage'].setItem(key,String(value)); } catch {} },
+  removeItem(key){ try { window['localStorage'].removeItem(key); } catch {} }
+};
 
 class PlayerApp {
   constructor() {
-    this.token = localStorage.getItem('bingoOnlineToken') || '';
+    this.token = String(window.__BINGO_DEMO_DIRECT_TOKEN__ || storage.getItem('bingoOnlineToken') || '');
     this.cookieSession = false;
-    this.tokenRoom = String(localStorage.getItem('bingoOnlineRoom') || '').trim().toUpperCase();
-    this.deviceId = localStorage.getItem('bingoPlayerDeviceId') || this.makeDeviceId();
-    localStorage.setItem('bingoPlayerDeviceId', this.deviceId);
+    this.tokenRoom = String(storage.getItem('bingoOnlineRoom') || '').trim().toUpperCase();
+    this.deviceId = storage.getItem('bingoPlayerDeviceId') || this.makeDeviceId();
+    storage.setItem('bingoPlayerDeviceId', this.deviceId);
     this.state = null;
-    this.activeCardId = localStorage.getItem('bingoOnlineCard') || '';
+    this.activeCardId = storage.getItem('bingoOnlineCard') || '';
     this.events = null;
     this.reconnectRefreshTimer = null;
     this.reconnectAttempts = 0;
@@ -24,12 +29,12 @@ class PlayerApp {
     this.claimClickGuard = new Map();
     this.voices = [];
     this.phrases = Scripts.PhraseEngine ? new Scripts.PhraseEngine() : { ball:(id,n)=>`Número ${n}`, event:()=>'' };
-    this.audioPreferenceLoaded = localStorage.getItem('bingoPlayerSound') !== null;
-    this.audioEnabled = localStorage.getItem('bingoPlayerSound') !== 'false';
-    this.voiceEnabled = localStorage.getItem('bingoPlayerVoice') !== 'false';
-    this.alertsEnabled = localStorage.getItem('bingoPlayerAlerts') !== 'false';
-    this.audioVolume = Math.max(0, Math.min(1, Number(localStorage.getItem('bingoPlayerVolume') ?? .92)));
-    this.largeNumbers = localStorage.getItem('bingoPlayerLargeNumbers') === null ? true : localStorage.getItem('bingoPlayerLargeNumbers') === 'true';
+    this.audioPreferenceLoaded = storage.getItem('bingoPlayerSound') !== null;
+    this.audioEnabled = storage.getItem('bingoPlayerSound') !== 'false';
+    this.voiceEnabled = storage.getItem('bingoPlayerVoice') !== 'false';
+    this.alertsEnabled = storage.getItem('bingoPlayerAlerts') !== 'false';
+    this.audioVolume = Math.max(0, Math.min(1, Number(storage.getItem('bingoPlayerVolume') ?? .92)));
+    this.largeNumbers = storage.getItem('bingoPlayerLargeNumbers') === null ? true : storage.getItem('bingoPlayerLargeNumbers') === 'true';
     this.lastPublicClaimKey = '';
     this.lastAdminMessageId = '';
     this.seenChatMessageIds = new Set();
@@ -46,7 +51,7 @@ class PlayerApp {
     this.pendingTransfer = null;
     this.pendingPlayerName = '';
     this.lastResult = null;
-    this.theme = localStorage.getItem('bingoPlayerTheme') === 'day' ? 'day' : 'night';
+    this.theme = storage.getItem('bingoPlayerTheme') === 'day' ? 'day' : 'night';
     this.focusMode = false;
     this.fullscreenApiActive = false;
     this.guideStep = 0;
@@ -58,6 +63,7 @@ class PlayerApp {
     this.guidePositionTimer = null;
     this.guideAutoTimer = null;
     this.guideResumeStep = 0;
+    this.guideSessionStatus = '';
     this.autoMarkDesired = null;
     this.autoMarkFeedback = null;
     this.autoMarkSyncing = false;
@@ -71,7 +77,7 @@ class PlayerApp {
     this.openJoinMode = false;
     this.openJoinCardCount = 2;
     this.waitingMini = {
-      activeType: ['red_black','higher_lower'].includes(localStorage.getItem('bingoWaitingMiniGame')) ? localStorage.getItem('bingoWaitingMiniGame') : 'red_black',
+      activeType: ['red_black','higher_lower'].includes(storage.getItem('bingoWaitingMiniGame')) ? storage.getItem('bingoWaitingMiniGame') : 'red_black',
       score: 0, best: 0, bestByType: { red_black: 0, higher_lower: 0 }, current: null, ended: false, busy: false, message: ''
     };
     this.ticketTouchStartX = null;
@@ -214,18 +220,20 @@ class PlayerApp {
       $('loginBtn').textContent = 'ENTRAR A LA SALA';
     }
     if (demoEntry) {
-      // La DEMO llega con su estado inicial embebido por el servidor.
-      // La sala puede mostrarse sin esperar una segunda petición HTTP.
-      this.token = '';
+      // La DEMO v3 entra por una ruta propia. El servidor embebe tanto el estado
+      // inicial como un token temporal de esa demostración; no depende de cookies
+      // ni de localStorage para poder iniciar la interfaz real del jugador.
+      const directDemoToken = String(window.__BINGO_DEMO_DIRECT_TOKEN__ || '');
+      this.token = directDemoToken;
       this.tokenRoom = '';
-      this.cookieSession = true;
-      localStorage.removeItem('bingoOnlineToken');
-      localStorage.removeItem('bingoOnlineRoom');
-      localStorage.removeItem('bingoOnlineCard');
+      this.cookieSession = !directDemoToken;
+      storage.removeItem('bingoOnlineToken');
+      storage.removeItem('bingoOnlineRoom');
+      storage.removeItem('bingoOnlineCard');
       const initialDemoState = window.__BINGO_DEMO_BOOTSTRAP__;
       if (initialDemoState?.demo?.active && initialDemoState?.player?.demoHuman) {
         this.tokenRoom = String(initialDemoState.roomCode || '').trim().toUpperCase();
-        if (this.tokenRoom) localStorage.setItem('bingoOnlineRoom', this.tokenRoom);
+        if (this.tokenRoom) storage.setItem('bingoOnlineRoom', this.tokenRoom);
         this.applyState(initialDemoState);
         delete document.documentElement.dataset.demoBoot;
         delete document.documentElement.dataset.demoBootError;
@@ -245,9 +253,9 @@ class PlayerApp {
       this.token = '';
       this.tokenRoom = '';
       this.activeCardId = '';
-      localStorage.removeItem('bingoOnlineToken');
-      localStorage.removeItem('bingoOnlineRoom');
-      localStorage.removeItem('bingoOnlineCard');
+      storage.removeItem('bingoOnlineToken');
+      storage.removeItem('bingoOnlineRoom');
+      storage.removeItem('bingoOnlineCard');
     }
 
     // Información secundaria: se carga después del intento de entrada y nunca bloquea la DEMO.
@@ -623,7 +631,7 @@ class PlayerApp {
     if (index < 0 || cards.length < 2) return false;
     const next = (index + (direction >= 0 ? 1 : -1) + cards.length) % cards.length;
     this.activeCardId = cards[next].id;
-    localStorage.setItem('bingoOnlineCard', this.activeCardId);
+    storage.setItem('bingoOnlineCard', this.activeCardId);
     this.renderTabs(); this.renderTicket();
     const active = $('ticketPanel')?.querySelector('.ticketInstance.active');
     if (active) {
@@ -710,9 +718,9 @@ class PlayerApp {
 
   acceptLogin(data) {
     this.token = data.token;
-    localStorage.setItem('bingoOnlineToken', this.token);
+    storage.setItem('bingoOnlineToken', this.token);
     this.tokenRoom = String(data.state?.roomCode || '').trim().toUpperCase();
-    if (this.tokenRoom) localStorage.setItem('bingoOnlineRoom', this.tokenRoom);
+    if (this.tokenRoom) storage.setItem('bingoOnlineRoom', this.tokenRoom);
     this.cleanDirectAccessUrl();
     this.applyState(data.state);
     this.connectEvents();
@@ -729,7 +737,7 @@ class PlayerApp {
     try {
       const data = await this.request('/api/player/state', demoBoot ? { timeoutMs:4500, retries:1, retryDelayMs:350 } : {});
       this.tokenRoom = String(data?.roomCode || '').trim().toUpperCase();
-      if (this.tokenRoom) localStorage.setItem('bingoOnlineRoom', this.tokenRoom);
+      if (this.tokenRoom) storage.setItem('bingoOnlineRoom', this.tokenRoom);
       this.applyState(data);
       delete document.documentElement.dataset.demoBoot;
       delete document.documentElement.dataset.demoBootError;
@@ -909,14 +917,14 @@ class PlayerApp {
     if (data.demo?.active && data.player?.demoHuman) this.cookieSession = true;
     if (data.roomCode && this.token) {
       this.tokenRoom = String(data.roomCode).trim().toUpperCase();
-      localStorage.setItem('bingoOnlineRoom', this.tokenRoom);
+      storage.setItem('bingoOnlineRoom', this.tokenRoom);
     }
     if (data.status === 'waiting' && !data.player.selectionConfirmed) this.selectedOffers = new Set(data.player.reservedCardIds || []);
     else this.selectedOffers.clear();
     const cards = data.player.cards || [];
     if (!cards.some(card => card.id === this.activeCardId)) this.activeCardId = cards[0]?.id || '';
-    localStorage.setItem('bingoOnlineCard', this.activeCardId);
-    if (!this.audioPreferenceLoaded) { this.audioEnabled = Boolean(data.roomSettings?.playerAudioDefault); this.audioPreferenceLoaded = true; localStorage.setItem('bingoPlayerSound', String(this.audioEnabled)); }
+    storage.setItem('bingoOnlineCard', this.activeCardId);
+    if (!this.audioPreferenceLoaded) { this.audioEnabled = Boolean(data.roomSettings?.playerAudioDefault); this.audioPreferenceLoaded = true; storage.setItem('bingoPlayerSound', String(this.audioEnabled)); }
     $('loginView').classList.add('hidden'); $('gameView').classList.remove('hidden');
     document.body.classList.add('playerLogged');
     $('infoDrawerToggle').classList.remove('hidden');
@@ -1187,7 +1195,7 @@ class PlayerApp {
     this.waitingMini.ended = false;
     this.waitingMini.busy = false;
     this.waitingMini.message = type === 'red_black' ? 'Elegí el color de la próxima carta.' : '';
-    localStorage.setItem('bingoWaitingMiniGame', type);
+    storage.setItem('bingoWaitingMiniGame', type);
     this.renderWaiting();
   }
 
@@ -1398,9 +1406,9 @@ class PlayerApp {
       const next = await this.request('/api/player/demo/reset', { method:'POST', body:'{}' });
       this.events?.close();
       this.releaseWakeLock();
-      localStorage.removeItem('bingoOnlineToken');
-      localStorage.removeItem('bingoOnlineRoom');
-      localStorage.removeItem('bingoOnlineCard');
+      storage.removeItem('bingoOnlineToken');
+      storage.removeItem('bingoOnlineRoom');
+      storage.removeItem('bingoOnlineCard');
       location.href = next.playerUrl || '/demo';
     } catch (error) {
       if (button) { button.disabled = false; button.textContent = 'REINICIAR DEMO'; }
@@ -1425,18 +1433,19 @@ class PlayerApp {
   }
 
   guideProgress() {
-    try { return localStorage.getItem(this.guideStorageKey()) || ''; } catch { return ''; }
+    return storage.getItem(this.guideStorageKey()) || this.guideSessionStatus || '';
   }
 
   setGuideProgress(value) {
-    try { localStorage.setItem(this.guideStorageKey(), value); } catch {}
+    this.guideSessionStatus = String(value || '');
+    storage.setItem(this.guideStorageKey(), this.guideSessionStatus);
   }
 
   guideMemoryKey() { return `${this.guideStorageKey()}:position`; }
 
   guideMemory() {
     try {
-      const raw = localStorage.getItem(this.guideMemoryKey());
+      const raw = storage.getItem(this.guideMemoryKey());
       const parsed = raw ? JSON.parse(raw) : null;
       if (!parsed || typeof parsed !== 'object') return null;
       return { stage: parsed.stage === 'selection' ? 'selection' : 'controls', step: Math.max(0, Number(parsed.step) || 0), status: String(parsed.status || 'in_progress') };
@@ -1445,7 +1454,7 @@ class PlayerApp {
 
   saveGuideMemory(status = 'in_progress', stage = this.guideStage, step = this.guideStep) {
     if (!this.state?.roomCode || !stage) return;
-    try { localStorage.setItem(this.guideMemoryKey(), JSON.stringify({ status, stage, step:Math.max(0,Number(step)||0), at:Date.now() })); } catch {}
+    try { storage.setItem(this.guideMemoryKey(), JSON.stringify({ status, stage, step:Math.max(0,Number(step)||0), at:Date.now() })); } catch {}
   }
 
   deviceProfile() {
@@ -1647,7 +1656,7 @@ class PlayerApp {
 
   closeGuide(markSkipped = false) {
     if (markSkipped) {
-      if (!this.guideManual) this.setGuideProgress('skipped');
+      this.setGuideProgress('skipped');
       this.saveGuideMemory('skipped', this.guideStage, this.guideStep);
     }
     clearTimeout(this.guidePositionTimer);
@@ -1695,7 +1704,7 @@ class PlayerApp {
       const alert = ready?.bingoEligible ? ' · BINGO' : anyIntermediate ? ' · PREMIO' : '';
       return `<button type="button" role="tab" aria-selected="${card.id === this.activeCardId}" data-card="${esc(card.id)}" class="${cls}">C${index+1} · ${esc(card.number)}${alert}</button>`;
     }).join('');
-    $('cardTabs').querySelectorAll('button').forEach(button => button.onclick = () => { this.activeCardId = button.dataset.card; localStorage.setItem('bingoOnlineCard', this.activeCardId); this.renderTabs(); this.renderTicket(); });
+    $('cardTabs').querySelectorAll('button').forEach(button => button.onclick = () => { this.activeCardId = button.dataset.card; storage.setItem('bingoOnlineCard', this.activeCardId); this.renderTabs(); this.renderTicket(); });
   }
 
   readinessFor(cardId) { return (this.state?.readiness || []).find(item => item.cardId === cardId) || null; }
@@ -1753,7 +1762,7 @@ class PlayerApp {
     $('ticketPanel').querySelectorAll('[data-ticket-card]').forEach(ticket => ticket.onclick = event => {
       if (event.target.closest('[data-number]')) return;
       this.activeCardId = ticket.dataset.ticketCard;
-      localStorage.setItem('bingoOnlineCard', this.activeCardId);
+      storage.setItem('bingoOnlineCard', this.activeCardId);
       this.renderTabs(); this.renderTicket();
     });
 
@@ -1858,7 +1867,7 @@ class PlayerApp {
     if (now - Number(this.claimClickGuard.get(type) || 0) < 900) return;
     this.claimClickGuard.set(type, now);
     const ready = this.eligibleCard(type);
-    if (ready) { this.activeCardId = ready.cardId; localStorage.setItem('bingoOnlineCard', this.activeCardId); this.renderTabs(); this.renderTicket(); }
+    if (ready) { this.activeCardId = ready.cardId; storage.setItem('bingoOnlineCard', this.activeCardId); this.renderTabs(); this.renderTicket(); }
     const card = this.state?.player.cards.find(item => item.id === this.activeCardId); if (!card) return;
     const label = this.claimLabel(type);
     this.pendingClaims.add(type);
@@ -1889,7 +1898,7 @@ class PlayerApp {
     if (!ready || !type) { this.lastPrizeReadyKey = ''; return; }
     const awarded = Number(this.state.prizeStatus?.[type]?.awarded || 0);
     const key = `${type}:${ready.cardId}:${this.state.game.drawn.length}:${awarded}`; if (key === this.lastPrizeReadyKey) return;
-    this.lastPrizeReadyKey = key; this.activeCardId = ready.cardId; localStorage.setItem('bingoOnlineCard', ready.cardId);
+    this.lastPrizeReadyKey = key; this.activeCardId = ready.cardId; storage.setItem('bingoOnlineCard', ready.cardId);
     this.playAlertSound(type); if (this.alertsEnabled && navigator.vibrate) navigator.vibrate(type === 'bingo' ? [180,80,180,80,260] : [150,70,150]);
     const label = this.claimLabel(type);
     this.showMessage(`¡TENÉS ${label} EN EL CARTÓN ${ready.cardNumber}! Tocá el botón ahora.`, 'notice');
@@ -1992,14 +2001,14 @@ class PlayerApp {
 
   setAudioEnabled(enabled) {
     this.audioEnabled = Boolean(enabled);
-    localStorage.setItem('bingoPlayerSound', String(this.audioEnabled));
+    storage.setItem('bingoPlayerSound', String(this.audioEnabled));
     this.updateQuickTools();
     if (this.audioEnabled) this.playAlertSound('line');
   }
 
   setVoiceEnabled(enabled) {
     this.voiceEnabled = Boolean(enabled);
-    localStorage.setItem('bingoPlayerVoice', String(this.voiceEnabled));
+    storage.setItem('bingoPlayerVoice', String(this.voiceEnabled));
     if (!this.voiceEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
     this.updateQuickTools();
     if (this.voiceEnabled && this.state) this.speak((PRESENTERS.vero || {}).preview || 'Hola, soy Vero.', true);
@@ -2007,19 +2016,19 @@ class PlayerApp {
 
   setVolume(value, persist = true) {
     this.audioVolume = Math.max(0, Math.min(1, Number(value) || 0));
-    if (persist) localStorage.setItem('bingoPlayerVolume', String(this.audioVolume));
+    if (persist) storage.setItem('bingoPlayerVolume', String(this.audioVolume));
     if ($('volumeRange')) $('volumeRange').value = String(Math.round(this.audioVolume * 100));
     if ($('volumeValue')) $('volumeValue').textContent = `${Math.round(this.audioVolume * 100)}%`;
   }
 
   setLargeNumbers(enabled, persist = true) {
     this.largeNumbers = Boolean(enabled);
-    if (persist) localStorage.setItem('bingoPlayerLargeNumbers', String(this.largeNumbers));
+    if (persist) storage.setItem('bingoPlayerLargeNumbers', String(this.largeNumbers));
     document.body.classList.toggle('largeNumbers', this.largeNumbers);
     this.updateQuickTools();
   }
 
-  setAlertsEnabled(enabled) { this.alertsEnabled = Boolean(enabled); localStorage.setItem('bingoPlayerAlerts', String(this.alertsEnabled)); this.updateQuickTools(); }
+  setAlertsEnabled(enabled) { this.alertsEnabled = Boolean(enabled); storage.setItem('bingoPlayerAlerts', String(this.alertsEnabled)); this.updateQuickTools(); }
 
   updateQuickTools() {
     const update = (id, active, on, off) => {
@@ -2154,9 +2163,9 @@ class PlayerApp {
     this.events?.close();
     this.token = '';
     this.tokenRoom = '';
-    localStorage.removeItem('bingoOnlineToken');
-    localStorage.removeItem('bingoOnlineRoom');
-    localStorage.removeItem('bingoOnlineCard');
+    storage.removeItem('bingoOnlineToken');
+    storage.removeItem('bingoOnlineRoom');
+    storage.removeItem('bingoOnlineCard');
     $('connectionMask').classList.remove('show');
     $('finalResultsOverlay').classList.remove('show');
     $('roomClosedOverlay').classList.add('show');
@@ -2182,7 +2191,7 @@ class PlayerApp {
     try{await window.LaGordaCast.castUrl(url,this.state?.castAppId);this.showMessage('Elegí tu Chromecast o TV compatible.','notice')}catch(e){this.showMessage(e.message,'error')}
   }
 
-  toggleTheme() { this.theme=this.theme==='day'?'night':'day'; localStorage.setItem('bingoPlayerTheme',this.theme); this.applyTheme(); }
+  toggleTheme() { this.theme=this.theme==='day'?'night':'day'; storage.setItem('bingoPlayerTheme',this.theme); this.applyTheme(); }
   applyTheme() {
     document.documentElement.dataset.theme=this.theme;
     $('themeToggle').textContent=this.theme==='day'?'CLARO':'OSCURO';
@@ -2214,7 +2223,7 @@ class PlayerApp {
 
   logout(reload=true) {
     this.releaseWakeLock();
-    this.events?.close(); clearTimeout(this.reconnectRefreshTimer); clearInterval(this.sequenceTimer); this.setFocusMode(false); this.closeOtherPanels(); this.closeResultsViewer(); this.token=''; this.cookieSession=false; this.tokenRoom=''; this.state=null; this.roomClosedShown=false; localStorage.removeItem('bingoOnlineToken'); localStorage.removeItem('bingoOnlineRoom'); localStorage.removeItem('bingoOnlineCard');
+    this.events?.close(); clearTimeout(this.reconnectRefreshTimer); clearInterval(this.sequenceTimer); this.setFocusMode(false); this.closeOtherPanels(); this.closeResultsViewer(); this.token=''; this.cookieSession=false; this.tokenRoom=''; this.state=null; this.roomClosedShown=false; storage.removeItem('bingoOnlineToken'); storage.removeItem('bingoOnlineRoom'); storage.removeItem('bingoOnlineCard');
     document.body.classList.remove('playerLogged'); $('infoDrawerToggle').classList.add('hidden');
     if(reload) location.reload(); else { $('gameView').classList.add('hidden'); $('loginView').classList.remove('hidden'); }
   }

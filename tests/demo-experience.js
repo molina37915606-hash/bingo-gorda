@@ -41,7 +41,7 @@ async function waitServer() {
     const firstCookie = (created.response.headers.get('set-cookie') || '').split(';')[0];
     assert(firstCookie.includes('bingo_demo_session='), 'La demo debe crear una cookie temporal de sesión.');
     assert(!created.data.playerSessionToken && !created.data.demoSessionToken, 'La demo no debe exponer el token de sesión en JSON.');
-    assert.equal(created.data.playerUrl, '/jugador?demo=1');
+    assert(created.data.playerUrl.startsWith('/demo/jugar/demoentry_') && created.data.playerUrl.endsWith('/partida?demo=1'), created.data.playerUrl);
     assert(!/codigo=|demoSession=|code=|acceso=/i.test(created.data.playerUrl), 'La URL de demo no debe exponer ni pedir credenciales.');
     assert.deepEqual(created.data.rules, rules);
 
@@ -94,7 +94,7 @@ async function waitServer() {
     assert(playerJs.includes("when:()=>!device.tv && !this.state?.demo?.active"), 'El tutorial no debe enseñar minijuegos dentro de la demo.');
     assert(playerJs.includes("if (this.state?.status !== 'waiting' || this.state?.demo?.active) return '';"), 'La demo no debe renderizar minijuegos.');
     assert(playerJs.includes("const demoEntry = params.get('demo') === '1'"), 'El jugador debe iniciar la demo mediante la sesión del servidor.');
-    assert(playerJs.includes('this.cookieSession = true'), 'La sesión de DEMO debe funcionar sin token visible.');
+    assert(playerJs.includes('window.__BINGO_DEMO_DIRECT_TOKEN__'), 'La DEMO debe usar el token temporal embebido por su ruta propia.');
     assert(playerJs.includes("target:'.choiceCounter'"));
     assert(playerJs.includes("'/api/player/demo/start'"));
     assert(playerJs.includes("params.get('simcontrol') === '1'"));

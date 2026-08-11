@@ -1,3 +1,19 @@
+VERSIÓN 3.0.0 · REESTRUCTURA COMPLETA DEL INGRESO DEMO
+
+- DEMO deja de entrar por el login normal del jugador.
+- CREAR MI DEMO redirige a una ruta individual /demo/jugar/<id>.
+- La sala de espera se renderiza directamente desde el servidor: nombre, cantidad de cartones, selección, recarga y confirmación están visibles aunque el JavaScript principal no haya cargado.
+- No existe pantalla obligatoria "Preparando tu partida" antes de la sala de espera.
+- La sala DEMO no pide código privado y no incluye minijuegos.
+- Recargar cartones conserva los cartones ya elegidos.
+- Al confirmar nombre y cartones se pasa a /demo/jugar/<id>/partida y recién allí se carga la interfaz completa del jugador.
+- La pantalla completa recibe estado inicial y token temporal directamente desde el servidor; no depende de cookie ni localStorage para autenticarse.
+- localStorage del jugador se volvió tolerante a errores: si el navegador lo bloquea, la interfaz puede continuar.
+- El tutorial de juego conserva un estado en memoria además del almacenamiento local, para que terminar/saltar el tutorial pueda iniciar la DEMO aunque localStorage no esté disponible.
+- Se mantiene el inicio automático seguro después del tutorial y la cuenta de 5 segundos.
+- Se agregó una prueba de integración de la ruta DEMO v3 que valida: creación -> sala visible sin JS -> recarga conservando selección -> confirmación -> interfaz de juego -> API autenticada sin cookie.
+- online-room-player.js sube a v3.0.0 y continúa sirviéndose con no-store.
+
 VERSIÓN 2.9.0 · DEMO DIRECTA SIN PANTALLA INFINITA
 
 - La creación pública de DEMO ya no depende de fetch: usa un POST normal del navegador a /demo/start.

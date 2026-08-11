@@ -1933,6 +1933,7 @@ function createDemoRoom(payload = {}) {
   const assignments = [{ allowedCardCount: playerCardCount, cardIds: [] }];
   for (let index = 0; index < aiCount; index++) assignments.push({ allowedCardCount: 2, cardIds: mappedAiGroups[index].map(card => card.id) });
   const workspace = ensureWorkspace(`demo_${randomCode(10).toLowerCase()}`);
+  const demoEntryId = randomId('demoentry');
   workspace.isDemo = true;
   workspace.expiresAt = Date.now() + DEMO_TTL_MS;
   workspace.lastActivityAt = Date.now();
@@ -1981,6 +1982,7 @@ function createDemoRoom(payload = {}) {
     state.chat.enabled = true;
     state.demo = {
       active: true,
+      entryId: demoEntryId,
       label: 'DEMOSTRACIÓN — SIN VALIDEZ OFICIAL',
       createdAt: nowIso(),
       expiresAt: new Date(workspace.expiresAt).toISOString(),
@@ -2006,8 +2008,9 @@ function createDemoRoom(payload = {}) {
       workspaceId: workspace.id,
       roomCode: state.roomCode,
       demoSessionToken: human.sessionToken,
+      demoEntryId,
       expiresAt: new Date(workspace.expiresAt).toISOString(),
-      playerUrl: '/jugador?demo=1',
+      playerUrl: `/demo/jugar/${demoEntryId}/partida?demo=1`,
       participants: [{ name: playerDisplayName(human), virtual: false, cardCount: human.cardIds.length }, ...state.players.slice(1).map(player => ({ name: player.name, virtual: true, cardCount: player.cardIds.length }))],
       mode,
       rules: { ...rules },
@@ -4513,13 +4516,56 @@ function safeInlineJson(value) {
     .replace(/\u2029/g, '\\u2029');
 }
 
-function serveDemoPlayerPage(res, initialState) {
+function serveDemoPlayerPage(res, initialState, directToken = '') {
   const filePath = path.join(ROOT, 'jugador.html');
   fs.readFile(filePath, 'utf8', (error, html) => {
     if (error) return sendJson(res, 500, { error: 'No se pudo abrir la pantalla del jugador.' });
-    const marker = 'window.__BINGO_DEMO_BOOTSTRAP__ = null;';
-    if (!html.includes(marker)) return sendJson(res, 500, { error: 'Falta el arranque directo de DEMO.' });
-    const output = html.replace(marker, `window.__BINGO_DEMO_BOOTSTRAP__ = ${safeInlineJson(initialState)};`);
+    const stateMarker = 'window.__BINGO_DEMO_BOOTSTRAP__ = null;';
+    const tokenMarker = "window.__BINGO_DEMO_DIRECT_TOKEN__ = '';";
+    if (!html.includes(stateMarker) || !html.includes(tokenMarker)) return sendJson(res, 500, { error: 'Falta el arranque directo de DEMO.' });
+    const output = html
+      .replace(stateMarker, `window.__BINGO_DEMO_BOOTSTRAP__ = ${safeInlineJson(initialState)};`)
+      .replace(tokenMarker, `window.__BINGO_DEMO_DIRECT_TOKEN__ = ${safeInlineJson(String(directToken || ''))};`);
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Length': Buffer.byteLength(output),
+      'Cache-Control': 'no-store, max-age=0',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'same-origin'
+    });
+    res.end(output);
+  });
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[char]));
+}
+
+function demoWaitingCardMarkup(card, selected = false) {
+  const mode = Number(card?.mode) === 75 ? 75 : 90;
+  const cells = (card?.grid || []).flat().map(value => {
+    if (value === null || value === undefined || value === '') return '<span class="cell blank">·</span>';
+    if (String(value).toUpperCase() === 'LIBRE') return '<span class="cell free">LIBRE</span>';
+    return `<span class="cell">${escapeHtml(value)}</span>`;
+  }).join('');
+  return `<label class="cardOption"><input type="checkbox" name="card_${escapeHtml(card.id)}" value="1" ${selected ? 'checked' : ''}><div class="cardHead"><b>Cartón ${escapeHtml(card.number)}</b><span>${mode} bolas</span></div><div class="cardGrid m${mode}">${cells}</div></label>`;
+}
+
+function serveDemoWaitingPage(res, player, errorMessage = '') {
+  const filePath = path.join(ROOT, 'demo-jugador.html');
+  fs.readFile(filePath, 'utf8', (error, html) => {
+    if (error) return sendJson(res, 500, { error: 'No se pudo abrir la sala de espera de la demostración.' });
+    const reserved = new Set(player.reservedCardIds || []);
+    const offers = state.game.cards.filter(card => (player.offeredCardIds || []).includes(card.id));
+    const selectedCount = offers.filter(card => reserved.has(card.id)).length;
+    const output = html
+      .replaceAll('<!--DEMO_NAME-->', escapeHtml(player.nameSet ? player.name : ''))
+      .replaceAll('<!--DEMO_SELECTED_COUNT-->', String(selectedCount))
+      .replaceAll('<!--DEMO_ALLOWED_COUNT-->', String(player.allowedCardCount || 1))
+      .replace('<!--DEMO_CARDS-->', offers.map(card => demoWaitingCardMarkup(card, reserved.has(card.id))).join(''))
+      .replace('<!--DEMO_ERROR-->', errorMessage ? `<div class="error">${escapeHtml(errorMessage)}</div>` : '')
+      .replace('<!--DEMO_MODE-->', String(state.game.mode))
+      .replace('<!--DEMO_AI_COUNT-->', String(state.players.filter(item => item.virtual).length));
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Content-Length': Buffer.byteLength(output),
@@ -4563,6 +4609,12 @@ function findWorkspaceByRoomCode(roomCode) {
   const normalized = String(roomCode || '').trim().toUpperCase();
   if (!normalized) return null;
   return [...workspaces.values()].find(workspace => String(workspace.state.roomCode || '').toUpperCase() === normalized) || null;
+}
+
+function findWorkspaceByDemoEntryId(entryId) {
+  const normalized = String(entryId || '').trim();
+  if (!/^demoentry_[a-f0-9]{24}$/.test(normalized)) return null;
+  return [...workspaces.values()].find(workspace => workspace.isDemo && String(workspace.state?.demo?.entryId || '') === normalized) || null;
 }
 
 
@@ -5239,13 +5291,75 @@ const server = http.createServer(async (req, res) => {
         sound:true
       });
       setDemoSessionCookie(req, res, created.demoSessionToken);
-      res.writeHead(303, { Location: '/jugador?demo=1', 'Cache-Control':'no-store' });
+      res.writeHead(303, { Location: `/demo/jugar/${encodeURIComponent(created.demoEntryId)}`, 'Cache-Control':'no-store' });
       return res.end();
     } catch (error) {
       console.error('No se pudo crear la DEMO directa:', error);
       res.writeHead(303, { Location: '/demo?error=create', 'Cache-Control':'no-store' });
       return res.end();
     }
+  }
+
+  const demoPlayerMatch = url.pathname.match(/^\/demo\/jugar\/(demoentry_[a-f0-9]{24})(\/partida)?\/?$/);
+  if (demoPlayerMatch) {
+    const entryId = demoPlayerMatch[1];
+    const wantsGame = Boolean(demoPlayerMatch[2]);
+    const workspace = findWorkspaceByDemoEntryId(entryId);
+    if (!workspace) {
+      res.writeHead(303, { Location: '/demo?error=session', 'Cache-Control':'no-store' });
+      return res.end();
+    }
+    return workspaceContext.run(workspace, async () => {
+      currentWorkspace().lastActivityAt = Date.now();
+      const player = state.players.find(item => item.demoHuman && !item.virtual);
+      if (!player) {
+        res.writeHead(303, { Location: '/demo?error=session', 'Cache-Control':'no-store' });
+        return res.end();
+      }
+      if (wantsGame) {
+        if (!player.nameSet || !player.selectionConfirmed || !(player.cardIds || []).length) {
+          res.writeHead(303, { Location: `/demo/jugar/${entryId}`, 'Cache-Control':'no-store' });
+          return res.end();
+        }
+        return serveDemoPlayerPage(res, playerPayload(player), player.sessionToken);
+      }
+      if (req.method === 'GET') {
+        if (player.nameSet && player.selectionConfirmed && (player.cardIds || []).length) {
+          res.writeHead(303, { Location: `/demo/jugar/${entryId}/partida?demo=1`, 'Cache-Control':'no-store' });
+          return res.end();
+        }
+        refreshOffersForPlayer(player);
+        return serveDemoWaitingPage(res, player);
+      }
+      if (req.method === 'POST') {
+        try {
+          const form = await readForm(req);
+          const action = String(form.action || 'confirm');
+          const selected = Object.keys(form).filter(key => key.startsWith('card_') && form[key] === '1').map(key => key.slice(5));
+          if (action === 'refresh') {
+            const currentReserved = [...(player.reservedCardIds || [])];
+            for (const cardId of currentReserved) {
+              if (!selected.includes(cardId)) reserveCard(player, { cardId, reserve:false });
+            }
+            for (const cardId of selected) {
+              if (!(player.reservedCardIds || []).includes(cardId)) reserveCard(player, { cardId, reserve:true });
+            }
+            if (!player.nameSet && String(form.name || '').trim().length >= 2) setPlayerName(player, { name:form.name });
+            renewOffers(player);
+            res.writeHead(303, { Location: `/demo/jugar/${entryId}`, 'Cache-Control':'no-store' });
+            return res.end();
+          }
+          if (!player.nameSet || normalizePlayerName(form.name) !== player.name) setPlayerName(player, { name:form.name });
+          chooseCards(player, { cardIds:selected });
+          res.writeHead(303, { Location: `/demo/jugar/${entryId}/partida?demo=1`, 'Cache-Control':'no-store' });
+          return res.end();
+        } catch (error) {
+          refreshOffersForPlayer(player);
+          return serveDemoWaitingPage(res, player, error.message || 'No se pudo completar la selección.');
+        }
+      }
+      return sendJson(res, 405, { error: 'Método no permitido.' });
+    });
   }
 
   if (url.pathname === '/') {
@@ -5264,14 +5378,15 @@ const server = http.createServer(async (req, res) => {
       const token = cookieValue(req, DEMO_SESSION_COOKIE);
       const workspace = findWorkspaceByPlayerToken(token);
       const player = workspace?.state?.players?.find(item => item.sessionToken === token && item.demoHuman);
-      if (!workspace?.isDemo || !player) {
+      const entryId = workspace?.state?.demo?.entryId;
+      if (!workspace?.isDemo || !player || !entryId) {
         clearDemoSessionCookie(req, res);
         res.writeHead(302, { Location: '/demo?error=session' });
         return res.end();
       }
       workspace.lastActivityAt = Date.now();
-      const initialState = workspaceContext.run(workspace, () => playerPayload(player));
-      return serveDemoPlayerPage(res, initialState);
+      res.writeHead(303, { Location: player.selectionConfirmed && player.nameSet ? `/demo/jugar/${entryId}/partida?demo=1` : `/demo/jugar/${entryId}`, 'Cache-Control':'no-store' });
+      return res.end();
     }
     return serveFile(res, path.join(ROOT, 'jugador.html'));
   }

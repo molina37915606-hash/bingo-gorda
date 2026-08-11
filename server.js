@@ -1494,6 +1494,26 @@ function readJson(req, limit = 2_000_000) {
   });
 }
 
+function readForm(req, limit = 200_000) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > limit) {
+        reject(new Error('La solicitud es demasiado grande.'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      try {
+        const params = new URLSearchParams(body);
+        resolve(Object.fromEntries(params.entries()));
+      } catch { reject(new Error('Formulario inválido.')); }
+    });
+    req.on('error', reject);
+  });
+}
+
 function writeSse(res, event, data) {
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -4484,6 +4504,33 @@ const MIME_TYPES = {
   '.pdf': 'application/pdf'
 };
 
+function safeInlineJson(value) {
+  return JSON.stringify(value ?? null)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+function serveDemoPlayerPage(res, initialState) {
+  const filePath = path.join(ROOT, 'jugador.html');
+  fs.readFile(filePath, 'utf8', (error, html) => {
+    if (error) return sendJson(res, 500, { error: 'No se pudo abrir la pantalla del jugador.' });
+    const marker = 'window.__BINGO_DEMO_BOOTSTRAP__ = null;';
+    if (!html.includes(marker)) return sendJson(res, 500, { error: 'Falta el arranque directo de DEMO.' });
+    const output = html.replace(marker, `window.__BINGO_DEMO_BOOTSTRAP__ = ${safeInlineJson(initialState)};`);
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Length': Buffer.byteLength(output),
+      'Cache-Control': 'no-store, max-age=0',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'same-origin'
+    });
+    res.end(output);
+  });
+}
+
 function serveFile(res, filePath) {
   const normalized = path.normalize(filePath);
   const assetRoot = `${path.join(ROOT, 'assets')}${path.sep}`;
@@ -5170,6 +5217,37 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res, url);
   if (url.pathname.startsWith('/api/')) return handleApi(req, res, url);
 
+  if (url.pathname === '/demo/start' && req.method === 'POST') {
+    try {
+      if (!consumeRate(req, 'demo-create', 40, 10 * 60 * 1000)) {
+        res.writeHead(303, { Location: '/demo?error=rate' });
+        return res.end();
+      }
+      const form = await readForm(req);
+      const mode = Number(form.mode) === 75 ? 75 : 90;
+      const rules = mode === 75
+        ? { ambocabeza:false, line:form.prizeLine === '1', doubleLine:form.prizeDouble === '1', tripleLine:form.prizeTriple === '1', corners:form.prizeCorners === '1', bingo:form.prizeBingo === '1' }
+        : { ambocabeza:form.prizeAmbo === '1', line:form.prizeLine === '1', doubleLine:false, tripleLine:false, corners:false, bingo:form.prizeBingo === '1' };
+      const created = createDemoRoom({
+        mode,
+        rules,
+        linePrizeCount:Number(form.linePrizeCount) || 1,
+        aiCount:Number(form.aiCount) || 2,
+        aiNames:String(form.aiNames || '').split(',').map(name => name.trim()).filter(Boolean),
+        playerCardCount:Number(form.playerCardCount) || 2,
+        autoSeconds:Number(form.autoSeconds) || 4,
+        sound:true
+      });
+      setDemoSessionCookie(req, res, created.demoSessionToken);
+      res.writeHead(303, { Location: '/jugador?demo=1', 'Cache-Control':'no-store' });
+      return res.end();
+    } catch (error) {
+      console.error('No se pudo crear la DEMO directa:', error);
+      res.writeHead(303, { Location: '/demo?error=create', 'Cache-Control':'no-store' });
+      return res.end();
+    }
+  }
+
   if (url.pathname === '/') {
     res.writeHead(302, { Location: '/admin-principal' });
     return res.end();
@@ -5192,6 +5270,8 @@ const server = http.createServer(async (req, res) => {
         return res.end();
       }
       workspace.lastActivityAt = Date.now();
+      const initialState = workspaceContext.run(workspace, () => playerPayload(player));
+      return serveDemoPlayerPage(res, initialState);
     }
     return serveFile(res, path.join(ROOT, 'jugador.html'));
   }

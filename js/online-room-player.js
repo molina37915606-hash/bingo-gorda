@@ -214,15 +214,28 @@ class PlayerApp {
       $('loginBtn').textContent = 'ENTRAR A LA SALA';
     }
     if (demoEntry) {
-      // La demostración se autentica con cookie HttpOnly del servidor.
-      // No necesita token visible, código privado ni localStorage para entrar.
+      // La DEMO llega con su estado inicial embebido por el servidor.
+      // La sala puede mostrarse sin esperar una segunda petición HTTP.
       this.token = '';
       this.tokenRoom = '';
       this.cookieSession = true;
       localStorage.removeItem('bingoOnlineToken');
       localStorage.removeItem('bingoOnlineRoom');
       localStorage.removeItem('bingoOnlineCard');
-      await this.resume({ demoBoot:true });
+      const initialDemoState = window.__BINGO_DEMO_BOOTSTRAP__;
+      if (initialDemoState?.demo?.active && initialDemoState?.player?.demoHuman) {
+        this.tokenRoom = String(initialDemoState.roomCode || '').trim().toUpperCase();
+        if (this.tokenRoom) localStorage.setItem('bingoOnlineRoom', this.tokenRoom);
+        this.applyState(initialDemoState);
+        delete document.documentElement.dataset.demoBoot;
+        delete document.documentElement.dataset.demoBootError;
+        $('demoBootError')?.classList.remove('show');
+        window.__BINGO_DEMO_BOOT_READY__ = true;
+        clearTimeout(window.__bingoDemoBootWatchdog);
+        this.connectEvents();
+      } else {
+        await this.resume({ demoBoot:true });
+      }
     } else if (directCode) {
       $('accessCode').value = directCode;
       await this.login(directCode, roomCode);
@@ -721,6 +734,10 @@ class PlayerApp {
       delete document.documentElement.dataset.demoBoot;
       delete document.documentElement.dataset.demoBootError;
       $('demoBootError')?.classList.remove('show');
+      if (demoBoot) {
+        window.__BINGO_DEMO_BOOT_READY__ = true;
+        clearTimeout(window.__bingoDemoBootWatchdog);
+      }
       this.connectEvents();
       return true;
     } catch (error) {

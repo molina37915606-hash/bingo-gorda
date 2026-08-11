@@ -1,6 +1,6 @@
 {
   "name": "bingo-de-la-gorda",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "private": true,
   "description": "BINGO DE LA GORDA: bingo de 75 y 90 bolas con administración, jugadores, comunidad, modo espectador, minijuegos y actas auditables.",
   "engines": {

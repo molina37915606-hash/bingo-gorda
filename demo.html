@@ -13,7 +13,7 @@
   <div><span class="tag">DEMO INDIVIDUAL</span><h1>Probá una partida completa</h1><p>Este enlace crea una demostración distinta para cada persona. Elegís la modalidad y los premios, entrás a una espera breve, elegís tus cartones y jugás contra IA.</p></div>
   <img src="/assets/logo.png" alt="El Bingo de la Gorda">
 </section>
-<form class="form" id="demoForm">
+<form class="form" id="demoForm" method="post" action="/demo/start">
   <div><h2>Prepará tu demo</h2><p>Es rápida y privada para este dispositivo. No pide código de acceso y no incluye minijuegos.</p></div>
 
   <div class="field"><span>Modo de juego</span><div class="choices">
@@ -23,14 +23,14 @@
 
   <div class="field"><span>Premios que querés probar</span>
     <div class="prizeGrid" id="prizeGrid">
-      <div class="prizeChoice p90"><input id="prizeAmbo" type="checkbox" checked><label for="prizeAmbo">Ambocabeza</label></div>
-      <div class="prizeChoice pAll"><input id="prizeLine" type="checkbox" checked><label for="prizeLine">Línea</label></div>
-      <div class="prizeChoice p75"><input id="prizeDouble" type="checkbox" checked><label for="prizeDouble">Doble línea</label></div>
-      <div class="prizeChoice p75"><input id="prizeTriple" type="checkbox" checked><label for="prizeTriple">Triple línea</label></div>
-      <div class="prizeChoice p75"><input id="prizeCorners" type="checkbox" checked><label for="prizeCorners">4 esquinas</label></div>
-      <div class="prizeChoice pAll"><input id="prizeBingo" type="checkbox" checked><label for="prizeBingo">Bingo</label></div>
+      <div class="prizeChoice p90"><input id="prizeAmbo" name="prizeAmbo" value="1" type="checkbox" checked><label for="prizeAmbo">Ambocabeza</label></div>
+      <div class="prizeChoice pAll"><input id="prizeLine" name="prizeLine" value="1" type="checkbox" checked><label for="prizeLine">Línea</label></div>
+      <div class="prizeChoice p75"><input id="prizeDouble" name="prizeDouble" value="1" type="checkbox" checked><label for="prizeDouble">Doble línea</label></div>
+      <div class="prizeChoice p75"><input id="prizeTriple" name="prizeTriple" value="1" type="checkbox" checked><label for="prizeTriple">Triple línea</label></div>
+      <div class="prizeChoice p75"><input id="prizeCorners" name="prizeCorners" value="1" type="checkbox" checked><label for="prizeCorners">4 esquinas</label></div>
+      <div class="prizeChoice pAll"><input id="prizeBingo" name="prizeBingo" value="1" type="checkbox" checked><label for="prizeBingo">Bingo</label></div>
     </div>
-    <div id="lineCountWrap" class="lineCount show"><b>Líneas a premiar</b><select id="linePrizeCount"><option value="1">1 línea</option><option value="2" selected>2 líneas</option></select></div>
+    <div id="lineCountWrap" class="lineCount show"><b>Líneas a premiar</b><select id="linePrizeCount" name="linePrizeCount"><option value="1">1 línea</option><option value="2" selected>2 líneas</option></select></div>
     <small class="tiny">Podés activar o desactivar premios. Tiene que quedar al menos uno.</small>
   </div>
 
@@ -54,8 +54,9 @@
     <div class="choice"><input id="speed8" name="autoSeconds" type="radio" value="8"><label for="speed8">8 s</label></div>
   </div></div>
 
+  <input type="hidden" id="aiNamesField" name="aiNames" value="Zoe,Mateo">
   <div class="participants" id="participants"></div>
-  <div class="notice">Después de crearla: ponés tu nombre, elegís o recargás cartones, confirmás y hacés el tutorial. <b>La partida no empieza sola:</b> vos decidís cuándo tocar COMENZAR DEMO.</div>
+  <div class="notice">Después de crearla: ponés tu nombre, elegís o recargás cartones, confirmás y hacés el tutorial. <b>Después del tutorial, la partida empieza sola con una cuenta breve de 5 segundos.</b></div>
   <div id="error"></div>
   <button class="start" id="start" type="submit">CREAR MI DEMO</button>
   <div class="fine">Si muchas personas abren este mismo enlace, cada una recibe su propia demo independiente. Las demos inactivas se eliminan automáticamente.</div>
@@ -76,18 +77,16 @@ function renderParticipants(){const count=value('aiCount');const names=demoNameO
 document.querySelectorAll('input').forEach(input=>input.addEventListener('change',()=>{if(input.name==='mode'||input.id==='prizeLine')updateModeUi();else renderParticipants();}));
 document.querySelectorAll('input[name="aiCount"]').forEach(input=>input.addEventListener('change',()=>{demoNameOrder=shuffledNames();renderParticipants()}));
 updateModeUi();
-form.addEventListener('submit',async event=>{
-  event.preventDefault();error.innerHTML='';
-  const rules=currentRules();if(!Object.values(rules).some(Boolean)){error.innerHTML='<div class="error">Elegí al menos un premio.</div>';return;}
-  button.disabled=true;button.textContent='PREPARANDO TU DEMO…';
-  try{
-    const payload={mode:currentMode(),rules,linePrizeCount:currentMode()===90?Number(document.getElementById('linePrizeCount').value):1,aiCount:value('aiCount'),aiNames:demoNameOrder.slice(0,value('aiCount')),playerCardCount:value('playerCardCount'),autoSeconds:value('autoSeconds'),sound:true};
-    const response=await fetch('/api/demo/create',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const data=await response.json();if(!response.ok)throw new Error(data.error||'No se pudo crear la demostración.');
-    localStorage.removeItem('bingoOnlineToken');localStorage.removeItem('bingoOnlineRoom');localStorage.removeItem('bingoOnlineCard');
-    location.href=data.playerUrl||'/demo';
-  }catch(e){error.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;button.disabled=false;button.textContent='CREAR MI DEMO';}
+form.addEventListener('submit',event=>{
+  error.innerHTML='';
+  const rules=currentRules();
+  if(!Object.values(rules).some(Boolean)){event.preventDefault();error.innerHTML='<div class="error">Elegí al menos un premio.</div>';return;}
+  document.getElementById('aiNamesField').value=demoNameOrder.slice(0,value('aiCount')).join(',');
+  try{localStorage.removeItem('bingoOnlineToken');localStorage.removeItem('bingoOnlineRoom');localStorage.removeItem('bingoOnlineCard')}catch{}
+  button.disabled=true;button.textContent='ENTRANDO…';
 });
+const queryError=new URLSearchParams(location.search).get('error');
+if(queryError){error.innerHTML='<div class="error">No pudimos crear la demo. Tocá CREAR MI DEMO para volver a intentar.</div>';}
 </script>
 </body>
 </html>

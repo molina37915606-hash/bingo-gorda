@@ -26,56 +26,52 @@ async function waitServer() {
 (async () => {
   try {
     await waitServer();
-    const createdResponse = await fetch(base + '/api/demo/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 90, rules: { ambocabeza: true, line: true, bingo: true }, linePrizeCount: 1, aiCount: 2, playerCardCount: 2, autoSeconds: 4 })
+    const form = new URLSearchParams({
+      mode:'90', prizeAmbo:'1', prizeLine:'1', prizeBingo:'1', linePrizeCount:'1',
+      aiCount:'2', aiNames:'Zoe,Mateo', playerCardCount:'2', autoSeconds:'4'
     });
-    const created = await createdResponse.json();
+    const createdResponse = await fetch(base + '/demo/start', {
+      method:'POST', redirect:'manual',
+      headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
+      body:form.toString()
+    });
     const setCookie = createdResponse.headers.get('set-cookie') || '';
     const cookie = setCookie.split(';')[0];
-    assert.equal(createdResponse.status, 200, JSON.stringify(created));
-    assert.equal(created.playerUrl, '/jugador?demo=1', 'La URL DEMO debe ser limpia y no exponer credenciales.');
-    assert(!/demoSession=|codigo=|code=|acceso=/i.test(created.playerUrl), 'La DEMO no debe incluir token ni código privado en la URL.');
-    assert(!created.playerSessionToken && !created.demoSessionToken && !created.playerCode, 'La API pública no debe exponer credenciales de la DEMO.');
-    assert(/bingo_demo_session=/i.test(setCookie), 'La creación debe emitir la cookie de sesión DEMO.');
-    assert(/HttpOnly/i.test(setCookie), 'La cookie DEMO debe ser HttpOnly.');
-    assert(/SameSite=Lax/i.test(setCookie), 'La cookie DEMO debe usar SameSite=Lax.');
+    assert.equal(createdResponse.status, 303, 'El formulario DEMO debe redirigir directamente desde el servidor.');
+    assert.equal(createdResponse.headers.get('location'), '/jugador?demo=1');
+    assert(/bingo_demo_session=/i.test(setCookie), 'La creación directa debe emitir cookie DEMO.');
+    assert(/HttpOnly/i.test(setCookie));
+    assert(/SameSite=Lax/i.test(setCookie));
 
-    const missingCookiePage = await fetch(base + created.playerUrl, { redirect:'manual' });
-    assert.equal(missingCookiePage.status, 302, 'Sin cookie válida no debe abrirse una DEMO vacía.');
+    const missingCookiePage = await fetch(base + '/jugador?demo=1', { redirect:'manual' });
+    assert.equal(missingCookiePage.status, 302);
     assert.equal(missingCookiePage.headers.get('location'), '/demo?error=session');
 
-    const page = await fetch(base + created.playerUrl, { headers: { Cookie: cookie } });
+    const page = await fetch(base + '/jugador?demo=1', { headers:{ Cookie:cookie } });
     const html = await page.text();
     assert.equal(page.status, 200);
-    assert(/no-store/i.test(page.headers.get('cache-control') || ''), 'jugador.html debe servirse sin caché.');
-    assert(html.includes("bootParams.get('demo')==='1'"), 'El HTML debe detectar DEMO antes del JS principal.');
-    assert(html.includes("localStorage.removeItem('bingoOnlineToken')"), 'El bootstrap DEMO debe evitar que una sesión normal tenga prioridad.');
-    assert(!html.includes("bootParams.get('demoSession')"), 'El HTML ya no debe depender de demoSession en la URL.');
-    assert(html.includes('data-demo-boot'), 'Debe ocultar preventivamente el formulario de código durante el arranque DEMO.');
-    assert(html.includes('id="demoBootRetryBtn"'), 'El arranque DEMO debe ofrecer REINTENTAR si la sesión tarda o falla.');
-    assert(html.includes('id="demoBootBackBtn"'), 'El arranque DEMO debe permitir volver a configurar la demo.');
-    assert(html.includes('online-room-player.js?v=2.8.0'), 'El jugador debe cargar la versión 2.8.0 del JS.');
+    assert(/no-store/i.test(page.headers.get('cache-control') || ''));
+    assert(!html.includes('window.__BINGO_DEMO_BOOTSTRAP__ = null;'), 'La página DEMO debe recibir el estado inicial embebido.');
+    assert(html.includes('window.__BINGO_DEMO_BOOTSTRAP__ = {'), 'Debe existir bootstrap DEMO del servidor.');
+    assert(html.includes('"demoHuman":true'), 'El bootstrap debe identificar al jugador DEMO.');
+    assert(html.includes('"active":true'), 'El bootstrap debe contener una sala activa.');
+    assert(html.includes('online-room-player.js?v=2.9.0'), 'El jugador debe cargar la versión 2.9.0.');
+    assert(html.includes('setTimeout(()=>{') && html.includes('8000'), 'Debe existir watchdog de arranque independiente del JS principal.');
 
-    const stateResponse = await fetch(base + '/api/player/state', { headers: { Cookie: cookie } });
-    const state = await stateResponse.json();
-    assert.equal(stateResponse.status, 200, JSON.stringify(state));
-    assert.equal(state.demo?.active, true, 'La cookie debe autenticar directamente la DEMO.');
-    assert.equal(state.player?.demoHuman, true);
+    const demoPage = await fetch(base + '/demo');
+    const demoHtml = await demoPage.text();
+    assert(demoHtml.includes('method="post" action="/demo/start"'), 'CREAR MI DEMO debe usar POST normal del navegador.');
+    assert(!demoHtml.includes("fetch('/api/demo/create'"), 'La creación pública no debe depender de fetch.');
 
-    const jsResponse = await fetch(base + '/js/online-room-player.js?v=2.4.0');
+    const jsResponse = await fetch(base + '/js/online-room-player.js?v=2.8.0');
     const playerJs = await jsResponse.text();
     assert.equal(jsResponse.status, 200);
-    assert(/no-store/i.test(jsResponse.headers.get('cache-control') || ''), 'El JS crítico debe servirse sin caché incluso con una query vieja.');
-    assert(playerJs.includes("const demoEntry = params.get('demo') === '1'"), 'El JS debe reconocer la entrada DEMO por el modo, no por un token visible.');
-    assert(playerJs.includes('this.cookieSession = true'), 'La app debe mantener la sesión DEMO por cookie.');
-    assert(playerJs.includes("credentials:'same-origin'"), 'Las llamadas del jugador deben aceptar la cookie de sesión.');
-    assert(playerJs.includes("'/api/events?role=player'"), 'EventSource debe poder autenticarse mediante cookie sin token en la URL.');
-    assert(playerJs.includes('timeoutMs:4500'), 'La entrada DEMO debe conservar un timeout corto.');
-    assert(playerJs.includes('retries:1'), 'La entrada DEMO debe reintentar automáticamente una vez.');
+    assert(/no-store/i.test(jsResponse.headers.get('cache-control') || ''));
+    assert(playerJs.includes('const initialDemoState = window.__BINGO_DEMO_BOOTSTRAP__'));
+    assert(playerJs.includes('this.applyState(initialDemoState)'), 'La sala debe mostrarse sin pedir /api/player/state primero.');
+    assert(playerJs.includes('await this.resume({ demoBoot:true })'), 'Debe conservarse consulta de respaldo si falta el estado embebido.');
 
-    console.log('PRUEBA ENTRADA DEMO POR COOKIE/REDIRECCIÓN: OK');
+    console.log('PRUEBA ENTRADA DEMO DIRECTA + BOOTSTRAP: OK');
   } catch (error) {
     console.error(error);
     process.exitCode = 1;

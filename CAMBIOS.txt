@@ -1,3 +1,14 @@
+VERSIÓN 2.9.0 · DEMO DIRECTA SIN PANTALLA INFINITA
+
+- La creación pública de DEMO ya no depende de fetch: usa un POST normal del navegador a /demo/start.
+- El servidor crea la demo, guarda la sesión HttpOnly y redirige directamente a /jugador?demo=1.
+- /jugador?demo=1 recibe el estado inicial completo embebido en el HTML. La sala puede mostrarse sin esperar /api/player/state.
+- /api/player/state queda únicamente como recuperación si por algún motivo falta el estado inicial.
+- Watchdog independiente de 8 segundos: si el JavaScript principal no termina de arrancar, muestra REINTENTAR en lugar de quedar preparando indefinidamente.
+- Se mantiene el aislamiento: cada envío del formulario crea una DEMO distinta.
+- online-room-player.js sube a v2.9.0 y se mantiene no-store.
+- Se agregó una prueba específica de POST directo + cookie + redirección + estado embebido.
+
 VERSIÓN 2.8.0 · DEMO CON INICIO AUTOMÁTICO SEGURO
 
 - Después de confirmar nombre y cartones, la DEMO espera a que el tutorial termine o sea salteado.

@@ -1325,27 +1325,31 @@ class PlayerApp {
   }
 
   demoTutorialResolved() {
+    const serverResolved = Boolean(this.state?.demo?.startFlow?.tutorialResolved);
     const progress = this.guideProgress();
     const memory = this.guideMemory();
-    return ['complete','skipped'].includes(progress) || ['complete','skipped'].includes(memory?.status);
-  }
-
-  demoAutoStartEligible() {
-    return Boolean(this.state?.demo?.active && this.state?.player?.demoHuman && this.state.status === 'waiting' && this.state.player.nameSet && this.state.player.selectionConfirmed && (this.state.player.cards || []).length && this.demoTutorialResolved() && !this.guideOpen);
+    return serverResolved || ['complete','skipped'].includes(progress) || ['complete','skipped'].includes(memory?.status);
   }
 
   demoAutoStartHtml() {
-    if (this.demoStartFailure) return `<div id="demoAutoStart" class="demoAutoStart error"><strong>No pudimos iniciar la demo</strong><small>${esc(this.demoStartFailure)}</small><button id="demoStartRetryBtn" class="btn primary" type="button">REINTENTAR</button></div>`;
-    if (this.demoStartBusy) return '<div id="demoAutoStart" class="demoAutoStart"><strong>Iniciando partida…</strong><div class="demoCountdown">●</div><small>Estamos preparando la primera bolilla.</small></div>';
-    if (!this.demoTutorialResolved()) return '<div id="demoAutoStart" class="demoAutoStart waitingTutorial"><strong>Primero terminá el tutorial</strong><div class="demoCountdown">?</div><small>Podés completarlo o saltarlo. La demo no arrancará mientras esté abierto.</small></div>';
-    const remaining = this.demoAutoStartDeadline ? Math.max(0, Math.ceil((this.demoAutoStartDeadline - Date.now()) / 1000)) : 5;
-    return `<div id="demoAutoStart" class="demoAutoStart"><strong>La demo comienza en</strong><div id="demoStartCountdown" class="demoCountdown">${remaining}</div><small>Ya está todo listo. No necesitás tocar nada más.</small></div>`;
+    const flow = this.state?.demo?.startFlow || {};
+    const phase = String(flow.phase || 'tutorial');
+    const error = String(flow.error || this.demoStartFailure || '');
+    if (phase === 'error' || error) return `<div id="demoAutoStart" class="demoAutoStart error"><strong>No pudimos iniciar la demo</strong><small>${esc(error || 'El servidor no pudo iniciar la partida.')}</small><button id="demoStartRetryBtn" class="btn primary" type="button">REINTENTAR</button></div>`;
+    if (this.state?.status === 'starting' || phase === 'starting') return '<div id="demoAutoStart" class="demoAutoStart"><strong>Iniciando partida…</strong><div class="demoCountdown">●</div><small>El servidor ya tomó el control. Enseguida sale la primera bolilla.</small></div>';
+    if (!flow.tutorialResolved) return '<div id="demoAutoStart" class="demoAutoStart waitingTutorial"><strong>Primero terminá el tutorial</strong><div class="demoCountdown">?</div><small>Podés completarlo o saltarlo. Después el servidor inicia la cuenta automáticamente.</small></div>';
+    if (phase === 'countdown' && flow.countdownEndsAt) {
+      const remaining = Math.max(0, Math.ceil((new Date(flow.countdownEndsAt).getTime() - Date.now()) / 1000));
+      return `<div id="demoAutoStart" class="demoAutoStart"><strong>La demo comienza en</strong><div id="demoStartCountdown" class="demoCountdown">${remaining}</div><small>La cuenta la controla el servidor. Podés cerrar o recargar y no se pierde.</small></div>`;
+    }
+    return '<div id="demoAutoStart" class="demoAutoStart"><strong>Listo para iniciar</strong><div class="demoCountdown">●</div><small>Sincronizando el inicio con el servidor…</small></div>';
   }
 
   updateDemoAutoStartDisplay() {
     const host = $('demoStartCountdown');
-    if (!host || !this.demoAutoStartDeadline) return;
-    host.textContent = String(Math.max(0, Math.ceil((this.demoAutoStartDeadline - Date.now()) / 1000)));
+    const end = new Date(this.state?.demo?.startFlow?.countdownEndsAt || 0).getTime();
+    if (!host || !Number.isFinite(end)) return;
+    host.textContent = String(Math.max(0, Math.ceil((end - Date.now()) / 1000)));
   }
 
   cancelDemoAutoStart({ keepFailure = false } = {}) {
@@ -1356,45 +1360,68 @@ class PlayerApp {
   }
 
   ensureDemoAutoStart() {
-    if (!this.demoAutoStartEligible()) {
-      if (this.demoAutoStartDeadline && !this.demoStartBusy) this.cancelDemoAutoStart({ keepFailure:true });
+    if (!this.state?.demo?.active || !this.state?.player?.demoHuman || this.state.status !== 'waiting') {
+      this.cancelDemoAutoStart({ keepFailure:true });
       return;
     }
-    if (this.demoStartBusy || this.demoStartFailure || this.demoAutoStartDeadline) { this.updateDemoAutoStartDisplay(); return; }
-    this.demoAutoStartDeadline = Date.now() + 5000;
-    this.renderWaiting();
-    this.demoAutoStartTimer = setInterval(() => {
-      if (!this.demoAutoStartEligible()) { this.cancelDemoAutoStart({ keepFailure:true }); this.renderWaiting(); return; }
-      this.updateDemoAutoStartDisplay();
-      if (Date.now() >= this.demoAutoStartDeadline) {
-        this.cancelDemoAutoStart({ keepFailure:true });
-        this.startDemoFromPlayer();
-      }
-    }, 200);
+    const flow = this.state.demo.startFlow || {};
+    // Compatibilidad con usuarios que terminaron el tutorial antes de esta versión:
+    // si la memoria local lo recuerda pero el servidor todavía no, se sincroniza una sola vez.
+    if (!flow.tutorialResolved && this.demoTutorialResolved() && !this.guideOpen && !this.demoStartBusy) {
+      const skipped = this.guideProgress() === 'skipped' || this.guideMemory()?.status === 'skipped';
+      queueMicrotask(() => this.notifyDemoTutorialResolved(skipped));
+      return;
+    }
+    if (flow.phase !== 'countdown' || !flow.countdownEndsAt) {
+      this.cancelDemoAutoStart({ keepFailure:true });
+      return;
+    }
+    if (!this.demoAutoStartTimer) {
+      this.demoAutoStartTimer = setInterval(() => this.updateDemoAutoStartDisplay(), 200);
+    }
+    this.updateDemoAutoStartDisplay();
+  }
+
+  async notifyDemoTutorialResolved(skipped = false) {
+    if (!this.state?.demo?.active || !this.state?.player?.demoHuman || this.state.status !== 'waiting' || this.demoStartBusy) return;
+    if (this.state?.demo?.startFlow?.tutorialResolved) { this.ensureDemoAutoStart(); return; }
+    this.demoStartBusy = true;
+    this.demoStartFailure = '';
+    try {
+      const next = await this.request('/api/player/demo/tutorial', { method:'POST', body:JSON.stringify({ skipped:Boolean(skipped) }), timeoutMs:6500, retries:1, retryDelayMs:450 });
+      this.demoStartBusy = false;
+      this.applyState(next);
+    } catch (error) {
+      this.demoStartBusy = false;
+      this.demoStartFailure = error?.message || 'No pudimos avisar al servidor que terminaste el tutorial.';
+      this.renderWaiting();
+      this.showMessage('No pudimos preparar el inicio de la demo. Tocá REINTENTAR.', 'error');
+    }
   }
 
   async startDemoFromPlayer() {
-    if (!this.state?.demo?.active || !this.state?.player?.demoHuman || this.state.status !== 'waiting' || this.demoStartBusy) return;
-    if (!this.demoTutorialResolved()) return;
-    this.cancelDemoAutoStart({ keepFailure:true });
+    return this.retryDemoAutoStart();
+  }
+
+  async retryDemoAutoStart() {
+    if (this.demoStartBusy || !this.state?.demo?.active || !this.state?.player?.demoHuman) return;
+    if (!this.state?.demo?.startFlow?.tutorialResolved && this.demoTutorialResolved()) {
+      const skipped = this.guideProgress() === 'skipped' || this.guideMemory()?.status === 'skipped';
+      this.demoStartFailure = '';
+      return this.notifyDemoTutorialResolved(skipped);
+    }
     this.demoStartBusy = true;
     this.demoStartFailure = '';
-    this.renderWaiting();
     try {
-      this.applyState(await this.request('/api/player/demo/start', { method:'POST', body:'{}', timeoutMs:6500, retries:1, retryDelayMs:450 }));
+      const next = await this.request('/api/player/demo/retry', { method:'POST', body:'{}', timeoutMs:6500, retries:1, retryDelayMs:450 });
       this.demoStartBusy = false;
+      this.applyState(next);
     } catch (error) {
       this.demoStartBusy = false;
       this.demoStartFailure = error?.message || 'La partida no respondió a tiempo.';
       this.renderWaiting();
       this.showMessage('La demo no pudo iniciar. Tocá REINTENTAR.', 'error');
     }
-  }
-
-  async retryDemoAutoStart() {
-    if (this.demoStartBusy) return;
-    this.demoStartFailure = '';
-    await this.startDemoFromPlayer();
   }
 
   async restartDemo() {
@@ -1644,14 +1671,14 @@ class PlayerApp {
     if (!this.guideManual) this.setGuideProgress(this.guideStage === 'selection' ? 'selection' : 'complete');
     this.saveGuideMemory(this.guideStage === 'selection' ? 'in_progress' : 'complete', this.guideStage === 'selection' ? 'controls' : this.guideStage, 0);
     this.closeGuide(false);
-    if (this.guideStage === 'controls' && this.state?.demo?.active && this.state?.status === 'waiting') { this.showMessage('Tutorial listo. La demo comienza en 5 segundos.', 'success'); this.ensureDemoAutoStart(); }
+    if (this.guideStage === 'controls' && this.state?.demo?.active && this.state?.status === 'waiting') { this.showMessage('Tutorial listo. El servidor inicia la cuenta.', 'success'); this.notifyDemoTutorialResolved(false); }
   }
 
   skipGuide() {
     this.setGuideProgress('skipped');
     this.saveGuideMemory('skipped', this.guideStage, this.guideStep);
     this.closeGuide(false);
-    if (this.state?.demo?.active && this.state?.status === 'waiting') { this.showMessage('Tutorial salteado. La demo comienza en 5 segundos.', 'success'); this.ensureDemoAutoStart(); }
+    if (this.state?.demo?.active && this.state?.status === 'waiting') { this.showMessage('Tutorial salteado. El servidor inicia la cuenta.', 'success'); this.notifyDemoTutorialResolved(true); }
   }
 
   closeGuide(markSkipped = false) {

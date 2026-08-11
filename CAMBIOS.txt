@@ -1,3 +1,18 @@
+VERSIÓN 3.1.0 · ARRANQUE DEMO CONTROLADO POR EL SERVIDOR
+
+- El DEMO ya no depende de un temporizador del navegador para pasar de ESPERANDO a JUGANDO.
+- Al terminar o saltar el tutorial, el navegador solo avisa al servidor una vez.
+- El servidor guarda una máquina de estados: TUTORIAL → CUENTA REGRESIVA → INICIANDO → JUGANDO.
+- La cuenta previa de 5 segundos queda guardada en el estado de la DEMO y continúa aunque el jugador recargue la página.
+- Un reconciliador del servidor revisa cada segundo las demos en cuenta regresiva para evitar que un timer perdido deje una partida trabada.
+- REINTENTAR vuelve a armar el inicio desde el servidor; ya no dispara startRoom desde el cliente.
+- Cambiar cartones cancela de forma segura la cuenta; al reconfirmar, si el tutorial ya estaba resuelto, se arma una nueva cuenta.
+- Reiniciar la DEMO limpia timers de la demo anterior para que no siga ejecutándose en segundo plano.
+- La secuencia interna de preparación del DEMO se redujo para que después del 5 la partida entre rápido a JUGANDO.
+- online-room-player.js sube a v3.1.0 para invalidar cualquier caché anterior.
+- Nueva prueba demo-server-start-flow.js: confirma que, sin ninguna orden adicional del navegador, el servidor pasa por sí solo de ESPERANDO a JUGANDO incluso simulando una recarga durante la cuenta.
+- Se agregó una prueba con Chromium real; en entornos donde la política del navegador bloquea localhost se omite explícitamente en lugar de dar un falso positivo.
+
 VERSIÓN 3.0.0 · REESTRUCTURA COMPLETA DEL INGRESO DEMO
 
 - DEMO deja de entrar por el login normal del jugador.

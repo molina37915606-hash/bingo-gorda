@@ -79,13 +79,15 @@ async function waitServer() {
     assert.equal(choose.data.player.selectionConfirmed, true);
     assert.equal(choose.data.player.cards.length, 2);
 
-    const start = await json('/api/player/demo/start', { method: 'POST', headers: playerHeaders, body: '{}' });
-    assert.equal(start.response.status, 200, JSON.stringify(start.data));
-    assert.equal(start.data.status, 'starting');
-    await wait(180);
+    const tutorialDone = await json('/api/player/demo/tutorial', { method: 'POST', headers: playerHeaders, body: JSON.stringify({ skipped:false }) });
+    assert.equal(tutorialDone.response.status, 200, JSON.stringify(tutorialDone.data));
+    assert.equal(tutorialDone.data.status, 'waiting');
+    assert.equal(tutorialDone.data.demo.startFlow.phase, 'countdown');
+    assert.equal(tutorialDone.data.demo.startFlow.tutorialResolved, true);
+    await wait(420);
     const liveState = await json('/api/player/state', { headers: playerHeaders });
     assert.equal(liveState.response.status, 200);
-    assert(['playing', 'starting'].includes(liveState.data.status));
+    assert(['playing', 'starting'].includes(liveState.data.status), `Estado inesperado: ${liveState.data.status}`);
 
     const playerJs = fs.readFileSync(path.join(__dirname, '..', 'js', 'online-room-player.js'), 'utf8');
     const adminJs = fs.readFileSync(path.join(__dirname, '..', 'js', 'admin-simplificado.js'), 'utf8');
@@ -96,7 +98,7 @@ async function waitServer() {
     assert(playerJs.includes("const demoEntry = params.get('demo') === '1'"), 'El jugador debe iniciar la demo mediante la sesión del servidor.');
     assert(playerJs.includes('window.__BINGO_DEMO_DIRECT_TOKEN__'), 'La DEMO debe usar el token temporal embebido por su ruta propia.');
     assert(playerJs.includes("target:'.choiceCounter'"));
-    assert(playerJs.includes("'/api/player/demo/start'"));
+    assert(playerJs.includes("'/api/player/demo/tutorial'"));
     assert(playerJs.includes("params.get('simcontrol') === '1'"));
     assert(adminHtml.includes('id="simulationViewBtn"'));
     assert(adminHtml.includes('id="simulationPlayerModal"'));

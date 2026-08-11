@@ -91,7 +91,8 @@ const DEMO_TTL_MS = 30 * 60 * 1000;
 const DEMO_SESSION_COOKIE = 'bingo_demo_session';
 const DEMO_IDLE_TTL_MS = 15 * 60 * 1000;
 const DEMO_CLAIM_WINDOW_MS = 1600;
-const DEMO_START_SEQUENCE_MS = 3200;
+const DEMO_START_SEQUENCE_MS = 1200;
+const DEMO_READY_COUNTDOWN_MS = Math.max(100, Number(process.env.BINGO_DEMO_READY_COUNTDOWN_MS || (TEST_MODE ? 180 : 5000)));
 const DEMO_RESUME_SEQUENCE_MS = 1400;
 const DEMO_FINAL_SEQUENCE_MS = 2600;
 const APP_PUBLIC_VERSION = 'LA GORDA - BINGO ONLINE';
@@ -1421,6 +1422,7 @@ function playerPayload(player) {
       label: state.demo?.label || 'DEMOSTRACIÓN — SIN VALIDEZ OFICIAL',
       expiresAt: state.demo?.expiresAt || null,
       autoSeconds: Number(state.game?.autoSeconds) || 4,
+      startFlow: demoStartFlowPayload(),
       participants: state.players.map(item => ({ name: playerDisplayName(item), virtual: Boolean(item.virtual), cardCount: (item.cardIds || []).length }))
     } : null,
     game: {
@@ -1994,7 +1996,16 @@ function createDemoRoom(payload = {}) {
       mode,
       rules: { ...rules },
       linePrizeCount,
-      noWaitingGames: true
+      noWaitingGames: true,
+      startFlow: {
+        phase: 'tutorial',
+        tutorialResolved: false,
+        tutorialResolution: null,
+        tutorialResolvedAt: null,
+        countdownEndsAt: null,
+        startRequestedAt: null,
+        error: null
+      }
     };
     syncAllAutoMarks();
     updateCardDisplayNames();
@@ -2589,6 +2600,163 @@ function clearDemoAutomationTimers(workspace = currentWorkspace()) {
   const timers = demoAutomationTimers.get(workspace.id);
   if (timers) for (const timer of timers) clearTimeout(timer);
   demoAutomationTimers.delete(workspace.id);
+}
+
+
+const demoStartTimers = new Map();
+
+function defaultDemoStartFlow() {
+  return {
+    phase: 'tutorial',
+    tutorialResolved: false,
+    tutorialResolution: null,
+    tutorialResolvedAt: null,
+    countdownEndsAt: null,
+    startRequestedAt: null,
+    error: null
+  };
+}
+
+function ensureDemoStartFlow() {
+  if (!state.demo || typeof state.demo !== 'object') return null;
+  state.demo.startFlow = { ...defaultDemoStartFlow(), ...(state.demo.startFlow || {}) };
+  return state.demo.startFlow;
+}
+
+function clearDemoStartTimer(workspace = currentWorkspace()) {
+  const timer = demoStartTimers.get(workspace.id);
+  if (timer) clearTimeout(timer);
+  demoStartTimers.delete(workspace.id);
+}
+
+function demoHumanPlayer() {
+  return state.players.find(item => item.demoHuman && !item.virtual) || null;
+}
+
+function demoHumanReady(player = demoHumanPlayer()) {
+  return Boolean(player?.nameSet && player?.selectionConfirmed && (player.cardIds || []).length > 0);
+}
+
+function demoStartFlowPayload() {
+  if (!currentWorkspace().isDemo || !state.demo) return null;
+  const flow = ensureDemoStartFlow();
+  let phase = flow.phase;
+  if (state.status === 'starting') phase = 'starting';
+  else if (state.status === 'playing') phase = 'playing';
+  else if (['verifying','paused','resuming','finalizing','finished'].includes(state.status)) phase = state.status;
+  return {
+    phase,
+    tutorialResolved: Boolean(flow.tutorialResolved),
+    tutorialResolution: flow.tutorialResolution || null,
+    tutorialResolvedAt: flow.tutorialResolvedAt || null,
+    countdownEndsAt: flow.countdownEndsAt || null,
+    startRequestedAt: flow.startRequestedAt || null,
+    error: flow.error || null
+  };
+}
+
+function cancelDemoStartFlow(reason = 'cancelled', { keepTutorial = true } = {}) {
+  if (!currentWorkspace().isDemo || !state.demo) return;
+  clearDemoStartTimer();
+  const flow = ensureDemoStartFlow();
+  if (!keepTutorial) {
+    flow.tutorialResolved = false;
+    flow.tutorialResolution = null;
+    flow.tutorialResolvedAt = null;
+  }
+  flow.phase = flow.tutorialResolved ? 'ready' : 'tutorial';
+  flow.countdownEndsAt = null;
+  flow.startRequestedAt = null;
+  flow.error = null;
+  flow.cancelReason = reason;
+}
+
+function completeDemoStartCountdown(workspace = currentWorkspace()) {
+  if (!workspace?.isDemo) return;
+  return workspaceContext.run(workspace, () => {
+    clearDemoStartTimer(workspace);
+    if (!state.demo || state.status !== 'waiting') return;
+    const flow = ensureDemoStartFlow();
+    const player = demoHumanPlayer();
+    if (!flow.tutorialResolved || !demoHumanReady(player)) {
+      flow.phase = flow.tutorialResolved ? 'ready' : 'tutorial';
+      flow.countdownEndsAt = null;
+      saveState();
+      broadcast();
+      return;
+    }
+    const endMs = new Date(flow.countdownEndsAt || 0).getTime();
+    if (Number.isFinite(endMs) && endMs > Date.now() + 25) {
+      scheduleDemoStartCountdown(workspace);
+      return;
+    }
+    flow.phase = 'starting';
+    flow.countdownEndsAt = null;
+    flow.startRequestedAt = nowIso();
+    flow.error = null;
+    saveState();
+    broadcast();
+    try {
+      startRoom();
+      logEvent('demo_server_start_requested', { playerId: player.id, tutorialResolution: flow.tutorialResolution || null });
+      saveState();
+    } catch (error) {
+      flow.phase = 'error';
+      flow.error = String(error?.message || 'No se pudo iniciar la demostración.').slice(0, 220);
+      logEvent('demo_server_start_failed', { playerId: player?.id || null, error: flow.error });
+      saveState();
+      broadcast();
+    }
+  });
+}
+
+function scheduleDemoStartCountdown(workspace = currentWorkspace()) {
+  clearDemoStartTimer(workspace);
+  if (!workspace?.isDemo || !state.demo || state.status !== 'waiting') return;
+  const flow = ensureDemoStartFlow();
+  if (flow.phase !== 'countdown' || !flow.countdownEndsAt) return;
+  const endMs = new Date(flow.countdownEndsAt).getTime();
+  if (!Number.isFinite(endMs)) return;
+  const delay = Math.max(0, endMs - Date.now());
+  const timer = setTimeout(() => completeDemoStartCountdown(workspace), delay + 15);
+  demoStartTimers.set(workspace.id, timer);
+}
+
+function resolveDemoTutorial(player, payload = {}) {
+  if (!currentWorkspace().isDemo || !player?.demoHuman) throw new Error('Esta acción solo está disponible en la demostración.');
+  if (state.status !== 'waiting') return playerPayload(player);
+  const flow = ensureDemoStartFlow();
+  flow.tutorialResolved = true;
+  flow.tutorialResolution = payload?.skipped ? 'skipped' : 'complete';
+  flow.tutorialResolvedAt = nowIso();
+  flow.error = null;
+  if (!demoHumanReady(player)) {
+    flow.phase = 'ready';
+    flow.countdownEndsAt = null;
+  } else {
+    flow.phase = 'countdown';
+    flow.countdownEndsAt = new Date(Date.now() + DEMO_READY_COUNTDOWN_MS).toISOString();
+  }
+  logEvent('demo_tutorial_resolved', { playerId: player.id, resolution: flow.tutorialResolution, countdownEndsAt: flow.countdownEndsAt });
+  saveState();
+  broadcast();
+  if (flow.phase === 'countdown') scheduleDemoStartCountdown();
+  return playerPayload(player);
+}
+
+function retryDemoServerStart(player) {
+  if (!currentWorkspace().isDemo || !player?.demoHuman) throw new Error('Esta acción solo está disponible en la demostración.');
+  if (state.status !== 'waiting') return playerPayload(player);
+  const flow = ensureDemoStartFlow();
+  if (!flow.tutorialResolved) throw new Error('Primero terminá o saltá el tutorial.');
+  if (!demoHumanReady(player)) throw new Error('Primero confirmá tu nombre y tus cartones.');
+  flow.phase = 'countdown';
+  flow.error = null;
+  flow.countdownEndsAt = new Date(Date.now() + DEMO_READY_COUNTDOWN_MS).toISOString();
+  saveState();
+  broadcast();
+  scheduleDemoStartCountdown();
+  return playerPayload(player);
 }
 
 function demoPrizeTypes() {
@@ -3456,16 +3624,27 @@ function loginPlayer(payload) {
 
 
 function startDemoFromPlayer(player) {
+  // Compatibilidad con clientes anteriores: la petición vieja ya no inicia directamente.
+  // Solo informa al servidor que el recorrido previo quedó resuelto y el servidor arma la cuenta.
   if (!currentWorkspace().isDemo || !player?.demoHuman) throw new Error('Esta acción solo está disponible en la demostración.');
-  if (state.status !== 'waiting') return playerPayload(player);
-  if (!player.nameSet || !player.selectionConfirmed || !(player.cardIds || []).length) throw new Error('Primero confirmá tu nombre y tus cartones.');
-  startRoom();
-  return playerPayload(player);
+  const flow = ensureDemoStartFlow();
+  if (!flow.tutorialResolved) {
+    flow.tutorialResolved = true;
+    flow.tutorialResolution = 'legacy';
+    flow.tutorialResolvedAt = nowIso();
+  }
+  return retryDemoServerStart(player);
 }
 
 function restartDemoFromPlayer(player) {
   if (!currentWorkspace().isDemo || !player?.demoHuman) throw new Error('Esta acción solo está disponible en la demostración.');
+  const previousWorkspace = currentWorkspace();
   const demo = state.demo || {};
+  clearDemoStartTimer(previousWorkspace);
+  clearAutomaticDrawTimer(previousWorkspace);
+  clearWorkspaceTransitionTimer(previousWorkspace);
+  clearClaimAutoResume(previousWorkspace);
+  clearDemoAutomationTimers(previousWorkspace);
   return createDemoRoom({
     mode: Number(demo.mode || state.game?.mode) === 90 ? 90 : 75,
     aiCount: Math.max(1, Math.min(3, Number(demo.aiCount) || (state.players.filter(item => item.virtual).length || 2))),
@@ -3634,13 +3813,25 @@ function chooseCards(player, payload) {
   updateCardDisplayNames();
   refreshAllOffers();
   logEvent('cards_selected', { playerId: player.id, playerName: playerDisplayName(player), cardIds: selected });
+  let demoShouldSchedule = false;
+  if (currentWorkspace().isDemo && player.demoHuman) {
+    const flow = ensureDemoStartFlow();
+    if (flow?.tutorialResolved) {
+      flow.phase = 'countdown';
+      flow.error = null;
+      flow.countdownEndsAt = new Date(Date.now() + DEMO_READY_COUNTDOWN_MS).toISOString();
+      demoShouldSchedule = true;
+    }
+  }
   saveState();
   broadcast();
+  if (demoShouldSchedule) scheduleDemoStartCountdown();
   return playerPayload(player);
 }
 
 function releaseOwnSelection(player) {
   if (!state.active || !selectionIsOpen()) throw new Error('La elección ya está cerrada.');
+  if (currentWorkspace().isDemo && player?.demoHuman) cancelDemoStartFlow('selection_changed', { keepTutorial: true });
   releaseReservationsForPlayer(player);
   player.cardIds = [];
   player.selectionConfirmed = false;
@@ -5100,6 +5291,8 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
         if (url.pathname === '/api/player/name' && req.method === 'POST') return sendJson(res, 200, setPlayerName(player, await readJson(req)));
         if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
+        if (url.pathname === '/api/player/demo/tutorial' && req.method === 'POST') return sendJson(res, 200, resolveDemoTutorial(player, await readJson(req)));
+        if (url.pathname === '/api/player/demo/retry' && req.method === 'POST') return sendJson(res, 200, retryDemoServerStart(player));
         if (url.pathname === '/api/player/demo/start' && req.method === 'POST') return sendJson(res, 200, startDemoFromPlayer(player));
         if (url.pathname === '/api/player/demo/reset' && req.method === 'POST') {
           const restarted = restartDemoFromPlayer(player);
@@ -5401,6 +5594,14 @@ setInterval(() => {
     workspaceContext.run(workspace, () => {
       try { processAssignmentDeadline(); }
       catch (error) { console.error(`No se pudo completar la asignación automática en ${workspace.id}:`, error.message); }
+      if (workspace.isDemo && state.demo && state.status === 'waiting') {
+        const flow = ensureDemoStartFlow();
+        if (flow?.phase === 'countdown' && flow.countdownEndsAt) {
+          const remaining = new Date(flow.countdownEndsAt).getTime() - Date.now();
+          if (remaining <= 0) completeDemoStartCountdown(workspace);
+          else if (!demoStartTimers.has(workspace.id)) scheduleDemoStartCountdown(workspace);
+        }
+      }
     });
   }
 }, 1000).unref();
@@ -5411,7 +5612,7 @@ setInterval(() => {
   for (const [token, expiresAt] of masterSessions) if (expiresAt <= now) masterSessions.delete(token);
   for (const workspace of [...workspaces.values()]) {
     if (workspace.isDemo && ((workspace.expiresAt && workspace.expiresAt <= now) || (workspace.lastActivityAt && now - workspace.lastActivityAt > DEMO_IDLE_TTL_MS))) {
-      clearAutomaticDrawTimer(workspace); clearWorkspaceTransitionTimer(workspace); clearClaimAutoResume(workspace); clearDemoAutomationTimers(workspace); workspaces.delete(workspace.id);
+      clearAutomaticDrawTimer(workspace); clearWorkspaceTransitionTimer(workspace); clearClaimAutoResume(workspace); clearDemoAutomationTimers(workspace); clearDemoStartTimer(workspace); workspaces.delete(workspace.id);
       try { fs.rmSync(path.dirname(workspace.stateFile), { recursive: true, force: true }); } catch {}
       continue;
     }
@@ -5429,6 +5630,7 @@ setInterval(() => {
 
 for (const workspace of workspaces.values()) workspaceContext.run(workspace, () => {
   scheduleTransition();
+  if (workspace.isDemo && state.active && state.status === 'waiting' && ensureDemoStartFlow()?.phase === 'countdown') scheduleDemoStartCountdown(workspace);
   if (state.active && state.game && state.status === 'playing' && state.game.drawMode === 'automatic') scheduleAutomaticDraw();
   if (state.active && state.game && state.status === 'paused' && state.pauseReason === 'claim' && state.game.drawMode === 'automatic' && !confirmedClaims('bingo').length) scheduleClaimAutoResume();
   if (state.active && state.game && !['closed','finished','waiting'].includes(state.status) && adminConnectionCount(workspace) === 0) markAdminDisconnected(workspace);

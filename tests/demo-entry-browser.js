@@ -77,7 +77,7 @@ async function waitServer() {
     assert.equal(gameResponse.status, 200);
     assert(gameHtml.includes('window.__BINGO_DEMO_BOOTSTRAP__ = {'));
     assert(!gameHtml.includes("window.__BINGO_DEMO_DIRECT_TOKEN__ = '';"));
-    assert(gameHtml.includes('online-room-player.js?v=3.0.0'));
+    assert(gameHtml.includes('online-room-player.js?v=3.1.0'));
     assert(gameHtml.includes('"selectionConfirmed":true'));
     const tokenMatch = gameHtml.match(/window\.__BINGO_DEMO_DIRECT_TOKEN__ = "([^"]+)";/);
     assert(tokenMatch?.[1], 'La ruta de juego debe recibir un token temporal directo.');

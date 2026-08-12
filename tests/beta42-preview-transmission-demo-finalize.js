@@ -18,7 +18,7 @@ async function ready(){for(let i=0;i<120;i++){try{if((await fetch(base+'/healthz
  const ai=sim.data.players.find(p=>p.virtual);assert(ai,'Debe existir una IA.');
  const view=await req('/api/admin/player-view-session',{method:'POST',headers:admin,body:JSON.stringify({playerId:ai.id})});assert.equal(view.response.status,200,JSON.stringify(view.data));
  assert.equal(view.data.readOnly,true);assert.equal(view.data.virtual,true);assert(view.data.url.startsWith('/admin-player-preview?previewSession='));assert(!view.data.url.includes('/jugador'));
- const previewPage=await req(view.data.url);assert.equal(previewPage.response.status,200);assert(previewPage.data.includes('SOLO VISTA'));assert(previewPage.data.includes('BETA 4.2'));assert(!previewPage.data.includes('Ingresar a la partida'));assert(!previewPage.data.includes('CÓDIGO DEL JUGADOR'));
+ const previewPage=await req(view.data.url);assert.equal(previewPage.response.status,200);assert(previewPage.data.includes('SOLO VISTA'));assert(previewPage.data.includes('BETA 4.3'));assert(!previewPage.data.includes('Ingresar a la partida'));assert(!previewPage.data.includes('CÓDIGO DEL JUGADOR'));
  let state=await req(`/api/admin-player-preview/state?token=${encodeURIComponent(view.data.token)}`);assert.equal(state.response.status,200);assert.equal(state.data.player.id,ai.id);assert.equal(state.data.adminPreview,true);
  await req('/api/admin/start',{method:'POST',headers:admin,body:JSON.stringify({force:true})});await new Promise(r=>setTimeout(r,70));
  await req('/api/admin/draw-settings',{method:'POST',headers:admin,body:JSON.stringify({drawMode:'manual'})});
@@ -32,10 +32,10 @@ async function ready(){for(let i=0;i<120;i++){try{if((await fetch(base+'/healthz
  const txHtml=fs.readFileSync(path.join(__dirname,'..','transmision.html'),'utf8');
  const demoHtml=fs.readFileSync(path.join(__dirname,'..','demo.html'),'utf8');
  const demoJs=fs.readFileSync(path.join(__dirname,'..','js','demo-beta.js'),'utf8');
- assert(adminHtml.includes('Administrador · BETA 4.2'));assert(!adminHtml.includes('Controlando '));
+ assert(adminHtml.includes('Administrador · BETA 4.3'));assert(!adminHtml.includes('Controlando '));
  assert(adminJs.includes("simulationFinish?'FINALIZAR DEMO':'FINALIZAR'"));
  assert(previewJs.includes('/api/admin-player-preview/state?token='));assert(!previewJs.includes('/api/player/login'));
  assert(txHtml.includes('justify-content:flex-start;align-content:flex-start'));assert(!txHtml.includes('justify-content:flex-end;gap:6px;overflow:hidden'));
  assert(demoHtml.includes('id="finishDemoBtn"'));assert(demoJs.includes("$('finishDemoBtn').onclick"));
- console.log('BETA 4.2 · VISTA IA / CHAT TRANSMISIÓN / FINALIZAR DEMO: OK');
+ console.log('BETA 4.3 · VISTA IA / CHAT TRANSMISIÓN / FINALIZAR DEMO: OK');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

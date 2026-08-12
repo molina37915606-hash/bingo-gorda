@@ -1,6 +1,14 @@
-BINGO DE LA GORDA BETA 4.2
+BETA 4.3
+- Reestructura responsive de la experiencia de jugador para celular chico, celular grande, tablet y rotación horizontal/vertical.
+- En horizontal, bolilla, cartón y reclamos se redistribuyen para evitar zoom manual y desbordes.
+- El chat queda minimizado por defecto en todos los tamaños y muestra notificación roja con contador 1..9+.
+- DEMO adopta el mismo patrón de chat minimizable y el mismo comportamiento responsive.
+- La vista previa IA del Administrador se adapta a orientación horizontal para validar el diseño.
+- El tutorial recalcula la posición de los globos al cambiar tamaño u orientación.
+
+BINGO DE LA GORDA BETA 4.3
 - Vista previa IA del Administrador completamente separada del login del jugador: no usa código, sesión de jugador ni control de IA.
-- Nueva pantalla /admin-player-preview de solo lectura, actualizada en vivo y con identificación visible BETA 4.2.
+- Nueva pantalla /admin-player-preview de solo lectura, actualizada en vivo y con identificación visible BETA 4.3.
 - Chat de Transmisión alineado desde arriba y aprovechando toda la columna sin el vacío superior.
 - Las simulaciones IA pueden finalizarse en cualquier momento con FINALIZAR DEMO; se detienen bolillero, timers IA y reclamos pendientes.
 - La DEMO local también incorpora un botón explícito para finalizar durante el juego y limpiar timers.

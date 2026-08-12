@@ -1,6 +1,6 @@
-BINGO DE LA GORDA BETA 4.2
+BINGO DE LA GORDA BETA 4.3
 - Vista previa IA del Administrador completamente separada del login del jugador: no usa código, sesión de jugador ni control de IA.
-- Nueva pantalla /admin-player-preview de solo lectura, actualizada en vivo y con identificación visible BETA 4.2.
+- Nueva pantalla /admin-player-preview de solo lectura, actualizada en vivo y con identificación visible BETA 4.3.
 - Chat de Transmisión alineado desde arriba y aprovechando toda la columna sin el vacío superior.
 - Las simulaciones IA pueden finalizarse en cualquier momento con FINALIZAR DEMO; se detienen bolillero, timers IA y reclamos pendientes.
 - La DEMO local también incorpora un botón explícito para finalizar durante el juego y limpiar timers.

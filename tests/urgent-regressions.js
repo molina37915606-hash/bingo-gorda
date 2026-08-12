@@ -171,7 +171,7 @@ async function drawMany(admin, count) {
     assert(playerHtml.includes('desktopTickets') && playerHtml.includes('@media(min-width:1100px)'), 'Escritorio debe tener grilla multi-cartón.');
     assert(playerHtml.includes('repeat(2,minmax(0,520px))'), 'Los cartones de escritorio deben conservar un ancho máximo fijo.');
     assert(playerHtml.includes('.ticketInstance:last-child:nth-child(odd){grid-column:1/-1;justify-self:center}'), 'Un cartón solo o el tercero deben centrarse sin estirarse.');
-    assert(playerJs.includes('@media(min-width:1100px)') && playerJs.includes('.playerLogged .playerChatDock'), 'El chat debe quedar lateral en escritorio.');
+    assert(playerJs.includes('.playerChatToggle{position:relative') && !playerJs.includes('.playerLogged .playerChatToggle{display:none}'), 'El chat debe quedar minimizable también en escritorio.');
     assert(playerJs.includes("await this.request('/api/player/state')") && playerJs.includes('reconnectRefreshTimer'), 'El jugador debe recuperar el estado completo después de una reconexión.');
     const adminJs = fs.readFileSync(path.join(__dirname, '..', 'js', 'admin-simplificado.js'), 'utf8');
     assert(adminJs.includes('this.reconnectTimer') && adminJs.includes('await this.refresh()'), 'El administrador debe recuperar el estado completo al reconectar.');

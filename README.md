@@ -1,4 +1,4 @@
-# BINGO DE LA GORDA BETA 4.2
+# BINGO DE LA GORDA BETA 4.3
 
 BETA 3 cierra el pulido de DEMO en celular: selección de cartones sin zoom, chat táctil con emojis/stickers y herramientas de transparencia SHA-256 dentro de la flecha lateral. La pantalla principal mantiene como prioridad cartón, bolilla y reclamos.
 BETA 2 unifica la experiencia de juego entre DEMO y partida real. Cada jugador elige Manual o Automarcado antes de la primera bolilla, puede cambiar durante la partida y siempre debe reclamar los premios manualmente. El sistema ayuda a detectar atraso en Manual, cambia al cartón con premio disponible y refuerza visualmente Línea/Bingo.

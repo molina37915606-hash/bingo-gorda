@@ -8,14 +8,14 @@ const demo = fs.readFileSync(path.join(ROOT, 'js', 'demo-beta.js'), 'utf8');
 const real = fs.readFileSync(path.join(ROOT, 'js', 'online-room-player.js'), 'utf8');
 const playerHtml = fs.readFileSync(path.join(ROOT, 'jugador.html'), 'utf8');
 
-assert(html.includes('BINGO DE LA GORDA BETA 4.2'), 'La DEMO debe identificarse como BETA 4.2.');
+assert(html.includes('BINGO DE LA GORDA BETA 4.3'), 'La DEMO debe identificarse como BETA 4.3.');
 assert(html.includes('@media(max-width:720px)') && html.includes('.offerGrid{grid-template-columns:1fr!important}'), 'La selección debe pasar a una columna en móvil.');
 assert(html.includes('overflow-x:hidden') && html.includes('.offerCard{width:100%;overflow:hidden}'), 'No debe existir desborde horizontal en la selección.');
 assert(html.includes('.chatPanel.mobileOpen{display:grid!important') && html.includes('position:fixed!important'), 'El chat móvil debe abrirse como panel flotante.');
 assert(html.includes('min-width:44px;min-height:44px') || html.includes('min-width:44px;min-height:44px'), 'Emojis deben tener zona táctil de al menos 44px.');
 assert(demo.includes("addEventListener('pointerdown',handlePointer)"), 'Emojis/stickers deben usar eventos pointer robustos en móvil.');
 assert(demo.includes("e.target.closest?.('[data-demo-emoji]')") && demo.includes("e.target.closest?.('[data-demo-sticker]')"), 'Los selectores deben funcionar incluso tocando hijos internos.');
-assert(demo.includes("step.target==='#chatPanel'") && demo.includes("chat.classList.add('mobileOpen')"), 'El tutorial móvil debe abrir el chat al enseñarlo.');
+assert(demo.includes("step.target==='#chatPanel'") && (demo.includes("chat.classList.add('mobileOpen')") || demo.includes("chat.classList.toggle('mobileOpen',wantsChat")), 'El tutorial móvil debe abrir el chat al enseñarlo.');
 assert(html.includes('id="integrityTab"') && html.includes('>SELLO</button>'), 'La verificación debe vivir dentro de la flecha lateral.');
 assert(demo.includes('downloadIntegritySeal') && demo.includes('verifySealFile') && demo.includes('sha256Hex'), 'DEMO debe descargar y verificar SHA-256.');
 assert(demo.includes("canonicalDrawOrder(order){ return (order||[]).join(','); }"), 'DEMO debe usar el mismo formato canónico de orden separado por comas.');
@@ -23,4 +23,4 @@ assert(real.includes('downloadIntegritySeal()') && real.includes('chooseIntegrit
 assert(real.includes("(this.state.integrity.drawOrder || []).join(',')"), 'Juego real debe recalcular SHA-256 sobre el orden revelado.');
 assert(playerHtml.includes('integrityActions'), 'Las acciones SHA deben quedar estilizadas dentro del panel de información.');
 assert(!html.includes('id="sha') && !html.includes('id="integrityButton"'), 'No debe agregarse un botón SHA visible a la pantalla principal.');
-console.log('BETA 4.2 · DEMO MÓVIL, CHAT TÁCTIL Y SHA-256: OK');
+console.log('BETA 4.3 · DEMO MÓVIL, CHAT TÁCTIL Y SHA-256: OK');

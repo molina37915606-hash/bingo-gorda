@@ -115,7 +115,55 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
 
 
 .quickMarkingMode{display:grid;grid-template-columns:auto 1fr 1fr;align-items:center;gap:4px;min-height:50px;padding:4px;border:1px solid var(--border);border-radius:12px;background:var(--panel2)}.quickMarkingMode>span{font-size:8px;font-weight:1000;color:var(--muted);padding:0 5px}.quickModeBtn{min-height:40px;border:0;border-radius:9px;background:transparent;color:var(--muted);font-size:10px;font-weight:1000;padding:6px 8px;cursor:pointer;touch-action:manipulation}.quickModeBtn.active{background:#5b238a;color:#fff;box-shadow:0 0 0 1px #c995ff66}.quickModeBtn.auto.active{background:#166144;box-shadow:0 0 0 1px #55dbaa66}.markingModeCard{width:min(580px,96vw);padding:24px;border-radius:23px;background:var(--panel);border:2px solid #9f72e5;box-shadow:0 26px 80px #000c;text-align:center;color:var(--text)}.markingModeCard.compact{width:min(500px,96vw)}.markingModeCard h2{font-size:clamp(24px,5vw,34px);margin:5px 0}.markingModeCard>p{color:var(--muted);line-height:1.45;margin:0 0 17px}.markingModeIcon{font-size:38px}.markingModeChoices{display:grid;grid-template-columns:1fr 1fr;gap:9px}.markingModeOption{border:2px solid var(--border);border-radius:15px;background:var(--panel2);color:var(--text);padding:16px 12px;text-align:left;display:grid;gap:5px;cursor:pointer}.markingModeOption strong{font-size:17px}.markingModeOption small{color:var(--muted);line-height:1.35}.markingModeOption.manual:hover,.markingModeOption.manual:focus-visible{border-color:#bd8cff;background:#3a1c4f}.markingModeOption.automatic:hover,.markingModeOption.automatic:focus-visible{border-color:#52d6a9;background:#133e31}.markingClaimNote{margin-top:12px;padding:10px;border-radius:11px;background:#4a350c66;color:#ffe7a0;font-size:12px;font-weight:1000}.claimBar button.prizeReady{background:linear-gradient(135deg,#d17600,#ffbd22)!important;color:#fff!important;border:3px solid #fff1a1!important;box-shadow:0 0 0 4px #ffca2f44,0 0 30px #ffca2f,0 12px 32px #0008!important;animation:beta2ClaimPulse .52s ease-in-out infinite alternate!important;font-size:15px!important}.claimBar #claimBingo.prizeReady{background:linear-gradient(135deg,#c6125c,#ff4a8f)!important;border-color:#ffd2e6!important;box-shadow:0 0 0 4px #ff629f44,0 0 38px #ff3e8a,0 12px 32px #0008!important}.tabs button.readyLine,.tabs button.readyBingo{font-weight:1000!important}.ticketCard.beta2PrizeFocus{animation:beta2CardFlash .8s ease-out 2}@keyframes beta2ClaimPulse{to{transform:scale(1.06);filter:brightness(1.16)}}@keyframes beta2CardFlash{50%{box-shadow:0 0 0 3px #ffca2f,0 0 42px #ffca2f99}}@media(max-width:620px){.quickMarkingMode{grid-template-columns:auto 1fr 1fr;min-height:46px}.quickModeBtn{min-height:36px;font-size:9px;padding:5px}.markingModeChoices{grid-template-columns:1fr}.markingModeOption{padding:13px 11px}}
-.integrityActions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:9px}.integrityActions button{min-height:39px;border:1px solid #ffffff24;border-radius:9px;background:#ffffff0d;color:inherit;font-size:10px;font-weight:1000;padding:8px}.integrityHelp{margin-top:7px!important}.integrityBox.pending .integrityActions button{background:#ffffff0b}@media(max-width:520px){.integrityActions{grid-template-columns:1fr}}</style>
+.integrityActions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:9px}.integrityActions button{min-height:39px;border:1px solid #ffffff24;border-radius:9px;background:#ffffff0d;color:inherit;font-size:10px;font-weight:1000;padding:8px}.integrityHelp{margin-top:7px!important}.integrityBox.pending .integrityActions button{background:#ffffff0b}@media(max-width:520px){.integrityActions{grid-template-columns:1fr}}
+
+/* BETA 4.3 · responsive real: teléfono chico/grande, tablet y rotación */
+html,body{width:100%;max-width:100%;overflow-x:hidden}.wrap,#gameView,#playPanel,.ticketCard,.tabs,.claimBar,.essentialTools{min-width:0;max-width:100%}
+.playerLogged .wrap{width:min(980px,100%);margin-inline:auto}
+@media(min-width:1100px){
+  .playerLogged .wrap{width:min(1180px,100%);max-width:1180px;margin-inline:auto;padding:10px 12px 30px}
+  .playerLogged #playPanel .drawCard,.playerLogged #playPanel .ticketCard,.playerLogged #playPanel .claimBar{width:min(960px,100%)}
+  .playerLogged #cardTabs{display:flex}
+  .playerLogged .desktopTickets{display:block}
+  .playerLogged .ticketInstance{display:none!important}
+  .playerLogged .ticketInstance.active{display:block!important;width:100%;max-width:none;padding:0;border:0;background:transparent;box-shadow:none}
+  .playerLogged .claimBar{position:sticky;bottom:6px}
+}
+@media(max-width:430px){
+  .playerTopbar{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"identity connection" "actions actions";gap:4px;padding:5px 6px}
+  .topIdentity{grid-area:identity;min-width:0}.connectionCluster{grid-area:connection}.topActions{grid-area:actions;display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr));width:100%;gap:4px!important}
+  .topActions .iconBtn{width:100%!important;min-width:0!important;height:36px!important;min-height:36px!important}
+  .essentialTools{grid-template-columns:1fr;gap:5px}.quickMarkingMode{width:100%}.firstClaimReminder{min-height:38px}
+  .drawCard .ballArea{grid-template-columns:64px minmax(0,1fr)!important}.drawCard .lastBall{width:64px!important;height:64px!important;font-size:31px!important;border-width:4px}.drawCard .recent{gap:3px}.drawCard .recent i{width:24px!important;height:24px!important;flex-basis:24px!important;font-size:10px}
+  .ticketCard{padding:7px}.grid{gap:2px}.grid.mode90 .cell{font-size:clamp(15px,4.7vw,20px)!important;border-radius:5px}.grid.mode75 .cell{font-size:clamp(20px,6.5vw,28px)!important;border-radius:6px}
+  .claimBar{gap:5px;margin-top:7px}.claimBar button{min-height:48px;padding:10px 4px!important;font-size:10px!important;border-radius:10px}
+  .tabs{gap:4px;margin:6px auto 5px}.tabs button{min-width:70px;padding:7px 4px}
+}
+@media(min-width:431px) and (max-width:767px){
+  .playerLogged .wrap{width:100%;padding-inline:7px}.ticketCard,.tabs,.claimBar,.essentialTools{width:min(680px,100%)}
+  .grid.mode90 .cell{font-size:clamp(17px,4.5vw,24px)}.grid.mode75 .cell{font-size:clamp(22px,6vw,32px)}
+}
+@media(min-width:768px) and (max-width:1099px) and (orientation:portrait){
+  .playerLogged .wrap{width:min(900px,100%);padding:10px 14px 28px}.ticketCard,.tabs,.claimBar,.essentialTools{width:min(820px,100%)}
+  .grid.mode90 .cell{font-size:clamp(20px,3.2vw,29px)}.grid.mode75 .cell{font-size:clamp(26px,4.5vw,38px)}
+}
+@media(orientation:landscape) and (max-height:650px) and (min-width:568px) and (max-width:1099px){
+  body.playerLogged{overflow-y:auto}.playerLogged .wrap{width:100%;padding:4px 7px 12px}
+  .playerTopbar{position:sticky;top:2px;padding:4px 6px;margin-bottom:3px;grid-template-columns:minmax(120px,1fr) auto auto}.topIdentity img{width:28px;height:28px}.topIdentity .playerName{font-size:12px}.topIdentity small{display:none}.topActions .iconBtn{width:32px!important;height:32px!important;min-width:32px!important;min-height:32px!important;font-size:15px!important}.networkIndicator{min-height:24px}
+  .essentialTools{width:100%;margin:3px 0;grid-template-columns:minmax(220px,.9fr) minmax(220px,1.1fr);gap:5px}.quickMarkingMode{min-height:40px}.quickModeBtn{min-height:32px}.firstClaimReminder{min-height:40px;padding:5px;font-size:9px}
+  #playPanel:not(.hidden){display:grid;grid-template-columns:minmax(150px,.52fr) minmax(390px,1.48fr);grid-template-areas:"draw tabs" "draw ticket" "claims claims";gap:5px;align-items:start}
+  #playPanel>.drawCard{grid-area:draw;width:100%!important;margin:0;height:100%;padding:7px}#cardTabs{grid-area:tabs;width:100%!important;margin:0;min-height:34px}#ticketPanel{grid-area:ticket;width:100%!important;margin:0;padding:6px}#claimBar{grid-area:claims;width:100%!important;margin:0;position:sticky;bottom:2px;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:4px;padding:3px;background:color-mix(in srgb,var(--bg) 92%,transparent);z-index:32}
+  #playPanel>.drawCard .ballArea{height:100%;grid-template-columns:1fr;align-content:center;justify-items:center;text-align:center;gap:5px}.drawCard .lastBall{width:76px!important;height:76px!important;font-size:35px!important}.drawCard .lastMeta{align-items:center}.drawCard .lastMeta b{font-size:11px}.drawCard .recent{justify-content:center;max-height:64px;overflow:hidden}.drawCard .recent i{width:25px!important;height:25px!important;flex-basis:25px!important;font-size:10px}
+  #cardTabs button{min-width:72px;padding:6px 5px;font-size:9px}.ticketHead{margin-bottom:4px}.ticketHead b{font-size:12px}.ticketHead small{font-size:8px}.bingoLetters{margin-bottom:2px}.bingoLetters span{height:22px;font-size:14px}
+  #ticketPanel .grid{gap:2px}#ticketPanel .grid.mode90 .cell{height:clamp(27px,7.5vh,38px);aspect-ratio:auto;font-size:clamp(13px,2.3vw,19px)!important;border-radius:4px}#ticketPanel .grid.mode75 .cell{height:clamp(32px,8.8vh,44px);aspect-ratio:auto!important;font-size:clamp(18px,3vw,26px)!important;border-radius:5px}
+  #claimBar button{min-height:39px;padding:7px 4px!important;font-size:9px!important;border-radius:9px}.footerNote,#logoutBtn{display:none}.infoDrawerToggle{top:53%;height:50px}.coachOverlay .guideBubble{max-height:82dvh;overflow:auto}
+}
+@media(orientation:landscape) and (max-height:430px) and (min-width:568px){
+  .playerTopbar{position:relative}.essentialTools{grid-template-columns:1fr 1fr}#playPanel:not(.hidden){grid-template-columns:minmax(135px,.45fr) minmax(380px,1.55fr)}
+  .drawCard .lastBall{width:62px!important;height:62px!important;font-size:29px!important}#ticketPanel .grid.mode90 .cell{height:28px}#ticketPanel .grid.mode75 .cell{height:34px}.bingoLetters span{height:19px;font-size:12px}
+}
+
+</style>
 </head>
 <body>
 <div id="playerAppShell" class="wrap">
@@ -267,5 +315,5 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
   },8000);
 })();
 </script>
-<script src="js/emoji-stickers.js?v=2.0.0"></script><script src="js/presenter-scripts.js?v=2.0.0"></script><script src="js/cast-sender.js?v=1.0.0"></script><script src="js/online-room-player.js?v=beta-4.1"></script>
+<script src="js/emoji-stickers.js?v=2.0.0"></script><script src="js/presenter-scripts.js?v=2.0.0"></script><script src="js/cast-sender.js?v=1.0.0"></script><script src="js/online-room-player.js?v=beta-4.3"></script>
 </body>

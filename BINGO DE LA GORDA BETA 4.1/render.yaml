@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: bingo-gorda
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: ONLINE_MODE
+        value: "true"
+      - key: MASTER_ADMIN_PASSWORD
+        sync: false
+      - key: BINGO_TIMEZONE
+        value: America/Argentina/Buenos_Aires

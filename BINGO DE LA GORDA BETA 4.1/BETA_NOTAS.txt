@@ -1,0 +1,54 @@
+BINGO DE LA GORDA BETA 3
+
+
+NOVEDADES BETA 3
+- DEMO móvil sin desborde horizontal y selección de cartones en una columna.
+- Chat móvil flotante para no desplazar el cartón durante la partida.
+- Emojis y stickers con eventos táctiles robustos y áreas de toque grandes.
+- Verificación SHA-256 dentro de la flecha lateral: descargar sello previo, revelar orden final y verificar el archivo guardado.
+- El juego real también permite guardar/verificar el sello desde el panel NÚMEROS, sin agregar controles a la pantalla principal.
+
+Objetivo de esta versión:
+- Que DEMO y juego real enseñen y usen el mismo criterio de juego.
+- Hacer explícita la elección Manual / Automarcado.
+- Mantener los reclamos de premios siempre manuales y muy visibles.
+
+NOVEDADES PRINCIPALES
+1. Antes de la primera bolilla cada jugador debe elegir MANUAL o AUTOMARCADO.
+2. El modo puede cambiarse durante toda la partida desde un control visible junto al cartón.
+3. Al activar Automarcado se recuperan inmediatamente todos los aciertos oficiales anteriores.
+4. Al volver a Manual se conservan las marcas existentes y las nuevas quedan a cargo del jugador.
+5. Si en Manual quedan 5 o más aciertos oficiales sin marcar y pasan 5 bolillas adicionales manteniendo ese atraso, se ofrece activar Automarcado. Si baja a 4 o menos, la alerta se cancela y el conteo se reinicia.
+6. Automarcado nunca reclama premios. Línea, Bingo y cualquier otro premio habilitado deben reclamarse manualmente.
+7. Cuando un cartón queda listo para reclamar, DEMO y juego real cambian al cartón correspondiente y resaltan fuertemente el botón del premio.
+8. En DEMO, la primera Línea y el primer Bingo muestran un globo contextual apuntando al botón de reclamo y recordando que gana el primer reclamo válido.
+9. DEMO incorpora el mismo sistema de emojis y stickers del chat real.
+10. El administrador ve si cada jugador eligió MANUAL, AUTO o todavía está PENDIENTE. La partida real no puede empezar mientras falte una elección.
+
+DEMO
+- Sigue siendo independiente y local al navegador.
+- No usa código privado, administrador ni estado ESPERANDO del servidor.
+- Flujo: configuración → nombre/cartones → elección Manual/Auto → tutorial → cuenta → juego contra IA → final.
+- El tutorial sigue disponible con ?, pero Manual/Auto y los reclamos se entienden también sin tutorial.
+
+VALIDACIÓN
+- Nueva prueba beta2-player-experience.js cubre elección obligatoria, cambio Manual/Auto, recuperación de aciertos anteriores y reclamo manual.
+- Se mantienen las pruebas de DEMO, Comunidad, flujos online, reclamos, cierre, simulación de 60 IA, contingencia del administrador y recuperación tras reinicio.
+
+BETA 4
+Prioridad: accesos y herramientas de administración.
+- Código individual nuevo: 6 dígitos numéricos.
+- Enlace directo individual disponible desde la lista de jugadores.
+- Enlace de sala copiable con texto listo para compartir.
+- Vista Jugador IA sin código.
+- Vista previa móvil integrada al administrador.
+- Comunidad: chat fijo con scroll y selectores flotantes.
+Los nuevos minijuegos de Comunidad quedan planificados para una versión posterior.
+
+BETA 4.1
+- La vista IA del administrador pasa a ser una simulación de solo lectura: no inicia sesión, no pide código y no toma control del jugador virtual.
+- En simulaciones IA, la vista abre automáticamente mostrando la primera IA disponible.
+- La vista previa puede cambiar entre IA/jugadores y tamaños de dispositivo sin salir del panel Admin.
+- El chat de la transmisión usa toda la altura disponible: conserva más historial y elimina mensajes antiguos solo cuando ya no entran completos.
+- Los mensajes normales de transmisión dejan de cortarse artificialmente a dos líneas en pantallas grandes.
+

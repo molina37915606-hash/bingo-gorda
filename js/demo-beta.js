@@ -17,9 +17,75 @@ const state = {
   drawn:[], drawOrder:[], playing:false, finished:false, autoMark:false, markingModeChosen:false, marks:{}, sound:true, voice:true,
   prizeSlots:[], winners:[], pendingAi:new Map(), drawTimer:null, chatTimer:null, wakeLock:null,
   tutorial:{active:false,stage:null,index:0,skipped:false}, drawerTab:'drawn', chat:[], lastClaimAt:0,
-  manualLag:{startDrawCount:null,prompted:false}, prizeCoachSeen:new Set(), prizeCoachTimer:null
+  manualLag:{startDrawCount:null,prompted:false}, prizeCoachSeen:new Set(), prizeCoachTimer:null,
+  integrity:{gameId:'',sealedAt:null,commitment:'',drawOrder:[],verified:null,uploadStatus:''}
 };
 window.__BINGO_DEMO_BETA__ = state;
+
+
+function bytesToHex(bytes){ return [...bytes].map(b=>b.toString(16).padStart(2,'0')).join(''); }
+async function sha256Hex(text){
+  if(!globalThis.crypto?.subtle) throw new Error('SHA-256 no está disponible en este navegador.');
+  const data=new TextEncoder().encode(String(text));
+  const digest=await crypto.subtle.digest('SHA-256',data);
+  return bytesToHex(new Uint8Array(digest));
+}
+function canonicalDrawOrder(order){ return (order||[]).join(','); }
+async function prepareIntegritySeal(){
+  if(state.integrity.commitment&&state.integrity.drawOrder.length===state.mode) return state.integrity.commitment;
+  if(!state.drawOrder.length) state.drawOrder=shuffle(Array.from({length:state.mode},(_,i)=>i+1));
+  state.integrity.gameId=state.integrity.gameId||uid('demo');
+  state.integrity.sealedAt=state.integrity.sealedAt||new Date().toISOString();
+  state.integrity.drawOrder=[...state.drawOrder];
+  state.integrity.commitment=await sha256Hex(canonicalDrawOrder(state.integrity.drawOrder));
+  state.integrity.verified=null; state.integrity.uploadStatus='';
+  if(state.drawerTab==='integrity') renderDrawer();
+  return state.integrity.commitment;
+}
+function downloadTextFile(filename,text){
+  const blob=new Blob([text],{type:'text/plain;charset=utf-8'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function safeFileStamp(){ return new Date().toISOString().replace(/[:.]/g,'-'); }
+async function downloadIntegritySeal(){
+  try{
+    const hash=await prepareIntegritySeal();
+    const text=[
+      'BINGO DE LA GORDA - SELLO PREVIO DEL SORTEO',
+      `ID_DEMO: ${state.integrity.gameId}`,
+      `FECHA_SELLADO: ${state.integrity.sealedAt}`,
+      `MODALIDAD: ${state.mode} bolas`,
+      'ALGORITMO: SHA-256',
+      `SHA-256: ${hash}`,
+      '',
+      'Este archivo NO contiene el orden de bolillas.',
+      'El hash fue calculado antes de la primera bolilla sobre la secuencia completa separada por comas.',
+      'Al finalizar, cargá este archivo desde la pestaña SELLO para verificar el orden revelado.'
+    ].join('\n');
+    downloadTextFile(`SELLO_DEMO_${state.mode}_${safeFileStamp()}.txt`,text); toast('Sello SHA-256 descargado. Guardalo hasta el final.','success');
+  }catch(error){ toast(error.message||'No se pudo generar el sello.','error'); }
+}
+async function downloadFinalOrder(){
+  try{
+    const hash=await prepareIntegritySeal(); const recomputed=await sha256Hex(canonicalDrawOrder(state.integrity.drawOrder));
+    const text=[
+      'BINGO DE LA GORDA - ORDEN FINAL DEL SORTEO',
+      `ID_DEMO: ${state.integrity.gameId}`,
+      `MODALIDAD: ${state.mode} bolas`,
+      `SHA-256 SELLADO: ${hash}`,
+      `SHA-256 RECALCULADO: ${recomputed}`,
+      `COINCIDE: ${recomputed===hash?'SI':'NO'}`,
+      `ORDEN: ${canonicalDrawOrder(state.integrity.drawOrder)}`
+    ].join('\n');
+    downloadTextFile(`ORDEN_FINAL_DEMO_${state.mode}_${safeFileStamp()}.txt`,text);
+  }catch(error){ toast(error.message||'No se pudo descargar el orden.','error'); }
+}
+async function verifySealFile(file){
+  if(!file) return; try{
+    const text=await file.text(); const match=text.match(/SHA-256:\s*([a-f0-9]{64})/i); if(!match) throw new Error('El archivo no contiene un sello SHA-256 válido.');
+    const uploaded=match[1].toLowerCase(); const recomputed=await sha256Hex(canonicalDrawOrder(state.integrity.drawOrder));
+    const ok=uploaded===recomputed&&uploaded===String(state.integrity.commitment||'').toLowerCase(); state.integrity.verified=ok; state.integrity.uploadStatus=ok?'✓ VERIFICACIÓN CORRECTA · El orden final coincide con tu sello previo.':'⚠ NO COINCIDE · Este archivo no corresponde al orden final de esta DEMO.'; renderDrawer(); toast(ok?'Sorteo verificado correctamente.':'El sello no coincide.','success'); if(!ok) q('#toastHost .toast:last-child')?.classList.add('error');
+  }catch(error){ state.integrity.verified=false; state.integrity.uploadStatus=`⚠ ${error.message}`; renderDrawer(); toast(error.message||'No se pudo verificar el archivo.','error'); }
+}
 
 function readRadio(name, fallback){ const item=q(`input[name="${name}"]:checked`); return item ? Number(item.value) : fallback; }
 function configFromUi(){
@@ -104,6 +170,7 @@ function confirmCards(){
   if(!saveName()) return; if(!state.selectedIds.length){ toast('Elegí al menos un cartón.','error'); return; }
   state.cards=state.selectedIds.map(id=>state.offers.find(c=>c.id===id)).filter(Boolean); state.cards.forEach(card=>state.marks[card.id]=new Set());
   setupAiPlayers(); state.activeCard=0; state.phase='mode-choice'; state.markingModeChosen=false; state.autoMark=false; state.manualLag={startDrawCount:null,prompted:false}; state.prizeCoachSeen=new Set();
+  state.drawOrder=shuffle(Array.from({length:state.mode},(_,i)=>i+1)); state.integrity={gameId:uid('demo'),sealedAt:new Date().toISOString(),commitment:'',drawOrder:[...state.drawOrder],verified:null,uploadStatus:''}; prepareIntegritySeal().catch(()=>{});
   $('waitingView').classList.add('hidden'); $('gameView').classList.remove('hidden'); $('chatToggleBtn').classList.remove('hidden'); $('phaseLabel').textContent='DEMO · ELEGÍ CÓMO MARCAR';
   renderGame(); addChat('Zoe','Ya estamos 😄','ai'); addChat('Mateo','Suerte 🍀','ai'); $('modeChoiceOverlay').classList.remove('hidden');
 }
@@ -172,13 +239,14 @@ function scheduleAiClaims(){
   }
 }
 
-function startCountdown(){
+async function startCountdown(){
+  try{ await prepareIntegritySeal(); }catch(error){ toast('No se pudo preparar el sello SHA-256; la DEMO igual puede continuar.','error'); }
   state.phase='countdown'; $('phaseLabel').textContent='DEMO · POR COMENZAR'; $('countdownOverlay').classList.remove('hidden'); let n=5; $('countdownNumber').textContent=n;
   const timer=setInterval(()=>{ n--; if(n<=0){ clearInterval(timer); $('countdownOverlay').classList.add('hidden'); startGame(); } else $('countdownNumber').textContent=n; },700);
 }
 function startGame(){
   if(!state.markingModeChosen){ $('countdownOverlay').classList.add('hidden'); $('modeChoiceOverlay').classList.remove('hidden'); return; }
-  state.phase='playing'; state.playing=true; state.finished=false; state.marks=Object.fromEntries(state.cards.map(card=>[card.id,new Set()])); state.manualLag={startDrawCount:null,prompted:false}; state.drawOrder=shuffle(Array.from({length:state.mode},(_,i)=>i+1)); $('phaseLabel').textContent='DEMO · JUGANDO'; $('gameStatusTitle').textContent='Partida en juego'; $('gameStatusText').textContent='Revisá tus cartones y reclamá rápido.'; document.body.classList.add('focusMode'); renderClaims(); acquireWakeLock(); scheduleChat(); drawNext(); state.drawTimer=setInterval(drawNext,state.speed*1000);
+  state.phase='playing'; state.playing=true; state.finished=false; state.marks=Object.fromEntries(state.cards.map(card=>[card.id,new Set()])); state.manualLag={startDrawCount:null,prompted:false}; if(!state.drawOrder.length) state.drawOrder=shuffle(Array.from({length:state.mode},(_,i)=>i+1)); $('phaseLabel').textContent='DEMO · JUGANDO'; $('gameStatusTitle').textContent='Partida en juego'; $('gameStatusText').textContent='Revisá tus cartones y reclamá rápido.'; document.body.classList.add('focusMode'); renderClaims(); acquireWakeLock(); scheduleChat(); drawNext(); state.drawTimer=setInterval(drawNext,state.speed*1000);
 }
 function drawNext(){
   if(!state.playing||state.finished) return; const next=state.drawOrder[state.drawn.length]; if(!next){ finishGame(); return; } state.drawn.push(next); applyAutoMark(next);
@@ -205,24 +273,38 @@ function maybeShowPrizeCoach(type,card){
 
 function finishGame(){
   if(state.finished) return; hidePrizeCoach(); $('autoAssistOverlay').classList.add('hidden'); $('modeChoiceOverlay').classList.add('hidden'); state.finished=true; state.playing=false; state.phase='finished'; clearInterval(state.drawTimer); clearTimeout(state.chatTimer); for(const timer of state.pendingAi.values()) clearTimeout(timer); state.pendingAi.clear(); releaseWakeLock(); document.body.classList.remove('focusMode'); $('phaseLabel').textContent='DEMO · FINALIZADA';
-  const mine=state.winners.filter(w=>w.kind==='player'); $('finalText').textContent=mine.length?`Ganaste ${mine.map(w=>w.label).join(', ')}. Podés volver a empezar cuando quieras.`:'La partida terminó. Podés iniciar otra DEMO para seguir probando.'; setTimeout(()=>$('finalOverlay').classList.remove('hidden'),500);
+  const mine=state.winners.filter(w=>w.kind==='player'); $('finalText').textContent=mine.length?`Ganaste ${mine.map(w=>w.label).join(', ')}. Podés volver a empezar cuando quieras.`:'La partida terminó. Podés iniciar otra DEMO para seguir probando.'; renderDrawer(); setTimeout(()=>$('finalOverlay').classList.remove('hidden'),500);
 }
 
 function addChat(name,text,kind='ai',type='text',stickerId=''){ state.chat.push({name,text,kind,type,stickerId,ts:Date.now()}); state.chat=state.chat.slice(-30); renderChat(); }
 function renderChat(){ if(!$('chatMessages')) return; const stickers=window.BingoEmojiStickers; $('chatMessages').innerHTML=state.chat.map(m=>{const sticker=m.type==='sticker'&&stickers?.get(m.stickerId);const body=sticker?stickers.sticker(m.stickerId,{animate:false}):esc(m.text);return `<div class="chatMsg ${m.kind} ${sticker?'stickerMsg':''}"><b>${esc(m.name)}:</b> ${body}</div>`;}).join('')||'<div class="emptyState">Todavía no hay mensajes.</div>'; $('chatMessages').scrollTop=$('chatMessages').scrollHeight; }
 function sendChat(){ const text=$('chatInput').value.trim(); if(!text) return; addChat(state.playerName||'Vos',text,'you'); $('chatInput').value=''; $('demoEmojiMenu').classList.add('hidden'); setTimeout(()=>{ const ai=shuffle(state.aiPlayers)[0]; if(ai) addChat(ai.name,shuffle(['😄','👏','Jajaja','Vamos 🍀','🔥'])[0],'ai'); },700+Math.random()*700); }
 function sendDemoSticker(id){ if(!window.BingoEmojiStickers?.get(id)) return; addChat(state.playerName||'Vos','', 'you','sticker',id); $('demoStickerMenu').classList.add('hidden'); }
-function insertDemoEmoji(emoji){ const input=$('chatInput'); if(!input) return; input.value=(input.value+emoji).slice(0,100); input.focus(); }
-function buildDemoPickers(){ const kit=window.BingoEmojiStickers;if(!kit)return;$('demoEmojiMenu').innerHTML=kit.commonEmojis.map(e=>`<button type="button" data-demo-emoji="${e}">${e}</button>`).join('');$('demoStickerMenu').innerHTML=kit.stickers.map(item=>`<button class="premiumStickerButton" type="button" data-demo-sticker="${item.id}">${kit.sticker(item.id,{className:'premiumStickerMenuIcon',replay:false})}</button>`).join('');qa('[data-demo-emoji]').forEach(b=>b.onclick=()=>insertDemoEmoji(b.dataset.demoEmoji));qa('[data-demo-sticker]').forEach(b=>b.onclick=()=>sendDemoSticker(b.dataset.demoSticker));$('chatMessages').onclick=e=>kit.replay(e.target);}
+function insertDemoEmoji(emoji){ const input=$('chatInput'); if(!input) return; const start=Number.isInteger(input.selectionStart)?input.selectionStart:input.value.length; const end=Number.isInteger(input.selectionEnd)?input.selectionEnd:start; input.value=(input.value.slice(0,start)+emoji+input.value.slice(end)).slice(0,100); const caret=Math.min(100,start+emoji.length); try{input.setSelectionRange(caret,caret);}catch{} $('demoEmojiMenu').classList.add('hidden'); input.focus({preventScroll:true}); }
+function buildDemoPickers(){
+  const kit=window.BingoEmojiStickers;if(!kit)return; const emojiMenu=$('demoEmojiMenu'),stickerMenu=$('demoStickerMenu');
+  emojiMenu.innerHTML=kit.commonEmojis.map(e=>`<button type="button" data-demo-emoji="${e}" aria-label="Emoji ${e}">${e}</button>`).join('');
+  stickerMenu.innerHTML=kit.stickers.map(item=>`<button class="premiumStickerButton" type="button" data-demo-sticker="${item.id}" aria-label="Sticker ${esc(item.label||item.id)}">${kit.sticker(item.id,{className:'premiumStickerMenuIcon',replay:false})}</button>`).join('');
+  const handlePointer=e=>{ const emoji=e.target.closest?.('[data-demo-emoji]'); const sticker=e.target.closest?.('[data-demo-sticker]'); if(!emoji&&!sticker)return; e.preventDefault(); e.stopPropagation(); if(emoji)insertDemoEmoji(emoji.dataset.demoEmoji); else sendDemoSticker(sticker.dataset.demoSticker); };
+  emojiMenu.addEventListener('pointerdown',handlePointer); stickerMenu.addEventListener('pointerdown',handlePointer); $('chatMessages').onclick=e=>kit.replay(e.target);
+}
 function scheduleChat(){ clearTimeout(state.chatTimer); if(!state.playing) return; state.chatTimer=setTimeout(()=>{ if(!state.playing) return; const ai=shuffle(state.aiPlayers)[0]; if(ai){ if(Math.random()<.16&&window.BingoEmojiStickers?.stickers?.length){ const item=shuffle(window.BingoEmojiStickers.stickers)[0]; addChat(ai.name,'','ai','sticker',item.id); } else addChat(ai.name,shuffle(CHAT_LINES)[0],'ai'); } scheduleChat(); },9000+Math.random()*7000); }
 
-function renderDrawer(){ if(!$('drawerBody')) return; $('drawnTab').classList.toggle('active',state.drawerTab==='drawn'); $('winnersTab').classList.toggle('active',state.drawerTab==='winners');
-  if(state.drawerTab==='drawn') $('drawerBody').innerHTML=state.drawn.length?`<div class="numberCloud">${state.drawn.map(n=>`<span class="numberChip">${n}</span>`).join('')}</div>`:'<div class="emptyState">Todavía no salió ninguna bolilla.</div>';
-  else $('drawerBody').innerHTML=state.winners.length?state.winners.map(w=>`<div class="winnerCard"><strong>${esc(w.label)} · ${esc(w.name)}</strong><br><small>Cartón ${esc(w.cardNumber)} · bolilla ${w.at}</small>${w.card?`<div style="margin-top:8px">${renderMiniCard(w.card)}</div>`:''}</div>`).join(''):'<div class="emptyState">Todavía no hay ganadores.</div>';
+function renderIntegrityDrawer(){
+  const i=state.integrity||{}; if(!state.cards.length) return '<div class="emptyState">El sello se genera después de confirmar tus cartones.</div>';
+  const revealed=state.finished; const order=revealed&&i.drawOrder?.length?`<div class="integrityOrder">${i.drawOrder.map(n=>`<span>${n}</span>`).join('')}</div>`:'';
+  const status=i.uploadStatus?`<div class="integrityStatus">${esc(i.uploadStatus)}</div>`:'';
+  return `<section class="integrityTool ${i.verified?'verified':''}"><h3>🔒 Verificación SHA-256</h3><p>Es una herramienta opcional. No ocupa lugar durante el juego. Guardá el sello antes de la primera bolilla y verificá el orden al finalizar.</p><div class="integrityHash">${i.commitment?esc(i.commitment):'Generando sello…'}</div>${status}${order}<div class="integrityActions"><button id="downloadSealBtn" type="button">DESCARGAR SELLO</button>${revealed?'<button id="verifySealBtn" type="button">VERIFICAR MI SELLO</button><button id="downloadFinalOrderBtn" type="button">DESCARGAR ORDEN FINAL</button>':''}</div></section>`;
 }
-function openDrawer(tab=state.drawerTab){ state.drawerTab=tab; renderDrawer(); $('drawer').classList.add('open'); $('drawer').setAttribute('aria-hidden','false'); }
+function renderDrawer(){ if(!$('drawerBody')) return; $('drawnTab').classList.toggle('active',state.drawerTab==='drawn'); $('winnersTab').classList.toggle('active',state.drawerTab==='winners'); $('integrityTab')?.classList.toggle('active',state.drawerTab==='integrity');
+  if(state.drawerTab==='drawn') $('drawerBody').innerHTML=state.drawn.length?`<div class="numberCloud">${state.drawn.map(n=>`<span class="numberChip">${n}</span>`).join('')}</div>`:'<div class="emptyState">Todavía no salió ninguna bolilla.</div>';
+  else if(state.drawerTab==='winners') $('drawerBody').innerHTML=state.winners.length?state.winners.map(w=>`<div class="winnerCard"><strong>${esc(w.label)} · ${esc(w.name)}</strong><br><small>Cartón ${esc(w.cardNumber)} · bolilla ${w.at}</small>${w.card?`<div style="margin-top:8px">${renderMiniCard(w.card)}</div>`:''}</div>`).join(''):'<div class="emptyState">Todavía no hay ganadores.</div>';
+  else $('drawerBody').innerHTML=renderIntegrityDrawer();
+  $('downloadSealBtn')?.addEventListener('click',downloadIntegritySeal); $('downloadFinalOrderBtn')?.addEventListener('click',downloadFinalOrder); $('verifySealBtn')?.addEventListener('click',()=>{const input=document.createElement('input');input.type='file';input.accept='.txt,text/plain';input.onchange=()=>verifySealFile(input.files?.[0]);input.click();});
+}
+function openDrawer(tab=state.drawerTab){ state.drawerTab=['drawn','winners','integrity'].includes(tab)?tab:'drawn'; renderDrawer(); $('drawer').classList.add('open'); $('drawer').setAttribute('aria-hidden','false'); }
 function closeDrawer(){ $('drawer').classList.remove('open'); $('drawer').setAttribute('aria-hidden','true'); }
-function toggleChatPanel(){ $('chatPanel').classList.toggle('hidden'); }
+function toggleChatPanel(){ const panel=$('chatPanel'); if(matchMedia('(max-width:720px)').matches){ panel.classList.remove('hidden'); panel.classList.toggle('mobileOpen'); $('chatToggleBtn').setAttribute('aria-pressed',String(panel.classList.contains('mobileOpen'))); if(!panel.classList.contains('mobileOpen')){$('demoEmojiMenu').classList.add('hidden');$('demoStickerMenu').classList.add('hidden');} } else panel.classList.toggle('hidden'); }
 
 function toast(text,type=''){ const el=document.createElement('div'); el.className=`toast ${type}`; el.textContent=text; $('toastHost').appendChild(el); setTimeout(()=>el.remove(),2600); }
 function beep(freq=440,duration=.05){ if(!state.sound) return; try{ const C=window.AudioContext||window.webkitAudioContext; if(!C) return; if(!window.__demoAudio) window.__demoAudio=new C(); const ctx=window.__demoAudio; const o=ctx.createOscillator(),g=ctx.createGain(); o.frequency.value=freq; g.gain.value=.025; o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+duration); }catch{} }
@@ -258,6 +340,7 @@ function startTutorial(stage,index=0){
 }
 function showTutorialStep(){
   const steps=tutorialSteps(state.tutorial.stage); const step=steps[state.tutorial.index]; if(!step){ finishTutorialStage(false); return; }
+  if(matchMedia('(max-width:720px)').matches&&state.tutorial.stage==='game'){ const chat=$('chatPanel'); if(step.target==='#chatPanel') chat.classList.add('mobileOpen'); else chat.classList.remove('mobileOpen'); }
   let target=resolveTutorialTarget(step); if(!target){ const dir=1; const next=state.tutorial.index+dir; if(next<steps.length){state.tutorial.index=next;showTutorialStep();return;} finishTutorialStage(false);return; }
   qa('.tutorialFocus').forEach(el=>el.classList.remove('tutorialFocus','tutorialHand')); target.classList.add('tutorialFocus'); if(step.hand) target.classList.add('tutorialHand');
   $('tutorialTitle').textContent=step.title; $('tutorialText').textContent=step.text; $('tutorialProgress').textContent=`${state.tutorial.index+1}/${steps.length}`; $('tutorialBack').disabled=state.tutorial.index===0; $('tutorialNext').textContent=state.tutorial.index===steps.length-1?'LISTO':'SIGUIENTE';
@@ -277,7 +360,7 @@ function endTutorialVisuals(){ qa('.tutorialFocus').forEach(el=>el.classList.rem
 function reopenTutorial(){ if(state.phase==='config') return; if(!state.markingModeChosen && ['mode-choice','tutorial'].includes(state.phase)){ $('modeChoiceOverlay').classList.remove('hidden'); toast('Primero elegí Manual o Automarcado.'); return; } if(state.tutorial.active){ toast('Usá SIGUIENTE o SALTAR para cerrar el tutorial.'); return; } startTutorial(state.phase==='waiting'?'waiting':'game',0); }
 
 function resetDemoToConfig(){
-  clearInterval(state.drawTimer); clearTimeout(state.chatTimer); for(const timer of state.pendingAi.values()) clearTimeout(timer); releaseWakeLock(); Object.assign(state,{phase:'config',playerName:'',offers:[],selectedIds:[],cards:[],aiPlayers:[],activeCard:0,drawn:[],drawOrder:[],playing:false,finished:false,autoMark:false,markingModeChosen:false,marks:{},prizeSlots:[],winners:[],pendingAi:new Map(),drawTimer:null,chatTimer:null,tutorial:{active:false,stage:null,index:0,skipped:false},drawerTab:'drawn',chat:[],lastClaimAt:0,manualLag:{startDrawCount:null,prompted:false},prizeCoachSeen:new Set(),prizeCoachTimer:null});
+  clearInterval(state.drawTimer); clearTimeout(state.chatTimer); for(const timer of state.pendingAi.values()) clearTimeout(timer); releaseWakeLock(); Object.assign(state,{phase:'config',playerName:'',offers:[],selectedIds:[],cards:[],aiPlayers:[],activeCard:0,drawn:[],drawOrder:[],playing:false,finished:false,autoMark:false,markingModeChosen:false,marks:{},prizeSlots:[],winners:[],pendingAi:new Map(),drawTimer:null,chatTimer:null,tutorial:{active:false,stage:null,index:0,skipped:false},drawerTab:'drawn',chat:[],lastClaimAt:0,manualLag:{startDrawCount:null,prompted:false},prizeCoachSeen:new Set(),prizeCoachTimer:null,integrity:{gameId:'',sealedAt:null,commitment:'',drawOrder:[],verified:null,uploadStatus:''}});
   hidePrizeCoach(); $('modeChoiceOverlay').classList.add('hidden'); $('autoAssistOverlay').classList.add('hidden'); $('countdownOverlay').classList.add('hidden'); $('finalOverlay').classList.add('hidden'); $('appScreen').classList.add('hidden'); $('configScreen').classList.remove('hidden'); closeDrawer(); document.body.classList.remove('focusMode'); window.scrollTo(0,0);
 }
 function enterWaiting(){
@@ -288,12 +371,13 @@ function enterWaiting(){
 function bind(){
   qa('input[name="mode"]').forEach(el=>el.addEventListener('change',updateConfigMode)); $('prizeLine').addEventListener('change',updateConfigMode); updateConfigMode();
   $('createDemoBtn').onclick=enterWaiting; $('saveNameBtn').onclick=saveName; $('playerName').addEventListener('input',()=>{state.playerName=$('playerName').value.trim();renderWaiting();}); $('playerName').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveName();}});
-  $('reloadCardsBtn').onclick=refreshOffers; $('confirmCardsBtn').onclick=confirmCards; $('manualBtn').onclick=setManual; $('autoBtn').onclick=toggleAuto; $('chooseManualBtn').onclick=()=>chooseInitialMode(false); $('chooseAutoBtn').onclick=()=>chooseInitialMode(true); $('assistAutoBtn').onclick=()=>setMarkingMode(true,{assist:true}); $('assistManualBtn').onclick=()=>{$('autoAssistOverlay').classList.add('hidden');state.manualLag.prompted=true;}; $('sideArrow').onclick=()=>openDrawer('drawn'); $('drawerClose').onclick=closeDrawer; $('drawnTab').onclick=()=>openDrawer('drawn'); $('winnersTab').onclick=()=>openDrawer('winners');
+  $('reloadCardsBtn').onclick=refreshOffers; $('confirmCardsBtn').onclick=confirmCards; $('manualBtn').onclick=setManual; $('autoBtn').onclick=toggleAuto; $('chooseManualBtn').onclick=()=>chooseInitialMode(false); $('chooseAutoBtn').onclick=()=>chooseInitialMode(true); $('assistAutoBtn').onclick=()=>setMarkingMode(true,{assist:true}); $('assistManualBtn').onclick=()=>{$('autoAssistOverlay').classList.add('hidden');state.manualLag.prompted=true;}; $('sideArrow').onclick=()=>openDrawer('drawn'); $('drawerClose').onclick=closeDrawer; $('drawnTab').onclick=()=>openDrawer('drawn'); $('winnersTab').onclick=()=>openDrawer('winners'); $('integrityTab').onclick=()=>openDrawer('integrity');
   $('soundBtn').onclick=()=>{state.sound=!state.sound;$('soundBtn').setAttribute('aria-pressed',String(state.sound));$('soundBtn').textContent=state.sound?'🔊':'🔇';toast(`Sonido ${state.sound?'activado':'desactivado'}.`);};
   $('voiceBtn').onclick=()=>{state.voice=!state.voice;$('voiceBtn').setAttribute('aria-pressed',String(state.voice));$('voiceBtn').textContent=state.voice?'🎙':'⊘';if(!state.voice&&'speechSynthesis'in window)speechSynthesis.cancel();toast(`Voz ${state.voice?'activada':'desactivada'}.`);};
-  $('fullscreenBtn').onclick=toggleFullscreen; $('helpBtn').onclick=reopenTutorial; $('chatToggleBtn').onclick=toggleChatPanel; $('chatSendBtn').onclick=sendChat; $('chatEmojiBtn').onclick=()=>{$('demoEmojiMenu').classList.toggle('hidden');$('demoStickerMenu').classList.add('hidden');}; $('chatStickerBtn').onclick=()=>{$('demoStickerMenu').classList.toggle('hidden');$('demoEmojiMenu').classList.add('hidden');}; buildDemoPickers(); $('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendChat();}});
+  $('fullscreenBtn').onclick=toggleFullscreen; $('helpBtn').onclick=reopenTutorial; $('chatToggleBtn').onclick=toggleChatPanel; $('chatSendBtn').onclick=sendChat; $('chatEmojiBtn').onclick=e=>{e.preventDefault();$('demoEmojiMenu').classList.toggle('hidden');$('demoStickerMenu').classList.add('hidden');}; $('chatStickerBtn').onclick=e=>{e.preventDefault();$('demoStickerMenu').classList.toggle('hidden');$('demoEmojiMenu').classList.add('hidden');}; buildDemoPickers(); $('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendChat();}});
   $('tutorialNext').onclick=nextTutorial; $('tutorialBack').onclick=backTutorial; $('tutorialSkip').onclick=skipTutorial; $('restartDemoBtn').onclick=resetDemoToConfig;
-  window.addEventListener('resize',()=>{if(state.tutorial.active){const step=tutorialSteps(state.tutorial.stage)[state.tutorial.index];const target=resolveTutorialTarget(step);if(target)positionTutorial(target);}});
+  window.addEventListener('resize',()=>{if(state.tutorial.active){const step=tutorialSteps(state.tutorial.stage)[state.tutorial.index];const target=resolveTutorialTarget(step);if(target)positionTutorial(target);} if(!matchMedia('(max-width:720px)').matches)$('chatPanel').classList.remove('mobileOpen');});
+  document.addEventListener('pointerdown',e=>{if(!e.target.closest?.('#demoEmojiMenu,#demoStickerMenu,#chatEmojiBtn,#chatStickerBtn')){$('demoEmojiMenu').classList.add('hidden');$('demoStickerMenu').classList.add('hidden');}});
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.playing)acquireWakeLock();});
   document.addEventListener('keydown',e=>{ if(state.phase==='playing'&&state.cards.length>1&&!['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)){ if(e.key==='ArrowRight'){state.activeCard=(state.activeCard+1)%state.cards.length;renderTabs();renderTicket();renderClaims();} if(e.key==='ArrowLeft'){state.activeCard=(state.activeCard-1+state.cards.length)%state.cards.length;renderTabs();renderTicket();renderClaims();} } });
   let touchX=null; $('ticketTarget').addEventListener('touchstart',e=>{touchX=e.touches?.[0]?.clientX??null;},{passive:true}); $('ticketTarget').addEventListener('touchend',e=>{if(touchX===null||state.cards.length<2)return;const x=e.changedTouches?.[0]?.clientX??touchX;const d=x-touchX;touchX=null;if(Math.abs(d)<70)return;state.activeCard=d<0?(state.activeCard+1)%state.cards.length:(state.activeCard-1+state.cards.length)%state.cards.length;renderTabs();renderTicket();renderClaims();},{passive:true});

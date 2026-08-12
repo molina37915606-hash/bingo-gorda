@@ -1,3 +1,3 @@
-BINGO DE LA GORDA BETA 2
-Versión 4.1.0-beta.2
-Experiencia Manual / Automarcado unificada entre DEMO y juego real.
+BINGO DE LA GORDA BETA 3
+Versión 4.2.0-beta.3
+DEMO móvil optimizada, chat táctil corregido y verificación SHA-256 discreta.

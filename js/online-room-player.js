@@ -563,13 +563,10 @@ class PlayerApp {
     const host = $('drawerNumbersPanel');
     const drawn = [...(this.state?.game?.drawn || [])].sort((a,b) => a-b);
     const last = Number(this.state?.game?.lastBall);
-    if (!drawn.length) {
-      host.innerHTML = '<div class="emptyDrawer">Todavía no salió ninguna bolilla.</div>';
-      return;
-    }
     const chips = numbers => `<div class="sortedNumbers">${numbers.map(number => `<span class="${number === last ? 'last' : ''}">${String(number).padStart(2,'0')}</span>`).join('')}</div>`;
     let content = '';
-    if (Number(this.state.game.mode) === 75) {
+    if (!drawn.length) content = '<div class="emptyDrawer">Todavía no salió ninguna bolilla.</div>';
+    else if (Number(this.state.game.mode) === 75) {
       const groups = [['B',1,15],['I',16,30],['N',31,45],['G',46,60],['O',61,75]];
       content = `<div class="drawGroups">${groups.map(([letter,min,max]) => `<div class="drawGroup"><strong>${letter}</strong>${chips(drawn.filter(number => number >= min && number <= max))}</div>`).join('')}</div>`;
     } else content = chips(drawn);
@@ -577,11 +574,85 @@ class PlayerApp {
     if (integrity?.commitment) {
       const order = integrity.revealed && Array.isArray(integrity.drawOrder)
         ? `<div class="drawOrderSequence">${integrity.drawOrder.map(number => `<span>${String(number).padStart(2,'0')}</span>`).join('')}</div>` : '';
+      const actions = `<div class="integrityActions"><button type="button" data-integrity-download>DESCARGAR SELLO</button>${integrity.revealed ? '<button type="button" data-integrity-verify>VERIFICAR MI SELLO</button><button type="button" data-integrity-order>DESCARGAR ORDEN FINAL</button>' : ''}</div>`;
       content += integrity.revealed
-        ? `<section class="integrityBox"><b>${integrity.verified ? '✓ SORTEO VERIFICADO' : '⚠ VERIFICACIÓN NO COINCIDENTE'}</b><small>SHA-256: ${esc(integrity.commitment)}</small>${order}</section>`
-        : `<section class="integrityBox pending"><b>🔒 SORTEO SELLADO</b><small>SHA-256: ${esc(integrity.commitment)}</small><small>El orden completo se revela al finalizar para comprobar que no fue modificado.</small></section>`;
+        ? `<section class="integrityBox"><b>${integrity.verified ? '✓ SORTEO VERIFICADO' : '⚠ VERIFICACIÓN NO COINCIDENTE'}</b><small>SHA-256: ${esc(integrity.commitment)}</small>${order}<small class="integrityHelp">Podés comprobarlo con el archivo guardado antes de la primera bolilla.</small>${actions}</section>`
+        : `<section class="integrityBox pending"><b>🔒 SORTEO SELLADO</b><small>SHA-256: ${esc(integrity.commitment)}</small><small>El orden completo se revela al finalizar. Si querés verificarlo por tu cuenta, guardá ahora este sello.</small>${actions}</section>`;
     }
     host.innerHTML = content;
+    host.querySelector('[data-integrity-download]')?.addEventListener('click', () => this.downloadIntegritySeal());
+    host.querySelector('[data-integrity-order]')?.addEventListener('click', () => this.downloadIntegrityOrder());
+    host.querySelector('[data-integrity-verify]')?.addEventListener('click', () => this.chooseIntegritySealFile());
+  }
+
+  downloadTextFile(filename, text) {
+    try {
+      const blob = new Blob([text], { type:'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch { this.showMessage('No se pudo descargar el archivo.', 'error'); }
+  }
+
+  integrityFileStamp() { return new Date().toISOString().replace(/[:.]/g, '-'); }
+
+  downloadIntegritySeal() {
+    const integrity = this.state?.integrity;
+    if (!integrity?.commitment) return this.showMessage('El sorteo todavía no fue sellado.', 'error');
+    const text = [
+      'BINGO DE LA GORDA - SELLO PREVIO DEL SORTEO',
+      `SALA: ${this.state.roomCode || ''}`,
+      `FECHA_SELLADO: ${integrity.sealedAt || ''}`,
+      `MODALIDAD: ${this.state.game?.mode || ''} bolas`,
+      'ALGORITMO: SHA-256',
+      `SHA-256: ${integrity.commitment}`,
+      '',
+      'Este archivo NO contiene el orden de bolillas.',
+      'El hash corresponde a la secuencia completa separada por comas y sellada antes de la primera bolilla.',
+      'Guardalo y usá VERIFICAR MI SELLO al finalizar la partida.'
+    ].join('\n');
+    this.downloadTextFile(`SELLO_${this.state.roomCode || 'BINGO'}_${this.integrityFileStamp()}.txt`, text);
+    this.showMessage('Sello SHA-256 descargado. Guardalo hasta el final.');
+  }
+
+  async integrityHash(text) {
+    if (!globalThis.crypto?.subtle) throw new Error('Tu navegador no permite verificar SHA-256.');
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(text)));
+    return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2,'0')).join('');
+  }
+
+  downloadIntegrityOrder() {
+    const integrity = this.state?.integrity;
+    if (!integrity?.revealed || !Array.isArray(integrity.drawOrder)) return this.showMessage('El orden se revela al finalizar la partida.', 'error');
+    const text = [
+      'BINGO DE LA GORDA - ORDEN FINAL DEL SORTEO',
+      `SALA: ${this.state.roomCode || ''}`,
+      `MODALIDAD: ${this.state.game?.mode || ''} bolas`,
+      `SHA-256 SELLADO: ${integrity.commitment}`,
+      `VERIFICACION DEL SERVIDOR: ${integrity.verified ? 'CORRECTA' : 'NO COINCIDE'}`,
+      `ORDEN: ${integrity.drawOrder.join(',')}`
+    ].join('\n');
+    this.downloadTextFile(`ORDEN_FINAL_${this.state.roomCode || 'BINGO'}_${this.integrityFileStamp()}.txt`, text);
+  }
+
+  chooseIntegritySealFile() {
+    const integrity = this.state?.integrity;
+    if (!integrity?.revealed || !Array.isArray(integrity.drawOrder)) return this.showMessage('La verificación estará disponible al finalizar.', 'error');
+    const input = document.createElement('input'); input.type = 'file'; input.accept = '.txt,text/plain';
+    input.onchange = () => this.verifyIntegritySealFile(input.files?.[0]); input.click();
+  }
+
+  async verifyIntegritySealFile(file) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const match = text.match(/SHA-256:\s*([a-f0-9]{64})/i);
+      if (!match) throw new Error('El archivo no contiene un sello SHA-256 válido.');
+      const uploaded = match[1].toLowerCase();
+      const recomputed = await this.integrityHash((this.state.integrity.drawOrder || []).join(','));
+      const ok = uploaded === recomputed && uploaded === String(this.state.integrity.commitment || '').toLowerCase();
+      this.showMessage(ok ? '✓ Verificación correcta: el orden coincide con tu sello previo.' : 'El sello cargado no coincide con este sorteo.', ok ? '' : 'error');
+    } catch (error) { this.showMessage(error.message || 'No se pudo verificar el sello.', 'error'); }
   }
 
   resultsUrl() {

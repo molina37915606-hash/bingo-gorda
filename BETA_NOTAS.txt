@@ -1,4 +1,12 @@
-BINGO DE LA GORDA BETA 2
+BINGO DE LA GORDA BETA 3
+
+
+NOVEDADES BETA 3
+- DEMO móvil sin desborde horizontal y selección de cartones en una columna.
+- Chat móvil flotante para no desplazar el cartón durante la partida.
+- Emojis y stickers con eventos táctiles robustos y áreas de toque grandes.
+- Verificación SHA-256 dentro de la flecha lateral: descargar sello previo, revelar orden final y verificar el archivo guardado.
+- El juego real también permite guardar/verificar el sello desde el panel NÚMEROS, sin agregar controles a la pantalla principal.
 
 Objetivo de esta versión:
 - Que DEMO y juego real enseñen y usen el mismo criterio de juego.

@@ -1,3 +1,19 @@
+BINGO DE LA GORDA BETA 3 · DEMO MÓVIL + CHAT + TRANSPARENCIA
+
+- DEMO adaptada para celular sin necesidad de zoom: se elimina desborde horizontal y los cartones de selección pasan a una columna en pantallas móviles.
+- Barra superior compactada en móvil para no forzar ancho extra.
+- Cartones y números reajustados para mantener legibilidad en 75 y 90 bolas.
+- Chat móvil pasa a panel táctil flotante para no empujar ni tapar el cartón durante la partida.
+- Selector de emojis corregido con eventos táctiles/pointer y zonas de toque mínimas de 44 px.
+- Stickers corregidos con el mismo comportamiento táctil y panel superpuesto.
+- Selector de emojis inserta en la posición del cursor y cierra después de elegir.
+- Verificación SHA-256 añadida de forma discreta dentro de la flecha lateral, sin contaminar la pantalla principal.
+- DEMO permite descargar sello previo, descargar orden final y cargar el sello guardado para verificarlo.
+- Juego real permite descargar el sello antes de la primera bolilla desde NÚMEROS y verificarlo al finalizar.
+- La herramienta SHA-256 no modifica el flujo de juego ni reclama premios.
+
+--- BETA 2 ---
+
 BINGO DE LA GORDA BETA 2 · EXPERIENCIA UNIFICADA DE JUGADOR
 
 - Elección obligatoria MANUAL / AUTOMARCADO antes de la primera bolilla.

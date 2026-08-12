@@ -1,5 +1,6 @@
 
-BETA 2
+BETA 3
+- tests/beta3-demo-mobile-integrity.js: responsive móvil, chat táctil de emojis/stickers y herramientas SHA-256 discretas.
 - tests/beta2-player-experience.js: elección obligatoria Manual/Auto, bloqueo de inicio sin modo, recuperación de aciertos al activar AUTO, conservación al volver a Manual y reclamo manual de Línea.
 - También verifica la regla de asistencia 5 aciertos / 5 bolillas y el cambio automático al cartón con premio mediante las implementaciones DEMO y jugador real.
 

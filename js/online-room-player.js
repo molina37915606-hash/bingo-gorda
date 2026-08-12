@@ -97,6 +97,9 @@ class PlayerApp {
     this.manualLagPrompted = false;
     this.lastManualPending = 0;
     this.markingModeChoosing = false;
+    this.adminPreviewMode = false;
+    this.adminPreviewSession = '';
+    this.adminPreviewTimer = null;
   }
 
   makeDeviceId() {
@@ -217,8 +220,13 @@ class PlayerApp {
     if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => this.refreshVoices();
 
     const params = new URLSearchParams(location.search);
-    if (params.get('simcontrol') === '1') this.injectSimulationControlBadge();
-    if (params.get('preview') === '1') this.injectAdminPreviewBadge();
+    const adminPreviewEntry = params.get('adminpreview') === '1';
+    const adminPreviewSession = String(params.get('previewSession') || '').trim();
+    if (adminPreviewEntry) {
+      this.adminPreviewMode = true;
+      this.adminPreviewSession = adminPreviewSession;
+      this.injectAdminPreviewBadge();
+    }
     const demoEntry = params.get('demo') === '1';
     const directSession = String(params.get('session') || '').trim();
     const directCode = String(params.get('acceso') || params.get('codigo') || params.get('code') || '').trim().toUpperCase();
@@ -230,7 +238,16 @@ class PlayerApp {
       $('loginIntro').textContent = 'Escribí tu nombre, elegí tus cartones y entrá directamente a la sala de prueba.';
       $('loginBtn').textContent = 'ENTRAR A LA SALA';
     }
-    if (demoEntry) {
+    if (adminPreviewEntry && adminPreviewSession) {
+      this.token = '';
+      this.tokenRoom = '';
+      storage.removeItem('bingoOnlineToken');
+      $('loginView').classList.add('hidden');
+      $('gameView').classList.remove('hidden');
+      document.body.classList.add('playerLogged');
+      await this.resumeAdminPreview();
+      this.adminPreviewTimer = setInterval(() => this.resumeAdminPreview({ silent:true }), 1000);
+    } else if (demoEntry) {
       // La DEMO v3 entra por una ruta propia. El servidor embebe tanto el estado
       // inicial como un token temporal de esa demostración; no depende de cookies
       // ni de localStorage para poder iniciar la interfaz real del jugador.
@@ -258,11 +275,8 @@ class PlayerApp {
     } else if (directSession) {
       this.token = directSession;
       this.tokenRoom = '';
-      const adminViewSession = params.get('simcontrol') === '1' || params.get('preview') === '1';
-      if (!adminViewSession) {
-        storage.setItem('bingoOnlineToken', this.token);
-        this.cleanDirectAccessUrl();
-      }
+      storage.setItem('bingoOnlineToken', this.token);
+      this.cleanDirectAccessUrl();
       await this.resume();
       this.connectEvents();
     } else if (directCode) {
@@ -285,28 +299,37 @@ class PlayerApp {
     this.assignmentClockTimer = setInterval(() => this.updateAssignmentCountdown(), 1000);
   }
 
-  injectSimulationControlBadge() {
-    if ($('simulationControlBadge')) return;
-    const style = document.createElement('style');
-    style.textContent = `.simulationControlBadge{position:fixed;left:8px;bottom:8px;z-index:118;display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:12px;background:#151a2cdd;border:1px solid #ffca2f88;box-shadow:0 8px 25px #0008;color:#fff;font-size:10px;font-weight:1000;backdrop-filter:blur(10px)}.simulationControlBadge button{border:0;border-radius:8px;background:#ffca2f;color:#241600;padding:7px 9px;font-weight:1000;cursor:pointer}`;
-    document.head.appendChild(style);
-    const badge = document.createElement('div');
-    badge.id = 'simulationControlBadge';
-    badge.className = 'simulationControlBadge';
-    badge.innerHTML = `<span>🎮 VISTA JUGADOR IA</span><button type="button">VOLVER A ADMIN</button>`;
-    badge.querySelector('button').onclick = () => { try { window.close(); } catch {} setTimeout(() => { if (!document.hidden) location.href = '/admin'; }, 120); };
-    document.body.appendChild(badge);
-  }
 
   injectAdminPreviewBadge() {
     if ($('adminPreviewBadge')) return;
     const style = document.createElement('style');
-    style.textContent = `.adminPreviewBadge{position:fixed;left:8px;bottom:8px;z-index:118;padding:7px 10px;border-radius:12px;background:#151a2cdd;border:1px solid #6cc7ff88;box-shadow:0 8px 25px #0008;color:#fff;font-size:10px;font-weight:1000;backdrop-filter:blur(10px)}.adminPreviewMode button,.adminPreviewMode input,.adminPreviewMode select,.adminPreviewMode textarea{cursor:default}`;
+    style.textContent = `.adminPreviewBadge{position:fixed;left:8px;bottom:8px;z-index:118;padding:7px 10px;border-radius:12px;background:#151a2cdd;border:1px solid #6cc7ff88;box-shadow:0 8px 25px #0008;color:#fff;font-size:10px;font-weight:1000;backdrop-filter:blur(10px)}.adminPreviewMode #claimBar button,.adminPreviewMode #autoMarkToggle,.adminPreviewMode #quickAutoMarkBtn,.adminPreviewMode #quickManualMarkBtn,.adminPreviewMode #markingModeManual,.adminPreviewMode #markingModeAuto,.adminPreviewMode #waitingPanel button,.adminPreviewMode #waitingPanel input,.adminPreviewMode .cell.number,.adminPreviewMode .playerChatComposer,.adminPreviewMode .playerPicker button{pointer-events:none!important}.adminPreviewMode #logoutBtn{display:none!important}`;
     document.head.appendChild(style);
     document.body.classList.add('adminPreviewMode');
     const badge = document.createElement('div');
-    badge.id='adminPreviewBadge';badge.className='adminPreviewBadge';badge.textContent='▯ VISTA PREVIA · SOLO LECTURA';
+    badge.id='adminPreviewBadge';badge.className='adminPreviewBadge';badge.textContent='▯ VISTA PREVIA · NO MODIFICA LA PARTIDA';
     document.body.appendChild(badge);
+  }
+
+  async resumeAdminPreview({ silent = false } = {}) {
+    if (!this.adminPreviewSession) return false;
+    try {
+      const response = await fetch(`/api/admin-player-preview/state?token=${encodeURIComponent(this.adminPreviewSession)}`, { cache:'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'No se pudo actualizar la vista previa.');
+      this.applyState(data);
+      this.setNetworkState('good');
+      return true;
+    } catch (error) {
+      this.setNetworkState('bad');
+      if (!silent) {
+        $('loginView').classList.add('hidden');
+        $('gameView').classList.remove('hidden');
+        document.body.classList.add('playerLogged');
+        this.showMessage(error.message || 'La vista previa no está disponible.', 'error');
+      }
+      return false;
+    }
   }
 
   injectDemoUi() {
@@ -734,7 +757,7 @@ class PlayerApp {
     if (index < 0 || cards.length < 2) return false;
     const next = (index + (direction >= 0 ? 1 : -1) + cards.length) % cards.length;
     this.activeCardId = cards[next].id;
-    storage.setItem('bingoOnlineCard', this.activeCardId);
+    if (!this.adminPreviewMode) storage.setItem('bingoOnlineCard', this.activeCardId);
     this.renderTabs(); this.renderTicket();
     const active = $('ticketPanel')?.querySelector('.ticketInstance.active');
     if (active) {
@@ -1018,7 +1041,7 @@ class PlayerApp {
     const previousConfirmed = Boolean(previous?.player?.selectionConfirmed);
     this.state = data;
     if (data.demo?.active && data.player?.demoHuman) this.cookieSession = true;
-    if (data.roomCode && this.token) {
+    if (data.roomCode && this.token && !this.adminPreviewMode) {
       this.tokenRoom = String(data.roomCode).trim().toUpperCase();
       storage.setItem('bingoOnlineRoom', this.tokenRoom);
     }
@@ -1031,7 +1054,7 @@ class PlayerApp {
     $('loginView').classList.add('hidden'); $('gameView').classList.remove('hidden');
     document.body.classList.add('playerLogged');
     $('infoDrawerToggle').classList.remove('hidden');
-    this.render(); this.renderDemoUi(); this.renderChat(); this.renderPublicClaim(); this.ensureMarkingModeChoice(); this.handleOwnPrizeReadiness(); this.trackManualLag(); this.handleTestEvent(); this.handleSequence(previous); this.renderInfoDrawer();
+    this.render(); this.renderDemoUi(); this.renderChat(); this.renderPublicClaim(); if (!this.adminPreviewMode) this.ensureMarkingModeChoice(); this.handleOwnPrizeReadiness(); if (!this.adminPreviewMode) this.trackManualLag(); this.handleTestEvent(); this.handleSequence(previous); this.renderInfoDrawer();
     this.renderSystemTrust(); this.updateWakeLock();
     const justConfirmedSelection = !Boolean(previous?.player?.selectionConfirmed) && Boolean(data.player?.selectionConfirmed && data.player?.nameSet);
     if (this.guideOpen && this.guideStage === 'selection' && justConfirmedSelection) {
@@ -1040,7 +1063,7 @@ class PlayerApp {
       this.closeGuide(false);
     }
     if (previous && ['waiting','starting'].includes(previous.status) && !['waiting','starting'].includes(data.status) && this.guideOpen) this.closeGuide(false);
-    this.maybeAutoStartGuide(previous);
+    if (!this.adminPreviewMode) this.maybeAutoStartGuide(previous);
     if (data.status !== 'waiting') this.cancelDemoAutoStart({ keepFailure:true });
     else if (data.demo?.active && data.player?.demoHuman) queueMicrotask(() => this.ensureDemoAutoStart());
     if ($('winnerOverlay').classList.contains('show')) this.renderWinnerCard(this.selectedWinnerId);

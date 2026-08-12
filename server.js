@@ -3439,12 +3439,40 @@ function archiveCurrentResults() {
   return meta;
 }
 
-function finishRoom() {
-  clearAutomaticDrawTimer();
-  clearClaimAutoResume(currentWorkspace());
+function finishRoom(payload = {}) {
+  const workspace = currentWorkspace();
+  const forceSimulation = Boolean(payload.forceSimulation) && Boolean(state.roomSettings?.adminSimulation || workspace.isDemo || state.demo);
+  clearAutomaticDrawTimer(workspace);
+  clearClaimAutoResume(workspace);
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status === 'finished') return adminPayload();
-  if (!['playing', 'paused', 'finalizing'].includes(state.status)) throw new Error('El sorteo todavía no comenzó.');
+  if (!['playing', 'paused', 'verifying', 'finalizing'].includes(state.status)) throw new Error('El sorteo todavía no comenzó.');
+
+  if (forceSimulation) {
+    clearWorkspaceTransitionTimer(workspace);
+    clearDemoAutomationTimers(workspace);
+    clearDemoStartTimer(workspace);
+    clearAutomaticClaimVerificationTimer(workspace);
+    for (const claim of state.claims.filter(item => item.status === 'pending')) {
+      claim.status = 'rejected';
+      claim.resolvedAt = nowIso();
+      claim.resolutionReason = 'simulation_finished_by_admin';
+      claim.adminNote = 'Simulación finalizada manualmente por el administrador.';
+      addClaimNotice(claim, 'rejected', `${claim.prizeLabel || prizeLabelFor(claim.type)} cancelado: la demostración fue finalizada.`);
+    }
+    state.claimWindow = null;
+    state.transition = null;
+    state.status = 'finished';
+    state.pauseReason = null;
+    state.endedAt = nowIso();
+    state.game.phase = 'ROUND_END';
+    logEvent('simulation_finished_by_admin', { round: state.round, balls: state.game.drawn.length });
+    archiveCurrentResults();
+    saveState();
+    broadcast();
+    return adminPayload();
+  }
+
   if (state.claims.some(claim => claim.status === 'pending')) throw new Error('Primero resolvé el reclamo pendiente.');
   if (state.game.drawn.length < state.game.mode) throw new Error(`Todavía faltan ${state.game.mode - state.game.drawn.length} bolillas. El sorteo finaliza al retirarlas todas.`);
   state.status = 'finished';
@@ -3705,19 +3733,21 @@ function createAdminPlayerViewSession(payload = {}) {
   const player = state.players.find(item => item.id === playerId);
   if (!player) throw new Error('No se encontró el jugador.');
   const token = randomId('playerview');
-  const readOnly = !player.virtual;
+  // La vista del administrador es SIEMPRE una simulación de solo lectura.
+  // No inicia sesión como jugador, no usa código y nunca toma control de una IA.
   playerViewSessions.set(token, {
     workspaceId: currentWorkspace().id,
     playerId: player.id,
-    readOnly,
+    readOnly: true,
     expiresAt: Date.now() + 60 * 60 * 1000
   });
   return {
     token,
     playerId: player.id,
     playerName: playerDisplayName(player),
-    readOnly,
-    url: `/jugador?session=${encodeURIComponent(token)}${player.virtual ? '&simcontrol=1' : '&preview=1'}`
+    readOnly: true,
+    virtual: Boolean(player.virtual),
+    url: `/admin-player-preview?previewSession=${encodeURIComponent(token)}`
   };
 }
 
@@ -4876,6 +4906,7 @@ function serveFile(res, filePath) {
     path.join(ROOT, 'admin.html'),
     path.join(ROOT, 'jugador.html'),
     path.join(ROOT, 'admin-principal.html'),
+    path.join(ROOT, 'admin-player-preview.html'),
     path.join(ROOT, 'transmision.html'),
     path.join(ROOT, 'reglamento.html'),
     path.join(ROOT, 'demo.html'),
@@ -5259,7 +5290,7 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/pause' && req.method === 'POST') return sendJson(res, 200, pauseRoom());
   if (url.pathname === '/api/admin/resume' && req.method === 'POST') return sendJson(res, 200, resumeRoom(await readJson(req)));
   if (url.pathname === '/api/admin/resolve-device-transfer' && req.method === 'POST') return sendJson(res, 200, resolveDeviceTransfer(await readJson(req)));
-  if (url.pathname === '/api/admin/finish' && req.method === 'POST') return sendJson(res, 200, finishRoom());
+  if (url.pathname === '/api/admin/finish' && req.method === 'POST') return sendJson(res, 200, finishRoom(await readJson(req)));
   if (url.pathname === '/api/admin/assignment-timer' && req.method === 'POST') return sendJson(res, 200, controlAssignmentTimer(await readJson(req)));
   if (url.pathname === '/api/admin/settings' && req.method === 'POST') return sendJson(res, 200, updateRoomSettings(await readJson(req)));
   if (url.pathname === '/api/admin/message' && req.method === 'POST') return sendJson(res, 200, updateAdminMessage(await readJson(req)));
@@ -5382,6 +5413,18 @@ async function handleApi(req, res, url) {
       const workspace = findWorkspaceByTransfer(payload.requestId, payload.deviceId);
       if (!workspace) throw new Error('No se encontró la solicitud.');
       return workspaceContext.run(workspace, () => sendJson(res, 200, deviceTransferStatus(payload)));
+    }
+    if (url.pathname === '/api/admin-player-preview/state' && req.method === 'GET') {
+      const token = String(url.searchParams.get('token') || '');
+      const view = playerViewSession(token);
+      const workspace = view ? workspaces.get(view.workspaceId) : null;
+      if (!workspace) return sendJson(res, 401, { error: 'Vista previa vencida. Volvé a abrirla desde Administrador.' });
+      return workspaceContext.run(workspace, () => {
+        currentWorkspace().lastActivityAt = Date.now();
+        const player = state.players.find(item => item.id === view.playerId);
+        if (!player) return sendJson(res, 404, { error: 'El jugador de la vista previa ya no existe.' });
+        return sendJson(res, 200, { ...playerPayload(player), adminPreview: true, adminPreviewVirtual: Boolean(player.virtual) });
+      });
     }
     if (url.pathname.startsWith('/api/player/')) {
       const token = playerTokenFrom(req, url);
@@ -5669,6 +5712,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/admin-principal' || url.pathname === '/admin-principal/') return serveFile(res, path.join(ROOT, 'admin-principal.html'));
   if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'admin.html'));
+  if (url.pathname === '/admin-player-preview' || url.pathname === '/admin-player-preview/') return serveFile(res, path.join(ROOT, 'admin-player-preview.html'));
   if (url.pathname === '/demo' || url.pathname === '/demo/') return serveFile(res, path.join(ROOT, 'demo.html'));
   if (url.pathname === '/comunidad' || url.pathname === '/comunidad/' || url.pathname === '/comunidad.html') return serveFile(res, path.join(ROOT, 'comunidad.html'));
   if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return sendJson(res, 404, { error: 'Los accesos temporales están deshabilitados.' });

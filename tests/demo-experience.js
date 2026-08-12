@@ -101,12 +101,14 @@ async function waitServer() {
     assert(playerJs.includes('window.__BINGO_DEMO_DIRECT_TOKEN__'), 'La DEMO debe usar el token temporal embebido por su ruta propia.');
     assert(playerJs.includes("target:'.choiceCounter'"));
     assert(playerJs.includes("'/api/player/demo/tutorial'"));
-    assert(playerJs.includes("params.get('simcontrol') === '1'"));
+    assert(playerJs.includes("params.get('adminpreview') === '1'"));
+    assert(playerJs.includes('/api/admin-player-preview/state?token='));
     assert(adminHtml.includes('id="simulationViewBtn"'));
-    assert(adminHtml.includes('id="simulationPlayerModal"'));
-    assert(adminJs.includes('openSimulationPlayerView()'));
+    assert(adminHtml.includes('VISTA PREVIA DEL JUGADOR'));
+    assert(!adminHtml.includes('id="simulationPlayerModal"'));
+    assert(adminJs.includes('openMobilePreview(true)'));
 
-    console.log('PRUEBA EXPERIENCIA DEMO Y VISTA JUGADOR IA: OK');
+    console.log('PRUEBA EXPERIENCIA DEMO Y VISTA PREVIA IA: OK');
   } catch (error) {
     console.error(error);
     process.exitCode = 1;

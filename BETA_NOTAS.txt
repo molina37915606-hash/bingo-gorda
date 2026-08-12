@@ -1,3 +1,11 @@
+BINGO DE LA GORDA BETA 4.2
+- Vista previa IA del Administrador completamente separada del login del jugador: no usa código, sesión de jugador ni control de IA.
+- Nueva pantalla /admin-player-preview de solo lectura, actualizada en vivo y con identificación visible BETA 4.2.
+- Chat de Transmisión alineado desde arriba y aprovechando toda la columna sin el vacío superior.
+- Las simulaciones IA pueden finalizarse en cualquier momento con FINALIZAR DEMO; se detienen bolillero, timers IA y reclamos pendientes.
+- La DEMO local también incorpora un botón explícito para finalizar durante el juego y limpiar timers.
+- Versionado visible y scripts críticos actualizados para evitar confundir una versión vieja con la nueva.
+
 BINGO DE LA GORDA BETA 3
 
 
@@ -44,3 +52,11 @@ Prioridad: accesos y herramientas de administración.
 - Vista previa móvil integrada al administrador.
 - Comunidad: chat fijo con scroll y selectores flotantes.
 Los nuevos minijuegos de Comunidad quedan planificados para una versión posterior.
+
+BETA 4.1
+- La vista IA del administrador pasa a ser una simulación de solo lectura: no inicia sesión, no pide código y no toma control del jugador virtual.
+- En simulaciones IA, la vista abre automáticamente mostrando la primera IA disponible.
+- La vista previa puede cambiar entre IA/jugadores y tamaños de dispositivo sin salir del panel Admin.
+- El chat de la transmisión usa toda la altura disponible: conserva más historial y elimina mensajes antiguos solo cuando ya no entran completos.
+- Los mensajes normales de transmisión dejan de cortarse artificialmente a dos líneas en pantallas grandes.
+

@@ -218,7 +218,9 @@ class PlayerApp {
 
     const params = new URLSearchParams(location.search);
     if (params.get('simcontrol') === '1') this.injectSimulationControlBadge();
+    if (params.get('preview') === '1') this.injectAdminPreviewBadge();
     const demoEntry = params.get('demo') === '1';
+    const directSession = String(params.get('session') || '').trim();
     const directCode = String(params.get('acceso') || params.get('codigo') || params.get('code') || '').trim().toUpperCase();
     const roomCode = String(params.get('sala') || '').trim().toUpperCase();
     this.openJoinMode = params.get('prueba') === '1' && Boolean(roomCode);
@@ -253,6 +255,16 @@ class PlayerApp {
       } else {
         await this.resume({ demoBoot:true });
       }
+    } else if (directSession) {
+      this.token = directSession;
+      this.tokenRoom = '';
+      const adminViewSession = params.get('simcontrol') === '1' || params.get('preview') === '1';
+      if (!adminViewSession) {
+        storage.setItem('bingoOnlineToken', this.token);
+        this.cleanDirectAccessUrl();
+      }
+      await this.resume();
+      this.connectEvents();
     } else if (directCode) {
       $('accessCode').value = directCode;
       await this.login(directCode, roomCode);
@@ -283,6 +295,17 @@ class PlayerApp {
     badge.className = 'simulationControlBadge';
     badge.innerHTML = `<span>🎮 VISTA JUGADOR IA</span><button type="button">VOLVER A ADMIN</button>`;
     badge.querySelector('button').onclick = () => { try { window.close(); } catch {} setTimeout(() => { if (!document.hidden) location.href = '/admin'; }, 120); };
+    document.body.appendChild(badge);
+  }
+
+  injectAdminPreviewBadge() {
+    if ($('adminPreviewBadge')) return;
+    const style = document.createElement('style');
+    style.textContent = `.adminPreviewBadge{position:fixed;left:8px;bottom:8px;z-index:118;padding:7px 10px;border-radius:12px;background:#151a2cdd;border:1px solid #6cc7ff88;box-shadow:0 8px 25px #0008;color:#fff;font-size:10px;font-weight:1000;backdrop-filter:blur(10px)}.adminPreviewMode button,.adminPreviewMode input,.adminPreviewMode select,.adminPreviewMode textarea{cursor:default}`;
+    document.head.appendChild(style);
+    document.body.classList.add('adminPreviewMode');
+    const badge = document.createElement('div');
+    badge.id='adminPreviewBadge';badge.className='adminPreviewBadge';badge.textContent='▯ VISTA PREVIA · SOLO LECTURA';
     document.body.appendChild(badge);
   }
 
@@ -809,7 +832,7 @@ class PlayerApp {
   cleanDirectAccessUrl() {
     const url = new URL(location.href);
     let changed = false;
-    ['acceso','codigo','code','demoSession'].forEach(key => { if (url.searchParams.has(key)) { url.searchParams.delete(key); changed = true; } });
+    ['acceso','codigo','code','demoSession','session'].forEach(key => { if (url.searchParams.has(key)) { url.searchParams.delete(key); changed = true; } });
     if (changed) history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
   }
 

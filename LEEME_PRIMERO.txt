@@ -1,3 +1,5 @@
+BINGO DE LA GORDA BETA 4
+
 BINGO DE LA GORDA BETA 3
 
 1. Ejecutá PROBAR_EN_ESTA_PC.bat o npm start.

@@ -1,3 +1,2 @@
-BINGO DE LA GORDA BETA 3
-Versión 4.2.0-beta.3
-DEMO móvil optimizada, chat táctil corregido y verificación SHA-256 discreta.
+BINGO DE LA GORDA BETA 4
+Versión técnica: 4.3.0-beta.4

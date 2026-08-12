@@ -253,3 +253,15 @@ RESILIENCIA, LEGIBILIDAD Y VERIFICACIÓN PÚBLICA · V2.1
 - Al reiniciar el servidor se recupera la partida persistida y se vuelve a programar el sorteo automático si correspondía.
 - Eliminadas referencias visibles a pagos confirmados: el juego administra jugadores/cartones y no gestiona cobros.
 - Agregadas pruebas automáticas de contingencia del administrador y recuperación tras reinicio.
+
+BINGO DE LA GORDA BETA 4
+- Los jugadores oficiales nuevos reciben códigos numéricos de 6 dígitos.
+- Se puede ingresar escribiendo solo el código, sin conocer previamente el código de sala.
+- El administrador puede copiar el enlace general de la sala con un mensaje listo para WhatsApp.
+- Cada jugador oficial tiene COPIAR CÓDIGO y LINK DIRECTO para entrar sin escribir el código.
+- Vista Jugador IA desde administrador usa una sesión temporal y ya no pide código.
+- Nueva Vista previa móvil en Administrador con celular chico, celular grande, tablet y rotación.
+- Los jugadores reales se previsualizan en modo solo lectura; las IA pueden controlarse desde la vista.
+- Chat de Comunidad con alto estable en PC: los mensajes hacen scroll interno y no agrandan la interfaz.
+- Emojis y stickers de Comunidad se abren como panel flotante y ya no desplazan el chat.
+- El selector de emojis se cierra al elegir y también al tocar fuera.

@@ -123,7 +123,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
     <p id="loginIntro" class="muted" style="line-height:1.45">Ingresá con tu código privado.</p>
     <div id="codeLoginFields">
       <label for="accessCode">CÓDIGO DEL JUGADOR</label>
-      <input id="accessCode" maxlength="7" autocomplete="off" inputmode="text" placeholder="ABC2345">
+      <input id="accessCode" maxlength="6" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" placeholder="483921">
     </div>
     <div id="openJoinFields" class="openJoinFields">
       <label>TU NOMBRE O APODO<input id="openJoinName" maxlength="20" autocomplete="nickname" placeholder="Ej.: Laura"></label>
@@ -264,5 +264,5 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
   },8000);
 })();
 </script>
-<script src="js/emoji-stickers.js?v=2.0.0"></script><script src="js/presenter-scripts.js?v=2.0.0"></script><script src="js/cast-sender.js?v=1.0.0"></script><script src="js/online-room-player.js?v=beta-3"></script>
+<script src="js/emoji-stickers.js?v=2.0.0"></script><script src="js/presenter-scripts.js?v=2.0.0"></script><script src="js/cast-sender.js?v=1.0.0"></script><script src="js/online-room-player.js?v=beta-4"></script>
 </body>

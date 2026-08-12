@@ -34,3 +34,13 @@ DEMO
 VALIDACIÓN
 - Nueva prueba beta2-player-experience.js cubre elección obligatoria, cambio Manual/Auto, recuperación de aciertos anteriores y reclamo manual.
 - Se mantienen las pruebas de DEMO, Comunidad, flujos online, reclamos, cierre, simulación de 60 IA, contingencia del administrador y recuperación tras reinicio.
+
+BETA 4
+Prioridad: accesos y herramientas de administración.
+- Código individual nuevo: 6 dígitos numéricos.
+- Enlace directo individual disponible desde la lista de jugadores.
+- Enlace de sala copiable con texto listo para compartir.
+- Vista Jugador IA sin código.
+- Vista previa móvil integrada al administrador.
+- Comunidad: chat fijo con scroll y selectores flotantes.
+Los nuevos minijuegos de Comunidad quedan planificados para una versión posterior.

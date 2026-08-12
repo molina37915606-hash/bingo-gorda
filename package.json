@@ -1,13 +1,13 @@
 {
   "name": "bingo-de-la-gorda-beta",
-  "version": "4.2.0-beta.3",
+  "version": "4.3.0-beta.4",
   "private": true,
-  "description": "BINGO DE LA GORDA BETA 3: DEMO optimizada para móvil, chat táctil corregido y verificación SHA-256 descargable.",
+  "description": "BINGO DE LA GORDA BETA 4: accesos numéricos, enlaces directos, vista móvil de administrador y chat de Comunidad estable.",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/demo-beta-standalone.js && node tests/beta3-demo-mobile-integrity.js && node tests/beta2-player-experience.js && node tests/player-tutorial-ui.js && node tests/player-rush-regressions.js && node tests/structure-audit.js && node tests/core-smoke.js && node tests/community-ui.js && node tests/online-flows.js && node tests/urgent-regressions.js && node tests/waiting-games-ui.js && node tests/animated-stickers.js && node tests/admin-simulation.js && node tests/claim-auto-resume.js && node tests/final-showcase.js && node tests/simulation-stress.js && node tests/admin-live-ui.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
+    "test": "node tests/beta4-access-admin-community.js && node tests/demo-beta-standalone.js && node tests/beta3-demo-mobile-integrity.js && node tests/beta2-player-experience.js && node tests/player-tutorial-ui.js && node tests/player-rush-regressions.js && node tests/structure-audit.js && node tests/core-smoke.js && node tests/community-ui.js && node tests/online-flows.js && node tests/urgent-regressions.js && node tests/waiting-games-ui.js && node tests/animated-stickers.js && node tests/admin-simulation.js && node tests/claim-auto-resume.js && node tests/final-showcase.js && node tests/simulation-stress.js && node tests/admin-live-ui.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
   }
 }

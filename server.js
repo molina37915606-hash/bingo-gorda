@@ -119,6 +119,11 @@ const randomCode = (length = 7) => {
   for (let i = 0; i < length; i++) value += alphabet[crypto.randomInt(0, alphabet.length)];
   return value;
 };
+const randomNumericCode = (length = 6) => {
+  let value = '';
+  for (let i = 0; i < length; i++) value += String(crypto.randomInt(i === 0 ? 1 : 0, 10));
+  return value;
+};
 const uniqueNumbers = values => [...new Set((values || []).map(Number).filter(Number.isFinite))];
 const cardNumbers = card => (card?.grid || []).flat().filter(value => typeof value === 'number');
 const PRESENTER_ID = 'vero';
@@ -421,7 +426,9 @@ function loadState(stateFile = OWNER_STATE_FILE) {
         autoMark: Boolean(player.autoMark),
         markingModeChosen: player.markingModeChosen === undefined ? Boolean(player.autoMark) : Boolean(player.markingModeChosen),
         notices: player.notices || [],
-        sessionDeviceId: String(player.sessionDeviceId || '')
+        sessionDeviceId: String(player.sessionDeviceId || ''),
+        code: String(player.code || '').trim().toUpperCase(),
+        directAccessToken: String(player.directAccessToken || randomId('direct'))
       };
     });
     return merged;
@@ -554,6 +561,7 @@ function savePlatform() {
 
 const workspaceContext = new AsyncLocalStorage();
 const workspaces = new Map();
+const playerViewSessions = new Map();
 
 function safeWorkspaceId(value) {
   return String(value || 'owner').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'owner';
@@ -776,8 +784,21 @@ function operatorPublic(operator) {
   };
 }
 
+function playerViewSession(token) {
+  const key = String(token || '');
+  if (!key) return null;
+  const session = playerViewSessions.get(key) || null;
+  if (!session) return null;
+  if (Number(session.expiresAt || 0) <= Date.now()) { playerViewSessions.delete(key); return null; }
+  return session;
+}
+
 function playerByToken(token) {
-  return state.players.find(player => player.sessionToken && player.sessionToken === token);
+  const direct = state.players.find(player => player.sessionToken && player.sessionToken === token);
+  if (direct) return direct;
+  const view = playerViewSession(token);
+  if (!view || view.workspaceId !== currentWorkspace().id) return null;
+  return state.players.find(player => player.id === view.playerId) || null;
 }
 
 function connectedPlayerIds() {
@@ -1369,6 +1390,7 @@ function adminPayload() {
       nameSet: Boolean(player.nameSet),
       slotLabel: player.slotLabel,
       code: player.code,
+      directJoinUrl: playerDirectUrl(player),
       allowedCardCount: player.allowedCardCount,
       cardIds: player.cardIds,
       selectionConfirmed: player.selectionConfirmed,
@@ -1646,6 +1668,7 @@ function emptyRoomPlayer({ name = '', cardIds = [], allowedCardCount = 1, code =
     slotLabel: normalizePlayerName(name) || `Acceso ${(state.players?.length || 0) + 1}`,
     personalPresenter: PRESENTER_ID,
     code: code || randomCode(7),
+    directAccessToken: randomId('direct'),
     allowedCardCount: Math.max(1, Math.min(4, Number(allowedCardCount) || 1)),
     cardIds: [...cardIds],
     selectionConfirmed: cardIds.length > 0,
@@ -1761,6 +1784,46 @@ function openJoinPlayer(payload = {}) {
   return { token: player.sessionToken, state: playerPayload(player), returning: false };
 }
 
+function normalizedPlayerAccessCode(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function playerCodeMatchesAcrossWorkspaces(code) {
+  const normalized = normalizedPlayerAccessCode(code);
+  if (!normalized) return [];
+  const matches = [];
+  for (const workspace of workspaces.values()) {
+    if (!workspace.state?.active) continue;
+    const player = (workspace.state.players || []).find(item => normalizedPlayerAccessCode(item.code) === normalized);
+    if (player) matches.push({ workspace, player });
+  }
+  return matches;
+}
+
+function freshNumericPlayerCode() {
+  let code = '';
+  let attempts = 0;
+  do {
+    code = randomNumericCode(6);
+    attempts++;
+  } while (playerCodeMatchesAcrossWorkspaces(code).length && attempts < 2000);
+  if (!code || playerCodeMatchesAcrossWorkspaces(code).length) throw new Error('No se pudo generar un código de acceso único. Probá nuevamente.');
+  return code;
+}
+
+function findWorkspaceByPlayerCode(code) {
+  const matches = playerCodeMatchesAcrossWorkspaces(code);
+  if (matches.length === 1) return matches[0].workspace;
+  if (matches.length > 1) throw new Error('Ese código aparece en más de una sala activa. Usá el enlace de la sala.');
+  return null;
+}
+
+function playerDirectUrl(player) {
+  if (!player?.code) return '';
+  const base = PUBLIC_URL || `http://localhost:${PORT}`;
+  return `${base}/jugador?acceso=${encodeURIComponent(player.code)}`;
+}
+
 function addOfficialPlayer(payload = {}) {
   if (!state.active || !state.game || state.roomSettings?.roomType !== 'official' || state.status !== 'waiting') throw new Error('La sala oficial no está disponible para agregar jugadores.');
   if (state.players.length >= MAX_PLAYERS) throw new Error(`La sala admite hasta ${MAX_PLAYERS} jugadores.`);
@@ -1769,13 +1832,13 @@ function addOfficialPlayer(payload = {}) {
   const activeCards = state.players.reduce((total, player) => total + (player.cardIds || []).length, 0);
   if (activeCards + cardCount > MAX_ACTIVE_CARDS) throw new Error(`La sala admite hasta ${MAX_ACTIVE_CARDS} cartones activos.`);
   const chosen = chooseDiverseCardsForPlayer(cardCount, state.game.mode);
-  let code; do { code = randomCode(7); } while (state.players.some(player => player.code === code));
+  const code = freshNumericPlayerCode();
   const player = emptyRoomPlayer({ name, cardIds: chosen.map(card => card.id), allowedCardCount: cardCount, code });
   player.slotNumber = state.players.length + 1; player.slotLabel = name; player.autoMark = true;
   state.players.push(player); syncAutoMarksForPlayer(player); enforceAutoMarkPolicy(); updateCardDisplayNames();
   logEvent('official_player_added', { playerId: player.id, playerName: name, cards: cardCount });
   saveState(); broadcast();
-  return { state: adminPayload(), player: { id: player.id, name, code: player.code, cardNumbers: chosen.map(card => card.number), cardCount } };
+  return { state: adminPayload(), player: { id: player.id, name, code: player.code, directJoinUrl: playerDirectUrl(player), roomJoinUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode)}`, cardNumbers: chosen.map(card => card.number), cardCount } };
 }
 
 function removeRoomPlayer(payload = {}) {
@@ -2432,7 +2495,7 @@ function configureRoom(payload) {
   const assignedCodes = new Set();
   const nextPlayerCode = () => {
     let code;
-    do { code = randomCode(7); } while (assignedCodes.has(code));
+    do { code = freshNumericPlayerCode(); } while (assignedCodes.has(code));
     assignedCodes.add(code);
     return code;
   };
@@ -2447,6 +2510,7 @@ function configureRoom(payload) {
       slotLabel: `Acceso ${index + 1}`,
       personalPresenter: PRESENTER_ID,
       code: nextPlayerCode(),
+      directAccessToken: randomId('direct'),
       allowedCardCount,
       cardIds,
       selectionConfirmed: cardIds.length > 0,
@@ -3633,6 +3697,28 @@ function loginPlayer(payload) {
   logEvent('player_login', { playerId: player.id, playerName: playerDisplayName(player) });
   saveState(); broadcast();
   return { token: player.sessionToken, state: playerPayload(player) };
+}
+
+
+function createAdminPlayerViewSession(payload = {}) {
+  const playerId = String(payload.playerId || '');
+  const player = state.players.find(item => item.id === playerId);
+  if (!player) throw new Error('No se encontró el jugador.');
+  const token = randomId('playerview');
+  const readOnly = !player.virtual;
+  playerViewSessions.set(token, {
+    workspaceId: currentWorkspace().id,
+    playerId: player.id,
+    readOnly,
+    expiresAt: Date.now() + 60 * 60 * 1000
+  });
+  return {
+    token,
+    playerId: player.id,
+    playerName: playerDisplayName(player),
+    readOnly,
+    url: `/jugador?session=${encodeURIComponent(token)}${player.virtual ? '&simcontrol=1' : '&preview=1'}`
+  };
 }
 
 
@@ -4875,6 +4961,8 @@ function publicDemoCreation(result) {
 function findWorkspaceByPlayerToken(token) {
   const normalized = String(token || '');
   if (!normalized) return null;
+  const view = playerViewSession(normalized);
+  if (view) return workspaces.get(view.workspaceId) || null;
   return [...workspaces.values()].find(workspace => workspace.state.players?.some(player => player.sessionToken === normalized)) || null;
 }
 
@@ -5151,6 +5239,7 @@ async function dispatchAdminApi(req, res, url, session) {
     return sendJson(res, 200, createAdminSimulationRoom(await readJson(req)));
   }
   if (url.pathname === '/api/admin/add-official-player' && req.method === 'POST') return sendJson(res, 200, addOfficialPlayer(await readJson(req)));
+  if (url.pathname === '/api/admin/player-view-session' && req.method === 'POST') return sendJson(res, 200, createAdminPlayerViewSession(await readJson(req)));
   if (url.pathname === '/api/admin/remove-player' && req.method === 'POST') return sendJson(res, 200, removeRoomPlayer(await readJson(req)));
   if (url.pathname === '/api/admin/join-open' && req.method === 'POST') return sendJson(res, 200, updateJoinOpen(await readJson(req)));
   if (url.pathname === '/api/admin/configure' && req.method === 'POST') {
@@ -5276,14 +5365,16 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/player/login' && req.method === 'POST') {
       if (!consumeRate(req, 'player-login', 180, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
       const payload = await readJson(req);
-      const workspace = findWorkspaceByRoomCode(payload.roomCode);
-      if (!workspace) throw new Error('No se encontró esa sala.');
+      const requestedRoom = String(payload.roomCode || '').trim();
+      const workspace = requestedRoom ? findWorkspaceByRoomCode(requestedRoom) : findWorkspaceByPlayerCode(payload.code);
+      if (!workspace) throw new Error(requestedRoom ? 'No se encontró esa sala.' : 'Código incorrecto. Revisalo con el administrador.');
       return workspaceContext.run(workspace, () => { const result = loginPlayer(payload); return sendJson(res, result.conflict ? 409 : 200, result); });
     }
     if (url.pathname === '/api/player/request-transfer' && req.method === 'POST') {
       const payload = await readJson(req);
-      const workspace = findWorkspaceByRoomCode(payload.roomCode);
-      if (!workspace) throw new Error('No se encontró esa sala.');
+      const requestedRoom = String(payload.roomCode || '').trim();
+      const workspace = requestedRoom ? findWorkspaceByRoomCode(requestedRoom) : findWorkspaceByPlayerCode(payload.code);
+      if (!workspace) throw new Error(requestedRoom ? 'No se encontró esa sala.' : 'No se encontró ese código.');
       return workspaceContext.run(workspace, () => sendJson(res, 200, requestDeviceTransfer(payload)));
     }
     if (url.pathname === '/api/player/transfer-status' && req.method === 'POST') {
@@ -5300,7 +5391,10 @@ async function handleApi(req, res, url) {
         currentWorkspace().lastActivityAt = Date.now();
         const player = playerByToken(token);
         if (!player) return sendJson(res, 401, { error: 'La sesión no es válida.' });
-        if (url.pathname === '/api/player/state' && req.method === 'GET') return sendJson(res, 200, playerPayload(player));
+        const viewSession = playerViewSession(token);
+        const readOnlyPreview = Boolean(viewSession?.readOnly);
+        if (url.pathname === '/api/player/state' && req.method === 'GET') return sendJson(res, 200, { ...playerPayload(player), adminPreview: readOnlyPreview });
+        if (readOnlyPreview) return sendJson(res, 403, { error: 'Vista previa del administrador: modo solo lectura.' });
         if (url.pathname === '/api/player/reserve' && req.method === 'POST') return sendJson(res, 200, reserveCard(player, await readJson(req)));
         if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
         if (url.pathname === '/api/player/name' && req.method === 'POST') return sendJson(res, 200, setPlayerName(player, await readJson(req)));
@@ -5438,7 +5532,7 @@ function handleEvents(req, res, url) {
     workspace = workspaces.get(session.workspaceId) || null;
   } else if (role === 'player') {
     workspace = findWorkspaceByPlayerToken(token);
-    if (workspace) player = workspace.state.players.find(item => item.sessionToken === token) || null;
+    if (workspace) player = workspaceContext.run(workspace, () => playerByToken(token));
     if (!player) return sendJson(res, 401, { error: 'Sesión inválida.' });
   } else if (role === 'broadcast') {
     workspace = findWorkspaceByBroadcastToken(url.searchParams.get('broadcastToken'));

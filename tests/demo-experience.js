@@ -78,6 +78,8 @@ async function waitServer() {
     assert.equal(choose.response.status, 200, JSON.stringify(choose.data));
     assert.equal(choose.data.player.selectionConfirmed, true);
     assert.equal(choose.data.player.cards.length, 2);
+    const modeChoice = await json('/api/player/automark', { method:'POST', headers:playerHeaders, body:JSON.stringify({ enabled:false }) });
+    assert.equal(modeChoice.response.status, 200, JSON.stringify(modeChoice.data));
 
     const tutorialDone = await json('/api/player/demo/tutorial', { method: 'POST', headers: playerHeaders, body: JSON.stringify({ skipped:false }) });
     assert.equal(tutorialDone.response.status, 200, JSON.stringify(tutorialDone.data));

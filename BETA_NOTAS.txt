@@ -1,20 +1,28 @@
-BINGO DE LA GORDA BETA
+BINGO DE LA GORDA BETA 2
 
-Esta versión inaugura una nueva base para la DEMO.
+Objetivo de esta versión:
+- Que DEMO y juego real enseñen y usen el mismo criterio de juego.
+- Hacer explícita la elección Manual / Automarcado.
+- Mantener los reclamos de premios siempre manuales y muy visibles.
 
-IMPORTANTE:
-- La DEMO de /demo es independiente de las partidas reales.
-- No existe código privado ni administrador dentro de la DEMO.
-- No existe un estado de sala "ESPERANDO" que pueda bloquear el inicio.
-- La DEMO corre en el navegador: cada dispositivo que abre el mismo enlace obtiene su propia partida.
-- Las partidas normales continúan usando el servidor y mantienen sus funciones anteriores.
+NOVEDADES PRINCIPALES
+1. Antes de la primera bolilla cada jugador debe elegir MANUAL o AUTOMARCADO.
+2. El modo puede cambiarse durante toda la partida desde un control visible junto al cartón.
+3. Al activar Automarcado se recuperan inmediatamente todos los aciertos oficiales anteriores.
+4. Al volver a Manual se conservan las marcas existentes y las nuevas quedan a cargo del jugador.
+5. Si en Manual quedan 5 o más aciertos oficiales sin marcar y pasan 5 bolillas adicionales manteniendo ese atraso, se ofrece activar Automarcado. Si baja a 4 o menos, la alerta se cancela y el conteo se reinicia.
+6. Automarcado nunca reclama premios. Línea, Bingo y cualquier otro premio habilitado deben reclamarse manualmente.
+7. Cuando un cartón queda listo para reclamar, DEMO y juego real cambian al cartón correspondiente y resaltan fuertemente el botón del premio.
+8. En DEMO, la primera Línea y el primer Bingo muestran un globo contextual apuntando al botón de reclamo y recordando que gana el primer reclamo válido.
+9. DEMO incorpora el mismo sistema de emojis y stickers del chat real.
+10. El administrador ve si cada jugador eligió MANUAL, AUTO o todavía está PENDIENTE. La partida real no puede empezar mientras falte una elección.
 
-Flujo DEMO:
-1. Elegir modalidad y premios.
-2. Entrar a sala de espera local.
-3. Escribir nombre.
-4. Elegir/recargar cartones.
-5. Confirmar.
-6. Completar o saltar tutorial.
-7. Cuenta de 5 segundos.
-8. Jugar contra IA.
+DEMO
+- Sigue siendo independiente y local al navegador.
+- No usa código privado, administrador ni estado ESPERANDO del servidor.
+- Flujo: configuración → nombre/cartones → elección Manual/Auto → tutorial → cuenta → juego contra IA → final.
+- El tutorial sigue disponible con ?, pero Manual/Auto y los reclamos se entienden también sin tutorial.
+
+VALIDACIÓN
+- Nueva prueba beta2-player-experience.js cubre elección obligatoria, cambio Manual/Auto, recuperación de aciertos anteriores y reclamo manual.
+- Se mantienen las pruebas de DEMO, Comunidad, flujos online, reclamos, cierre, simulación de 60 IA, contingencia del administrador y recuperación tras reinicio.

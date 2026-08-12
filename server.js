@@ -419,6 +419,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
         reservedCardIds: Array.isArray(player.reservedCardIds) ? player.reservedCardIds.map(String) : [],
         marks: player.marks || {},
         autoMark: Boolean(player.autoMark),
+        markingModeChosen: player.markingModeChosen === undefined ? Boolean(player.autoMark) : Boolean(player.markingModeChosen),
         notices: player.notices || [],
         sessionDeviceId: String(player.sessionDeviceId || '')
       };
@@ -878,7 +879,7 @@ function updateCardDisplayNames() {
 
 function allPlayersReady() {
   return state.players.length > 0 && state.players.every(player =>
-    player.nameSet && player.selectionConfirmed &&
+    player.nameSet && player.selectionConfirmed && Boolean(player.markingModeChosen) &&
     player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount
   );
 }
@@ -889,11 +890,13 @@ function preflightPayload() {
   const ids = assigned.map(item => item.cardId);
   const duplicates = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
   const pendingPlayers = state.players.filter(player => !(player.nameSet && player.selectionConfirmed && player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount));
+  const pendingMarkingMode = state.players.filter(player => player.selectionConfirmed && !player.markingModeChosen);
   const activeCards = ids.length;
   const availableCards = Math.max(0, (state.game?.cards?.length || 0) - new Set(ids).size);
   const errors = [];
   if (!state.players.length) errors.push('No hay jugadores configurados.');
   if (pendingPlayers.length) errors.push(`${pendingPlayers.length} jugador${pendingPlayers.length === 1 ? '' : 'es'} todavía no confirmó${pendingPlayers.length === 1 ? '' : 'aron'} sus cartones.`);
+  if (pendingMarkingMode.length) errors.push(`${pendingMarkingMode.length} jugador${pendingMarkingMode.length === 1 ? '' : 'es'} todavía no eligió${pendingMarkingMode.length === 1 ? '' : 'ieron'} Manual o Automarcado.`);
   if (duplicates.length) errors.push(`Hay ${duplicates.length} cartón${duplicates.length === 1 ? '' : 'es'} duplicado${duplicates.length === 1 ? '' : 's'}.`);
   if (activeCards > MAX_ACTIVE_CARDS) errors.push(`Hay ${activeCards} cartones activos y el máximo es ${MAX_ACTIVE_CARDS}.`);
   const enabledPrizes = PRIZE_TYPES.filter(type => isPrizeEnabled(type)).map(type => prizeLabelFor(type, 1, state.game?.mode));
@@ -902,6 +905,7 @@ function preflightPayload() {
     totalPlayers: state.players.length,
     readyPlayers: state.players.length - pendingPlayers.length,
     pendingPlayers: pendingPlayers.map(player => ({ id: player.id, name: playerDisplayName(player), missing: Math.max(0, player.allowedCardCount - player.cardIds.length) })),
+    pendingMarkingMode: pendingMarkingMode.map(player => ({ id: player.id, name: playerDisplayName(player) })),
     generatedCards: state.game?.cards?.length || 0,
     activeCards,
     availableCards,
@@ -1311,6 +1315,7 @@ function adminPayload() {
         playerCode: player.code,
         connected: connected.has(player.id),
         autoMark: Boolean(player.autoMark),
+        markingModeChosen: Boolean(player.markingModeChosen),
         cardId,
         cardNumber: card.number,
         cardName: card.name,
@@ -1370,6 +1375,7 @@ function adminPayload() {
       offeredCardIds: player.offeredCardIds,
       reservedCardIds: player.reservedCardIds || [],
       autoMark: Boolean(player.autoMark),
+      markingModeChosen: Boolean(player.markingModeChosen),
       virtual: Boolean(player.virtual),
       connected: connected.has(player.id),
       transferPending: (state.deviceTransferRequests || []).some(request => request.playerId === player.id && request.status === 'pending')
@@ -1449,7 +1455,8 @@ function playerPayload(player) {
       cards,
       marks: player.marks || {},
       autoMark: Boolean(player.autoMark),
-      autoMarkForced: autoMarkRequired(),
+      markingModeChosen: Boolean(player.markingModeChosen),
+      autoMarkForced: false,
       demoHuman: Boolean(player.demoHuman),
       notices: (player.notices || []).slice(-10)
     }
@@ -1647,7 +1654,8 @@ function emptyRoomPlayer({ name = '', cardIds = [], allowedCardCount = 1, code =
     sessionDeviceId: openJoin ? String(deviceId || '') : '',
     openJoinDeviceId: openJoin ? String(deviceId || '') : '',
     marks: Object.fromEntries(cardIds.map(cardId => [cardId, []])),
-    autoMark: true,
+    autoMark: false,
+    markingModeChosen: false,
     notices: [],
     codeStatus: openJoin ? 'link' : 'generated'
   };
@@ -1965,6 +1973,7 @@ function createDemoRoom(payload = {}) {
     human.virtual = false;
     human.demoHuman = true;
     human.autoMark = false;
+    human.markingModeChosen = false;
     human.selectionConfirmed = false;
     human.cardIds = [];
     human.marks = {};
@@ -1978,6 +1987,7 @@ function createDemoRoom(payload = {}) {
       player.nameSet = true;
       player.virtual = true;
       player.autoMark = true;
+      player.markingModeChosen = true;
       player.selectionConfirmed = true;
     });
     state.roomSettings.simulatedChat = true;
@@ -2084,6 +2094,7 @@ function createAdminSimulationRoom(payload = {}) {
     player.slotLabel = `IA ${String(index + 1).padStart(2, '0')}`;
     player.virtual = true;
     player.autoMark = true;
+    player.markingModeChosen = true;
     player.selectionConfirmed = true;
     player.sessionToken = null;
     player.sessionDeviceId = '';
@@ -2301,30 +2312,25 @@ function activeCardCount() {
 }
 
 function autoMarkRequired() {
-  return activePlayerCount() > MANUAL_MARK_MAX_PLAYERS || activeCardCount() > MANUAL_MARK_MAX_CARDS;
+  // BETA 2: Manual y Automarcado son siempre una elección del jugador.
+  // Conservamos los límites históricos solo como métricas de compatibilidad.
+  return false;
 }
 
 function markingPolicyPayload() {
-  const required = autoMarkRequired();
   return {
-    automaticRequired: required,
-    manualAllowed: !required,
+    automaticRequired: false,
+    manualAllowed: true,
     playerLimit: MANUAL_MARK_MAX_PLAYERS,
     cardLimit: MANUAL_MARK_MAX_CARDS,
     activePlayers: activePlayerCount(),
     activeCards: activeCardCount(),
-    reason: required ? `Automarcado obligatorio: hay más de ${MANUAL_MARK_MAX_PLAYERS} jugadores o más de ${MANUAL_MARK_MAX_CARDS} cartones activos.` : 'El jugador puede elegir marcado manual o automático.'
+    reason: 'Elegí Manual o Automarcado antes de la primera bolilla. Podés cambiar durante la partida.'
   };
 }
 
 function enforceAutoMarkPolicy() {
-  if (!autoMarkRequired()) return false;
-  let changed = false;
-  for (const player of state.players) {
-    if (!player.autoMark) { player.autoMark = true; changed = true; }
-    syncAutoMarksForPlayer(player);
-  }
-  return changed;
+  return false;
 }
 
 function createSecureDrawOrder(mode, drawn = []) {
@@ -2450,6 +2456,7 @@ function configureRoom(payload) {
       sessionDeviceId: '',
       marks: Object.fromEntries(cardIds.map(cardId => [cardId, []])),
       autoMark: false,
+      markingModeChosen: false,
       notices: []
     };
   });
@@ -3156,6 +3163,7 @@ function startRoom(payload = {}) {
   if (hasPendingSelections) autoAssignPendingPlayers('game_start');
   const preflight = preflightPayload();
   const forcedSimulationStart = Boolean(state.roomSettings?.adminSimulation && payload?.force === true);
+  if (forcedSimulationStart) { for (const player of state.players) { if (!player.markingModeChosen) { player.markingModeChosen = true; player.autoMark = true; syncAutoMarksForPlayer(player); } } }
   if (!preflight.ok && !forcedSimulationStart) throw new Error(preflight.errors[0] || 'La sala todavía no está lista para iniciar.');
   if (state.game.drawn.length) throw new Error('La ronda ya contiene bolillas. Reiniciala antes de empezar.');
   enforceAutoMarkPolicy();
@@ -3414,6 +3422,8 @@ function releasePlayerSelection(payload) {
   releaseReservationsForPlayer(player);
   player.cardIds = [];
   player.selectionConfirmed = false;
+  player.markingModeChosen = false;
+  player.autoMark = false;
   player.marks = {};
   player.offeredCardIds = [];
   player.reservedCardIds = [];
@@ -3453,6 +3463,8 @@ function assignCardsToPlayer(payload) {
   releaseReservationsForPlayer(player);
   player.cardIds = chosen;
   player.selectionConfirmed = true;
+  player.markingModeChosen = false;
+  player.autoMark = false;
   player.offeredCardIds = [];
   player.reservedCardIds = [];
   player.marks = Object.fromEntries(chosen.map(cardId => [cardId, []]));
@@ -3547,6 +3559,7 @@ function restoreBackup(payload) {
       sessionDeviceId: '',
       marks,
       autoMark: Boolean(rawPlayer.autoMark),
+      markingModeChosen: rawPlayer.markingModeChosen === undefined ? Boolean(rawPlayer.autoMark) : Boolean(rawPlayer.markingModeChosen),
       notices: Array.isArray(rawPlayer.notices) ? rawPlayer.notices.slice(-20) : []
     };
   });
@@ -3835,6 +3848,8 @@ function releaseOwnSelection(player) {
   releaseReservationsForPlayer(player);
   player.cardIds = [];
   player.selectionConfirmed = false;
+  player.markingModeChosen = false;
+  player.autoMark = false;
   player.marks = {};
   player.offeredCardIds = [];
   player.reservedCardIds = [];
@@ -3849,7 +3864,6 @@ function releaseOwnSelection(player) {
 function markNumber(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
   if (state.status !== 'playing') throw new Error('La partida todavía no comenzó.');
-  if (autoMarkRequired()) throw new Error(markingPolicyPayload().reason);
   if (player.autoMark) throw new Error('El marcado automático está activado. Desactivalo para marcar manualmente.');
   const cardId = String(payload.cardId || '');
   const card = state.game.cards.find(item => item.id === cardId);
@@ -3868,10 +3882,10 @@ function markNumber(player, payload) {
 
 function setAutoMark(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
-  if (autoMarkRequired() && payload.enabled === false) throw new Error(markingPolicyPayload().reason);
-  player.autoMark = autoMarkRequired() ? true : Boolean(payload.enabled);
+  player.autoMark = Boolean(payload.enabled);
+  player.markingModeChosen = true;
   if (player.autoMark) syncAutoMarksForPlayer(player);
-  logEvent('player_automark_changed', { playerId: player.id, playerName: playerDisplayName(player), enabled: player.autoMark, forced: autoMarkRequired() });
+  logEvent('player_marking_mode_changed', { playerId: player.id, playerName: playerDisplayName(player), mode: player.autoMark ? 'automatic' : 'manual' });
   saveState();
   broadcast();
   return playerPayload(player);

@@ -14,9 +14,10 @@ const PRIZE_LABELS = { ambo:'Ambocabeza', line:'Línea', doubleLine:'Doble líne
 const state = {
   phase:'config', mode:90, rules:{ambo:true,line:true,doubleLine:false,tripleLine:false,corners:false,bingo:true}, linePrizeCount:2,
   allowedCards:2, aiCount:2, speed:3, playerName:'', offers:[], selectedIds:[], cards:[], aiPlayers:[], activeCard:0,
-  drawn:[], drawOrder:[], playing:false, finished:false, autoMark:false, marks:{}, sound:true, voice:true,
+  drawn:[], drawOrder:[], playing:false, finished:false, autoMark:false, markingModeChosen:false, marks:{}, sound:true, voice:true,
   prizeSlots:[], winners:[], pendingAi:new Map(), drawTimer:null, chatTimer:null, wakeLock:null,
-  tutorial:{active:false,stage:null,index:0,skipped:false}, drawerTab:'drawn', chat:[], lastClaimAt:0
+  tutorial:{active:false,stage:null,index:0,skipped:false}, drawerTab:'drawn', chat:[], lastClaimAt:0,
+  manualLag:{startDrawCount:null,prompted:false}, prizeCoachSeen:new Set(), prizeCoachTimer:null
 };
 window.__BINGO_DEMO_BETA__ = state;
 
@@ -102,8 +103,9 @@ function saveName(){ const name=$('playerName').value.trim().replace(/\s+/g,' ')
 function confirmCards(){
   if(!saveName()) return; if(!state.selectedIds.length){ toast('Elegí al menos un cartón.','error'); return; }
   state.cards=state.selectedIds.map(id=>state.offers.find(c=>c.id===id)).filter(Boolean); state.cards.forEach(card=>state.marks[card.id]=new Set());
-  setupAiPlayers(); state.activeCard=0; state.phase='tutorial'; $('waitingView').classList.add('hidden'); $('gameView').classList.remove('hidden'); $('chatToggleBtn').classList.remove('hidden'); $('phaseLabel').textContent='DEMO · APRENDIENDO A JUGAR';
-  renderGame(); addChat('Zoe','Ya estamos 😄','ai'); addChat('Mateo','Suerte 🍀','ai'); startTutorial('game',0);
+  setupAiPlayers(); state.activeCard=0; state.phase='mode-choice'; state.markingModeChosen=false; state.autoMark=false; state.manualLag={startDrawCount:null,prompted:false}; state.prizeCoachSeen=new Set();
+  $('waitingView').classList.add('hidden'); $('gameView').classList.remove('hidden'); $('chatToggleBtn').classList.remove('hidden'); $('phaseLabel').textContent='DEMO · ELEGÍ CÓMO MARCAR';
+  renderGame(); addChat('Zoe','Ya estamos 😄','ai'); addChat('Mateo','Suerte 🍀','ai'); $('modeChoiceOverlay').classList.remove('hidden');
 }
 function setupAiPlayers(){
   const names=shuffle(AI_NAMES).slice(0,state.aiCount); state.aiPlayers=names.map((name,i)=>({id:uid('ai'),name,cards:generateUniqueCards(2,100+i*10)}));
@@ -117,27 +119,39 @@ function renderTicket(){
   }).join('');
   qa('#ticketTarget [data-number]').forEach(btn=>btn.onclick=()=>toggleMark(Number(btn.dataset.number)));
 }
-function renderTabs(){ $('ticketTabs').innerHTML=state.cards.map((card,i)=>`<button type="button" class="ticketTab ${i===state.activeCard?'active':''}" data-tab="${i}">Cartón ${card.number}</button>`).join(''); qa('[data-tab]').forEach(btn=>btn.onclick=()=>{state.activeCard=Number(btn.dataset.tab);renderTabs();renderTicket();renderClaims();}); }
+function cardHasOpenPrize(card){ return state.prizeSlots.some(slot=>!slot.closed&&slotEligible(card,slot)); }
+function renderTabs(){ $('ticketTabs').innerHTML=state.cards.map((card,i)=>`<button type="button" class="ticketTab ${i===state.activeCard?'active':''} ${cardHasOpenPrize(card)?'prizeCard':''}" data-tab="${i}">Cartón ${card.number}${cardHasOpenPrize(card)?' · PREMIO':''}</button>`).join(''); qa('[data-tab]').forEach(btn=>btn.onclick=()=>{state.activeCard=Number(btn.dataset.tab);renderTabs();renderTicket();renderClaims();}); }
 function renderBall(){
   const last=state.drawn.at(-1); $('lastBall').textContent=last??'—'; $('lastBall').classList.toggle('empty',!last); $('recentBalls').innerHTML=state.drawn.slice(-7).reverse().map(n=>`<span class="recentBall">${n}</span>`).join('');
 }
 function renderClaims(){
   const card=currentCard(); const openTypes=[...new Set(state.prizeSlots.filter(slot=>!slot.closed).map(slot=>slot.type))];
-  $('claimButtons').innerHTML=openTypes.map(type=>{ const slot=nextOpenSlot(type); const valid=slotEligible(card,slot); const label=type==='line'?'LÍNEA':PRIZE_LABELS[type].toUpperCase(); return `<button type="button" class="claimBtn ${type==='bingo'?'bingo':''} ${valid?'ready':''}" data-claim="${type}" ${state.playing?'':'disabled'}>${esc(label)}</button>`; }).join('') || '<span class="helper">Todos los premios ya fueron adjudicados.</span>';
+  $('claimButtons').innerHTML=openTypes.map(type=>{ const slot=nextOpenSlot(type); const valid=slotEligible(card,slot); const label=type==='line'?'LÍNEA':PRIZE_LABELS[type].toUpperCase(); const text=valid?`¡TENÉS ${label}! RECLAMAR`:label; return `<button type="button" class="claimBtn ${type==='bingo'?'bingo':''} ${valid?'ready':''}" data-claim="${type}" ${state.playing?'':'disabled'}>${esc(text)}</button>`; }).join('') || '<span class="helper">Todos los premios ya fueron adjudicados.</span>';
   qa('[data-claim]').forEach(btn=>btn.onclick=()=>claimPrize(btn.dataset.claim));
+  const anyReady=Boolean(card&&state.prizeSlots.some(slot=>!slot.closed&&slotEligible(card,slot))); $('prizeBanner')?.classList.toggle('show',anyReady&&state.playing);
 }
 function renderProgress(){
   $('progressBody').innerHTML=`<div class="progressRow"><span>Bolillas</span><b>${state.drawn.length}/${state.mode}</b></div>`+state.prizeSlots.map(slot=>`<div class="progressRow"><span>${esc(slot.label)}</span><b>${slot.closed?`✓ ${esc(slot.winner?.name||'')}`:'Pendiente'}</b></div>`).join('');
 }
-function renderGame(){ renderTabs(); renderTicket(); renderBall(); renderClaims(); renderProgress(); $('autoBtn').textContent=`AUTO ${state.autoMark?'ON':'OFF'}`; $('autoBtn').classList.toggle('on',state.autoMark); renderDrawer(); renderChat(); }
-function toggleMark(number){ const card=currentCard(); if(!card) return; const marks=state.marks[card.id]||(state.marks[card.id]=new Set()); if(marks.has(number)) marks.delete(number); else marks.add(number); renderTicket(); }
-function toggleAuto(){
-  state.autoMark=!state.autoMark; let recovered=0; if(state.autoMark){ const drawn=new Set(state.drawn); for(const card of state.cards){ const marks=state.marks[card.id]||(state.marks[card.id]=new Set()); for(const n of cardNumbers(card)) if(drawn.has(n)&&!marks.has(n)){marks.add(n);recovered++;} } }
-  $('autoBtn').textContent=`AUTO ${state.autoMark?'ON':'OFF'}`; $('autoBtn').classList.toggle('on',state.autoMark); renderTicket(); toast(state.autoMark?`Automarcado activado${recovered?` · ${recovered} números recuperados`:''}`:'Automarcado desactivado','success');
+function renderGame(){ renderTabs(); renderTicket(); renderBall(); renderClaims(); renderProgress(); updateModeSwitch(); renderDrawer(); renderChat(); }
+function toggleMark(number){ if(state.autoMark) return toast('Estás en Automarcado. Cambiá a Manual para tocar números.'); const card=currentCard(); if(!card) return; const marks=state.marks[card.id]||(state.marks[card.id]=new Set()); if(marks.has(number)) marks.delete(number); else marks.add(number); renderTicket(); checkManualLag(); }
+function countRecoverable(){ const drawn=new Set(state.drawn); let total=0; for(const card of state.cards){ const marks=state.marks[card.id]||(state.marks[card.id]=new Set()); for(const n of cardNumbers(card)) if(drawn.has(n)&&!marks.has(n)) total++; } return total; }
+function updateModeSwitch(){ $('manualBtn')?.classList.toggle('active',state.markingModeChosen&&!state.autoMark); $('autoBtn')?.classList.toggle('active',state.markingModeChosen&&state.autoMark); $('autoBtn')?.classList.toggle('auto',state.autoMark); }
+function setMarkingMode(automatic,{initial=false,assist=false}={}){
+  const desired=Boolean(automatic); const recovered=desired?countRecoverable():0; state.autoMark=desired; state.markingModeChosen=true;
+  if(desired){ const drawn=new Set(state.drawn); for(const card of state.cards){ const marks=state.marks[card.id]||(state.marks[card.id]=new Set()); for(const n of cardNumbers(card)) if(drawn.has(n)) marks.add(n); } }
+  state.manualLag={startDrawCount:null,prompted:false}; updateModeSwitch(); renderTicket();
+  if(!initial) toast(desired?`Automarcado activado${recovered?` · ${recovered} números recuperados`:''}`:'Modo Manual activado','success');
+  if(assist) $('autoAssistOverlay').classList.add('hidden');
 }
+function chooseInitialMode(automatic){ setMarkingMode(automatic,{initial:true}); $('modeChoiceOverlay').classList.add('hidden'); state.phase='tutorial'; $('phaseLabel').textContent='DEMO · APRENDIENDO A JUGAR'; startTutorial('game',0); }
+function toggleAuto(){ if(!state.markingModeChosen) return $('modeChoiceOverlay').classList.remove('hidden'); setMarkingMode(!state.autoMark); }
+function setManual(){ if(!state.markingModeChosen) return chooseInitialMode(false); if(state.autoMark) setMarkingMode(false); }
+
 function applyAutoMark(number){ if(!state.autoMark) return; for(const card of state.cards){ if(cardNumbers(card).includes(number)) (state.marks[card.id]||(state.marks[card.id]=new Set())).add(number); } }
 
 function claimPrize(type){
+  hidePrizeCoach();
   if(!state.playing||state.finished) return; const now=Date.now(); if(now-state.lastClaimAt<450) return; state.lastClaimAt=now;
   const slot=nextOpenSlot(type); if(!slot){ toast('Ese premio ya fue adjudicado.','error'); return; }
   const card=currentCard(); if(!card||!slotEligible(card,slot)){ toast('Reclamo enviado · todavía no es válido.','error'); return; }
@@ -163,20 +177,44 @@ function startCountdown(){
   const timer=setInterval(()=>{ n--; if(n<=0){ clearInterval(timer); $('countdownOverlay').classList.add('hidden'); startGame(); } else $('countdownNumber').textContent=n; },700);
 }
 function startGame(){
-  state.phase='playing'; state.playing=true; state.finished=false; state.drawOrder=shuffle(Array.from({length:state.mode},(_,i)=>i+1)); $('phaseLabel').textContent='DEMO · JUGANDO'; $('gameStatusTitle').textContent='Partida en juego'; $('gameStatusText').textContent='Revisá tus cartones y reclamá rápido.'; document.body.classList.add('focusMode'); renderClaims(); acquireWakeLock(); scheduleChat(); drawNext(); state.drawTimer=setInterval(drawNext,state.speed*1000);
+  if(!state.markingModeChosen){ $('countdownOverlay').classList.add('hidden'); $('modeChoiceOverlay').classList.remove('hidden'); return; }
+  state.phase='playing'; state.playing=true; state.finished=false; state.marks=Object.fromEntries(state.cards.map(card=>[card.id,new Set()])); state.manualLag={startDrawCount:null,prompted:false}; state.drawOrder=shuffle(Array.from({length:state.mode},(_,i)=>i+1)); $('phaseLabel').textContent='DEMO · JUGANDO'; $('gameStatusTitle').textContent='Partida en juego'; $('gameStatusText').textContent='Revisá tus cartones y reclamá rápido.'; document.body.classList.add('focusMode'); renderClaims(); acquireWakeLock(); scheduleChat(); drawNext(); state.drawTimer=setInterval(drawNext,state.speed*1000);
 }
 function drawNext(){
-  if(!state.playing||state.finished) return; const next=state.drawOrder[state.drawn.length]; if(!next){ finishGame(); return; } state.drawn.push(next); applyAutoMark(next); renderBall(); renderTicket(); renderClaims(); renderProgress(); renderDrawer(); beep(420,0.045); speak(`Número ${next}`); scheduleAiClaims();
+  if(!state.playing||state.finished) return; const next=state.drawOrder[state.drawn.length]; if(!next){ finishGame(); return; } state.drawn.push(next); applyAutoMark(next);
+  const ready=focusReadyPrize(); renderBall(); renderTabs(); renderTicket(); renderClaims(); renderProgress(); renderDrawer(); checkManualLag(); if(ready) maybeShowPrizeCoach(ready.type,ready.card); beep(420,0.045); speak(`Número ${next}`); scheduleAiClaims();
 }
+function focusReadyPrize(){
+  const order=['bingo','tripleLine','doubleLine','corners','line','ambo'];
+  for(const type of order){ const slot=nextOpenSlot(type); if(!slot) continue; const idx=state.cards.findIndex(card=>slotEligible(card,slot)); if(idx>=0){ const changed=idx!==state.activeCard; state.activeCard=idx; if(changed){ const panel=$('ticketPanel'); panel?.classList.remove('prizeFocus'); void panel?.offsetWidth; panel?.classList.add('prizeFocus'); toast(`Cartón ${state.cards[idx].number}: tenés ${type==='line'?'Línea':PRIZE_LABELS[type]}. ¡Reclamá!`,'success'); } return {type,card:state.cards[idx]}; } }
+  return null;
+}
+function pendingManualHits(){ if(state.autoMark) return 0; const drawn=new Set(state.drawn); let total=0; for(const card of state.cards){ const marks=state.marks[card.id]||new Set(); for(const n of cardNumbers(card)) if(drawn.has(n)&&!marks.has(n)) total++; } return total; }
+function checkManualLag(){
+  if(!state.playing||state.autoMark){state.manualLag={startDrawCount:null,prompted:false};return;} const pending=pendingManualHits();
+  if(pending<=4){state.manualLag={startDrawCount:null,prompted:false};$('autoAssistOverlay').classList.add('hidden');return;}
+  if(state.manualLag.startDrawCount==null) state.manualLag.startDrawCount=state.drawn.length;
+  if(!state.manualLag.prompted&&state.drawn.length-state.manualLag.startDrawCount>=5){state.manualLag.prompted=true;$('autoAssistText').textContent=`Tenés ${pending} aciertos sin marcar desde hace varias bolillas. AUTO puede ponerte al día ahora.`;$('autoAssistOverlay').classList.remove('hidden');}
+}
+function hidePrizeCoach(){ clearTimeout(state.prizeCoachTimer); q('.prizeCoachBubble')?.remove(); qa('.prizeCoachFocus').forEach(el=>el.classList.remove('prizeCoachFocus')); }
+function maybeShowPrizeCoach(type,card){
+  if(!['line','bingo'].includes(type)||state.prizeCoachSeen.has(type)) return; const btn=q(`[data-claim="${type}"]`); if(!btn||btn.disabled) return; state.prizeCoachSeen.add(type); hidePrizeCoach(); btn.classList.add('prizeCoachFocus');
+  const bubble=document.createElement('div'); bubble.className='prizeCoachBubble'; bubble.innerHTML=`<h3>${type==='bingo'?'¡TENÉS BINGO!':'¡TENÉS LÍNEA!'}</h3><p>${type==='bingo'?'Tocá el botón brillante para reclamar Bingo ahora.':'Tocá el botón brillante para reclamar tu Línea.'} <strong>Gana el primer reclamo válido.</strong></p><button type="button">ENTENDIDO</button>`; document.body.appendChild(bubble);
+  const r=btn.getBoundingClientRect(),w=Math.min(330,innerWidth-24); bubble.style.width=`${w}px`; const h=bubble.offsetHeight||150; bubble.style.left=`${clamp(r.left+r.width/2-w/2,12,innerWidth-w-12)}px`; bubble.style.top=`${r.top-h-14>12?r.top-h-14:Math.min(innerHeight-h-12,r.bottom+14)}px`; bubble.querySelector('button').onclick=hidePrizeCoach; state.prizeCoachTimer=setTimeout(hidePrizeCoach,7000);
+}
+
 function finishGame(){
-  if(state.finished) return; state.finished=true; state.playing=false; state.phase='finished'; clearInterval(state.drawTimer); clearTimeout(state.chatTimer); for(const timer of state.pendingAi.values()) clearTimeout(timer); state.pendingAi.clear(); releaseWakeLock(); document.body.classList.remove('focusMode'); $('phaseLabel').textContent='DEMO · FINALIZADA';
+  if(state.finished) return; hidePrizeCoach(); $('autoAssistOverlay').classList.add('hidden'); $('modeChoiceOverlay').classList.add('hidden'); state.finished=true; state.playing=false; state.phase='finished'; clearInterval(state.drawTimer); clearTimeout(state.chatTimer); for(const timer of state.pendingAi.values()) clearTimeout(timer); state.pendingAi.clear(); releaseWakeLock(); document.body.classList.remove('focusMode'); $('phaseLabel').textContent='DEMO · FINALIZADA';
   const mine=state.winners.filter(w=>w.kind==='player'); $('finalText').textContent=mine.length?`Ganaste ${mine.map(w=>w.label).join(', ')}. Podés volver a empezar cuando quieras.`:'La partida terminó. Podés iniciar otra DEMO para seguir probando.'; setTimeout(()=>$('finalOverlay').classList.remove('hidden'),500);
 }
 
-function addChat(name,text,kind='ai'){ state.chat.push({name,text,kind,ts:Date.now()}); state.chat=state.chat.slice(-30); renderChat(); }
-function renderChat(){ if(!$('chatMessages')) return; $('chatMessages').innerHTML=state.chat.map(m=>`<div class="chatMsg ${m.kind}"><b>${esc(m.name)}:</b> ${esc(m.text)}</div>`).join('')||'<div class="emptyState">Todavía no hay mensajes.</div>'; $('chatMessages').scrollTop=$('chatMessages').scrollHeight; }
-function sendChat(){ const text=$('chatInput').value.trim(); if(!text) return; addChat(state.playerName||'Vos',text,'you'); $('chatInput').value=''; setTimeout(()=>{ const ai=shuffle(state.aiPlayers)[0]; if(ai) addChat(ai.name,shuffle(['😄','👏','Jajaja','Vamos 🍀','🔥'])[0],'ai'); },700+Math.random()*700); }
-function scheduleChat(){ clearTimeout(state.chatTimer); if(!state.playing) return; state.chatTimer=setTimeout(()=>{ if(!state.playing) return; const ai=shuffle(state.aiPlayers)[0]; if(ai) addChat(ai.name,shuffle(CHAT_LINES)[0],'ai'); scheduleChat(); },9000+Math.random()*7000); }
+function addChat(name,text,kind='ai',type='text',stickerId=''){ state.chat.push({name,text,kind,type,stickerId,ts:Date.now()}); state.chat=state.chat.slice(-30); renderChat(); }
+function renderChat(){ if(!$('chatMessages')) return; const stickers=window.BingoEmojiStickers; $('chatMessages').innerHTML=state.chat.map(m=>{const sticker=m.type==='sticker'&&stickers?.get(m.stickerId);const body=sticker?stickers.sticker(m.stickerId,{animate:false}):esc(m.text);return `<div class="chatMsg ${m.kind} ${sticker?'stickerMsg':''}"><b>${esc(m.name)}:</b> ${body}</div>`;}).join('')||'<div class="emptyState">Todavía no hay mensajes.</div>'; $('chatMessages').scrollTop=$('chatMessages').scrollHeight; }
+function sendChat(){ const text=$('chatInput').value.trim(); if(!text) return; addChat(state.playerName||'Vos',text,'you'); $('chatInput').value=''; $('demoEmojiMenu').classList.add('hidden'); setTimeout(()=>{ const ai=shuffle(state.aiPlayers)[0]; if(ai) addChat(ai.name,shuffle(['😄','👏','Jajaja','Vamos 🍀','🔥'])[0],'ai'); },700+Math.random()*700); }
+function sendDemoSticker(id){ if(!window.BingoEmojiStickers?.get(id)) return; addChat(state.playerName||'Vos','', 'you','sticker',id); $('demoStickerMenu').classList.add('hidden'); }
+function insertDemoEmoji(emoji){ const input=$('chatInput'); if(!input) return; input.value=(input.value+emoji).slice(0,100); input.focus(); }
+function buildDemoPickers(){ const kit=window.BingoEmojiStickers;if(!kit)return;$('demoEmojiMenu').innerHTML=kit.commonEmojis.map(e=>`<button type="button" data-demo-emoji="${e}">${e}</button>`).join('');$('demoStickerMenu').innerHTML=kit.stickers.map(item=>`<button class="premiumStickerButton" type="button" data-demo-sticker="${item.id}">${kit.sticker(item.id,{className:'premiumStickerMenuIcon',replay:false})}</button>`).join('');qa('[data-demo-emoji]').forEach(b=>b.onclick=()=>insertDemoEmoji(b.dataset.demoEmoji));qa('[data-demo-sticker]').forEach(b=>b.onclick=()=>sendDemoSticker(b.dataset.demoSticker));$('chatMessages').onclick=e=>kit.replay(e.target);}
+function scheduleChat(){ clearTimeout(state.chatTimer); if(!state.playing) return; state.chatTimer=setTimeout(()=>{ if(!state.playing) return; const ai=shuffle(state.aiPlayers)[0]; if(ai){ if(Math.random()<.16&&window.BingoEmojiStickers?.stickers?.length){ const item=shuffle(window.BingoEmojiStickers.stickers)[0]; addChat(ai.name,'','ai','sticker',item.id); } else addChat(ai.name,shuffle(CHAT_LINES)[0],'ai'); } scheduleChat(); },9000+Math.random()*7000); }
 
 function renderDrawer(){ if(!$('drawerBody')) return; $('drawnTab').classList.toggle('active',state.drawerTab==='drawn'); $('winnersTab').classList.toggle('active',state.drawerTab==='winners');
   if(state.drawerTab==='drawn') $('drawerBody').innerHTML=state.drawn.length?`<div class="numberCloud">${state.drawn.map(n=>`<span class="numberChip">${n}</span>`).join('')}</div>`:'<div class="emptyState">Todavía no salió ninguna bolilla.</div>';
@@ -202,7 +240,7 @@ const waitingTutorial = [
 ];
 const gameTutorial = [
   {target:'#ticketTarget .cell[data-number]',hand:true,title:'Marcar y desmarcar',text:'Tocá un número para marcarlo. Tocá de nuevo para desmarcarlo.'},
-  {target:'#autoBtn',title:'Automarcado rápido',text:'AUTO se prende y apaga con un toque. Si te dormiste, al activarlo recupera todo lo que ya salió.'},
+  {target:'#modeSwitch',title:'Manual o Automarcado',text:'Ya elegiste un modo, pero podés cambiarlo en cualquier momento. AUTO también recupera aciertos anteriores.'},
   {target:'#ballTarget',title:'Última bolilla',text:'La bolilla grande es la última que salió. Abajo quedan las más recientes.'},
   {target:'#sideArrow',title:'La flechita lateral',text:'Abrila para revisar todos los números salidos y los cartones ganadores.'},
   {target:'#claimsTarget',title:'Reclamá rápido',text:'Línea, Bingo y los premios activos se reclaman desde acá.'},
@@ -210,7 +248,7 @@ const gameTutorial = [
   {target:'#soundBtn',title:'Sonido',text:'Este icono prende o apaga los sonidos del juego.'},
   {target:'#voiceBtn',title:'Voz',text:'Desde acá podés activar o silenciar la voz que canta las bolillas.'},
   {target:'#fullscreenBtn',title:'Pantalla completa',text:'Usá este botón para aprovechar toda la pantalla del celular, PC o TV.'},
-  {target:'#chatPanel',title:'Chat de la DEMO',text:'Tus rivales IA escriben durante la partida. También podés mandar mensajes.'},
+  {target:'#chatPanel',title:'Chat completo',text:'Podés escribir, usar emojis y mandar stickers igual que en una partida real.'},
   {target:'#helpBtn',title:'¿Lo querés ver otra vez?',text:'El ? queda siempre disponible para repetir este tutorial cuando quieras.'}
 ];
 function tutorialSteps(stage){ return stage==='waiting'?waitingTutorial:gameTutorial; }
@@ -236,24 +274,24 @@ function finishTutorialStage(skipped){
   if(stage==='game'&&state.phase==='tutorial'){ toast(skipped?'Tutorial salteado. Empezamos.':'Tutorial listo. Empezamos.','success'); startCountdown(); }
 }
 function endTutorialVisuals(){ qa('.tutorialFocus').forEach(el=>el.classList.remove('tutorialFocus','tutorialHand')); $('tutorialOverlay').classList.add('hidden'); $('tutorialBubble').classList.add('hidden'); }
-function reopenTutorial(){ if(state.phase==='config') return; if(state.tutorial.active){ toast('Usá SIGUIENTE o SALTAR para cerrar el tutorial.'); return; } startTutorial(state.phase==='waiting'?'waiting':'game',0); }
+function reopenTutorial(){ if(state.phase==='config') return; if(!state.markingModeChosen && ['mode-choice','tutorial'].includes(state.phase)){ $('modeChoiceOverlay').classList.remove('hidden'); toast('Primero elegí Manual o Automarcado.'); return; } if(state.tutorial.active){ toast('Usá SIGUIENTE o SALTAR para cerrar el tutorial.'); return; } startTutorial(state.phase==='waiting'?'waiting':'game',0); }
 
 function resetDemoToConfig(){
-  clearInterval(state.drawTimer); clearTimeout(state.chatTimer); for(const timer of state.pendingAi.values()) clearTimeout(timer); releaseWakeLock(); Object.assign(state,{phase:'config',playerName:'',offers:[],selectedIds:[],cards:[],aiPlayers:[],activeCard:0,drawn:[],drawOrder:[],playing:false,finished:false,autoMark:false,marks:{},prizeSlots:[],winners:[],pendingAi:new Map(),drawTimer:null,chatTimer:null,tutorial:{active:false,stage:null,index:0,skipped:false},drawerTab:'drawn',chat:[],lastClaimAt:0});
-  $('finalOverlay').classList.add('hidden'); $('appScreen').classList.add('hidden'); $('configScreen').classList.remove('hidden'); closeDrawer(); document.body.classList.remove('focusMode'); window.scrollTo(0,0);
+  clearInterval(state.drawTimer); clearTimeout(state.chatTimer); for(const timer of state.pendingAi.values()) clearTimeout(timer); releaseWakeLock(); Object.assign(state,{phase:'config',playerName:'',offers:[],selectedIds:[],cards:[],aiPlayers:[],activeCard:0,drawn:[],drawOrder:[],playing:false,finished:false,autoMark:false,markingModeChosen:false,marks:{},prizeSlots:[],winners:[],pendingAi:new Map(),drawTimer:null,chatTimer:null,tutorial:{active:false,stage:null,index:0,skipped:false},drawerTab:'drawn',chat:[],lastClaimAt:0,manualLag:{startDrawCount:null,prompted:false},prizeCoachSeen:new Set(),prizeCoachTimer:null});
+  hidePrizeCoach(); $('modeChoiceOverlay').classList.add('hidden'); $('autoAssistOverlay').classList.add('hidden'); $('countdownOverlay').classList.add('hidden'); $('finalOverlay').classList.add('hidden'); $('appScreen').classList.add('hidden'); $('configScreen').classList.remove('hidden'); closeDrawer(); document.body.classList.remove('focusMode'); window.scrollTo(0,0);
 }
 function enterWaiting(){
-  const cfg=configFromUi(); if(!cfg) return; Object.assign(state,cfg); initPrizeSlots(); state.phase='waiting'; state.playerName=''; state.selectedIds=[]; state.cards=[]; state.drawn=[]; state.winners=[]; state.chat=[]; createOffers();
+  const cfg=configFromUi(); if(!cfg) return; Object.assign(state,cfg); initPrizeSlots(); state.phase='waiting'; state.playerName=''; state.selectedIds=[]; state.cards=[]; state.drawn=[]; state.winners=[]; state.chat=[]; state.markingModeChosen=false; state.autoMark=false; state.manualLag={startDrawCount:null,prompted:false}; state.prizeCoachSeen=new Set(); createOffers();
   $('configScreen').classList.add('hidden'); $('appScreen').classList.remove('hidden'); $('waitingView').classList.remove('hidden'); $('gameView').classList.add('hidden'); $('chatToggleBtn').classList.add('hidden'); $('phaseLabel').textContent='DEMO · SALA DE ESPERA'; $('playerName').value=''; renderWaiting(); window.scrollTo(0,0); setTimeout(()=>startTutorial('waiting',0),250);
 }
 
 function bind(){
   qa('input[name="mode"]').forEach(el=>el.addEventListener('change',updateConfigMode)); $('prizeLine').addEventListener('change',updateConfigMode); updateConfigMode();
   $('createDemoBtn').onclick=enterWaiting; $('saveNameBtn').onclick=saveName; $('playerName').addEventListener('input',()=>{state.playerName=$('playerName').value.trim();renderWaiting();}); $('playerName').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveName();}});
-  $('reloadCardsBtn').onclick=refreshOffers; $('confirmCardsBtn').onclick=confirmCards; $('autoBtn').onclick=toggleAuto; $('sideArrow').onclick=()=>openDrawer('drawn'); $('drawerClose').onclick=closeDrawer; $('drawnTab').onclick=()=>openDrawer('drawn'); $('winnersTab').onclick=()=>openDrawer('winners');
+  $('reloadCardsBtn').onclick=refreshOffers; $('confirmCardsBtn').onclick=confirmCards; $('manualBtn').onclick=setManual; $('autoBtn').onclick=toggleAuto; $('chooseManualBtn').onclick=()=>chooseInitialMode(false); $('chooseAutoBtn').onclick=()=>chooseInitialMode(true); $('assistAutoBtn').onclick=()=>setMarkingMode(true,{assist:true}); $('assistManualBtn').onclick=()=>{$('autoAssistOverlay').classList.add('hidden');state.manualLag.prompted=true;}; $('sideArrow').onclick=()=>openDrawer('drawn'); $('drawerClose').onclick=closeDrawer; $('drawnTab').onclick=()=>openDrawer('drawn'); $('winnersTab').onclick=()=>openDrawer('winners');
   $('soundBtn').onclick=()=>{state.sound=!state.sound;$('soundBtn').setAttribute('aria-pressed',String(state.sound));$('soundBtn').textContent=state.sound?'🔊':'🔇';toast(`Sonido ${state.sound?'activado':'desactivado'}.`);};
   $('voiceBtn').onclick=()=>{state.voice=!state.voice;$('voiceBtn').setAttribute('aria-pressed',String(state.voice));$('voiceBtn').textContent=state.voice?'🎙':'⊘';if(!state.voice&&'speechSynthesis'in window)speechSynthesis.cancel();toast(`Voz ${state.voice?'activada':'desactivada'}.`);};
-  $('fullscreenBtn').onclick=toggleFullscreen; $('helpBtn').onclick=reopenTutorial; $('chatToggleBtn').onclick=toggleChatPanel; $('chatSendBtn').onclick=sendChat; $('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendChat();}});
+  $('fullscreenBtn').onclick=toggleFullscreen; $('helpBtn').onclick=reopenTutorial; $('chatToggleBtn').onclick=toggleChatPanel; $('chatSendBtn').onclick=sendChat; $('chatEmojiBtn').onclick=()=>{$('demoEmojiMenu').classList.toggle('hidden');$('demoStickerMenu').classList.add('hidden');}; $('chatStickerBtn').onclick=()=>{$('demoStickerMenu').classList.toggle('hidden');$('demoEmojiMenu').classList.add('hidden');}; buildDemoPickers(); $('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendChat();}});
   $('tutorialNext').onclick=nextTutorial; $('tutorialBack').onclick=backTutorial; $('tutorialSkip').onclick=skipTutorial; $('restartDemoBtn').onclick=resetDemoToConfig;
   window.addEventListener('resize',()=>{if(state.tutorial.active){const step=tutorialSteps(state.tutorial.stage)[state.tutorial.index];const target=resolveTutorialTarget(step);if(target)positionTutorial(target);}});
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.playing)acquireWakeLock();});

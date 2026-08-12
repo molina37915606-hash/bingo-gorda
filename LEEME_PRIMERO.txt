@@ -1,4 +1,4 @@
-BINGO DE LA GORDA
+BINGO DE LA GORDA BETA 2
 
 1. Ejecutá PROBAR_EN_ESTA_PC.bat o npm start.
 2. Abrí http://localhost:3210/admin-principal.

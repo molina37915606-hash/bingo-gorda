@@ -38,6 +38,8 @@ async function waitServer(){for(let i=0;i<100;i++){try{const x=await json('/heal
       for (let index=1; index<=playerCount; index++) {
         const joined = await json('/api/player/open-join', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ roomCode:quickRoom, name:`Rápido ${playerCount}-${index}`, cardCount:1, deviceId:`quick-${playerCount}-${index}` }) });
         assert.equal(joined.response.status, 200, JSON.stringify(joined.data));
+        const quickMode = await json('/api/player/automark', { method:'POST', headers:{'Content-Type':'application/json','X-Player-Token':joined.data.token}, body:JSON.stringify({ enabled:false }) });
+        assert.equal(quickMode.response.status, 200, JSON.stringify(quickMode.data));
       }
       result = await json('/api/admin/start', { method:'POST', headers:admin, body:'{}' });
       assert.equal(result.response.status, 200, `No pudo iniciar con ${playerCount}: ${JSON.stringify(result.data)}`);
@@ -63,6 +65,8 @@ async function waitServer(){for(let i=0;i<100;i++){try{const x=await json('/heal
       assert.equal(joined.data.state.player.offeredCards.length, 10);
       joins.push(joined.data);
       const headers = { 'Content-Type':'application/json', 'X-Player-Token':joined.data.token };
+      const chosenMode = await json('/api/player/automark', { method:'POST', headers, body:JSON.stringify({ enabled:false }) });
+      assert.equal(chosenMode.response.status, 200, JSON.stringify(chosenMode.data));
       if (index === 1) {
         const keptCardId = joined.data.state.player.offeredCards[0].id;
         let reserved = await json('/api/player/reserve', { method:'POST', headers, body:JSON.stringify({ cardId:keptCardId, reserve:true }) });

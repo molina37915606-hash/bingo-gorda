@@ -1,4 +1,8 @@
-# BINGO DE LA GORDA BETA
+# BINGO DE LA GORDA BETA 2
+
+BETA 2 unifica la experiencia de juego entre DEMO y partida real. Cada jugador elige Manual o Automarcado antes de la primera bolilla, puede cambiar durante la partida y siempre debe reclamar los premios manualmente. El sistema ayuda a detectar atraso en Manual, cambia al cartón con premio disponible y refuerza visualmente Línea/Bingo.
+
+Ver `BETA_NOTAS.txt` para el detalle de esta versión.
 
 Aplicación web para partidas de bingo de 75 y 90 bolas con administración, jugadores, comunidad pública, modo espectador, minijuegos y actas auditables.
 

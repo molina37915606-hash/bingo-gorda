@@ -1,3 +1,20 @@
+BINGO DE LA GORDA BETA 2 · EXPERIENCIA UNIFICADA DE JUGADOR
+
+- Elección obligatoria MANUAL / AUTOMARCADO antes de la primera bolilla.
+- Cambio de modo disponible durante toda la partida.
+- Automarcado recupera aciertos oficiales ya extraídos al momento de activarlo.
+- Asistente de atraso: 5+ aciertos sin marcar mantenidos durante 5 bolillas adicionales ofrece activar AUTO; se cancela al bajar a 4 o menos.
+- Línea, Bingo y todos los premios siguen requiriendo reclamo manual.
+- DEMO y juego real resaltan el cartón con premio y cambian automáticamente a él.
+- Botones de reclamo con brillo y pulso más fuerte; Bingo tiene tratamiento visual reforzado.
+- DEMO muestra globo contextual la primera vez que existe Línea o Bingo listo para reclamar.
+- DEMO recupera emojis y stickers del chat real.
+- Juego real adopta el selector visible MANUAL / AUTO y la misma jerarquía de uso del DEMO.
+- Administrador muestra modo de marcado de cada jugador y bloquea inicio mientras haya modos pendientes.
+- Nueva prueba BETA 2 de experiencia Manual/Auto y reclamos.
+
+--- BASE BETA 1 ---
+
 BINGO DE LA GORDA BETA · NUEVA BASE
 
 - DEMO reescrita desde cero como experiencia independiente de las partidas reales.

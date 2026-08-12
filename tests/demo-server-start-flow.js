@@ -36,6 +36,8 @@ async function waitServer() {
     state = (await json('/api/player/choose', { method:'POST', headers, body:JSON.stringify({ name:'Prueba Servidor', cardIds }) })).data;
     assert.equal(state.status, 'waiting');
     assert.equal(state.demo.startFlow.phase, 'tutorial');
+    const modeChoice = await json('/api/player/automark', { method:'POST', headers, body:JSON.stringify({ enabled:false }) });
+    assert.equal(modeChoice.response.status, 200, JSON.stringify(modeChoice.data));
 
     const resolved = await json('/api/player/demo/tutorial', { method:'POST', headers, body:JSON.stringify({ skipped:true }) });
     assert.equal(resolved.response.status, 200, JSON.stringify(resolved.data));

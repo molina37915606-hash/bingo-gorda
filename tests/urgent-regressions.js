@@ -50,6 +50,8 @@ async function createOfficialRoom(admin, mode = 90, players = ['A', 'B']) {
     assert.equal(added.response.status, 200, JSON.stringify(added.data));
     const login = await json('/api/player/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomCode, code: added.data.player.code, deviceId: `dev-${name}-${Math.random()}` }) });
     assert.equal(login.response.status, 200, JSON.stringify(login.data));
+    const modeChoice = await json('/api/player/automark', { method:'POST', headers:headers(login.data.token, 'player'), body:JSON.stringify({ enabled:false }) });
+    assert.equal(modeChoice.response.status, 200, JSON.stringify(modeChoice.data));
     joined.push(login.data);
   }
   const state = (await json('/api/admin/state', { headers: headers(admin) })).data;

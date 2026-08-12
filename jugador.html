@@ -110,6 +110,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
 @media(max-width:760px){.networkIndicator span{display:none}.networkIndicator{padding:5px;width:25px;min-height:25px;justify-content:center}.connectionCluster{gap:4px}.topActions .iconBtn{min-width:42px;min-height:42px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
+
+.quickMarkingMode{display:grid;grid-template-columns:auto 1fr 1fr;align-items:center;gap:4px;min-height:50px;padding:4px;border:1px solid var(--border);border-radius:12px;background:var(--panel2)}.quickMarkingMode>span{font-size:8px;font-weight:1000;color:var(--muted);padding:0 5px}.quickModeBtn{min-height:40px;border:0;border-radius:9px;background:transparent;color:var(--muted);font-size:10px;font-weight:1000;padding:6px 8px;cursor:pointer;touch-action:manipulation}.quickModeBtn.active{background:#5b238a;color:#fff;box-shadow:0 0 0 1px #c995ff66}.quickModeBtn.auto.active{background:#166144;box-shadow:0 0 0 1px #55dbaa66}.markingModeCard{width:min(580px,96vw);padding:24px;border-radius:23px;background:var(--panel);border:2px solid #9f72e5;box-shadow:0 26px 80px #000c;text-align:center;color:var(--text)}.markingModeCard.compact{width:min(500px,96vw)}.markingModeCard h2{font-size:clamp(24px,5vw,34px);margin:5px 0}.markingModeCard>p{color:var(--muted);line-height:1.45;margin:0 0 17px}.markingModeIcon{font-size:38px}.markingModeChoices{display:grid;grid-template-columns:1fr 1fr;gap:9px}.markingModeOption{border:2px solid var(--border);border-radius:15px;background:var(--panel2);color:var(--text);padding:16px 12px;text-align:left;display:grid;gap:5px;cursor:pointer}.markingModeOption strong{font-size:17px}.markingModeOption small{color:var(--muted);line-height:1.35}.markingModeOption.manual:hover,.markingModeOption.manual:focus-visible{border-color:#bd8cff;background:#3a1c4f}.markingModeOption.automatic:hover,.markingModeOption.automatic:focus-visible{border-color:#52d6a9;background:#133e31}.markingClaimNote{margin-top:12px;padding:10px;border-radius:11px;background:#4a350c66;color:#ffe7a0;font-size:12px;font-weight:1000}.claimBar button.prizeReady{background:linear-gradient(135deg,#d17600,#ffbd22)!important;color:#fff!important;border:3px solid #fff1a1!important;box-shadow:0 0 0 4px #ffca2f44,0 0 30px #ffca2f,0 12px 32px #0008!important;animation:beta2ClaimPulse .52s ease-in-out infinite alternate!important;font-size:15px!important}.claimBar #claimBingo.prizeReady{background:linear-gradient(135deg,#c6125c,#ff4a8f)!important;border-color:#ffd2e6!important;box-shadow:0 0 0 4px #ff629f44,0 0 38px #ff3e8a,0 12px 32px #0008!important}.tabs button.readyLine,.tabs button.readyBingo{font-weight:1000!important}.ticketCard.beta2PrizeFocus{animation:beta2CardFlash .8s ease-out 2}@keyframes beta2ClaimPulse{to{transform:scale(1.06);filter:brightness(1.16)}}@keyframes beta2CardFlash{50%{box-shadow:0 0 0 3px #ffca2f,0 0 42px #ffca2f99}}@media(max-width:620px){.quickMarkingMode{grid-template-columns:auto 1fr 1fr;min-height:46px}.quickModeBtn{min-height:36px;font-size:9px;padding:5px}.markingModeChoices{grid-template-columns:1fr}.markingModeOption{padding:13px 11px}}
 </style>
 </head>
 <body>
@@ -159,7 +161,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
     <section id="waitingPanel" class="card waiting"></section>
 
     <div id="playerEssentialTools" class="essentialTools hidden" aria-label="Herramientas esenciales">
-      <button id="quickAutoMarkBtn" class="autoMarkQuick" type="button" aria-pressed="false" title="Activar marcado automático"><span class="autoMarkSymbol">✓</span><small>AUTO</small><b id="quickAutoMarkState">OFF</b></button>
+      <div id="quickMarkingMode" class="quickMarkingMode" aria-label="Modo de marcado">
+        <span>MARCAR</span>
+        <button id="quickManualMarkBtn" class="quickModeBtn" type="button" aria-pressed="false">MANUAL</button>
+        <button id="quickAutoMarkBtn" class="quickModeBtn" type="button" aria-pressed="false">AUTO</button>
+      </div>
       <div id="firstClaimReminder" class="firstClaimReminder">⚡ Gana el primer reclamo válido</div>
     </div>
 
@@ -174,7 +180,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
 
     <div id="playerNotice" role="status" aria-live="polite"></div>
     <button id="logoutBtn" class="logout">Salir de esta sala</button>
-    <div class="footerNote">Con hasta 10 jugadores y 40 cartones podés elegir marcado manual o automático. En salas mayores, el automarcado es obligatorio.</div>
+    <div class="footerNote">Elegí Manual o Automarcado antes de la primera bolilla. Podés cambiar durante la partida. Línea y Bingo siempre se reclaman manualmente.</div>
 
     <div class="legacyControls hidden" aria-hidden="true"><button id="showDrawnBtn"></button><button id="showWinnerBtn"></button><button id="resultsBtn"></button><button id="alertsToggle"></button><button id="exitFocusBtn"></button></div>
   </main>
@@ -199,10 +205,12 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
     <div class="settingRow"><div><b>Aspecto</b><small>Modo claro u oscuro</small></div><button id="themeToggle" class="switchButton" type="button" aria-label="Cambiar modo día o noche">OSCURO</button></div>
     <label class="settingRange"><span><b>Volumen</b><output id="volumeValue">92%</output></span><input id="volumeRange" type="range" min="0" max="100" step="1" value="92"></label>
     <div class="settingRow"><div><b>Números grandes</b><small>Aumenta el tamaño dentro del cartón</small></div><button id="numberSizeToggle" class="switchButton" type="button" aria-pressed="false">NORMAL</button></div>
-    <div class="settingRow"><div><b>Marcado automático</b><small id="autoMarkHint">Marca las bolillas oficiales</small></div><button id="autoMarkToggle" class="switchButton" type="button" aria-pressed="false">DESACTIVADO</button></div>
+    <div class="settingRow hidden" aria-hidden="true"><div><b>Marcado automático</b><small id="autoMarkHint">Controlado desde MANUAL / AUTO junto al cartón</small></div><button id="autoMarkToggle" class="switchButton" type="button" aria-pressed="false">DESACTIVADO</button></div>
   </section>
 </div>
 
+<div id="markingModeOverlay" class="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="markingModeTitle"><section class="markingModeCard"><div class="markingModeIcon">✋ / ✓</div><h2 id="markingModeTitle">¿Cómo querés marcar?</h2><p>Elegí antes de la primera bolilla. Después podés cambiar cuando quieras.</p><div class="markingModeChoices"><button id="markingModeManual" class="markingModeOption manual" type="button"><strong>MANUAL</strong><small>Tocás cada número para marcar o desmarcar.</small></button><button id="markingModeAuto" class="markingModeOption automatic" type="button"><strong>AUTOMARCADO</strong><small>Marca tus aciertos solo y recupera los anteriores.</small></button></div><div class="markingClaimNote">Línea, Bingo y los demás premios siempre los reclamás vos.</div></section></div>
+<div id="autoAssistOverlay" class="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="autoAssistTitle"><section class="markingModeCard compact"><div class="markingModeIcon">✓</div><h2 id="autoAssistTitle">¿Activar Automarcado?</h2><p id="autoAssistText">Tenés varios aciertos sin marcar.</p><div class="markingModeChoices"><button id="autoAssistAccept" class="markingModeOption automatic" type="button"><strong>ACTIVAR AUTO</strong><small>Marca ahora todo lo que ya salió.</small></button><button id="autoAssistDecline" class="markingModeOption manual" type="button"><strong>SEGUIR MANUAL</strong><small>Continuar marcando por tu cuenta.</small></button></div></section></div>
 <div id="connectionMask" class="connectionMask"><div><b>Se perdió la conexión con la sala.</b><br><span class="muted">No cierres esta página. Se reconectará automáticamente.</span></div></div>
 <div id="publicClaimOverlay" class="claimOverlay"><div id="publicClaimPopup" class="claimPopup"><img id="publicClaimBadge" class="claimBadge" alt="Premio"><img id="publicClaimMascot" class="claimMascot" src="assets/celebrations/la-gorda-festejando.png" alt="La Gorda festejando"><div id="publicClaimIcon" class="claimIcon">🎉</div><h2 id="publicClaimTitle"></h2><p id="publicClaimText"></p><div id="publicClaimConfetti" class="claimConfetti"></div></div></div>
 
@@ -256,5 +264,5 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
   },8000);
 })();
 </script>
-<script src="js/emoji-stickers.js?v=2.0.0"></script><script src="js/presenter-scripts.js?v=2.0.0"></script><script src="js/cast-sender.js?v=1.0.0"></script><script src="js/online-room-player.js?v=3.1.0"></script>
+<script src="js/emoji-stickers.js?v=2.0.0"></script><script src="js/presenter-scripts.js?v=2.0.0"></script><script src="js/cast-sender.js?v=1.0.0"></script><script src="js/online-room-player.js?v=beta-2"></script>
 </body>

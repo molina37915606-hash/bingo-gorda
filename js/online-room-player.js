@@ -93,6 +93,10 @@ class PlayerApp {
     this.demoAutoStartTimer = null;
     this.demoAutoStartDeadline = 0;
     this.demoAutoStartFailure = '';
+    this.manualLagStartDrawCount = null;
+    this.manualLagPrompted = false;
+    this.lastManualPending = 0;
+    this.markingModeChoosing = false;
   }
 
   makeDeviceId() {
@@ -135,7 +139,12 @@ class PlayerApp {
     $('volumeRange').oninput = event => this.setVolume(Number(event.target.value) / 100);
     $('numberSizeToggle').onclick = () => this.setLargeNumbers(!this.largeNumbers);
     $('autoMarkToggle').onclick = () => this.queueAutoMark(!this.autoMarkVisualState());
-    $('quickAutoMarkBtn').onclick = () => this.queueAutoMark(!this.autoMarkVisualState());
+    $('quickAutoMarkBtn').onclick = () => this.queueAutoMark(true);
+    $('quickManualMarkBtn').onclick = () => this.queueAutoMark(false);
+    $('markingModeManual').onclick = () => this.chooseInitialMarkingMode(false);
+    $('markingModeAuto').onclick = () => this.chooseInitialMarkingMode(true);
+    $('autoAssistAccept').onclick = () => { this.closeModal('autoAssistOverlay'); this.queueAutoMark(true); };
+    $('autoAssistDecline').onclick = () => { this.manualLagPrompted = true; this.closeModal('autoAssistOverlay'); };
     $('helpBtn').onclick = () => this.openTutorialChoice();
     $('tutorialContinueBtn').onclick = () => this.continueGuideFromMemory();
     $('tutorialRestartBtn').onclick = () => this.restartGuide();
@@ -928,7 +937,7 @@ class PlayerApp {
     $('loginView').classList.add('hidden'); $('gameView').classList.remove('hidden');
     document.body.classList.add('playerLogged');
     $('infoDrawerToggle').classList.remove('hidden');
-    this.render(); this.renderDemoUi(); this.renderChat(); this.renderPublicClaim(); this.handleOwnPrizeReadiness(); this.handleTestEvent(); this.handleSequence(previous); this.renderInfoDrawer();
+    this.render(); this.renderDemoUi(); this.renderChat(); this.renderPublicClaim(); this.ensureMarkingModeChoice(); this.handleOwnPrizeReadiness(); this.trackManualLag(); this.handleTestEvent(); this.handleSequence(previous); this.renderInfoDrawer();
     this.renderSystemTrust(); this.updateWakeLock();
     const justConfirmedSelection = !Boolean(previous?.player?.selectionConfirmed) && Boolean(data.player?.selectionConfirmed && data.player?.nameSet);
     if (this.guideOpen && this.guideStage === 'selection' && justConfirmedSelection) {
@@ -974,9 +983,9 @@ class PlayerApp {
     $('presenterPhrase').textContent = presenter.phrase;
     const autoVisual = this.autoMarkVisualState();
     $('autoMarkToggle').classList.toggle('active', autoVisual);
-    $('autoMarkToggle').disabled = Boolean(this.state.player.autoMarkForced || this.state.markingPolicy?.automaticRequired);
-    $('autoMarkToggle').title = this.state.markingPolicy?.automaticRequired ? this.state.markingPolicy.reason : 'Activar o desactivar automarcado';
-    $('autoMarkHint').textContent = this.state.markingPolicy?.automaticRequired ? this.state.markingPolicy.reason : 'Marca las bolillas oficiales';
+    $('autoMarkToggle').disabled = false;
+    $('autoMarkToggle').title = 'Cambiar entre Manual y Automarcado';
+    $('autoMarkHint').textContent = 'AUTO recupera aciertos anteriores. Los premios siempre se reclaman manualmente.';
     this.renderAdminMessage();
   }
 
@@ -1548,7 +1557,7 @@ class PlayerApp {
     ] : [
       { target:'#cardTabs', when:()=>Number(this.state?.player?.cards?.length || 0) > 1, title:'Tus cartones', text:switchText },
       { target:'#ticketPanel .cell.number', demo:'mark', title:'Marcar y desmarcar', text:markText },
-      { target:'#quickAutoMarkBtn', title:'Automarcado instantáneo', text:'Un toque lo activa y otro lo apaga. Si te dormiste números, al activarlo marca todo lo oficial que ya salió y te dice cuántos recuperó.' },
+      { target:'#quickMarkingMode', title:'Manual o Automarcado', text:'Elegís uno antes de la primera bolilla y podés cambiar en cualquier momento. AUTO recupera también los aciertos anteriores.' },
       { target:'#claimBar', title:'Los premios se reclaman', text:'Aunque uses Automarcado, el premio <strong>no se reclama solo</strong>. Línea, Bingo y cualquier premio activo se reclaman desde acá.' },
       { target:'#firstClaimReminder', title:'La regla más importante', text:'<strong>Gana el primer reclamo válido.</strong> No alcanza con completar el premio: hay que reclamarlo antes que los demás.' },
       { target:'#lastBall', title:'Última bolilla', text:'Esta es la referencia principal: la última bolilla aparece grande y hace una animación breve cuando cambia.' },
@@ -1572,6 +1581,7 @@ class PlayerApp {
     const memory = this.guideMemory();
     if (['complete','skipped'].includes(progress) || memory?.status === 'complete' || memory?.status === 'skipped') return;
     const confirmed = Boolean(this.state.player?.selectionConfirmed && this.state.player?.nameSet);
+    if (confirmed && !this.state.player?.markingModeChosen) return;
     const currentStage = confirmed ? 'controls' : 'selection';
     if (memory?.status === 'in_progress' && memory.stage === currentStage) {
       if (this.guideAutoTimer) return;
@@ -1847,27 +1857,64 @@ class PlayerApp {
   }
 
   queueAutoMark(enabled) {
-    if (!this.state?.active) return;
-    if (this.state.player?.autoMarkForced || this.state.markingPolicy?.automaticRequired) {
-      this.showMessage(this.state.markingPolicy?.reason || 'El automarcado es obligatorio en esta sala.', 'notice');
-      return;
-    }
+    if (!this.state?.active || !this.state?.player?.selectionConfirmed) return;
     const desired = Boolean(enabled);
+    if (this.state.player.markingModeChosen && Boolean(this.state.player.autoMark) === desired) { this.autoMarkDesired = null; this.updateQuickTools(); return; }
     this.autoMarkFeedback = { desired, recoverable: desired ? this.countRecoverableAutoMarks() : 0 };
     this.autoMarkDesired = desired;
     this.updateQuickTools();
     this.syncAutoMark();
   }
 
+  chooseInitialMarkingMode(enabled) {
+    if (this.markingModeChoosing) return;
+    this.markingModeChoosing = true;
+    $('markingModeManual').disabled = true; $('markingModeAuto').disabled = true;
+    this.queueAutoMark(Boolean(enabled));
+  }
+
+  ensureMarkingModeChoice() {
+    const mustChoose = Boolean(this.state?.player?.selectionConfirmed && !this.state?.player?.markingModeChosen && ['waiting','starting','playing'].includes(this.state?.status));
+    $('markingModeOverlay').classList.toggle('show', mustChoose);
+    if (!mustChoose) {
+      this.markingModeChoosing = false;
+      $('markingModeManual').disabled = false; $('markingModeAuto').disabled = false;
+    }
+  }
+
+  pendingManualHits() {
+    if (!this.state?.player?.selectionConfirmed || this.autoMarkVisualState()) return 0;
+    const drawn = new Set((this.state?.game?.drawn || []).map(Number));
+    let total = 0;
+    for (const card of this.state.player.cards || []) {
+      const marks = new Set((this.state.player.marks?.[card.id] || []).map(Number));
+      for (const value of card.grid.flat()) { const n = Number(value); if (Number.isFinite(n) && drawn.has(n) && !marks.has(n)) total += 1; }
+    }
+    return total;
+  }
+
+  trackManualLag() {
+    if (!this.state || this.state.status !== 'playing' || this.autoMarkVisualState()) { this.manualLagStartDrawCount = null; this.manualLagPrompted = false; this.lastManualPending = 0; this.closeModal('autoAssistOverlay'); return; }
+    const pending = this.pendingManualHits(); this.lastManualPending = pending;
+    if (pending <= 4) { this.manualLagStartDrawCount = null; this.manualLagPrompted = false; this.closeModal('autoAssistOverlay'); return; }
+    const drawCount = Number(this.state.game?.drawn?.length || 0);
+    if (this.manualLagStartDrawCount == null) this.manualLagStartDrawCount = drawCount;
+    if (!this.manualLagPrompted && drawCount - this.manualLagStartDrawCount >= 5) {
+      this.manualLagPrompted = true;
+      $('autoAssistText').textContent = `Tenés ${pending} aciertos sin marcar desde hace varias bolillas. Automarcado puede ponerte al día ahora.`;
+      $('autoAssistOverlay').classList.add('show');
+    }
+  }
+
   async syncAutoMark() {
     if (this.autoMarkSyncing || this.autoMarkDesired == null) return;
     this.autoMarkSyncing = true;
     try {
-      while (this.autoMarkDesired != null && Boolean(this.state?.player?.autoMark) !== Boolean(this.autoMarkDesired)) {
+      while (this.autoMarkDesired != null && (!this.state?.player?.markingModeChosen || Boolean(this.state?.player?.autoMark) !== Boolean(this.autoMarkDesired))) {
         const requested = Boolean(this.autoMarkDesired);
         const response = await this.request('/api/player/automark', { method:'POST', body:JSON.stringify({ enabled:requested }) });
         this.applyState(response);
-        if (this.autoMarkDesired === requested && Boolean(this.state?.player?.autoMark) === requested) {
+        if (this.autoMarkDesired === requested && Boolean(this.state?.player?.markingModeChosen) && Boolean(this.state?.player?.autoMark) === requested) {
           const feedback = this.autoMarkFeedback;
           this.autoMarkDesired = null;
           this.autoMarkFeedback = null;
@@ -1884,7 +1931,7 @@ class PlayerApp {
     } finally {
       this.autoMarkSyncing = false;
       this.updateQuickTools();
-      if (this.autoMarkDesired != null && Boolean(this.state?.player?.autoMark) !== Boolean(this.autoMarkDesired)) this.syncAutoMark();
+      if (this.autoMarkDesired != null && (!this.state?.player?.markingModeChosen || Boolean(this.state?.player?.autoMark) !== Boolean(this.autoMarkDesired))) this.syncAutoMark();
     }
   }
 
@@ -1925,10 +1972,12 @@ class PlayerApp {
     if (!ready || !type) { this.lastPrizeReadyKey = ''; return; }
     const awarded = Number(this.state.prizeStatus?.[type]?.awarded || 0);
     const key = `${type}:${ready.cardId}:${this.state.game.drawn.length}:${awarded}`; if (key === this.lastPrizeReadyKey) return;
-    this.lastPrizeReadyKey = key; this.activeCardId = ready.cardId; storage.setItem('bingoOnlineCard', ready.cardId);
+    this.lastPrizeReadyKey = key; const changedCard = this.activeCardId !== ready.cardId; this.activeCardId = ready.cardId; storage.setItem('bingoOnlineCard', ready.cardId);
+    this.renderTabs(); this.renderTicket();
+    if (changedCard) { const panel=$('ticketPanel'); panel.classList.remove('beta2PrizeFocus'); void panel.offsetWidth; panel.classList.add('beta2PrizeFocus'); }
     this.playAlertSound(type); if (this.alertsEnabled && navigator.vibrate) navigator.vibrate(type === 'bingo' ? [180,80,180,80,260] : [150,70,150]);
     const label = this.claimLabel(type);
-    this.showMessage(`¡TENÉS ${label} EN EL CARTÓN ${ready.cardNumber}! Tocá el botón ahora.`, 'notice');
+    this.showMessage(`¡TENÉS ${label} EN EL CARTÓN ${ready.cardNumber}! Cambiamos al cartón correcto. RECLAMÁ AHORA.`, 'notice', 5200);
   }
 
   handleSequence(previous) {
@@ -2069,14 +2118,10 @@ class PlayerApp {
     update('numberSizeToggle', this.largeNumbers, 'GRANDES', 'NORMAL');
     const autoVisual = this.autoMarkVisualState();
     update('autoMarkToggle', autoVisual, 'ACTIVADO', 'DESACTIVADO');
-    const autoQuick = $('quickAutoMarkBtn');
-    if (autoQuick) {
-      autoQuick.classList.toggle('active', autoVisual);
-      autoQuick.setAttribute('aria-pressed', String(autoVisual));
-      autoQuick.disabled = Boolean(this.state?.player?.autoMarkForced || this.state?.markingPolicy?.automaticRequired);
-      $('quickAutoMarkState').textContent = autoVisual ? 'ON' : 'OFF';
-      autoQuick.title = this.state?.markingPolicy?.automaticRequired ? this.state.markingPolicy.reason : `${autoVisual ? 'Desactivar' : 'Activar'} marcado automático`;
-    }
+    const autoQuick = $('quickAutoMarkBtn'), manualQuick = $('quickManualMarkBtn');
+    const chosen = Boolean(this.state?.player?.markingModeChosen);
+    if (autoQuick) { autoQuick.classList.toggle('active', chosen && autoVisual); autoQuick.classList.toggle('auto', chosen && autoVisual); autoQuick.setAttribute('aria-pressed', String(chosen && autoVisual)); autoQuick.disabled = false; autoQuick.title = 'Usar Automarcado'; }
+    if (manualQuick) { manualQuick.classList.toggle('active', chosen && !autoVisual); manualQuick.setAttribute('aria-pressed', String(chosen && !autoVisual)); manualQuick.disabled = false; manualQuick.title = 'Usar marcado Manual'; }
     const quickSound = $('quickSoundBtn');
     if (quickSound) { quickSound.textContent = this.audioEnabled ? '🔊' : '🔇'; quickSound.classList.toggle('active', this.audioEnabled); quickSound.setAttribute('aria-label', this.audioEnabled ? 'Desactivar sonidos' : 'Activar sonidos'); }
     const quickVoice = $('quickVoiceBtn');

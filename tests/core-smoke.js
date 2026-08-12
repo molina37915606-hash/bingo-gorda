@@ -118,6 +118,9 @@ async function demoCards(mode, players, cardsPerPlayer) {
   assert.equal(chosen.response.status, 200, JSON.stringify(chosen.data));
   assert.equal(chosen.data.player.selectionConfirmed, true);
   assert.equal(chosen.data.player.cards.length, playerCardCount);
+  const manualMode = await json('/api/player/automark', { method:'POST', headers:playerHeaders, body:JSON.stringify({ enabled:false }) });
+  assert.equal(manualMode.response.status, 200, JSON.stringify(manualMode.data));
+  assert.equal(manualMode.data.player.markingModeChosen, true);
   state = (await json('/api/admin/state', { headers })).data;
   return { state, headers, response: result.data, playerState: chosen.data, playerHeaders };
 }
@@ -261,6 +264,8 @@ async function drawMany(adminHeaders, count) {
     let p2 = await playerLogin(state, 1, 'device-b');
     assert.equal((await json('/api/player/name', { method: 'POST', headers: p1, body: JSON.stringify({ name: 'Ana' }) })).response.status, 200);
     assert.equal((await json('/api/player/name', { method: 'POST', headers: p2, body: JSON.stringify({ name: 'Bruno' }) })).response.status, 200);
+    assert.equal((await json('/api/player/automark', { method:'POST', headers:p1, body:JSON.stringify({ enabled:false }) })).response.status, 200);
+    assert.equal((await json('/api/player/automark', { method:'POST', headers:p2, body:JSON.stringify({ enabled:false }) })).response.status, 200);
 
     // El respaldo debe conservar nombres, cupos y estado listo.
     state = (await json('/api/admin/state', { headers: adminHeaders })).data;
@@ -368,7 +373,7 @@ async function drawMany(adminHeaders, count) {
     assert(pdfBuffer.toString('latin1').includes('OTRAS ALERTAS RECIBIDAS'));
     fs.writeFileSync(path.join(dataDir, 'resultado-prueba.pdf'), pdfBuffer);
 
-    // Más de 10 jugadores: automarcado obligatorio y rechazo del modo manual.
+    // Más de 10 jugadores: Manual sigue disponible; cada jugador elige su modo.
     await json('/api/admin/close', { method: 'POST', headers: adminHeaders, body: '{}' });
     const rules90 = { ambocabeza: true, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true };
     const cards11 = generatedSets[90].slice(0, 11).map((grid, index) => ({
@@ -386,12 +391,14 @@ async function drawMany(adminHeaders, count) {
       })
     });
     assert.equal(result.response.status, 200, JSON.stringify(result.data));
-    assert.equal(result.data.markingPolicy.automaticRequired, true);
+    assert.equal(result.data.markingPolicy.automaticRequired, false);
+    assert.equal(result.data.markingPolicy.manualAllowed, true);
     assert.equal(result.data.markingPolicy.activePlayers, 11);
-    assert(result.data.players.every(player => player.autoMark));
     const largePlayer = await playerLogin(result.data, 0, 'large-device');
     const disableAutomark = await json('/api/player/automark', { method: 'POST', headers: largePlayer, body: JSON.stringify({ enabled: false }) });
-    assert.equal(disableAutomark.response.status, 400);
+    assert.equal(disableAutomark.response.status, 200);
+    assert.equal(disableAutomark.data.player.markingModeChosen, true);
+    assert.equal(disableAutomark.data.player.autoMark, false);
 
     // El servidor rechaza cartones malformados aunque el navegador intente enviarlos.
     await json('/api/admin/close', { method: 'POST', headers: adminHeaders, body: '{}' });
@@ -426,8 +433,8 @@ async function drawMany(adminHeaders, count) {
     }
     assert.equal(state.markingPolicy.activePlayers, 60);
     assert.equal(state.markingPolicy.activeCards, 240);
-    assert.equal(state.markingPolicy.automaticRequired, true);
-    assert(state.players.every(player => player.autoMark));
+    assert.equal(state.markingPolicy.automaticRequired, false);
+    assert.equal(state.markingPolicy.manualAllowed, true);
 
     const scaleLogins = await Promise.all(state.players.map((player, index) => json('/api/player/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -436,6 +443,7 @@ async function drawMany(adminHeaders, count) {
     assert(scaleLogins.every(item => item.response.status === 200), JSON.stringify(scaleLogins.find(item => item.response.status !== 200)?.data || {}));
     const scaleHeaders = scaleLogins.map(item => ({ 'Content-Type': 'application/json', 'X-Player-Token': item.data.token }));
     await Promise.all(scaleHeaders.map((headers, index) => json('/api/player/name', { method: 'POST', headers, body: JSON.stringify({ name: `Persona ${index + 1}` }) })));
+    await Promise.all(scaleHeaders.map(headers => json('/api/player/automark', { method:'POST', headers, body:JSON.stringify({ enabled:false }) })));
     state = (await json('/api/admin/state', { headers: adminHeaders })).data;
     assert.equal(state.readyToStart, true);
 

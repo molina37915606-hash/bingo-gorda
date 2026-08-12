@@ -16,7 +16,10 @@ assert(!source.includes('/api/'), 'La DEMO BETA no debe depender de APIs de sala
 assert(source.includes("state.phase='playing'"), 'La DEMO debe tener un estado local de juego.');
 assert(source.includes("startTutorial('waiting'"), 'El tutorial debe comenzar en la sala de espera.');
 assert(source.includes("startTutorial('game'"), 'El tutorial debe continuar en la pantalla de juego.');
-assert(source.includes('AUTO ${state.autoMark'), 'Debe existir automarcado de activación inmediata.');
+assert(html.includes('id="modeChoiceOverlay"') && source.includes('chooseInitialMode'), 'Debe existir elección obligatoria Manual o Automarcado.');
+assert(source.includes('checkManualLag()') && source.includes('pending<=4') && source.includes('>=5'), 'Debe existir la asistencia por atraso de marcado.');
+assert(source.includes('maybeShowPrizeCoach') && source.includes('¡TENÉS BINGO!'), 'El DEMO debe enseñar a reclamar Línea/Bingo cuando aparecen.');
+assert(html.includes('/js/emoji-stickers.js'), 'El DEMO debe cargar emojis y stickers igual que el juego real.');
 assert(html.includes('Gana el primer reclamo válido'), 'La regla del primer reclamo debe estar visible.');
 assert(html.includes('id="helpBtn"'), 'Debe existir el botón ? permanente.');
 assert(html.includes('id="sideArrow"'), 'Debe conservarse la flecha lateral.');

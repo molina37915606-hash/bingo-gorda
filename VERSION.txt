@@ -1,0 +1,3 @@
+BINGO DE LA GORDA BETA 2
+Versión 4.1.0-beta.2
+Experiencia Manual / Automarcado unificada entre DEMO y juego real.

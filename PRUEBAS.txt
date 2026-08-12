@@ -1,3 +1,8 @@
+
+BETA 2
+- tests/beta2-player-experience.js: elección obligatoria Manual/Auto, bloqueo de inicio sin modo, recuperación de aciertos al activar AUTO, conservación al volver a Manual y reclamo manual de Línea.
+- También verifica la regla de asistencia 5 aciertos / 5 bolillas y el cambio automático al cartón con premio mediante las implementaciones DEMO y jugador real.
+
 LA GORDA - BINGO ONLINE - PRUEBAS AUTOMÁTICAS
 
 Ejecutar:

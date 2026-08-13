@@ -1,0 +1,14 @@
+BINGO DE LA GORDA CUASIFINAL · RENDER FREE
+
+El archivo render.yaml permite desplegar la CUASIFINAL para DEMOSTRACIONES Y PRUEBAS.
+
+IMPORTANTE:
+El plan gratuito puede usar almacenamiento efímero. Si el servicio reinicia o se vuelve a desplegar, los archivos guardados en BINGO_DATA_DIR pueden perderse.
+
+NO usar esta configuración para una partida paga real sin agregar almacenamiento persistente o migrar la persistencia a una base externa.
+
+Variables mínimas:
+- ONLINE_MODE=true
+- MASTER_ADMIN_PASSWORD=una clave privada larga
+- BINGO_TIMEZONE=America/Argentina/Buenos_Aires
+- BINGO_CLAIM_AUTO_VERIFY_MS=10000

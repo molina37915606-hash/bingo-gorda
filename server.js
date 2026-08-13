@@ -99,7 +99,7 @@ const DEMO_START_SEQUENCE_MS = 1200;
 const DEMO_READY_COUNTDOWN_MS = Math.max(100, Number(process.env.BINGO_DEMO_READY_COUNTDOWN_MS || (TEST_MODE ? 180 : 5000)));
 const DEMO_RESUME_SEQUENCE_MS = 1400;
 const DEMO_FINAL_SEQUENCE_MS = 2600;
-const APP_PUBLIC_VERSION = 'BINGO DE LA GORDA ALFA';
+const APP_PUBLIC_VERSION = 'BINGO DE LA GORDA CUASIFINAL';
 const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bingo'];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
@@ -350,6 +350,25 @@ function blankState() {
   };
 }
 
+function ensureUniqueVisibleCardNumbers(cards = []) {
+  const used = new Set();
+  let next = 1;
+  for (const card of cards || []) {
+    let value = String(card?.number || '').trim();
+    const key = value.toLocaleLowerCase('es');
+    if (!value || used.has(key)) {
+      while (used.has(String(next).padStart(3,'0').toLocaleLowerCase('es'))) next += 1;
+      value = String(next).padStart(3,'0');
+      card.number = value;
+      card.name = `Cartón ${value}`;
+      card.originalName = card.originalName || card.name;
+      next += 1;
+    }
+    used.add(String(card.number).trim().toLocaleLowerCase('es'));
+  }
+  return cards;
+}
+
 function loadState(stateFile = OWNER_STATE_FILE) {
   try {
     const parsed = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
@@ -437,6 +456,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
           updatedAt: parsed.adminMessage.updatedAt || nowIso()
         }
       : null;
+    if (merged.game?.cards) ensureUniqueVisibleCardNumbers(merged.game.cards);
     merged.players = merged.players.map(player => {
       const cardIds = [...new Set((player.cardIds || []).map(String))].slice(0, MAX_CARDS_PER_PLAYER);
       const allowedCardCount = Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(player.allowedCardCount) || cardIds.length || 1));
@@ -5083,105 +5103,30 @@ function servePlayerAccessPage(res, options = {}) {
 }
 
 function serveDemoPlayerPage(res, initialState, directToken = '') {
-  const filePath = path.join(ROOT, 'jugador.html');
-  fs.readFile(filePath, 'utf8', (error, html) => {
-    if (error) return sendJson(res, 500, { error: 'No se pudo abrir la pantalla del jugador.' });
-    const stateMarker = 'window.__BINGO_DEMO_BOOTSTRAP__ = null;';
-    const tokenMarker = "window.__BINGO_DEMO_DIRECT_TOKEN__ = '';";
-    if (!html.includes(stateMarker) || !html.includes(tokenMarker)) return sendJson(res, 500, { error: 'Falta el arranque directo de DEMO.' });
-    const output = html
-      .replace(stateMarker, `window.__BINGO_DEMO_BOOTSTRAP__ = ${safeInlineJson(initialState)};`)
-      .replace(tokenMarker, `window.__BINGO_DEMO_DIRECT_TOKEN__ = ${safeInlineJson(String(directToken || ''))};`);
-    res.writeHead(200, {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Content-Length': Buffer.byteLength(output),
-      'Cache-Control': 'no-store, max-age=0',
-      'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'same-origin'
-    });
-    res.end(output);
-  });
-}
-
-function servePlayerGamePage(req, res, initialState, directToken = '') {
-  const filePath = path.join(ROOT, 'jugador.html');
-  fs.readFile(filePath, 'utf8', (error, html) => {
-    if (error) return sendJson(res, 500, { error: 'No se pudo abrir la pantalla del jugador.' });
-    const stateMarker = 'window.__BINGO_PLAYER_BOOTSTRAP__ = null;';
-    const tokenMarker = "window.__BINGO_PLAYER_DIRECT_TOKEN__ = '';";
-    if (!html.includes(stateMarker) || !html.includes(tokenMarker)) return sendJson(res, 500, { error: 'Falta el arranque de sesión del jugador.' });
-    const output = html
-      .replace(stateMarker, `window.__BINGO_PLAYER_BOOTSTRAP__ = ${safeInlineJson(initialState)};`)
-      .replace(tokenMarker, `window.__BINGO_PLAYER_DIRECT_TOKEN__ = ${safeInlineJson(String(directToken || ''))};`);
-    setPlayerSessionCookie(req, res, directToken);
-    res.writeHead(200, {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Content-Length': Buffer.byteLength(output),
-      'Cache-Control': 'no-store, max-age=0',
-      'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'same-origin'
-    });
-    res.end(output);
-  });
+  return serveFile(res, path.join(ROOT, 'player.html'));
 }
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[char]));
 }
 
-function demoWaitingCardMarkup(card, selected = false) {
-  const mode = Number(card?.mode) === 75 ? 75 : 90;
-  const cells = (card?.grid || []).flat().map(value => {
-    if (value === null || value === undefined || value === '') return '<span class="cell blank">·</span>';
-    if (String(value).toUpperCase() === 'LIBRE') return '<span class="cell free">LIBRE</span>';
-    return `<span class="cell">${escapeHtml(value)}</span>`;
-  }).join('');
-  return `<label class="cardOption"><input type="checkbox" name="card_${escapeHtml(card.id)}" value="1" ${selected ? 'checked' : ''}><div class="cardHead"><b>Cartón ${escapeHtml(card.number)}</b><span>${mode} bolas</span></div><div class="cardGrid m${mode}">${cells}</div></label>`;
-}
-
-function serveDemoWaitingPage(res, player, errorMessage = '') {
-  const filePath = path.join(ROOT, 'demo-jugador.html');
-  fs.readFile(filePath, 'utf8', (error, html) => {
-    if (error) return sendJson(res, 500, { error: 'No se pudo abrir la sala de espera de la demostración.' });
-    const reserved = new Set(player.reservedCardIds || []);
-    const offers = state.game.cards.filter(card => (player.offeredCardIds || []).includes(card.id));
-    const selectedCount = offers.filter(card => reserved.has(card.id)).length;
-    const output = html
-      .replaceAll('<!--DEMO_NAME-->', escapeHtml(player.nameSet ? player.name : ''))
-      .replaceAll('<!--DEMO_SELECTED_COUNT-->', String(selectedCount))
-      .replaceAll('<!--DEMO_ALLOWED_COUNT-->', String(player.allowedCardCount || 1))
-      .replace('<!--DEMO_CARDS-->', offers.map(card => demoWaitingCardMarkup(card, reserved.has(card.id))).join(''))
-      .replace('<!--DEMO_ERROR-->', errorMessage ? `<div class="error">${escapeHtml(errorMessage)}</div>` : '')
-      .replace('<!--DEMO_MODE-->', String(state.game.mode))
-      .replace('<!--DEMO_AI_COUNT-->', String(state.players.filter(item => item.virtual).length));
-    res.writeHead(200, {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Content-Length': Buffer.byteLength(output),
-      'Cache-Control': 'no-store, max-age=0',
-      'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'same-origin'
-    });
-    res.end(output);
-  });
-}
 
 function serveFile(res, filePath) {
   const normalized = path.normalize(filePath);
   const assetRoot = `${path.join(ROOT, 'assets')}${path.sep}`;
   const jsRoot = `${path.join(ROOT, 'js')}${path.sep}`;
+  const cssRoot = `${path.join(ROOT, 'css')}${path.sep}`;
   const allowedHtml = new Set([
     path.join(ROOT, 'admin.html'),
     path.join(ROOT, 'acceso.html'),
-    path.join(ROOT, 'jugador.html'),
-    path.join(ROOT, 'jugador-alfa.html'),
-    path.join(ROOT, 'admin-player-preview.html'),
+    path.join(ROOT, 'player.html'),
     path.join(ROOT, 'cast-receiver.html'),
     path.join(ROOT, 'transmision.html'),
     path.join(ROOT, 'reglamento.html'),
     path.join(ROOT, 'demo.html'),
     path.join(ROOT, 'comunidad.html')
   ]);
-  const allowed = allowedHtml.has(normalized) || normalized.startsWith(assetRoot) || normalized.startsWith(jsRoot);
+  const allowed = allowedHtml.has(normalized) || normalized.startsWith(assetRoot) || normalized.startsWith(jsRoot) || normalized.startsWith(cssRoot);
   if (!allowed) return sendJson(res, 403, { error: 'Acceso denegado.' });
   fs.stat(normalized, (error, stat) => {
     if (error || !stat.isFile()) return sendJson(res, 404, { error: 'Archivo no encontrado.' });
@@ -5714,7 +5659,7 @@ async function handleApi(req, res, url) {
       return workspaceContext.run(workspace, () => sendJson(res, 200, openJoinPlayer(payload)));
     }
     if (url.pathname === '/api/player/login' && req.method === 'POST') {
-      return sendJson(res, 410, { error: 'El acceso por código personal fue eliminado en ALFA. Ingresá por el enlace/clave general y tu sesión privada.' });
+      return sendJson(res, 410, { error: 'El acceso por código personal fue eliminado. Ingresá por el enlace/clave general y tu sesión privada.' });
     }
     if (url.pathname === '/api/player/request-transfer' && req.method === 'POST') {
       return sendJson(res, 410, { error: 'El cambio de dispositivo por código fue eliminado. Pedile al administrador un enlace privado de recuperación.' });
@@ -5745,6 +5690,17 @@ async function handleApi(req, res, url) {
         const viewSession = playerViewSession(token);
         const readOnlyPreview = Boolean(viewSession?.readOnly);
         if (url.pathname === '/api/player/state' && req.method === 'GET') return sendJson(res, 200, { ...playerPayload(player), adminPreview: readOnlyPreview });
+        if (url.pathname === '/api/player/integrity.txt' && req.method === 'GET') {
+          const integrity = publicIntegrityPayload();
+          if (!integrity?.commitment) throw new Error('El sello todavía no está disponible.');
+          const lines = [`BINGO DE LA GORDA`, `Sala: ${state.roomCode}`, `Algoritmo: ${integrity.algorithm}`, `Sello SHA-256: ${integrity.commitment}`, `Sellado: ${integrity.sealedAt || ''}`, `Revelado: ${integrity.revealed ? 'SI' : 'NO'}`, `Verificado: ${integrity.verified === true ? 'SI' : integrity.verified === false ? 'NO' : 'PENDIENTE'}`];
+          if (integrity.revealed && Array.isArray(integrity.drawOrder)) lines.push(`Orden: ${integrity.drawOrder.join(',')}`);
+          return sendBuffer(res, 200, Buffer.from(lines.join('\n'), 'utf8'), 'text/plain; charset=utf-8', `LA_GORDA_Sello_${state.roomCode || 'sala'}.txt`);
+        }
+        if (url.pathname === '/api/player/acta.pdf' && req.method === 'GET') {
+          if (state.status !== 'finished') throw new Error('El acta se habilita al finalizar la partida.');
+          return sendBuffer(res, 200, actaPdf(), 'application/pdf', `LA_GORDA_Acta_${state.roomCode || 'sala'}.pdf`);
+        }
         if (readOnlyPreview) return sendJson(res, 403, { error: 'Vista previa del administrador: modo solo lectura.' });
         if (url.pathname === '/api/player/reserve' && req.method === 'POST') return sendJson(res, 200, reserveCard(player, await readJson(req)));
         if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
@@ -6046,41 +6002,10 @@ const server = http.createServer(async (req, res) => {
         return serveDemoPlayerPage(res, playerPayload(player), player.sessionToken);
       }
       if (req.method === 'GET') {
-        if (player.nameSet && player.selectionConfirmed && (player.cardIds || []).length) {
-          res.writeHead(303, { Location: `/demo/jugar/${entryId}/partida?demo=1`, 'Cache-Control':'no-store' });
-          return res.end();
-        }
         refreshOffersForPlayer(player);
-        return serveDemoWaitingPage(res, player);
+        return serveDemoPlayerPage(res, playerPayload(player), player.sessionToken);
       }
-      if (req.method === 'POST') {
-        try {
-          const form = await readForm(req);
-          const action = String(form.action || 'confirm');
-          const selected = Object.keys(form).filter(key => key.startsWith('card_') && form[key] === '1').map(key => key.slice(5));
-          if (action === 'refresh') {
-            const currentReserved = [...(player.reservedCardIds || [])];
-            for (const cardId of currentReserved) {
-              if (!selected.includes(cardId)) reserveCard(player, { cardId, reserve:false });
-            }
-            for (const cardId of selected) {
-              if (!(player.reservedCardIds || []).includes(cardId)) reserveCard(player, { cardId, reserve:true });
-            }
-            if (!player.nameSet && String(form.name || '').trim().length >= 2) setPlayerName(player, { name:form.name });
-            renewOffers(player);
-            res.writeHead(303, { Location: `/demo/jugar/${entryId}`, 'Cache-Control':'no-store' });
-            return res.end();
-          }
-          if (!player.nameSet || normalizePlayerName(form.name) !== player.name) setPlayerName(player, { name:form.name });
-          chooseCards(player, { cardIds:selected });
-          res.writeHead(303, { Location: `/demo/jugar/${entryId}/partida?demo=1`, 'Cache-Control':'no-store' });
-          return res.end();
-        } catch (error) {
-          refreshOffersForPlayer(player);
-          return serveDemoWaitingPage(res, player, error.message || 'No se pudo completar la selección.');
-        }
-      }
-      return sendJson(res, 405, { error: 'Método no permitido.' });
+      return sendJson(res, 405, { error: 'La selección de la DEMO se realiza desde la interfaz unificada.' });
     });
   }
 
@@ -6090,7 +6015,7 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/admin-principal' || url.pathname === '/admin-principal/' || url.pathname === '/admin-principal.html') { res.writeHead(302, { Location: '/admin' }); return res.end(); }
   if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'admin.html'));
-  if (url.pathname === '/admin-player-preview' || url.pathname === '/admin-player-preview/') return serveFile(res, path.join(ROOT, 'admin-player-preview.html'));
+  if (url.pathname === '/admin-player-preview' || url.pathname === '/admin-player-preview/') return serveFile(res, path.join(ROOT, 'player.html'));
   if (url.pathname === '/demo' || url.pathname === '/demo/') return serveFile(res, path.join(ROOT, 'demo.html'));
   if (url.pathname === '/comunidad' || url.pathname === '/comunidad/' || url.pathname === '/comunidad.html') return serveFile(res, path.join(ROOT, 'comunidad.html'));
   if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return sendJson(res, 404, { error: 'Los accesos temporales están deshabilitados.' });
@@ -6155,12 +6080,12 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(303, { Location:'/jugador', 'Cache-Control':'no-store, max-age=0' });
         return res.end();
       }
-      return serveFile(res, path.join(ROOT, 'jugador-alfa.html'));
+      return serveFile(res, path.join(ROOT, 'player.html'));
     });
   }
   if (url.pathname === '/reglamento' || url.pathname === '/reglamento/' || url.pathname === '/reglamento.html') return serveFile(res, path.join(ROOT, 'reglamento.html'));
   const relative = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
-  if (!(relative.startsWith('assets/') || relative.startsWith('js/'))) return sendJson(res, 404, { error: 'Archivo no encontrado.' });
+  if (!(relative.startsWith('assets/') || relative.startsWith('js/') || relative.startsWith('css/'))) return sendJson(res, 404, { error: 'Archivo no encontrado.' });
   return serveFile(res, path.join(ROOT, relative));
 });
 
@@ -6212,7 +6137,7 @@ for (const workspace of workspaces.values()) workspaceContext.run(workspace, () 
 });
 
 server.listen(PORT, HOST, () => {
-  console.log('\nBINGO DE LA GORDA ALFA');
+  console.log('\nBINGO DE LA GORDA CUASIFINAL');
   const base = PUBLIC_URL || `http://localhost:${PORT}`;
   console.log(`Administrador: ${base}/admin`);
   console.log(`Jugadores: ${base}/jugador`);

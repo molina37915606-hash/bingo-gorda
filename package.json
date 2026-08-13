@@ -1,13 +1,13 @@
 {
-  "name": "bingo-de-la-gorda-alfa",
-  "version": "5.0.0-alpha.6",
+  "name": "bingo-de-la-gorda-cuasifinal",
+  "version": "5.0.0-cuasifinal.1",
   "private": true,
-  "description": "BINGO DE LA GORDA ALFA: modo Jugador reconstruido con sesión privada HttpOnly, nombres únicos, cartones exclusivos y recuperación de un solo uso.",
+  "description": "BINGO DE LA GORDA CUASIFINAL: experiencia unificada DEMO/jugador, sesión segura, cartones exclusivos, chat completo, tutorial, bolilla moderna, ganadores, sello y acta.",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/access-forms.js && node tests/alpha6-security.js && node tests/alpha6-ui.js && node tests/alpha5-ui.js && node tests/alpha5-start.js && node tests/alfa-core.js && node tests/demo-standalone.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
+    "test": "node tests/cuasifinal-ui.js && node tests/access-forms.js && node tests/alpha6-security.js && node tests/alpha5-start.js && node tests/alfa-core.js && node tests/demo-unified.js && node tests/preview-unified.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
   }
 }

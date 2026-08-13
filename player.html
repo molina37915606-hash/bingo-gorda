@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#070914">
+<title>Bingo de la Gorda · Jugador</title>
+<link rel="stylesheet" href="/css/platform.css?v=cuasifinal-1">
+</head>
+<body>
+<main class="app">
+  <header class="top"><img src="/assets/logo.png" alt=""><div class="brand"><b>BINGO DE LA GORDA</b><small id="playerMeta">Abriendo tu sesión privada…</small></div><nav class="platformTools" aria-label="Herramientas"><button id="soundTool" class="toolBtn active" type="button" title="Sonido">🔊<small>SONIDO</small></button><button id="voiceTool" class="toolBtn" type="button" title="Voz">🗣<small>VOZ</small></button><button id="numbersTool" class="toolBtn" type="button" title="Números salidos">#<small>NÚMEROS</small></button><button id="winnersTool" class="toolBtn" type="button" title="Ganadores">🏆<small>GANADORES</small></button><button id="helpTool" class="toolBtn" type="button" title="Tutorial">?<small>AYUDA</small></button><button id="fullscreenTool" class="toolBtn" type="button" title="Pantalla completa">⛶<small>PANTALLA</small></button><button id="chatTool" class="toolBtn" type="button" title="Chat">💬<small>CHAT</small></button></nav><span id="networkPill" class="net">CONECTANDO</span></header>
+  <section id="root" class="panel"><div class="stateHero"><img src="/assets/logo.png" alt=""><div class="spinner"></div><h1>Cargando sala…</h1><p>Estamos recuperando tu sesión privada. No cierres la página.</p></div></section>
+</main>
+<button id="chatFab" class="chatFab hidden" type="button" aria-label="Abrir chat">💬<span id="chatCount" class="chatCount hidden">0</span></button>
+<section id="chatPanel" class="chatPanel hidden" aria-label="Chat de la sala">
+  <header class="chatHead"><b>CHAT DE LA SALA</b><button id="minChat" class="minChat" type="button">— MINIMIZAR</button></header>
+  <div id="chatMessages" class="chatMessages"></div>
+  <div id="emojiRow" class="emojiRow"></div>
+  <form id="chatForm" class="chatComposer"><input id="chatInput" maxlength="160" placeholder="Escribí un mensaje…" autocomplete="off"><button type="submit">ENVIAR</button></form>
+</section>
+<section id="modalBackdrop" class="modalBackdrop hidden" aria-modal="true" role="dialog"><div class="modalCard"><header class="modalHead"><h2 id="modalTitle">Información</h2><button id="modalClose" class="modalClose" type="button">CERRAR</button></header><div id="modalBody" class="modalBody"></div></div></section>
+<div id="toast" class="toast"></div>
+<script src="/js/emoji-stickers.js?v=2.0.0"></script>
+<script src="/js/player.js?v=cuasifinal-1"></script>
+</body>
+</html>

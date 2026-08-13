@@ -1,6 +1,8 @@
+# BINGO DE LA GORDA ALFA
+# Configuración orientada a pruebas. El plan free puede tener disco efímero.
 services:
   - type: web
-    name: bingo-gorda
+    name: bingo-gorda-alfa
     runtime: node
     plan: free
     buildCommand: npm install
@@ -15,3 +17,5 @@ services:
         sync: false
       - key: BINGO_TIMEZONE
         value: America/Argentina/Buenos_Aires
+      - key: BINGO_CLAIM_AUTO_VERIFY_MS
+        value: "10000"

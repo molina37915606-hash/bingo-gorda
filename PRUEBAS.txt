@@ -1,37 +1,27 @@
+BINGO DE LA GORDA ALFA · PRUEBAS
 
-BETA 3
-- tests/beta3-demo-mobile-integrity.js: responsive móvil, chat táctil de emojis/stickers y herramientas SHA-256 discretas.
-- tests/beta2-player-experience.js: elección obligatoria Manual/Auto, bloqueo de inicio sin modo, recuperación de aciertos al activar AUTO, conservación al volver a Manual y reclamo manual de Línea.
-- También verifica la regla de asistencia 5 aciertos / 5 bolillas y el cambio automático al cartón con premio mediante las implementaciones DEMO y jugador real.
-
-LA GORDA - BINGO ONLINE - PRUEBAS AUTOMÁTICAS
-
-Ejecutar:
+EJECUTAR TODO:
   npm test
 
-Resultados esperados:
-  PRUEBAS LA GORDA - BINGO ONLINE: OK
-  PRUEBAS NUEVAS LA GORDA - BINGO ONLINE: OK
-  PRUEBA UI MINIJUEGO: OK
-  PRUEBA STICKERS ANIMADOS: OK
+PRUEBA ALFA CORE
+- Dos jugadores entran con la misma clave y reciben sesiones distintas.
+- Recuperación por token privado.
+- Partida gratis permite elegir cartones directamente.
+- Partida paga no permite elegir antes de aprobación.
+- Admin puede bajar/subir cantidad antes de confirmar pago.
+- Después de aprobar, el jugador puede elegir exactamente la cantidad autorizada.
+- Un cartón confirmado/reservado no puede ser tomado por otro jugador.
+- Solo Manual limita a 2 y rechaza Automarcado.
+- Bloquear chat oculta el mensaje indicado.
+- Visor de jugador es solo lectura.
+- Reclamo pendiente se resuelve automáticamente.
+- Dos reclamos iniciales son Línea 1; tras adjudicarla, Línea 2 es la siguiente disponible.
 
-Cobertura principal:
-- Generación de 25 a 250 cartones en 75 y 90 bolas.
-- Sala de prueba y sala oficial.
-- Selección de cartones y asignación automática pendiente.
-- Ambos minijuegos, cambio entre juegos y clasificaciones independientes.
-- Chat, moderación y stickers animados.
-- Reclamos simultáneos, confirmación, rechazo y ventana de auditoría.
-- Bolilla grande del administrador con número visible.
-- Acta PDF en modo vista previa inline y descarga attachment.
-- Respaldos, restauración, PDF y CSV.
-- Transmisión y prueba de escala con 60 jugadores y 240 cartones.
-- Verificación de que scripts, rutas y recursos retirados no vuelvan a servirse.
+REGRESIONES PRINCIPALES
+- DEMO individual.
+- Simulación Admin.
+- Estrés de 60 IA.
+- Contingencia de administrador.
+- Recuperación después de reiniciar servidor.
 
-V2.4 · PRUEBA DE JUGADOR APURADO
-- `node tests/player-rush-regressions.js`
-- Verifica alternancia rápida de Automarcado, protección de doble reclamo, reinicio de demo, memoria del tutorial, conexión visible y controles accesibles.
-
-V2.8 · INICIO AUTOMÁTICO DE DEMO
-- `node tests/demo-auto-start-ui.js`
-- Verifica que no exista COMENZAR DEMO, que la cuenta sea de 5 segundos, que requiera nombre/cartones/tutorial y que haya REINTENTAR si falla.
+Además de las automáticas, probar manualmente en celulares reales: salida a WhatsApp, volver desde segundo plano, rotación, pérdida de Internet y recuperación de sesión.

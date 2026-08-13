@@ -1,23 +1,14 @@
-PUBLICAR LA GORDA - BINGO ONLINE EN RENDER
+BINGO DE LA GORDA ALFA · RENDER FREE
 
-- Runtime: Node
-- Build command: npm install
-- Start command: npm start
-- Health check: /healthz
+El archivo render.yaml permite desplegar ALFA para DEMOSTRACIONES Y PRUEBAS.
 
-Variables necesarias:
-MASTER_ADMIN_PASSWORD=una_clave_segura
-PUBLIC_URL=https://tu-servicio.onrender.com
-ONLINE_MODE=true
+IMPORTANTE:
+El plan gratuito puede usar almacenamiento efímero. Si el servicio reinicia o se vuelve a desplegar, los archivos guardados en BINGO_DATA_DIR pueden perderse.
 
-Para conservar partidas entre reinicios, configurá almacenamiento persistente y BINGO_DATA_DIR.
+NO usar esta configuración para una partida paga real sin agregar almacenamiento persistente o migrar la persistencia a una base externa.
 
-
-ADVERTENCIA IMPORTANTE
-El plan gratuito de Render no garantiza almacenamiento persistente. Sin un disco o servicio
-de almacenamiento permanente, un reinicio o una nueva publicación puede borrar partidas,
-respaldos y actas. Para uso real configurá un volumen persistente y definí:
-BINGO_DATA_DIR=/ruta/del/volumen/bingo
-
-Antes de aceptar dinero real, probá reinicios, restauración de respaldos y descarga de actas
-en el entorno definitivo.
+Variables mínimas:
+- ONLINE_MODE=true
+- MASTER_ADMIN_PASSWORD=una clave privada larga
+- BINGO_TIMEZONE=America/Argentina/Buenos_Aires
+- BINGO_CLAIM_AUTO_VERIFY_MS=10000

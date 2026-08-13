@@ -1,57 +1,58 @@
-# BINGO DE LA GORDA BETA 4.3
+# BINGO DE LA GORDA ALFA
 
-BETA 3 cierra el pulido de DEMO en celular: selección de cartones sin zoom, chat táctil con emojis/stickers y herramientas de transparencia SHA-256 dentro de la flecha lateral. La pantalla principal mantiene como prioridad cartón, bolilla y reclamos.
-BETA 2 unifica la experiencia de juego entre DEMO y partida real. Cada jugador elige Manual o Automarcado antes de la primera bolilla, puede cambiar durante la partida y siempre debe reclamar los premios manualmente. El sistema ayuda a detectar atraso en Manual, cambia al cartón con premio disponible y refuerza visualmente Línea/Bingo.
+ALFA redefine el acceso y la administración sobre el motor funcional de BETA 4.3. La prioridad es que las salas reales sean simples, que cada jugador tenga una sesión privada y que los cartones nunca se mezclen entre participantes.
 
-Ver `BETA_NOTAS.txt` para el detalle de esta versión.
+## Accesos
 
-Aplicación web para partidas de bingo de 75 y 90 bolas con administración, jugadores, comunidad pública, modo espectador, minijuegos y actas auditables.
-
-## Accesos principales
-
-- Administración principal: `http://localhost:3210/admin-principal`
-- Administración de partida: `http://localhost:3210/admin`
-- Jugadores: `http://localhost:3210/jugador`
+- Administrador principal: `http://localhost:3210/admin`
+- Jugador: `http://localhost:3210/jugador`
+- DEMO individual: `http://localhost:3210/demo`
 - Comunidad: `http://localhost:3210/comunidad`
-- Demostración BETA: `http://localhost:3210/demo` — experiencia independiente que corre en el navegador, sin código privado, sin sala compartida y sin administrador.
+- Transmisión: se crea desde la sala y se abre desde el panel administrador.
 
-## Funcionamiento actual
+`/` y los accesos antiguos de Admin principal redirigen directamente a `/admin`.
 
-- Salas de prueba y salas oficiales.
-- Hasta 60 jugadores, 4 cartones por jugador y 250 cartones activos.
-- Bingo de 75 y 90 bolas con premios configurables según modalidad.
-- Reclamos auditados por hora, milisegundos y secuencia de recepción.
-- Vero como única presentadora, con voz femenina y guion compartido entre jugador y transmisión.
-- Chat de partida con emojis y 12 stickers.
-- Comunidad con nombre fijo por dispositivo, chat público, stickers, filtros, bloqueo de teléfonos/WhatsApp y reportes revisados por el operador.
-- Minijuegos Rojo o Negro y Mayor o Menor.
-- DEMO BETA reescrita desde cero: configuración → sala de espera → tutorial → partida local contra IA → final. No usa el login, los estados de espera ni las APIs de las partidas reales.
-- Chat IA local con Zoe, Mateo y Owen; selección/recarga de cartones, Automarcado, reclamos, historial y ganadores funcionan dentro de la propia DEMO.
-- Reanudación automática 5 segundos después de confirmar un premio, con opción del administrador para mantener la pausa.
-- Reconexión reforzada de jugadores y recuperación del estado tras cortes.
-- Contingencia del administrador: tras 60 segundos sin conexión, el servidor verifica reclamos automáticamente y mantiene el sorteo automático si correspondía.
-- Sello SHA-256 público del bolillero, con revelación y comprobación del orden al finalizar.
-- Wake Lock en jugador y modo espectador para mantener la pantalla activa cuando el navegador lo soporta.
-- Selector de cartones optimizado para números más grandes y mejor lectura en pantallas pequeñas.
-- Tutorial contextual con memoria de paso, adaptación táctil/PC/TV y acceso permanente desde ?.
-- Indicador independiente de calidad de conexión y modo concentración durante el sorteo.
-- Reclamos con feedback inmediato, bloqueo de doble toque y barra flotante cuando hay un premio listo.
-- Automarcado rápido con aviso de cuántos números atrasados recuperó.
-- Demo reiniciable desde la sala para repetir el recorrido completo.
-- Acceso por QR desde la sala de administración.
-- Recuperación del sorteo automático después de reiniciar el servidor.
-- Cada partida crea automáticamente su modo espectador público.
-- Modo espectador con pantalla completa, efectos, voz de Vero que canta las bolillas y carrera dinámica de cartones.
-- Cierre oficial tras Bingo: extracción progresiva de bolillas restantes, habilitación del acta al completar y carrusel final de cartones ganadores en loop.
-- Link corto de espectador personalizable por el administrador.
-- Integración Chromecast preparada mediante `CAST_APP_ID`.
-- Actas PDF/CSV, copias de seguridad y recuperación.
+## Salas ALFA
 
-## Ejecutar localmente
+### Partida gratis
+
+Clave compartida → nombre → sesión privada → elegir cartones → confirmar → esperar inicio.
+
+No aparece WhatsApp, precio ni confirmación de pago.
+
+### Partida paga
+
+Clave compartida → nombre → solicitar cantidad → WhatsApp/pago externo → administrador ajusta la cantidad → administrador confirma → jugador elige los cartones autorizados → confirmar → esperar inicio.
+
+La clave compartida solo permite entrar al lobby. La identidad del jugador y sus cartones dependen de un token privado de sesión. Salir momentáneamente a WhatsApp o recargar la página no debe cerrar la sesión.
+
+## Modos de marcado
+
+- `Normal`: Manual o Automarcado.
+- `Solo Manual`: Automarcado deshabilitado y máximo absoluto de 2 cartones por jugador.
+
+## Administración
+
+- Un solo Admin principal.
+- Un único visor de jugador con icono de ojo, de solo lectura, para humanos e IA.
+- El administrador puede subir o bajar la cantidad autorizada antes de confirmar un pago.
+- Moderación del chat: bloquear desde un mensaje lo oculta y evita mensajes nuevos del jugador sin sacarlo de la partida.
+- Reclamos pendientes se verifican automáticamente por servidor a los 10 segundos si el administrador no actúa.
+- Línea 2 solo se habilita después de adjudicar Línea 1.
+
+## Transmisión / TV
+
+La transmisión intenta mantener la pantalla activa con Wake Lock, vuelve a solicitarlo al recuperar foco/visibilidad y mantiene reconexión automática. Algunos Smart TV pueden ignorar Wake Lock; en ese caso también debe desactivarse el ahorro de energía del televisor.
+
+## Ejecutar
+
+Requiere Node.js 18 o superior.
 
 ```bash
 npm start
 ```
+
+Abrir `http://localhost:3210/admin`.
 
 ## Pruebas
 
@@ -59,6 +60,10 @@ npm start
 npm test
 ```
 
-La batería incluye una prueba específica del motor DEMO BETA (sin red), además de pruebas funcionales, regresiones, comunidad, stickers, simulación, estrés, contingencia del administrador, recuperación tras reinicio y auditoría estructural.
+La batería ALFA comprueba el flujo nuevo de salas, sesiones privadas, pago/aprobación, cartones exclusivos, Solo Manual, moderación, reclamos automáticos, secuencia Línea 1/Línea 2, DEMO, simulación de 60 IA, contingencia y recuperación tras reinicio.
 
-Para producción, configurá `BINGO_DATA_DIR` sobre almacenamiento persistente y las variables de `.env.example` en el servicio de hosting.
+## Persistencia
+
+ALFA sigue usando el repositorio de archivos del servidor (`BINGO_DATA_DIR`). Para pruebas locales es suficiente. Para partidas reales en Internet, `BINGO_DATA_DIR` debe apuntar a un volumen persistente. Un hosting con disco efímero puede perder partidas y actas después de reinicios o redeploys.
+
+La migración a una base externa como Supabase no está incluida en ALFA 5.0.0-alpha.1 porque requiere definir/configurar el proyecto y credenciales de producción sin reemplazar el motor que ya funciona.

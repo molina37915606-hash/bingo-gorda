@@ -1,14 +1,15 @@
-BINGO DE LA GORDA BETA 4
+BINGO DE LA GORDA ALFA · 5.0.0-alpha.1
 
-BINGO DE LA GORDA BETA 3
+1. Instalar Node.js 18 o superior.
+2. Abrir una terminal en esta carpeta.
+3. Ejecutar: npm start
+4. Abrir: http://localhost:3210/admin
 
-1. Ejecutá PROBAR_EN_ESTA_PC.bat o npm start.
-2. Abrí http://localhost:3210/admin-principal.
-3. Desde ahí podés crear o continuar una sala y administrar la Comunidad.
-4. Toda partida crea automáticamente su modo espectador.
-5. El espectador se abre desde Comunidad, desde el cartón del jugador o desde Administración.
-6. Las salas de prueba aceptan ingreso por enlace; las oficiales usan códigos individuales.
-7. Comunidad incluye WhatsApp, chat social moderable y minijuegos.
-8. Antes de publicar cambios ejecutá npm test.
+PRUEBAS COMPLETAS:
+npm test
 
-IMPORTANTE: en producción usá BINGO_DATA_DIR sobre almacenamiento persistente.
+IMPORTANTE:
+- El Admin principal ahora es /admin.
+- Las salas usan una clave compartida y una sesión privada distinta por jugador.
+- En partidas pagas el jugador elige sus cartones RECIÉN después de la confirmación del administrador.
+- Para uso real en Internet, configurar BINGO_DATA_DIR sobre almacenamiento persistente.

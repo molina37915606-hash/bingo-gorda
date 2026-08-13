@@ -1,9 +1,12 @@
-ACTUALIZAR GITHUB CON BINGO DE LA GORDA
+ACTUALIZAR GITHUB CON BINGO DE LA GORDA ALFA
 
-1. Descomprimí LA_GORDA_BINGO_ONLINE.zip.
-2. Reemplazá los archivos del repositorio por el contenido de la carpeta BINGO DE LA GORDA.
-3. Conservá en Render las variables MASTER_ADMIN_PASSWORD, PUBLIC_URL y BINGO_DATA_DIR.
-4. Ejecutá npm test.
-5. Subí los cambios y verificá que la acción automática termine correctamente.
+1. Descomprimí el ZIP de ALFA.
+2. Reemplazá el contenido del repositorio por esta versión.
+3. Conservá/configurá en el hosting MASTER_ADMIN_PASSWORD, PUBLIC_URL y BINGO_DATA_DIR.
+4. Ejecutá: npm test
+5. Subí los cambios.
+6. Verificá /healthz y después una sala GRATIS de prueba antes de usar una sala PAGA.
 
-Etiqueta sugerida: la-gorda-bingo-online
+IMPORTANTE: si BINGO_DATA_DIR no apunta a almacenamiento persistente, un reinicio/redeploy puede perder los datos.
+
+Etiqueta sugerida: bingo-de-la-gorda-alfa-5.0.0-alpha.1

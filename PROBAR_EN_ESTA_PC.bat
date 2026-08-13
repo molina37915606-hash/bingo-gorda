@@ -6,8 +6,9 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo Abriendo LA GORDA - BINGO ONLINE...
-echo Panel principal: http://localhost:3210/admin-principal
+echo Iniciando BINGO DE LA GORDA ALFA...
+echo Admin principal: http://localhost:3210/admin
 echo Jugadores:       http://localhost:3210/jugador
+echo Demo:            http://localhost:3210/demo
 node server.js
 pause

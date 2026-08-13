@@ -232,11 +232,13 @@ class PlayerApp {
     const directSession = String(params.get('session') || '').trim();
     const directCode = String(params.get('acceso') || params.get('codigo') || params.get('code') || '').trim().toUpperCase();
     const roomCode = String(params.get('sala') || '').trim().toUpperCase();
-    this.openJoinMode = params.get('prueba') === '1' && Boolean(roomCode);
+    const accessKey = String(params.get('clave') || '').trim().toUpperCase();
+    const recoveryToken = String(params.get('recuperar') || '').trim();
+    this.openJoinMode = !adminPreviewEntry && !demoEntry && !directSession && !directCode;
     if (this.openJoinMode) {
-      $('codeLoginFields')?.classList.add('hidden');
       $('openJoinFields')?.classList.add('show');
-      $('loginIntro').textContent = 'Escribí tu nombre, elegí tus cartones y entrá directamente a la sala de prueba.';
+      if (accessKey) $('accessCode').value = accessKey;
+      $('loginIntro').textContent = 'Ingresá con la clave de la sala, tu nombre y la cantidad de cartones que querés.';
       $('loginBtn').textContent = 'ENTRAR A LA SALA';
     }
     if (adminPreviewEntry && adminPreviewSession) {
@@ -273,6 +275,11 @@ class PlayerApp {
       } else {
         await this.resume({ demoBoot:true });
       }
+    } else if (recoveryToken) {
+      try {
+        const recovered = await this.request('/api/player/recover', { method:'POST', body:JSON.stringify({ recoveryToken, deviceId:this.deviceId }) });
+        this.acceptLogin(recovered);
+      } catch (error) { $('loginError').innerHTML = `<div class="error">${esc(error.message)}</div>`; }
     } else if (directSession) {
       this.token = directSession;
       this.tokenRoom = '';
@@ -366,6 +373,7 @@ class PlayerApp {
     const style = document.createElement('style');
     style.textContent = `
       .playerChatDock{position:fixed;right:9px;bottom:max(9px,env(safe-area-inset-bottom));z-index:105}.playerChatToggle{position:relative;min-height:44px;border:0;border-radius:999px;padding:10px 14px;background:#5a167b;color:#fff;font-weight:1000;box-shadow:0 10px 35px #0008;cursor:pointer}.playerChatPanel{display:none;position:fixed;right:9px;bottom:62px;width:min(430px,calc(100vw - 18px));height:min(620px,calc(100dvh - 82px));background:var(--panel);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 25px 70px #000b}.playerChatPanel.show{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto auto auto}.playerChatPanel header{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;background:linear-gradient(135deg,#5a167b,#7b2494);color:#fff}.playerChatPanel header button{border:0;background:transparent;color:#fff;font-size:24px}.playerChatMessages{min-height:0;overflow:auto;padding:10px;display:grid;align-content:start;gap:8px;background:var(--panel3);overscroll-behavior:contain}.playerChatMessage{padding:9px 10px;border-radius:11px;background:var(--panel2);color:var(--text);border:1px solid var(--border)}.playerChatMessage.admin{background:#3b2454;color:#fff;border-color:#9867b2}.playerChatMessage small{display:flex;justify-content:space-between;gap:8px;color:var(--muted);margin-bottom:4px}.playerChatMessage.admin small{color:#e3cdeb}.playerChatMessage p{margin:0;word-break:break-word}.playerChatMessage.stickerMessage{background:transparent;border-color:transparent;padding:5px 8px}.playerChatMessage.stickerMessage small{margin-bottom:1px}.playerChatMessage.stickerMessage p{display:flex;align-items:center;min-height:104px}.playerChatComposer{display:grid;grid-template-columns:46px 46px minmax(0,1fr) auto;align-items:end;border-top:1px solid var(--border);background:var(--panel)}.playerChatToolButton{width:46px;height:52px;border:0;border-right:1px solid var(--border);background:var(--panel2);color:var(--text);font-size:22px;font-weight:900;cursor:pointer}.playerChatToolButton.active{background:#5a167b;color:#fff}.playerChatPanel textarea{resize:none;min-height:52px;max-height:94px;padding:10px;border:0;background:var(--panel);color:var(--text);outline:none}.playerChatSend{height:52px;border:0;padding:0 14px;background:#ffca2f;color:#1b1405;font-weight:1000}.playerChatNotice{padding:8px 10px;background:#3f2c0a;color:#ffe39a;font-size:12px}.playerPicker{display:none;padding:9px;border-top:1px solid var(--border);background:var(--panel2);max-height:min(38dvh,280px);overflow:auto}.playerPicker.show{display:grid}.playerEmojiMenu{grid-template-columns:repeat(5,1fr);gap:5px}.playerEmojiMenu button{height:48px;border:1px solid var(--border);border-radius:11px;background:var(--panel3);color:var(--text);font-size:25px;cursor:pointer}.playerEmojiMenu button:active{transform:scale(.92)}.playerStickerMenu{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.playerStickerMenu .premiumStickerButton{min-height:88px}.playerStickerHint{grid-column:1/-1;color:var(--muted);font-size:11px;line-height:1.35;padding:2px 3px 5px}.playerChatBadge:not(:empty){position:absolute;right:-5px;top:-7px;display:grid;place-items:center;min-width:21px;height:21px;padding:0 5px;border-radius:999px;background:#ff2f55;color:#fff;border:2px solid #fff;font-size:10px;line-height:1;font-weight:1000;box-shadow:0 4px 12px #0007}.playerChatToggle.hasUnread{animation:chatUnreadPulse .34s ease-out 2}@keyframes chatUnreadPulse{50%{transform:scale(1.09);box-shadow:0 0 0 5px #ff2f5538,0 10px 35px #0008}}.playerChatToggle:focus-visible,.playerPicker button:focus-visible,.playerChatToolButton:focus-visible{outline:3px solid #ffca2f;outline-offset:2px}.concentrationMode .playerChatDock{opacity:.78;transition:opacity .15s}.concentrationMode .playerChatDock:hover,.concentrationMode .playerChatDock:focus-within{opacity:1}
+      @media(min-width:721px) and (min-height:651px){.playerChatPanel{top:12px;left:12px;right:12px;bottom:12px;width:auto;height:auto;border-radius:20px;background:#090d19;box-shadow:0 25px 80px #000}.playerChatMessages{background:#070b15}.playerChatComposer,.playerChatPanel textarea{background:#090d19}}
       @media(max-width:720px){.playerChatDock{right:7px;bottom:max(7px,env(safe-area-inset-bottom))}.playerChatPanel{left:6px;right:6px;bottom:58px;width:auto;height:min(690px,calc(100dvh - 70px));border-radius:18px}.playerEmojiMenu{grid-template-columns:repeat(5,1fr)}.playerStickerMenu{grid-template-columns:repeat(3,minmax(0,1fr))}.playerStickerMenu .premiumStickerButton{min-height:82px}.playerChatComposer{grid-template-columns:44px 44px minmax(0,1fr) auto}.playerChatToolButton{width:44px}.playerChatToggle{min-height:43px;padding:9px 12px}}
       @media(orientation:landscape) and (max-height:650px) and (min-width:568px){.playerChatPanel{top:5px;right:5px;bottom:5px;left:auto;width:min(390px,48vw);height:auto;border-radius:16px}.playerChatDock{right:7px;bottom:7px}.playerPicker{max-height:42dvh}.playerChatMessage{padding:6px 8px;font-size:11px}.playerChatPanel header{padding:7px 10px}.playerChatComposer{grid-template-columns:40px 40px minmax(0,1fr) auto}.playerChatToolButton{width:40px;height:44px}.playerChatPanel textarea,.playerChatSend{height:44px;min-height:44px}}
     `;
@@ -827,26 +835,17 @@ class PlayerApp {
   }
 
   async login(codeOverride = '', roomOverride = '') {
-    const code = String(codeOverride || $('accessCode').value).trim().toUpperCase();
-    const queryRoom = String(new URLSearchParams(location.search).get('sala') || '').trim().toUpperCase();
-    const roomCode = String(roomOverride || queryRoom).trim().toUpperCase();
+    const accessKey = String(codeOverride || $('accessCode').value).trim().toUpperCase();
     $('loginError').innerHTML = '';
-    if (!this.openJoinMode && code.length < 4) return $('loginError').innerHTML = '<div class="error">Escribí el código completo.</div>';
-    if (this.openJoinMode && String($('openJoinName')?.value || '').trim().length < 2) return $('loginError').innerHTML = '<div class="error">Escribí tu nombre o apodo.</div>';
+    if (accessKey.length < 4) return $('loginError').innerHTML = '<div class="error">Escribí la clave completa de la sala.</div>';
+    if (String($('openJoinName')?.value || '').trim().length < 2) return $('loginError').innerHTML = '<div class="error">Escribí tu nombre o apodo.</div>';
     try {
       $('loginBtn').disabled = true;
       $('loginBtn').textContent = 'INGRESANDO…';
-      const data = this.openJoinMode
-        ? await this.request('/api/player/open-join', { method:'POST', body:JSON.stringify({ roomCode, name:$('openJoinName').value, cardCount:this.openJoinCardCount, deviceId:this.deviceId }) })
-        : await this.request('/api/player/login', { method:'POST', body:JSON.stringify({ code, roomCode, deviceId:this.deviceId }) });
+      const data = await this.request('/api/player/alpha-join', { method:'POST', body:JSON.stringify({ accessKey, name:$('openJoinName').value, cardCount:this.openJoinCardCount, deviceId:this.deviceId }) });
       this.acceptLogin(data);
     } catch (error) {
-      if (error.status === 409 && error.data?.conflict) {
-        this.pendingTransfer = { code, roomCode, playerName:error.data.playerName };
-        $('transferText').textContent = `${error.data.playerName || 'Este jugador'} ya tiene una sesión activa en otro dispositivo.`;
-        $('transferStatus').innerHTML = '';
-        $('transferOverlay').classList.add('show');
-      } else $('loginError').innerHTML = `<div class="error">${esc(error.message)}</div>`;
+      $('loginError').innerHTML = `<div class="error">${esc(error.message)}</div>`;
     } finally { $('loginBtn').disabled = false; $('loginBtn').textContent = 'ENTRAR A LA SALA'; }
   }
 
@@ -863,7 +862,7 @@ class PlayerApp {
   cleanDirectAccessUrl() {
     const url = new URL(location.href);
     let changed = false;
-    ['acceso','codigo','code','demoSession','session'].forEach(key => { if (url.searchParams.has(key)) { url.searchParams.delete(key); changed = true; } });
+    ['acceso','codigo','code','demoSession','session','recuperar','clave','sala','prueba'].forEach(key => { if (url.searchParams.has(key)) { url.searchParams.delete(key); changed = true; } });
     if (changed) history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
   }
 
@@ -1107,10 +1106,11 @@ class PlayerApp {
     $('presenterName').textContent = 'Vero te acompaña';
     $('presenterPhrase').textContent = presenter.phrase;
     const autoVisual = this.autoMarkVisualState();
-    $('autoMarkToggle').classList.toggle('active', autoVisual);
-    $('autoMarkToggle').disabled = false;
-    $('autoMarkToggle').title = 'Cambiar entre Manual y Automarcado';
-    $('autoMarkHint').textContent = 'AUTO recupera aciertos anteriores. Los premios siempre se reclaman manualmente.';
+    const manualOnly = Boolean(this.state?.markingPolicy?.manualOnly);
+    $('autoMarkToggle').classList.toggle('active', autoVisual && !manualOnly);
+    $('autoMarkToggle').disabled = manualOnly;
+    $('autoMarkToggle').title = manualOnly ? 'Partida solo manual' : 'Cambiar entre Manual y Automarcado';
+    $('autoMarkHint').textContent = manualOnly ? 'SOLO MANUAL · máximo 2 cartones. Los premios siempre se reclaman manualmente.' : 'AUTO recupera aciertos anteriores. Los premios siempre se reclaman manualmente.';
     this.renderAdminMessage();
   }
 
@@ -1147,46 +1147,58 @@ class PlayerApp {
     if (host) host.textContent = this.state?.assignmentTimer?.status === 'completed' ? '00:00' : this.formatCountdown(this.assignmentRemainingSeconds());
   }
 
+  paymentWhatsappUrl() {
+    if (this.state?.roomSettings?.paymentMode !== 'paid') return '';
+    let digits = String(this.state.roomSettings?.whatsapp || '').replace(/\D/g,'');
+    if (digits.length === 10 && !digits.startsWith('54')) digits = `549${digits}`;
+    if (digits.length < 7) return '';
+    const qty = Number(this.state.player?.allowedCardCount || this.state.player?.requestedCardCount || 1);
+    const price = Number(this.state.roomSettings?.cardPrice || 0);
+    const total = price > 0 ? ` Total estimado: $${(price*qty).toLocaleString('es-AR')}.` : '';
+    const text = `Hola, soy ${this.state.player?.name || 'jugador'}. Solicité ${qty} cartón${qty===1?'':'es'} para Bingo de la Gorda.${total} Quiero coordinar el pago.`;
+    return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+  }
+
   renderWaiting() {
     $('playPanel').classList.add('hidden'); $('waitingPanel').classList.remove('hidden');
     const player = this.state.player, timerHtml = this.assignmentTimerHtml();
     const nameSection = this.playerNameSectionHtml();
+    const paid = this.state.roomSettings?.paymentMode === 'paid';
+    if (paid && player.paymentStatus !== 'confirmed' && !player.selectionConfirmed) {
+      const qty = Number(player.allowedCardCount || player.requestedCardCount || 1);
+      const price = Number(this.state.roomSettings?.cardPrice || 0);
+      const total = price > 0 ? price * qty : 0;
+      const paymentText = total > 0 ? `<div class="chosenList"><span class="chosenBadge">${qty} cartón${qty===1?'':'es'} · $${total.toLocaleString('es-AR')}</span></div>` : `<div class="chosenList"><span class="chosenBadge">${qty} cartón${qty===1?'':'es'} solicitado${qty===1?'':'s'}</span></div>`;
+      const wa = this.paymentWhatsappUrl();
+      $('waitingPanel').innerHTML = `${timerHtml}<div class="waitingConfirmed waitingStateHero"><b>ESPERANDO CONFIRMACIÓN</b><div>Pediste ${qty} cartón${qty===1?'':'es'}. Hablá con el administrador por WhatsApp. Tu sesión queda guardada aunque cambies de aplicación.</div>${paymentText}${wa?`<a class="btn primary" href="${wa}" target="_blank" rel="noopener" style="display:inline-flex;justify-content:center;text-decoration:none;margin-top:10px">HABLAR / PAGAR POR WHATSAPP</a>`:''}<small style="display:block;margin-top:10px">Cuando el administrador confirme, vas a poder elegir tus cartones desde esta misma pantalla.</small></div>${this.waitingMiniGameHtml()}`;
+      this.bindWaitingMiniGame();
+      return;
+    }
     if (player.selectionConfirmed) {
       if (!player.nameSet) {
         $('waitingPanel').innerHTML = `${timerHtml}<h2>Confirmá tu nombre</h2><div class="waitingLead">Tus cartones ya están asignados. Solo falta indicar quién va a jugar.</div>${nameSection}<button id="confirmAssignedName" class="btn primary" disabled>CONFIRMAR NOMBRE</button>${this.waitingMiniGameHtml()}`;
-        this.bindPlayerNameInput('confirmAssignedName');
-        $('confirmAssignedName').onclick = () => this.savePlayerName();
-        this.bindWaitingMiniGame();
-        return;
+        this.bindPlayerNameInput('confirmAssignedName'); $('confirmAssignedName').onclick = () => this.savePlayerName(); this.bindWaitingMiniGame(); return;
       }
       const isDemoHuman = Boolean(this.state?.demo?.active && player.demoHuman);
       const canChange = this.state.status === 'waiting' && !this.state.assignmentTimer?.selectionClosed && !this.demoAutoStartDeadline && !this.demoStartBusy;
       const demoStart = isDemoHuman ? this.demoAutoStartHtml() : '';
-      $('waitingPanel').innerHTML = `${timerHtml}<div class="waitingConfirmed waitingStateHero"><b>${isDemoHuman ? 'LISTO PARA LA DEMO' : 'ESPERANDO SORTEO'}</b><div>${isDemoHuman ? 'Tus cartones están listos. Terminá o saltá el tutorial y la partida arrancará sola.' : 'Tus cartones están confirmados y reservados para vos.'}</div><div class="chosenList">${player.cards.map(card => `<span class="chosenBadge">Cartón ${esc(card.number)}</span>`).join('')}</div>${canChange ? '<button id="changeChoice" class="btn secondary" style="margin-top:10px">CAMBIAR CARTONES</button>' : ''}${demoStart}</div>${this.waitingMiniGameHtml()}`;
+      $('waitingPanel').innerHTML = `${timerHtml}<div class="waitingConfirmed waitingStateHero"><b>${isDemoHuman ? 'LISTO PARA LA DEMO' : 'ESPERANDO SORTEO'}</b><div>${isDemoHuman ? 'Tus cartones están listos. Terminá o saltá el tutorial y la partida arrancará sola.' : 'Tus cartones están confirmados y son exclusivamente tuyos.'}</div><div class="chosenList">${player.cards.map(card => `<span class="chosenBadge">Cartón ${esc(card.number)}</span>`).join('')}</div>${canChange ? '<button id="changeChoice" class="btn secondary" style="margin-top:10px">CAMBIAR CARTONES</button>' : ''}${demoStart}</div>${this.waitingMiniGameHtml()}`;
       if ($('changeChoice')) $('changeChoice').onclick = () => { this.cancelDemoAutoStart(); this.releaseChoice(); };
       if ($('demoStartRetryBtn')) $('demoStartRetryBtn').onclick = () => this.retryDemoAutoStart();
-      this.bindWaitingMiniGame();
-      this.renderPregamePreview();
-      if (isDemoHuman) queueMicrotask(() => this.ensureDemoAutoStart());
-      return;
+      this.bindWaitingMiniGame(); this.renderPregamePreview(); if (isDemoHuman) queueMicrotask(() => this.ensureDemoAutoStart()); return;
     }
     const offers = player.offeredCards || [], valid = new Set(offers.map(card => card.id));
     this.selectedOffers = new Set([...this.selectedOffers].filter(id => valid.has(id)));
-    const exactSelection = this.state.roomSettings?.roomType === 'test';
-    const ready = exactSelection
-      ? this.selectedOffers.size === player.allowedCardCount
-      : this.selectedOffers.size > 0 && this.selectedOffers.size <= player.allowedCardCount;
+    const ready = this.selectedOffers.size === player.allowedCardCount;
     const canContinue = ready && (player.nameSet || this.validPlayerNameDraft());
     const confirmation = ready
       ? `<div class="regulationBlock"><div class="regulationActions single"><button id="readRules" class="btn secondary" type="button">LEER REGLAMENTO</button></div><button id="continueChoice" class="btn primary" style="margin:0" ${canContinue ? '' : 'disabled'}>CONFIRMAR CARTONES</button><small>Al confirmar, aceptás el reglamento general y las condiciones de la partida.</small></div>`
       : '<button id="continueChoice" class="btn primary" disabled>CONFIRMAR CARTONES</button>';
-    const selectionTitle = exactSelection ? `Elegí ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}` : `Elegí hasta ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}`;
-    $('waitingPanel').innerHTML = `${timerHtml}<h2>${selectionTitle}</h2><div class="waitingLead">Tenés ${offers.length} vistas previas. Podés recargarlas; los cartones que ya elegiste se conservan. Si comienza la partida antes de confirmar, el sistema completará tu asignación automáticamente.</div>${nameSection}<div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="renewChoice" class="btn secondary">RECARGAR CARTONES</button></div>${confirmation}${this.waitingMiniGameHtml()}`;
+    const selectionTitle = `Elegí ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}`;
+    $('waitingPanel').innerHTML = `${timerHtml}<h2>${selectionTitle}</h2><div class="waitingLead">Elegí exactamente la cantidad autorizada. Cada cartón que seleccionás queda reservado para tu sesión y ningún otro jugador puede tomarlo.</div>${nameSection}<div class="choiceCounter">Seleccionados: <span id="choiceCount">${this.selectedOffers.size}</span> de ${player.allowedCardCount}</div><div id="offerGrid" class="offers">${offers.map(card => this.offerHtml(card)).join('')}</div><div class="choiceActions"><button id="clearChoice" class="btn secondary">LIMPIAR</button><button id="renewChoice" class="btn secondary">RECARGAR CARTONES</button></div>${confirmation}${this.waitingMiniGameHtml()}`;
     this.bindPlayerNameInput('continueChoice');
     $('offerGrid').querySelectorAll('[data-offer]').forEach(button => button.onclick = () => this.toggleOffer(button.dataset.offer));
-    $('clearChoice').onclick = () => this.clearReservations();
-    $('renewChoice').onclick = () => this.renewOffers();
-    $('continueChoice').onclick = () => this.confirmChoice();
+    $('clearChoice').onclick = () => this.clearReservations(); $('renewChoice').onclick = () => this.renewOffers(); $('continueChoice').onclick = () => this.confirmChoice();
     if ($('readRules')) $('readRules').onclick = () => window.open('/reglamento.html', '_blank', 'noopener,noreferrer');
     this.bindWaitingMiniGame();
   }
@@ -1983,12 +1995,11 @@ class PlayerApp {
 
   queueAutoMark(enabled) {
     if (!this.state?.active || !this.state?.player?.selectionConfirmed) return;
+    if (this.state?.markingPolicy?.manualOnly && Boolean(enabled)) return this.showMessage('Esta partida es SOLO MANUAL. Automarcado está deshabilitado.', 'error');
     const desired = Boolean(enabled);
     if (this.state.player.markingModeChosen && Boolean(this.state.player.autoMark) === desired) { this.autoMarkDesired = null; this.updateQuickTools(); return; }
     this.autoMarkFeedback = { desired, recoverable: desired ? this.countRecoverableAutoMarks() : 0 };
-    this.autoMarkDesired = desired;
-    this.updateQuickTools();
-    this.syncAutoMark();
+    this.autoMarkDesired = desired; this.updateQuickTools(); this.syncAutoMark();
   }
 
   chooseInitialMarkingMode(enabled) {
@@ -1999,12 +2010,10 @@ class PlayerApp {
   }
 
   ensureMarkingModeChoice() {
-    const mustChoose = Boolean(this.state?.player?.selectionConfirmed && !this.state?.player?.markingModeChosen && ['waiting','starting','playing'].includes(this.state?.status));
+    const manualOnly = Boolean(this.state?.markingPolicy?.manualOnly);
+    const mustChoose = Boolean(!manualOnly && this.state?.player?.selectionConfirmed && !this.state?.player?.markingModeChosen && ['waiting','starting','playing'].includes(this.state?.status));
     $('markingModeOverlay').classList.toggle('show', mustChoose);
-    if (!mustChoose) {
-      this.markingModeChoosing = false;
-      $('markingModeManual').disabled = false; $('markingModeAuto').disabled = false;
-    }
+    if (!mustChoose) { this.markingModeChoosing = false; $('markingModeManual').disabled = false; $('markingModeAuto').disabled = manualOnly; }
   }
 
   pendingManualHits() {
@@ -2026,6 +2035,7 @@ class PlayerApp {
     if (this.manualLagStartDrawCount == null) this.manualLagStartDrawCount = drawCount;
     if (!this.manualLagPrompted && drawCount - this.manualLagStartDrawCount >= 5) {
       this.manualLagPrompted = true;
+      if (this.state?.markingPolicy?.manualOnly) return this.showMessage(`Tenés ${pending} números salidos sin marcar. Revisá tus cartones y el historial.`, 'notice', 5000);
       $('autoAssistText').textContent = `Tenés ${pending} aciertos sin marcar desde hace varias bolillas. Automarcado puede ponerte al día ahora.`;
       $('autoAssistOverlay').classList.add('show');
     }
@@ -2244,8 +2254,10 @@ class PlayerApp {
     const autoVisual = this.autoMarkVisualState();
     update('autoMarkToggle', autoVisual, 'ACTIVADO', 'DESACTIVADO');
     const autoQuick = $('quickAutoMarkBtn'), manualQuick = $('quickManualMarkBtn');
+    const manualOnly = Boolean(this.state?.markingPolicy?.manualOnly);
+    if (autoQuick) autoQuick.classList.toggle('hidden', manualOnly);
     const chosen = Boolean(this.state?.player?.markingModeChosen);
-    if (autoQuick) { autoQuick.classList.toggle('active', chosen && autoVisual); autoQuick.classList.toggle('auto', chosen && autoVisual); autoQuick.setAttribute('aria-pressed', String(chosen && autoVisual)); autoQuick.disabled = false; autoQuick.title = 'Usar Automarcado'; }
+    if (autoQuick) { autoQuick.classList.toggle('active', chosen && autoVisual); autoQuick.classList.toggle('auto', chosen && autoVisual); autoQuick.setAttribute('aria-pressed', String(chosen && autoVisual)); autoQuick.disabled = manualOnly; autoQuick.title = manualOnly ? 'Partida solo manual' : 'Usar Automarcado'; }
     if (manualQuick) { manualQuick.classList.toggle('active', chosen && !autoVisual); manualQuick.setAttribute('aria-pressed', String(chosen && !autoVisual)); manualQuick.disabled = false; manualQuick.title = 'Usar marcado Manual'; }
     const quickSound = $('quickSoundBtn');
     if (quickSound) { quickSound.textContent = this.audioEnabled ? '🔊' : '🔇'; quickSound.classList.toggle('active', this.audioEnabled); quickSound.setAttribute('aria-label', this.audioEnabled ? 'Desactivar sonidos' : 'Activar sonidos'); }
@@ -2297,6 +2309,7 @@ class PlayerApp {
   }
 
   showClaimOverlay({ kind, icon, title, text, duration, badge = '', mascot = false, force = false }) {
+    this.closeChat();
     if (!this.alertsEnabled && !force) return;
     const overlay = $('publicClaimOverlay'), popup = $('publicClaimPopup'); popup.className = `claimPopup ${kind}`;
     const badgeEl = $('publicClaimBadge'), mascotEl = $('publicClaimMascot');

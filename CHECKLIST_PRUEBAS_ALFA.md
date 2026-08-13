@@ -7,10 +7,15 @@
 - [ ] Crear modo NORMAL.
 - [ ] Crear modo SOLO MANUAL.
 - [ ] Solo Manual no permite más de 2 cartones.
-- [ ] Definir y copiar clave compartida.
+- [ ] Definir clave compartida.
+- [ ] Entrar escribiendo la clave compartida.
+- [ ] Copiar ENLACE DIRECTO y entrar sin escribir clave.
+- [ ] Copiar MENSAJE PARA WHATSAPP y verificar que incluya el enlace.
+- [ ] QR abre el acceso directo sin pedir clave.
 
 ## Jugador gratis
 - [ ] Entrar con clave + nombre.
+- [ ] Entrar con enlace directo + nombre.
 - [ ] No aparece WhatsApp ni precio.
 - [ ] Elegir cartones.
 - [ ] Otro jugador no puede tomar los mismos cartones.
@@ -32,7 +37,8 @@
 
 ## Juego
 - [ ] Bingo 75.
-- [ ] Bingo 90.
+- [ ] Bingo 90 con 1 Línea.
+- [ ] Bingo 90 con 2 Líneas.
 - [ ] Manual.
 - [ ] Automarcado en modo Normal.
 - [ ] Solo Manual no muestra/permite Auto.

@@ -1,3 +1,15 @@
+BINGO DE LA GORDA ALFA 5.0.0-alpha.2
+
+CAMBIOS DE ESTA REVISIÓN
+- Bingo 90 permite elegir 1 o 2 líneas al crear la sala.
+- Nuevo enlace directo de sala: entra sin pedir la clave compartida.
+- La clave compartida sigue funcionando como alternativa manual.
+- El enlace se construye desde el origen real del Admin y, en pruebas locales, intenta usar la dirección LAN para poder abrirlo desde otro dispositivo.
+- Botones separados: COPIAR ENLACE y COPIAR PARA WHATSAPP.
+- El mensaje de WhatsApp incluye modalidad, líneas, precio cuando corresponde, clave alternativa y enlace directo.
+- QR actualizado para usar el acceso directo.
+- Pruebas automáticas ampliadas para clave, enlace directo, 1/2 líneas e inicio de partida.
+
 BINGO DE LA GORDA ALFA · 5.0.0-alpha.1
 
 CAMBIOS PRINCIPALES

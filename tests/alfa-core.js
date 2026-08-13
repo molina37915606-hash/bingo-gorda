@@ -61,10 +61,14 @@ async function get(url, headers = {}) {
     }, adminHeaders);
     assert.equal(state.roomSettings.accessKey, 'ALFAFREE');
     assert.equal(state.roomSettings.paymentMode, 'free');
-    assert.match(state.joinUrl, /clave=ALFAFREE/);
+    assert.match(state.joinUrl, /sala=/);
+    assert.match(state.joinUrl, /directo=1/);
+    assert.equal(state.roomSettings.linePrizeCount, 1);
 
     const ana = await post('/api/player/alpha-join', { accessKey: 'ALFAFREE', name: 'Ana', cardCount: 2, deviceId: 'alfa-ana' });
     const beto = await post('/api/player/alpha-join', { accessKey: 'ALFAFREE', name: 'Beto', cardCount: 2, deviceId: 'alfa-beto' });
+    const ciro = await post('/api/player/open-join', { roomCode: state.roomCode, name: 'Ciro', cardCount: 1, deviceId: 'alfa-ciro' });
+    assert.equal(ciro.state.player.name, 'Ciro', 'El enlace directo debe permitir entrar sin escribir la clave.');
     assert.notEqual(ana.token, beto.token, 'Dos jugadores con la misma clave deben tener sesiones privadas distintas.');
     assert.equal(ana.state.player.paymentStatus, 'not_required');
     const anaHeaders = { 'X-Player-Token': ana.token };
@@ -93,8 +97,9 @@ async function get(url, headers = {}) {
     state = await post('/api/admin/create-simple-room', {
       mode: 90, cardCount: 120, autoSeconds: 60,
       rules: { line: true, bingo: true }, paymentMode: 'paid', markingMode: 'normal',
-      accessKey: 'ALFAPAGA', maxCardsPerPlayer: 4, cardPrice: 1000, whatsapp: '3757624388'
+      accessKey: 'ALFAPAGA', maxCardsPerPlayer: 4, cardPrice: 1000, whatsapp: '3757624388', linePrizeCount: 1
     }, adminHeaders);
+    assert.equal(state.roomSettings.linePrizeCount, 1, 'Bingo 90 debe permitir una sola línea.');
     const carla = await post('/api/player/alpha-join', { accessKey: 'ALFAPAGA', name: 'Carla', cardCount: 4, deviceId: 'alfa-carla' });
     const carlaHeaders = { 'X-Player-Token': carla.token };
     assert.equal(carla.state.player.paymentStatus, 'pending');
@@ -149,7 +154,7 @@ async function get(url, headers = {}) {
     // 6) Reclamo automático: en producción son 10 s; aquí se acelera a 600 ms.
     await post('/api/admin/create-simple-room', {
       mode: 90, cardCount: 60, autoSeconds: 60, rules: { line: true, bingo: true },
-      paymentMode: 'free', markingMode: 'normal', accessKey: 'CLAIM90', maxCardsPerPlayer: 1
+      paymentMode: 'free', markingMode: 'normal', accessKey: 'CLAIM90', maxCardsPerPlayer: 1, linePrizeCount: 1
     }, adminHeaders);
     const linePlayer = await post('/api/player/alpha-join', { accessKey: 'CLAIM90', name: 'Linea', cardCount: 1, deviceId: 'alfa-linea' });
     const lineHeaders = { 'X-Player-Token': linePlayer.token };
@@ -173,8 +178,10 @@ async function get(url, headers = {}) {
     // 7) Línea 2 no nace antes de resolver Línea 1.
     await post('/api/admin/create-simple-room', {
       mode: 90, cardCount: 90, autoSeconds: 60, rules: { line: true, bingo: true },
-      paymentMode: 'free', markingMode: 'normal', accessKey: 'LINESEQ', maxCardsPerPlayer: 1
+      paymentMode: 'free', markingMode: 'normal', accessKey: 'LINESEQ', maxCardsPerPlayer: 1, linePrizeCount: 2
     }, adminHeaders);
+    state = await get('/api/admin/state', adminHeaders);
+    assert.equal(state.roomSettings.linePrizeCount, 2, 'Bingo 90 debe permitir dos líneas.');
     const linePlayers = [];
     for (const [name, deviceId] of [['Uno', 'alfa-u'], ['Dos', 'alfa-d']]) {
       const entry = await post('/api/player/alpha-join', { accessKey: 'LINESEQ', name, cardCount: 1, deviceId });
@@ -204,6 +211,20 @@ async function get(url, headers = {}) {
     assert.equal(c2.resolutionReason, 'valid_but_received_later');
     assert.equal(c2.prizeNumber, 1);
     assert.equal(state.prizeStatus.line.nextNumber, 2);
+    await post('/api/admin/close', {}, adminHeaders);
+
+    // 8) Flujo completo de acceso directo hasta INICIAR PARTIDA.
+    state = await post('/api/admin/create-simple-room', {
+      mode: 90, cardCount: 60, autoSeconds: 60, rules: { line: true, bingo: true },
+      paymentMode: 'free', markingMode: 'manual_only', accessKey: 'ARRANQUE', maxCardsPerPlayer: 2, linePrizeCount: 1
+    }, adminHeaders);
+    const direct = await post('/api/player/open-join', { roomCode: state.roomCode, name: 'Prueba Inicio', cardCount: 1, deviceId: 'alfa-start-direct' });
+    const directHeaders = { 'X-Player-Token': direct.token };
+    await post('/api/player/choose', { cardIds: [direct.state.player.offeredCards[0].id], name: 'Prueba Inicio' }, directHeaders);
+    state = await get('/api/admin/state', adminHeaders);
+    assert.equal(state.preflight.ok, true, `La partida debería estar lista: ${JSON.stringify(state.preflight.errors)}`);
+    state = await post('/api/admin/start', {}, adminHeaders);
+    assert(['starting','playing'].includes(state.status), 'El administrador debe poder iniciar una sala creada con acceso directo.');
 
     console.log('PRUEBA ALFA CORE: OK');
   } catch (error) {

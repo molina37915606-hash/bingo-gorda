@@ -9,4 +9,4 @@ ACTUALIZAR GITHUB CON BINGO DE LA GORDA ALFA
 
 IMPORTANTE: si BINGO_DATA_DIR no apunta a almacenamiento persistente, un reinicio/redeploy puede perder los datos.
 
-Etiqueta sugerida: bingo-de-la-gorda-alfa-5.0.0-alpha.1
+Etiqueta sugerida: bingo-de-la-gorda-alfa-5.0.0-alpha.2

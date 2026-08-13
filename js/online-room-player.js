@@ -76,6 +76,7 @@ class PlayerApp {
     this.resultsViewerObjectUrl = '';
     this.stickerSendTimes = [];
     this.openJoinMode = false;
+    this.directRoomCode = '';
     this.openJoinCardCount = 2;
     this.waitingMini = {
       activeType: ['red_black','higher_lower'].includes(storage.getItem('bingoWaitingMiniGame')) ? storage.getItem('bingoWaitingMiniGame') : 'red_black',
@@ -233,12 +234,19 @@ class PlayerApp {
     const directCode = String(params.get('acceso') || params.get('codigo') || params.get('code') || '').trim().toUpperCase();
     const roomCode = String(params.get('sala') || '').trim().toUpperCase();
     const accessKey = String(params.get('clave') || '').trim().toUpperCase();
+    this.directRoomCode = roomCode;
     const recoveryToken = String(params.get('recuperar') || '').trim();
     this.openJoinMode = !adminPreviewEntry && !demoEntry && !directSession && !directCode;
     if (this.openJoinMode) {
       $('openJoinFields')?.classList.add('show');
       if (accessKey) $('accessCode').value = accessKey;
-      $('loginIntro').textContent = 'Ingresá con la clave de la sala, tu nombre y la cantidad de cartones que querés.';
+      if (roomCode) {
+        $('codeLoginFields')?.classList.add('hidden');
+        $('loginIntro').textContent = 'Acceso directo listo. Escribí tu nombre y elegí cuántos cartones querés.';
+      } else {
+        $('codeLoginFields')?.classList.remove('hidden');
+        $('loginIntro').textContent = 'Ingresá con la clave de la sala, tu nombre y la cantidad de cartones que querés.';
+      }
       $('loginBtn').textContent = 'ENTRAR A LA SALA';
     }
     if (adminPreviewEntry && adminPreviewSession) {
@@ -835,14 +843,19 @@ class PlayerApp {
   }
 
   async login(codeOverride = '', roomOverride = '') {
+    const directRoom = String(roomOverride || this.directRoomCode || '').trim().toUpperCase();
     const accessKey = String(codeOverride || $('accessCode').value).trim().toUpperCase();
     $('loginError').innerHTML = '';
-    if (accessKey.length < 4) return $('loginError').innerHTML = '<div class="error">Escribí la clave completa de la sala.</div>';
+    if (!directRoom && accessKey.length < 4) return $('loginError').innerHTML = '<div class="error">Escribí la clave completa de la sala.</div>';
     if (String($('openJoinName')?.value || '').trim().length < 2) return $('loginError').innerHTML = '<div class="error">Escribí tu nombre o apodo.</div>';
     try {
       $('loginBtn').disabled = true;
       $('loginBtn').textContent = 'INGRESANDO…';
-      const data = await this.request('/api/player/alpha-join', { method:'POST', body:JSON.stringify({ accessKey, name:$('openJoinName').value, cardCount:this.openJoinCardCount, deviceId:this.deviceId }) });
+      const endpoint = directRoom ? '/api/player/open-join' : '/api/player/alpha-join';
+      const payload = directRoom
+        ? { roomCode:directRoom, name:$('openJoinName').value, cardCount:this.openJoinCardCount, deviceId:this.deviceId }
+        : { accessKey, name:$('openJoinName').value, cardCount:this.openJoinCardCount, deviceId:this.deviceId };
+      const data = await this.request(endpoint, { method:'POST', body:JSON.stringify(payload) });
       this.acceptLogin(data);
     } catch (error) {
       $('loginError').innerHTML = `<div class="error">${esc(error.message)}</div>`;

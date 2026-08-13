@@ -1399,7 +1399,7 @@ function adminPayload() {
     broadcastUrl: shortBroadcastUrlFor(),
     broadcastLongUrl: state.roomSettings?.broadcastToken ? `${PUBLIC_URL || `http://localhost:${PORT}`}/transmision/${encodeURIComponent(state.roomSettings.broadcastToken)}` : null,
     castAppId: CAST_APP_ID || null,
-    joinUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?clave=${encodeURIComponent(state.roomSettings?.accessKey || '')}`,
+    joinUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode || '')}&directo=1`,
     lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`),
     localUrl: `http://localhost:${PORT}`,
     game: state.game,
@@ -1780,7 +1780,7 @@ function createSimpleRoom(payload = {}) {
     roomSettings: {
       ...blankState().roomSettings,
       playerAudioAllowed: true, playerAudioDefault: true,
-      linePrizeCount: Number(game.mode) === 90 ? 2 : 1,
+      linePrizeCount: Number(game.mode) === 90 ? Math.max(1, Math.min(2, Number(payload.linePrizeCount) || 1)) : 1,
       allowSamePlayerSecondLine: true, tiePolicy: 'first_claim', gameType: paymentMode === 'paid' ? 'real' : 'test',
       roomType: 'alpha', joinOpen: true, maxOpenPlayers: MAX_PLAYERS,
       accessKey, paymentMode, cardPrice: paymentMode === 'paid' ? Math.max(0, Number(payload.cardPrice) || 0) : 0,
@@ -2221,7 +2221,7 @@ function createAdminSimulationRoom(payload = {}) {
     roomSettings: {
       playerAudioAllowed: false,
       playerAudioDefault: false,
-      linePrizeCount: mode === 90 ? 2 : 1,
+      linePrizeCount: mode === 90 ? Math.max(1, Math.min(2, Number(payload.linePrizeCount) || 1)) : 1,
       allowSamePlayerSecondLine: true,
       tiePolicy: 'first_claim',
       gameType: 'test',

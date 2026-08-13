@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#070914">
-<title>Bingo de la Gorda · Jugador</title>
-<link rel="stylesheet" href="/css/platform.css?v=cuasifinal-1">
+<title>Bingo de la Gorda · Cuasifinal Funcional</title>
+<link rel="stylesheet" href="/css/platform.css?v=funcional-1">
 </head>
 <body>
 <main class="app">
@@ -16,12 +16,12 @@
 <section id="chatPanel" class="chatPanel hidden" aria-label="Chat de la sala">
   <header class="chatHead"><b>CHAT DE LA SALA</b><button id="minChat" class="minChat" type="button">— MINIMIZAR</button></header>
   <div id="chatMessages" class="chatMessages"></div>
-  <div id="emojiRow" class="emojiRow"></div>
+  <nav class="chatPickerTabs"><button type="button" data-chat-picker="emoji" class="active">😀 EMOJIS</button><button type="button" data-chat-picker="stickers">✨ STICKERS</button><button type="button" data-chat-picker="gorda">👩 LA GORDA</button></nav><div id="emojiRow" class="emojiRow"></div>
   <form id="chatForm" class="chatComposer"><input id="chatInput" maxlength="160" placeholder="Escribí un mensaje…" autocomplete="off"><button type="submit">ENVIAR</button></form>
 </section>
 <section id="modalBackdrop" class="modalBackdrop hidden" aria-modal="true" role="dialog"><div class="modalCard"><header class="modalHead"><h2 id="modalTitle">Información</h2><button id="modalClose" class="modalClose" type="button">CERRAR</button></header><div id="modalBody" class="modalBody"></div></div></section>
 <div id="toast" class="toast"></div>
-<script src="/js/emoji-stickers.js?v=2.0.0"></script>
-<script src="/js/player.js?v=cuasifinal-1"></script>
+<script src="/js/emoji-stickers.js?v=2.1.0"></script>
+<script src="/js/player.js?v=funcional-1"></script>
 </body>
 </html>

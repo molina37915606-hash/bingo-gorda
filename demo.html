@@ -1,10 +1,92 @@
 <!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#070914">
-<title>Bingo de la Gorda · DEMO</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#090b18">
+<title>BINGO DE LA GORDA · DEMO FUNCIONAL</title>
 <style>
-:root{--bg:#060914;--panel:#10182b;--panel2:#18223a;--text:#f8f9ff;--muted:#abb7ce;--line:#ffffff20;--gold:#ffd052;--purple:#9148dc}*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Segoe UI,Arial,sans-serif;background:radial-gradient(circle at 50% -10%,#38235f,#130d27 30%,#060914 62%,#02040a);color:var(--text)}.wrap{width:min(760px,100%);margin:auto;padding:14px}.head{text-align:center;margin-bottom:12px}.head img{width:82px;height:82px;object-fit:contain}.head h1{font-size:25px;margin:4px 0}.head p{color:var(--muted);margin:4px auto;max-width:600px;line-height:1.4}.card{background:#10182bf3;border:1px solid var(--line);border-radius:20px;padding:15px;box-shadow:0 20px 60px #0008}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{display:grid;gap:5px}.field label{font-size:10px;font-weight:1000;color:#dce4f3;letter-spacing:.06em}.field select,.field input{width:100%;border:1px solid var(--line);border-radius:11px;background:#0a1020;color:#fff;padding:11px}.prizes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}.check{display:flex;align-items:center;gap:7px;padding:9px;border-radius:10px;background:#151e35;border:1px solid var(--line);font-size:11px;font-weight:900}.check input{accent-color:#a95be8}.note{margin-top:12px;padding:10px;border-radius:11px;background:#1b1730;border:1px solid #754aa2;color:#eadaff;font-size:11px;line-height:1.4}.btn{width:100%;margin-top:13px;border:0;border-radius:13px;padding:13px;background:linear-gradient(135deg,#ffd052,#ffe98b);color:#251900;font-size:13px;font-weight:1000;cursor:pointer}.back{display:block;text-align:center;color:#cbb2e4;margin-top:12px;font-size:11px;text-decoration:none}@media(max-width:620px){.wrap{padding:9px}.grid{grid-template-columns:1fr}.prizes{grid-template-columns:1fr 1fr}.card{padding:11px}.head h1{font-size:22px}}
+:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff;background:#090b18;--panel:#11172a;--panel2:#0b1020;--gold:#ffc52f;--purple:#7b238f;--green:#25d890;--muted:#aab4c8;--line:#ffffff20}*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 15% 4%,#68207655,transparent 34%),radial-gradient(circle at 90% 90%,#d72c7133,transparent 34%),#090b18}body{min-height:100vh;padding:18px}button,input,select{font:inherit}.shell{width:min(900px,100%);margin:0 auto;display:grid;grid-template-columns:.72fr 1.28fr;border:1px solid var(--line);border-radius:28px;overflow:hidden;background:var(--panel);box-shadow:0 26px 80px #0009}.brand{padding:32px;background:linear-gradient(145deg,#471260,#861d72);display:flex;flex-direction:column;justify-content:space-between;min-height:680px}.brand img{width:150px;max-width:75%;filter:drop-shadow(0 12px 25px #0006)}.brand h1{font-size:clamp(36px,5vw,58px);line-height:.96;margin:26px 0 14px}.brand p{color:#f1ddeb;line-height:1.55}.tag{display:inline-flex;align-self:flex-start;border-radius:999px;background:var(--gold);color:#211300;padding:8px 11px;font-size:12px;font-weight:1000}.notes{display:grid;gap:9px;color:#f4dcef;font-size:13px}.notes div{padding:10px 12px;border-radius:12px;background:#210d2c88;border:1px solid #ffffff16}.form{padding:30px;display:grid;gap:18px}.form h2{margin:0;font-size:30px}.sub{margin:5px 0 0;color:var(--muted);line-height:1.5}.field{display:grid;gap:9px}.field>span{font-weight:950;color:#e8edf8}.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.choices.four{grid-template-columns:repeat(4,minmax(0,1fr))}.choice{position:relative}.choice input{position:absolute;opacity:0;pointer-events:none}.choice label{min-height:48px;padding:9px;display:grid;place-items:center;text-align:center;border:1px solid #ffffff25;border-radius:13px;background:var(--panel2);color:#dce4f4;font-weight:950;cursor:pointer}.choice input:checked+label{background:#5d177c;border-color:#d899ef;box-shadow:0 0 0 2px #d899ef2b}.choice input:disabled+label{opacity:.28;cursor:not-allowed}.prizes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.check{display:flex;align-items:center;gap:9px;padding:11px 12px;border:1px solid #ffffff20;border-radius:13px;background:var(--panel2);font-weight:850}.check input{accent-color:#8a28a8;width:18px;height:18px}.info{padding:12px 13px;border-radius:14px;background:#0a1324;border:1px solid #ffffff18;color:#b9c6d9;font-size:13px;line-height:1.5}.info b{color:#fff}.start{border:0;border-radius:15px;padding:15px 18px;background:linear-gradient(135deg,#ffbd22,#ffe06b);color:#251400;font-weight:1000;font-size:16px;cursor:pointer;box-shadow:0 10px 26px #ffbd2230}.start:active{transform:scale(.99)}.error{display:none;padding:11px 13px;border-radius:12px;background:#5d1d2c;color:#ffdce3;border:1px solid #ff7e982f;font-weight:800}.error.show{display:block}.hidden{display:none!important}@media(max-width:760px){body{padding:0}.shell{border-radius:0;grid-template-columns:1fr;min-height:100vh}.brand{min-height:auto;padding:20px;display:grid;grid-template-columns:auto 1fr;gap:15px;align-items:center}.brand img{width:84px}.brand h1{font-size:28px;margin:0 0 5px}.brand p{margin:0;font-size:13px}.tag,.notes{display:none}.form{padding:20px 16px 30px}.choices.four{grid-template-columns:repeat(4,1fr)}}
 </style>
 </head>
-<body><main class="wrap"><header class="head"><img src="/assets/logo.png" alt=""><h1>BINGO DE LA GORDA</h1><p>DEMO · aprendé a jugar con participantes IA usando la misma pantalla de una partida real.</p></header><section class="card"><form method="post" action="/demo/start"><div class="grid"><div class="field"><label>MODALIDAD</label><select name="mode" id="demoMode"><option value="90">90 bolillas</option><option value="75">75 bolillas</option></select></div><div class="field"><label>TUS CARTONES</label><select name="playerCardCount"><option value="1">1 cartón</option><option value="2" selected>2 cartones</option><option value="3">3 cartones</option><option value="4">4 cartones</option></select></div><div class="field"><label>JUGADORES IA</label><select name="aiCount"><option value="2">2 IA</option><option value="4" selected>4 IA</option><option value="8">8 IA</option><option value="12">12 IA</option></select></div><div class="field"><label>VELOCIDAD</label><select name="autoSeconds"><option value="2">2 segundos</option><option value="4" selected>4 segundos</option><option value="6">6 segundos</option><option value="8">8 segundos</option></select></div><div class="field" id="lineCountField"><label>CANTIDAD DE LÍNEAS (90)</label><select name="linePrizeCount"><option value="1">1 línea</option><option value="2" selected>2 líneas</option></select></div></div><div class="prizes"><label class="check"><input type="checkbox" name="prizeLine" value="1" checked> Línea</label><label class="check"><input type="checkbox" name="prizeBingo" value="1" checked> Bingo</label><label class="check mode90"><input type="checkbox" name="prizeAmbo" value="1"> Ambo cabeza</label><label class="check mode75" hidden><input type="checkbox" name="prizeDouble" value="1"> Doble línea</label><label class="check mode75" hidden><input type="checkbox" name="prizeTriple" value="1"> Triple línea</label><label class="check mode75" hidden><input type="checkbox" name="prizeCorners" value="1"> 4 esquinas</label></div><div class="note"><b>Misma experiencia de la plataforma:</b> cartones, bolilla moderna, chat con emojis y stickers, tutorial, Manual/Automarcado, reclamos, ganadores, números salidos, sello y acta final.</div><button class="btn" type="submit">INICIAR DEMO</button></form><a class="back" href="/admin">← Volver al administrador</a></section></main><script>const mode=document.getElementById('demoMode'),line=document.getElementById('lineCountField');function sync(){const is75=mode.value==='75';line.hidden=is75;document.querySelectorAll('.mode75').forEach(x=>x.hidden=!is75);document.querySelectorAll('.mode90').forEach(x=>x.hidden=is75)}mode.onchange=sync;sync();</script></body></html>
+<body>
+<main class="shell">
+  <section class="brand">
+    <div>
+      <img src="/assets/logo.png" alt="Bingo de la Gorda">
+      <span class="tag">CUASIFINAL FUNCIONAL</span>
+      <h1>Probá el Bingo completo</h1>
+      <p>La DEMO usa la misma sala de espera y la misma pantalla de juego que una partida real. Tus rivales son IA y cada dispositivo tiene su propia demostración.</p>
+    </div>
+    <div class="notes">
+      <div>💬 Sala de espera con chat, emojis, stickers y La Gorda.</div>
+      <div>🎮 Minijuegos mientras esperás el comienzo.</div>
+      <div>🎟️ Los mismos cartones, reclamos, números y ganadores del juego real.</div>
+    </div>
+  </section>
+
+  <form class="form" method="post" action="/demo/start" id="demoForm">
+    <div><h2>Configurar DEMO</h2><p class="sub">Elegí lo básico. Después entrás directamente a la sala de espera.</p></div>
+    <div id="errorBox" class="error"></div>
+
+    <div class="field"><span>Modalidad</span><div class="choices">
+      <div class="choice"><input id="mode90" name="mode" type="radio" value="90" checked><label for="mode90">90 BOLAS</label></div>
+      <div class="choice"><input id="mode75" name="mode" type="radio" value="75"><label for="mode75">75 BOLAS</label></div>
+    </div></div>
+
+    <div id="lineCountField" class="field"><span>Líneas a premiar en 90 bolas</span><div class="choices">
+      <div class="choice"><input id="line1" name="linePrizeCount" type="radio" value="1"><label for="line1">1 LÍNEA</label></div>
+      <div class="choice"><input id="line2" name="linePrizeCount" type="radio" value="2" checked><label for="line2">2 LÍNEAS</label></div>
+    </div></div>
+
+    <input type="hidden" name="prizeLine" value="1">
+    <input type="hidden" name="prizeBingo" value="1">
+
+    <div id="prize75Field" class="field hidden"><span>Premios especiales de 75 bolas</span><div class="prizes">
+      <label class="check"><input name="prizeCorners" type="checkbox" value="1"> 4 Esquinas</label>
+      <label class="check"><input name="prizeDouble" type="checkbox" value="1"> Doble Línea</label>
+      <label class="check"><input name="prizeTriple" type="checkbox" value="1"> Triple Línea</label>
+      <div class="check">✓ Línea + Bingo</div>
+    </div></div>
+
+    <div class="field"><span>Modo de marcado</span><div class="choices">
+      <div class="choice"><input id="markNormal" name="markingMode" type="radio" value="normal" checked><label for="markNormal">NORMAL<br><small>Manual / Auto</small></label></div>
+      <div class="choice"><input id="markManual" name="markingMode" type="radio" value="manual_only"><label for="markManual">SOLO MANUAL<br><small>máximo 2 cartones</small></label></div>
+    </div></div>
+
+    <div class="field"><span>Cartones</span><div class="choices four" id="cardChoices">
+      <div class="choice"><input id="cards1" name="playerCardCount" type="radio" value="1"><label for="cards1">1</label></div>
+      <div class="choice"><input id="cards2" name="playerCardCount" type="radio" value="2"><label for="cards2">2</label></div>
+      <div class="choice"><input id="cards3" name="playerCardCount" type="radio" value="3"><label for="cards3">3</label></div>
+      <div class="choice"><input id="cards4" name="playerCardCount" type="radio" value="4" checked><label for="cards4">4</label></div>
+    </div></div>
+
+    <div class="field"><span>Rivales IA</span><div class="choices">
+      <div class="choice"><input id="ai2" name="aiCount" type="radio" value="2" checked><label for="ai2">2 IA</label></div>
+      <div class="choice"><input id="ai3" name="aiCount" type="radio" value="3"><label for="ai3">3 IA</label></div>
+    </div></div>
+
+    <div class="field"><span>Velocidad del sorteo</span><div class="choices four">
+      <div class="choice"><input id="speed2" name="autoSeconds" type="radio" value="2"><label for="speed2">2 s</label></div>
+      <div class="choice"><input id="speed4" name="autoSeconds" type="radio" value="4" checked><label for="speed4">4 s</label></div>
+      <div class="choice"><input id="speed6" name="autoSeconds" type="radio" value="6"><label for="speed6">6 s</label></div>
+      <div class="choice"><input id="speed8" name="autoSeconds" type="radio" value="8"><label for="speed8">8 s</label></div>
+    </div></div>
+
+    <div class="info"><b>90 bolas:</b> únicamente Línea 1, Línea 2 opcional y Bingo. Los minijuegos y el chat están disponibles en la sala de espera y se cierran al comenzar el sorteo.</div>
+    <button class="start" type="submit">ENTRAR A MI DEMO</button>
+  </form>
+</main>
+<script>
+(()=>{
+  const form=document.getElementById('demoForm'), mode90=document.getElementById('mode90'), lineField=document.getElementById('lineCountField'), p75=document.getElementById('prize75Field'), normal=document.getElementById('markNormal'), manual=document.getElementById('markManual');
+  const cards=[1,2,3,4].map(n=>document.getElementById('cards'+n));
+  function syncMode(){const is90=mode90.checked;lineField.classList.toggle('hidden',!is90);p75.classList.toggle('hidden',is90)}
+  function syncMarking(){const only=manual.checked;cards.forEach((input,i)=>input.disabled=only&&i>=2);if(only&&Number(form.playerCardCount.value)>2)cards[1].checked=true;if(!only&&!cards.some(x=>x.checked))cards[3].checked=true}
+  form.addEventListener('change',()=>{syncMode();syncMarking()});syncMode();syncMarking();
+  const q=new URLSearchParams(location.search),err=q.get('error'),box=document.getElementById('errorBox');
+  if(err){box.textContent=err==='rate'?'Demasiados intentos. Esperá unos minutos y volvé a probar.':'No se pudo crear la DEMO. Volvé a intentar.';box.classList.add('show')}
+})();
+</script>
+</body>
+</html>

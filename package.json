@@ -1,13 +1,13 @@
 {
-  "name": "bingo-de-la-gorda-cuasifinal",
-  "version": "5.0.0-cuasifinal.1",
+  "name": "bingo-de-la-gorda-cuasifinal-funcional",
+  "version": "5.1.0-cuasifinal-funcional.1",
   "private": true,
-  "description": "BINGO DE LA GORDA CUASIFINAL: experiencia unificada DEMO/jugador, sesión segura, cartones exclusivos, chat completo, tutorial, bolilla moderna, ganadores, sello y acta.",
+  "description": "BINGO DE LA GORDA CUASIFINAL FUNCIONAL: acceso privado individual, sala de espera social, cartones exclusivos, juego móvil unificado y transmisión permanente.",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/cuasifinal-ui.js && node tests/access-forms.js && node tests/alpha6-security.js && node tests/alpha5-start.js && node tests/alfa-core.js && node tests/demo-unified.js && node tests/preview-unified.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
+    "test": "node tests/functional-ui.js && node tests/functional-invite.js && node tests/demo-unified.js && node tests/preview-unified.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
   }
 }

@@ -99,7 +99,7 @@ const DEMO_START_SEQUENCE_MS = 1200;
 const DEMO_READY_COUNTDOWN_MS = Math.max(100, Number(process.env.BINGO_DEMO_READY_COUNTDOWN_MS || (TEST_MODE ? 180 : 5000)));
 const DEMO_RESUME_SEQUENCE_MS = 1400;
 const DEMO_FINAL_SEQUENCE_MS = 2600;
-const APP_PUBLIC_VERSION = 'BINGO DE LA GORDA CUASIFINAL';
+const APP_PUBLIC_VERSION = 'BINGO DE LA GORDA CUASIFINAL FUNCIONAL';
 const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bingo'];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
@@ -482,7 +482,10 @@ function loadState(stateFile = OWNER_STATE_FILE) {
         sessionDeviceId: String(player.sessionDeviceId || ''),
         code: String(player.code || '').trim().toUpperCase(),
         directAccessToken: player.directAccessToken ? String(player.directAccessToken) : null,
-        recoveryExpiresAt: player.recoveryExpiresAt || null
+        recoveryExpiresAt: player.recoveryExpiresAt || null,
+        inviteToken: player.inviteToken ? String(player.inviteToken) : null,
+        inviteClaimedAt: player.inviteClaimedAt || null,
+        invitedAt: player.invitedAt || null
       };
     });
     return merged;
@@ -953,6 +956,9 @@ function updateCardDisplayNames() {
 
 function playerEligibleForRound(player) {
   if (!player?.nameSet) return false;
+  // En el flujo funcional una invitación privada debe haber sido utilizada al menos una vez.
+  // Después puede estar desconectado y reconectarse sin perder su lugar.
+  if (player?.inviteToken && !player?.inviteClaimedAt) return false;
   if (state.roomSettings?.paymentMode === 'paid' && player.paymentStatus !== 'confirmed') return false;
   return true;
 }
@@ -1467,7 +1473,7 @@ function adminPayload() {
     broadcastUrl: shortBroadcastUrlFor(),
     broadcastLongUrl: state.roomSettings?.broadcastToken ? `${PUBLIC_URL || `http://localhost:${PORT}`}/transmision/${encodeURIComponent(state.roomSettings.broadcastToken)}` : null,
     castAppId: CAST_APP_ID || null,
-    joinUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode || '')}&directo=1`,
+    joinUrl: null,
     lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`),
     localUrl: `http://localhost:${PORT}`,
     game: state.game,
@@ -1477,7 +1483,10 @@ function adminPayload() {
       nameSet: Boolean(player.nameSet),
       slotLabel: player.slotLabel,
       code: player.code,
-      recoveryLinkAvailable: !player.virtual,
+      recoveryLinkAvailable: !player.virtual && Boolean(player.inviteClaimedAt || player.sessionToken),
+      invitationUrl: player.virtual ? '' : invitationUrlForPlayer(player),
+      invitationClaimed: Boolean(player.inviteClaimedAt),
+      invitedAt: player.invitedAt || null,
       requestedCardCount: player.requestedCardCount || player.allowedCardCount,
       allowedCardCount: player.allowedCardCount,
       paymentStatus: player.paymentStatus || (state.roomSettings?.paymentMode === 'paid' ? 'pending' : 'not_required'),
@@ -1766,6 +1775,9 @@ function emptyRoomPlayer({ name = '', cardIds = [], allowedCardCount = 1, code =
     code: code || randomCode(6),
     directAccessToken: null,
     recoveryExpiresAt: null,
+    inviteToken: null,
+    inviteClaimedAt: null,
+    invitedAt: null,
     requestedCardCount: allowed,
     allowedCardCount: allowed,
     paymentStatus: paymentStatus || (state.roomSettings?.paymentMode === 'paid' ? 'pending' : 'not_required'),
@@ -1833,36 +1845,35 @@ function waitingGamePayload() {
 
 function createSimpleRoom(payload = {}) {
   const game = createGeneratedGame(payload);
-  const paymentMode = payload.paymentMode === 'paid' ? 'paid' : 'free';
   const markingMode = payload.markingMode === 'manual_only' ? 'manual_only' : 'normal';
-  const roomMaxCards = markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(payload.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
-  let accessKey = normalizeAccessKey(payload.accessKey);
-  if (accessKey && accessKey.length < 4) throw new Error('La clave de sala debe tener al menos 4 caracteres.');
-  if (!accessKey) accessKey = randomCode(6);
-  const duplicate = [...workspaces.values()].find(workspace => workspace.id !== currentWorkspace().id && workspace.state?.active && normalizeAccessKey(workspace.state?.roomSettings?.accessKey) === accessKey);
-  if (duplicate) throw new Error('Esa clave ya está siendo usada por otra sala activa. Elegí otra.');
-  const whatsapp = String(payload.whatsapp || '').replace(/[^0-9+]/g, '').slice(0, 30);
-  if (paymentMode === 'paid' && whatsapp.replace(/\D/g,'').length < 7) throw new Error('En una partida paga ingresá un número de WhatsApp válido.');
+  // CUASIFINAL FUNCIONAL: 4 cartones por defecto. Solo Manual fuerza máximo 2.
+  const roomMaxCards = markingMode === 'manual_only'
+    ? 2
+    : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(payload.maxCardsPerPlayer) || 4));
   replaceCurrentState({
     ...blankState(), revision: 0, active: true, status: 'waiting', roomCode: randomCode(6), createdAt: nowIso(), updatedAt: nowIso(), round: 1,
     roomSettings: {
       ...blankState().roomSettings,
       playerAudioAllowed: true, playerAudioDefault: true,
       linePrizeCount: Number(game.mode) === 90 ? Math.max(1, Math.min(2, Number(payload.linePrizeCount) || 1)) : 1,
-      allowSamePlayerSecondLine: true, tiePolicy: 'first_claim', gameType: paymentMode === 'paid' ? 'real' : 'test',
-      roomType: 'alpha', joinOpen: true, maxOpenPlayers: MAX_PLAYERS,
-      accessKey, paymentMode, cardPrice: paymentMode === 'paid' ? Math.max(0, Number(payload.cardPrice) || 0) : 0,
-      whatsapp: paymentMode === 'paid' ? whatsapp : '', maxCardsPerPlayer: roomMaxCards, markingMode,
+      allowSamePlayerSecondLine: true, tiePolicy: 'first_claim', gameType: 'real',
+      roomType: 'alpha',
+      // El acceso normal es exclusivamente mediante invitaciones privadas por jugador.
+      joinOpen: false,
+      maxOpenPlayers: MAX_PLAYERS,
+      accessKey: '', paymentMode: 'free', cardPrice: 0, whatsapp: '',
+      maxCardsPerPlayer: roomMaxCards, markingMode,
       claimAutoVerifySeconds: 10,
       presenterVoiceGender: 'female',
+      // La transmisión existe siempre; no se configura al crear la partida.
       broadcastToken: randomId('live'), broadcastAlias: freshBroadcastAlias(currentWorkspace().id),
-      transmission: normalizeTransmissionSettings(payload.transmission)
+      transmission: normalizeTransmissionSettings()
     },
     waitingGame: { type: 'both', leaderboard: [], leaderboards: { red_black: [], higher_lower: [] } },
     drawOrder: createSecureDrawOrder(game.mode), game, players: [], cardReservations: {}, claims: [], eventLog: [],
-    chat: { enabled: payload.chatEnabled !== false, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} }
+    chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} }
   });
-  logEvent('alpha_room_created', { paymentMode, markingMode, accessKey, mode: game.mode, cards: game.cards.length, maxCardsPerPlayer: roomMaxCards });
+  logEvent('functional_room_created', { markingMode, mode: game.mode, cards: game.cards.length, maxCardsPerPlayer: roomMaxCards });
   saveState(); broadcast();
   return adminPayload();
 }
@@ -1917,6 +1928,92 @@ function updatePlayerApproval(payload = {}) {
   logEvent('player_approval_updated', { playerId: player.id, requested: player.requestedCardCount, authorized: wanted, paymentStatus: player.paymentStatus });
   saveState(); broadcast();
   return adminPayload();
+}
+
+
+function invitationUrlForPlayer(player) {
+  if (!player?.inviteToken) return '';
+  const base = PUBLIC_URL || `http://localhost:${PORT}`;
+  return `${base}/invitacion/${encodeURIComponent(player.inviteToken)}`;
+}
+
+function findWorkspaceByInviteToken(token) {
+  const normalized = String(token || '').trim();
+  if (!normalized) return null;
+  return [...workspaces.values()].find(workspace => workspace.state?.active && (workspace.state.players || []).some(player => player.inviteToken === normalized)) || null;
+}
+
+function createInvitedPlayer(payload = {}) {
+  if (!state.active || !state.game || state.status !== 'waiting') throw new Error('La sala no está disponible para agregar jugadores.');
+  if (state.players.length >= MAX_PLAYERS) throw new Error(`La sala admite hasta ${MAX_PLAYERS} jugadores.`);
+  const name = validatePlayerName(payload.name);
+  const roomMax = state.roomSettings?.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(state.roomSettings?.maxCardsPerPlayer) || 4));
+  const allowed = Math.max(1, Math.min(roomMax, Number(payload.allowedCardCount ?? payload.cardCount) || roomMax));
+  const totalAuthorized = state.players.reduce((sum, player) => sum + Math.max(1, Number(player.allowedCardCount) || 1), 0);
+  if (totalAuthorized + allowed > state.game.cards.length || totalAuthorized + allowed > MAX_ACTIVE_CARDS) throw new Error('No quedan suficientes cartones para autorizar esa cantidad.');
+  const player = emptyRoomPlayer({ name, cardIds: [], allowedCardCount: allowed, openJoin: false, paymentStatus: 'not_required' });
+  player.name = name;
+  player.nameSet = true;
+  player.slotNumber = state.players.length + 1;
+  player.slotLabel = name;
+  player.inviteToken = randomId('invite');
+  player.invitedAt = nowIso();
+  player.inviteClaimedAt = null;
+  player.sessionToken = null;
+  player.sessionDeviceId = '';
+  player.openJoinDeviceId = '';
+  player.codeStatus = 'private-invite';
+  player.requestedCardCount = allowed;
+  player.paymentStatus = 'not_required';
+  player.paymentConfirmedAt = nowIso();
+  state.players.push(player);
+  logEvent('player_invited', { playerId: player.id, playerName: name, allowedCardCount: allowed });
+  saveState(); broadcast();
+  return { state: adminPayload(), player: { id: player.id, name, allowedCardCount: allowed, inviteUrl: invitationUrlForPlayer(player) } };
+}
+
+function createBulkInvitedPlayers(payload = {}) {
+  if (!state.active || !state.game || state.status !== 'waiting') throw new Error('La sala no está disponible para agregar jugadores.');
+  const raw = Array.isArray(payload.names) ? payload.names : String(payload.names || '').split(/\r?\n|,/);
+  const names = raw.map(normalizePlayerName).filter(Boolean).slice(0, MAX_PLAYERS);
+  if (!names.length) throw new Error('Ingresá al menos un nombre.');
+  const roomMax = state.roomSettings?.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(state.roomSettings?.maxCardsPerPlayer) || 4));
+  const allowed = Math.max(1, Math.min(roomMax, Number(payload.allowedCardCount) || roomMax));
+
+  // Validación transaccional: si hay un nombre repetido o no alcanzan cartones, no se crea ninguno.
+  const canonical = names.map(canonicalPlayerName);
+  if (new Set(canonical).size !== canonical.length) throw new Error('La lista contiene nombres repetidos.');
+  const existing = new Set(state.players.map(player => canonicalPlayerName(player.name)));
+  const duplicate = names.find((name, index) => existing.has(canonical[index]));
+  if (duplicate) throw new Error(`Ya existe un jugador llamado ${duplicate} en esta partida.`);
+  if (state.players.length + names.length > MAX_PLAYERS) throw new Error(`La sala admite hasta ${MAX_PLAYERS} jugadores.`);
+  const totalAuthorized = state.players.reduce((sum, player) => sum + Math.max(1, Number(player.allowedCardCount) || 1), 0);
+  const requestedTotal = totalAuthorized + names.length * allowed;
+  if (requestedTotal > state.game.cards.length || requestedTotal > MAX_ACTIVE_CARDS) throw new Error('No quedan suficientes cartones para autorizar a todos esos jugadores.');
+
+  const created = [];
+  for (const name of names) {
+    const result = createInvitedPlayer({ name, allowedCardCount: allowed });
+    created.push(result.player);
+  }
+  return { state: adminPayload(), players: created };
+}
+
+function claimPlayerInvitation(token, deviceId = '') {
+  if (!state.active || !state.game || state.status !== 'waiting') throw new Error('La partida ya no admite ingresos.');
+  const normalized = String(token || '').trim();
+  const player = state.players.find(item => item.inviteToken === normalized && !item.virtual);
+  if (!player) throw new Error('Este enlace de invitación no es válido.');
+  if (player.inviteClaimedAt) throw new Error('Este enlace ya fue utilizado. Si cambiaste de dispositivo, pedile al administrador un enlace de recuperación.');
+  player.sessionToken = randomId('session');
+  player.sessionDeviceId = String(deviceId || randomId('device')).slice(0, 120);
+  player.openJoinDeviceId = player.sessionDeviceId;
+  player.lastLoginAt = nowIso();
+  player.inviteClaimedAt = nowIso();
+  refreshOffersForPlayer(player, true);
+  logEvent('player_invitation_claimed', { playerId: player.id, playerName: playerDisplayName(player), allowedCardCount: player.allowedCardCount });
+  saveState(); broadcast();
+  return { token: player.sessionToken, playerId: player.id, playerName: playerDisplayName(player), state: playerPayload(player) };
 }
 
 function createPlayerRecoveryLink(payload = {}) {
@@ -2149,14 +2246,16 @@ function partitionDiverseCardGroups(pool, sizes, mode) {
 
 function createDemoRoom(payload = {}) {
   const mode = Number(payload.mode) === 75 ? 75 : 90;
+  const markingMode = payload.markingMode === 'manual_only' ? 'manual_only' : 'normal';
   const aiCount = Math.max(1, Math.min(3, Math.floor(Number(payload.aiCount ?? payload.players) || 2)));
-  const playerCardCount = Math.max(1, Math.min(4, Number(payload.playerCardCount ?? payload.cardsPerPlayer) || 2));
+  const demoMaxCards = markingMode === 'manual_only' ? 2 : 4;
+  const playerCardCount = Math.max(1, Math.min(demoMaxCards, Number(payload.playerCardCount ?? payload.cardsPerPlayer) || demoMaxCards));
   const allowedIntervals = new Set([2, 4, 6, 8]);
   const requestedInterval = Number(payload.autoSeconds) || 4;
   const autoSeconds = allowedIntervals.has(requestedInterval) ? requestedInterval : 4;
   const defaultRules = mode === 75
     ? { ambocabeza: false, line: true, doubleLine: true, tripleLine: true, corners: true, bingo: true }
-    : { ambocabeza: true, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true };
+    : { ambocabeza: false, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true };
   const rules = payload.rules && typeof payload.rules === 'object' ? roomRulesFor(mode, payload.rules) : defaultRules;
   if (!Object.values(rules).some(Boolean)) throw new Error('Elegí al menos un premio para la demostración.');
   const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.floor(Number(payload.linePrizeCount) || 2))) : 1;
@@ -2193,6 +2292,8 @@ function createDemoRoom(payload = {}) {
         roomType: 'test',
         joinOpen: false,
         maxOpenPlayers: 4,
+        maxCardsPerPlayer: demoMaxCards,
+        markingMode,
         prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 },
         argentinaHint: true
       },
@@ -2205,7 +2306,7 @@ function createDemoRoom(payload = {}) {
     human.virtual = false;
     human.demoHuman = true;
     human.autoMark = false;
-    human.markingModeChosen = false;
+    human.markingModeChosen = markingMode === 'manual_only';
     human.selectionConfirmed = false;
     human.cardIds = [];
     human.marks = {};
@@ -2238,7 +2339,8 @@ function createDemoRoom(payload = {}) {
       mode,
       rules: { ...rules },
       linePrizeCount,
-      noWaitingGames: true,
+      markingMode,
+      waitingGames: true,
       startFlow: {
         phase: 'tutorial',
         tutorialResolved: false,
@@ -2255,7 +2357,7 @@ function createDemoRoom(payload = {}) {
     state.players.filter(player => player.virtual).slice(0, 2).forEach((player, index) => {
       try { appendChatMessage({ role: 'player', player, text: demoChatOpeners[index % demoChatOpeners.length] }); } catch {}
     });
-    logEvent('demo_created', { aiNames, aiCount, playerCardCount, cardsPerAi: 2, mode, autoSeconds, rules, linePrizeCount, waitingRoom: true, simulatedChat: true, waitingGames: false });
+    logEvent('demo_created', { aiNames, aiCount, playerCardCount, cardsPerAi: 2, mode, autoSeconds, rules, linePrizeCount, markingMode, waitingRoom: true, simulatedChat: true, waitingGames: true });
     saveState();
     const response = {
       workspaceId: workspace.id,
@@ -2268,6 +2370,7 @@ function createDemoRoom(payload = {}) {
       mode,
       rules: { ...rules },
       linePrizeCount,
+      markingMode,
       autoSeconds
     };
     if (TEST_MODE) response.testAdminToken = createAdminSession({ workspaceId: workspace.id, role: 'owner', hardExpiresAt: workspace.expiresAt });
@@ -3952,6 +4055,7 @@ function restartDemoFromPlayer(player) {
     autoSeconds: Number(demo.autoSeconds || state.game?.autoSeconds) || 4,
     rules: demo.rules || state.game?.rules || {},
     linePrizeCount: Number(demo.linePrizeCount || state.roomSettings?.linePrizeCount) || 1,
+    markingMode: demo.markingMode || state.roomSettings?.markingMode || 'normal',
     sound: state.roomSettings?.playerAudioDefault !== false
   });
 }
@@ -4079,7 +4183,6 @@ function chooseCards(player, payload) {
   const selectedName = player.nameSet ? null : validatePlayerName(payload?.name, player.id);
   const selected = [...new Set((payload.cardIds || []).map(String))];
   if (selected.length < 1 || selected.length > player.allowedCardCount) throw new Error(`Podés elegir entre 1 y ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}.`);
-  if (selected.length !== player.allowedCardCount) throw new Error(`Tenés que elegir exactamente ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'} antes de confirmar.`);
   const offers = new Set(player.offeredCardIds || []);
   if (!selected.every(cardId => offers.has(cardId) || (player.reservedCardIds || []).includes(cardId))) throw new Error('Una de las opciones ya no está disponible. Actualizamos tus opciones de cartones.');
   for (const cardId of selected) {
@@ -5029,13 +5132,10 @@ function accessRoomMetaMarkup(roomState) {
 
 function playerAccessContent({ workspace = null, error = '', direct = false } = {}) {
   if (!workspace) {
-    return `<h2>Ingresar a la partida</h2>
-      <p class="lead">Primero escribí la clave compartida de la sala.</p>
+    return `<h2>Tu acceso es personal</h2>
+      <p class="lead">Para entrar a una partida, abrí el link privado que te envió el administrador por WhatsApp.</p>
       ${accessErrorMarkup(error)}
-      <form method="post" action="/jugador/verificar" autocomplete="off">
-        <div class="field"><label for="accessKey">CLAVE DE LA SALA</label><input class="code" id="accessKey" name="accessKey" maxlength="20" required autofocus placeholder="Ej.: 123321"></div>
-        <button class="btn primary" type="submit">CONTINUAR</button>
-      </form>`;
+      <div class="notice"><b>NO NECESITÁS CLAVE</b><br>Cada link ya identifica tu partida y la cantidad máxima de cartones que podés elegir. Si cambiaste de dispositivo, pedile al administrador un nuevo enlace de recuperación.</div>`;
   }
   const roomState = workspace.state || {};
   const settings = roomState.roomSettings || {};
@@ -5084,6 +5184,13 @@ function servePlayerRecoveryPage(res, options = {}) {
     });
     res.end(output);
   });
+}
+
+function serveInvitationErrorPage(res, message) {
+  const safe = escapeHtml(String(message || 'No se pudo abrir la invitación.'));
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070914"><title>Bingo de la Gorda</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#2c2052,#070914 55%,#02040a);color:#fff;font-family:Segoe UI,Arial,sans-serif;padding:18px;box-sizing:border-box}.box{width:min(480px,100%);background:#11182b;border:1px solid #ffffff24;border-radius:20px;padding:24px;text-align:center;box-shadow:0 20px 70px #0008}.box img{width:92px}.box h1{font-size:24px}.box p{color:#bac4d8;line-height:1.5}.btn{display:inline-block;margin-top:10px;padding:12px 16px;border-radius:12px;background:#ffca2f;color:#241700;font-weight:900;text-decoration:none}</style></head><body><main class="box"><img src="/assets/logo.png" alt="Bingo de la Gorda"><h1>No se pudo abrir la invitación</h1><p>${safe}</p></main></body></html>`;
+  res.writeHead(200, { 'Content-Type':'text/html; charset=utf-8', 'Cache-Control':'no-store, max-age=0' });
+  res.end(html);
 }
 
 function servePlayerAccessPage(res, options = {}) {
@@ -5522,6 +5629,8 @@ async function dispatchAdminApi(req, res, url, session) {
     return sendJson(res, 200, createAdminSimulationRoom(await readJson(req)));
   }
   if (url.pathname === '/api/admin/add-official-player' && req.method === 'POST') return sendJson(res, 200, addOfficialPlayer(await readJson(req)));
+  if (url.pathname === '/api/admin/invite-player' && req.method === 'POST') return sendJson(res, 200, createInvitedPlayer(await readJson(req)));
+  if (url.pathname === '/api/admin/invite-players' && req.method === 'POST') return sendJson(res, 200, createBulkInvitedPlayers(await readJson(req)));
   if (url.pathname === '/api/admin/player-approval' && req.method === 'POST') return sendJson(res, 200, updatePlayerApproval(await readJson(req)));
   if (url.pathname === '/api/admin/player-view-session' && req.method === 'POST') return sendJson(res, 200, createAdminPlayerViewSession(await readJson(req)));
   if (url.pathname === '/api/admin/player-recovery-link' && req.method === 'POST') return sendJson(res, 200, createPlayerRecoveryLink(await readJson(req)));
@@ -5882,6 +5991,33 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res, url);
   if (url.pathname.startsWith('/api/')) return handleApi(req, res, url);
 
+  const invitationMatch = url.pathname.match(/^\/invitacion\/([^/]+)\/?$/);
+  if (invitationMatch && req.method === 'GET') {
+    const inviteToken = decodeURIComponent(invitationMatch[1] || '');
+    const workspace = findWorkspaceByInviteToken(inviteToken);
+    if (!workspace) return serveInvitationErrorPage(res, 'Este enlace no es válido o la partida ya terminó.');
+    return workspaceContext.run(workspace, () => {
+      const player = state.players.find(item => item.inviteToken === inviteToken && !item.virtual);
+      if (!player) return serveInvitationErrorPage(res, 'Este enlace no es válido.');
+      const currentSession = String(cookieValue(req, PLAYER_SESSION_COOKIE) || '').trim();
+      if (player.inviteClaimedAt) {
+        if (currentSession && currentSession === player.sessionToken) {
+          res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0', 'Referrer-Policy':'no-referrer' });
+          return res.end();
+        }
+        return serveInvitationErrorPage(res, `El enlace de ${playerDisplayName(player)} ya fue utilizado. Si cambiaste de dispositivo, pedile al administrador un enlace de recuperación.`);
+      }
+      try {
+        const claimed = claimPlayerInvitation(inviteToken, randomId('device'));
+        setPlayerSessionCookie(req, res, claimed.token);
+        res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0', 'Referrer-Policy':'no-referrer' });
+        return res.end();
+      } catch (error) {
+        return serveInvitationErrorPage(res, error.message || 'No se pudo abrir la invitación.');
+      }
+    });
+  }
+
   if (url.pathname === '/jugador/verificar' && req.method === 'POST') {
     try {
       if (!consumeRate(req, 'alpha-access-form', 120, 10 * 60 * 1000)) return servePlayerAccessPage(res, { error:'Demasiados intentos. Esperá unos minutos.' });
@@ -5936,7 +6072,7 @@ const server = http.createServer(async (req, res) => {
         try {
           const recovered = recoverPlayerByDirectToken({ recoveryToken:token, deviceId:randomId('device') });
           setPlayerSessionCookie(req, res, recovered.token);
-          res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0' });
+          res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0', 'Referrer-Policy':'no-referrer' });
           return res.end();
         } catch (error) {
           return servePlayerRecoveryPage(res, { workspace, token, error:error.message || 'No se pudo recuperar la sesión.' });
@@ -5957,14 +6093,15 @@ const server = http.createServer(async (req, res) => {
       const mode = Number(form.mode) === 75 ? 75 : 90;
       const rules = mode === 75
         ? { ambocabeza:false, line:form.prizeLine === '1', doubleLine:form.prizeDouble === '1', tripleLine:form.prizeTriple === '1', corners:form.prizeCorners === '1', bingo:form.prizeBingo === '1' }
-        : { ambocabeza:form.prizeAmbo === '1', line:form.prizeLine === '1', doubleLine:false, tripleLine:false, corners:false, bingo:form.prizeBingo === '1' };
+        : { ambocabeza:false, line:form.prizeLine === '1', doubleLine:false, tripleLine:false, corners:false, bingo:form.prizeBingo === '1' };
       const created = createDemoRoom({
         mode,
         rules,
         linePrizeCount:Number(form.linePrizeCount) || 1,
         aiCount:Number(form.aiCount) || 2,
         aiNames:String(form.aiNames || '').split(',').map(name => name.trim()).filter(Boolean),
-        playerCardCount:Number(form.playerCardCount) || 2,
+        playerCardCount:Number(form.playerCardCount) || (form.markingMode === 'manual_only' ? 2 : 4),
+        markingMode:form.markingMode === 'manual_only' ? 'manual_only' : 'normal',
         autoSeconds:Number(form.autoSeconds) || 4,
         sound:true
       });
@@ -6038,7 +6175,7 @@ const server = http.createServer(async (req, res) => {
     }
     const currentSession = String(cookieValue(req, PLAYER_SESSION_COOKIE) || '').trim();
     if (currentSession && findWorkspaceByPlayerToken(currentSession)) {
-      res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0' });
+      res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0', 'Referrer-Policy':'no-referrer' });
       return res.end();
     }
     if (currentSession) clearPlayerSessionCookie(req, res);

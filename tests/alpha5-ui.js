@@ -1,0 +1,16 @@
+'use strict';
+const assert=require('assert');
+const fs=require('fs');
+const path=require('path');
+const root=path.join(__dirname,'..');
+const player=fs.readFileSync(path.join(root,'jugador.html'),'utf8');
+const js=fs.readFileSync(path.join(root,'js','online-room-player.js'),'utf8');
+const admin=fs.readFileSync(path.join(root,'js','admin-simplificado.js'),'utf8');
+assert(player.includes('id="playerBootMask"'),'Debe existir pantalla visible de Cargando sala');
+assert(player.includes('playerBootRetry'),'Debe existir REINTENTAR');
+assert(player.includes('alfa-5.0'),'Debe romper caché de JS');
+assert(js.includes('— MINIMIZAR'),'Chat móvil debe tener minimizar explícito');
+assert(js.includes('height:min(52dvh,430px)'),'Chat móvil debe ser compacto');
+assert(admin.includes("'INICIAR SORTEO'"),'Admin debe mostrar INICIAR SORTEO');
+assert(admin.includes('recibirán cartones al azar'),'Admin debe explicar autoasignación');
+console.log('PRUEBA UI ALFA 5: OK · boot visible + chat móvil + iniciar sorteo');

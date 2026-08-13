@@ -1,6 +1,6 @@
 {
   "name": "bingo-de-la-gorda-alfa",
-  "version": "5.0.0-alpha.4",
+  "version": "5.0.0-alpha.5",
   "private": true,
   "description": "BINGO DE LA GORDA ALFA: salas por clave compartida, sesiones privadas, flujo gratis/pago, modo Solo Manual y administración simplificada.",
   "engines": {
@@ -8,6 +8,6 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/access-forms.js && node tests/alfa-core.js && node tests/demo-standalone.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
+    "test": "node tests/access-forms.js && node tests/alpha5-ui.js && node tests/alpha5-start.js && node tests/alfa-core.js && node tests/demo-standalone.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
   }
 }

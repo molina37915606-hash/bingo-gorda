@@ -1,3 +1,18 @@
+BINGO DE LA GORDA ALFA 5.0.0-alpha.5
+
+- La pantalla del jugador ya no puede quedar completamente en blanco: muestra CARGANDO SALA y ofrece REINTENTAR si la interfaz falla o tarda demasiado.
+- El juego se prepara antes de hacerse visible, evitando ocultar la pantalla anterior antes de que la siguiente esté lista.
+- El Admin muestra siempre INICIAR SORTEO y se habilita cuando hay al menos 2 jugadores conectados y habilitados (en producción).
+- Al iniciar, los jugadores habilitados que no eligieron cartones reciben automáticamente al azar la cantidad autorizada.
+- La asignación automática se valida en servidor y no permite cartones duplicados.
+- Si un jugador no eligió Manual/Auto al iniciar, comienza en MANUAL; Automarcado nunca se activa solo.
+- En partidas pagas, solo los jugadores con pago confirmado reciben cartones automáticos; los pagos pendientes quedan fuera de esa ronda.
+- El Admin muestra cuántos eligieron cartones, cuántos recibirán asignación automática y cuántos tienen pago pendiente.
+- El estado conectado/desconectado se refresca al abrir/cerrar la conexión del jugador.
+- Chat móvil reducido aproximadamente a media pantalla, mensajes más compactos y botón visible — MINIMIZAR.
+- Se mantiene el chat grande/opaco en escritorio.
+- Se añadieron pruebas ALFA 5 específicas para inicio automático, pagos pendientes, UI de carga y chat móvil.
+
 BINGO DE LA GORDA ALFA 5.0.0-alpha.4
 
 - Se eliminó el segundo ingreso por clave dentro de /jugar.

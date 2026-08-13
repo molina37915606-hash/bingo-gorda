@@ -95,9 +95,10 @@ class AdminApp {
     $('roomMode').textContent=`${d.game.mode} bolas · ${d.game.cards.length} cartones${Number(d.game.mode)===90?` · ${Number(d.roomSettings?.linePrizeCount||1)} línea${Number(d.roomSettings?.linePrizeCount||1)===1?'':'s'}`:''} · ${isSimulation?'SIMULACIÓN IA':paid?'PAGA':'GRATIS'} · ${manual?'SOLO MANUAL':'NORMAL'}`;
     $('joinInfo').innerHTML=isSimulation?`<b>SIMULACIÓN INTERNA</b><span>${d.players.length} jugadores IA · ${d.preflight?.activeCards||0} cartones activos.</span><span>Las IA usan el mismo motor de premios y reclamos.</span>`:`<b>CLAVE COMPARTIDA: ${esc(key)}</b><span><b>ACCESO DIRECTO:</b> ${esc(this.roomJoinUrl())}</span><span>El enlace directo entra a esta sala sin pedir la clave. La clave queda como alternativa manual.</span><span>Cada jugador recibe una sesión privada y nunca puede abrir los cartones de otra persona.</span>${paid?'<span>En esta partida los jugadores solicitan cantidad y esperan tu confirmación de pago antes de elegir cartones.</span>':''}`;
     $('copyJoinBtn').classList.toggle('hidden',isSimulation);$('showQrBtn').classList.toggle('hidden',isSimulation);$('toggleJoinBtn').classList.toggle('hidden',isSimulation);$('toggleJoinBtn').textContent=d.roomSettings.joinOpen?'CERRAR INGRESO':'ABRIR INGRESO';
-    const ready=Boolean(d.preflight?.ok);$('startBtn').textContent=isSimulation?'INICIAR AHORA':ready?'INICIAR PARTIDA':'ESPERANDO JUGADORES';$('startBtn').disabled=isSimulation?false:!ready;
+    const plan=d.startPlan||{};const canStart=isSimulation||Boolean(plan.canStartFromAdmin);$('startBtn').textContent=isSimulation?'INICIAR AHORA':'INICIAR SORTEO';$('startBtn').disabled=!canStart;
     $('playerCount').textContent=isSimulation?`${d.players.length} IA`:`${d.players.length}`;$('waitingPlayers').innerHTML=this.playerRows(true);this.bindPlayerActions();
-    $('waitingLeaderboard').innerHTML=isSimulation?`<h3>PRUEBA DE CARGA</h3><div class="summaryBox"><span>Probá sorteo, reclamos, chat, transmisión y visor con una sala grande.</span></div>`:`<h3>ESTADO DE LA SALA</h3><div class="summaryBox"><span>${ready?'Todo listo para iniciar.':esc(d.preflight?.message||'Esperando confirmaciones y cartones.')}</span></div>`
+    const autoCount=Number(plan.autoAssignPlayers||0),pendingPay=Number(plan.pendingPaymentPlayers||0),connected=Number(plan.connectedEligiblePlayers||0),eligible=Number(plan.eligiblePlayers||0);
+    $('waitingLeaderboard').innerHTML=isSimulation?`<h3>PRUEBA DE CARGA</h3><div class="summaryBox"><span>Probá sorteo, reclamos, chat, transmisión y visor con una sala grande.</span></div>`:`<h3>ESTADO DE LA SALA</h3><div class="summaryBox"><span><b>${connected} conectados habilitados · ${eligible} participantes habilitados</b></span><span>${autoCount?`${autoCount} jugador${autoCount===1?'':'es'} recibirá${autoCount===1?'':'n'} sus cartones automáticamente al iniciar.`:'Los jugadores habilitados ya tienen cartones elegidos.'}</span>${pendingPay?`<span>${pendingPay} jugador${pendingPay===1?'':'es'} con pago pendiente quedará${pendingPay===1?'':'n'} fuera de esta ronda.</span>`:''}<span>${canStart?'Podés iniciar el sorteo.':'Se necesitan al menos 2 jugadores conectados y habilitados.'}</span></div>`
   }
   playerRows(waiting=false){
     const d=this.state,paid=d.roomSettings?.paymentMode==='paid',max=Number(d.roomSettings?.maxCardsPerPlayer||4);
@@ -142,11 +143,14 @@ class AdminApp {
   renderFinished(){const d=this.state;$('finishedSummary').innerHTML=`<span>Sala ${d.roomCode}</span><span>${d.players.length} jugadores · ${d.preflight?.activeCards||0} cartones</span><span>${d.game.drawn.length} bolillas extraídas</span>`;$('downloadPdfBtn').href=`/api/results.pdf?sala=${encodeURIComponent(d.roomCode)}`;$('downloadCsvBtn').href='/api/admin/acta.csv'}
   async toggleJoin(){try{this.apply(await this.req('/api/admin/join-open',{method:'POST',body:JSON.stringify({open:!this.state.roomSettings.joinOpen})}))}catch(e){this.toast(e.message)}}
   async start(){
-    if(!this.state?.preflight?.ok)return this.toast(this.state?.preflight?.message||'Todavía hay jugadores sin completar su ingreso o sus cartones.');
+    const plan=this.state?.startPlan||{};
     const requested=this.state.players.reduce((sum,p)=>sum+(p.cardIds?.length||0),0);
     if(this.state.roomSettings?.adminSimulation){if(!confirm(`Iniciar ahora la simulación con ${this.state.players.length} IA y ${requested} cartones?`))return;return this.startConfirmed(true)}
-    if(this.state.players.length>20){$('largeRoomStartMeta').innerHTML=`<b>${this.state.players.length} JUGADORES · ${requested} CARTONES CONFIRMADOS</b><span>Todos deben estar listos antes de comenzar.</span>`;this.openModal('startCriterionModal');return}
-    if(!confirm(`Iniciar con ${this.state.players.length} jugadores y ${requested} cartones confirmados?`))return;await this.startConfirmed()
+    if(Number(plan.connectedEligiblePlayers||0)<2)return this.toast('Se necesitan al menos 2 jugadores conectados y habilitados.');
+    const eligible=Number(plan.eligiblePlayers||0),auto=Number(plan.autoAssignPlayers||0),pendingPay=Number(plan.pendingPaymentPlayers||0),selected=Number(plan.selectedPlayers||0);
+    const meta=`<b>${eligible} JUGADORES HABILITADOS</b><span>${selected} ya eligieron cartones · ${auto} recibirán cartones al azar al iniciar.</span>${pendingPay?`<span>${pendingPay} con pago pendiente quedarán fuera de esta ronda.</span>`:''}<span>Quien no haya elegido Manual/Auto comenzará en MANUAL y podrá cambiar después.</span>`;
+    if(eligible>20){$('largeRoomStartMeta').innerHTML=meta;this.openModal('startCriterionModal');return}
+    if(!confirm(`Iniciar sorteo con ${eligible} jugadores habilitados?\n${auto} recibirán cartones automáticamente.${pendingPay?`\n${pendingPay} con pago pendiente quedarán fuera.`:''}`))return;await this.startConfirmed()
   }
   async confirmLargeRoomStart(){this.closeModal('startCriterionModal');await this.startConfirmed()}
   async startConfirmed(force=false){try{this.apply(await this.req('/api/admin/start',{method:'POST',body:JSON.stringify({force:Boolean(force)})}))}catch(e){this.toast(e.message)}}

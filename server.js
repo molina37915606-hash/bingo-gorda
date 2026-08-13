@@ -919,6 +919,32 @@ function updateCardDisplayNames() {
   }
 }
 
+function playerEligibleForRound(player) {
+  if (!player?.nameSet) return false;
+  if (state.roomSettings?.paymentMode === 'paid' && player.paymentStatus !== 'confirmed') return false;
+  return true;
+}
+
+function startPlanPayload() {
+  const connected = connectedPlayerIds();
+  const eligible = state.players.filter(playerEligibleForRound);
+  const pendingPayment = state.players.filter(player => player?.nameSet && state.roomSettings?.paymentMode === 'paid' && player.paymentStatus !== 'confirmed');
+  const pendingSelection = eligible.filter(player => !(player.selectionConfirmed && player.cardIds?.length > 0 && player.cardIds.length <= player.allowedCardCount));
+  const pendingMarkingMode = eligible.filter(player => !player.markingModeChosen);
+  const connectedEligible = eligible.filter(player => player.virtual || connected.has(player.id));
+  return {
+    eligiblePlayers: eligible.length,
+    connectedEligiblePlayers: connectedEligible.length,
+    selectedPlayers: eligible.length - pendingSelection.length,
+    autoAssignPlayers: pendingSelection.length,
+    pendingMarkingModePlayers: pendingMarkingMode.length,
+    pendingPaymentPlayers: pendingPayment.length,
+    pendingPayment: pendingPayment.map(player => ({ id:player.id, name:playerDisplayName(player), requestedCardCount:player.requestedCardCount || player.allowedCardCount })),
+    canStart: eligible.length >= (TEST_MODE ? 1 : 2),
+    canStartFromAdmin: connectedEligible.length >= (TEST_MODE ? 1 : 2) || Boolean(state.roomSettings?.adminSimulation)
+  };
+}
+
 function allPlayersReady() {
   return state.players.length > 0 && state.players.every(player =>
     player.nameSet && player.selectionConfirmed && Boolean(player.markingModeChosen) &&
@@ -931,12 +957,13 @@ function preflightPayload() {
   const assigned = state.players.flatMap(player => player.selectionConfirmed ? (player.cardIds || []).map(cardId => ({ playerId: player.id, cardId })) : []);
   const ids = assigned.map(item => item.cardId);
   const duplicates = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
-  const pendingPlayers = state.players.filter(player => !(player.nameSet && player.selectionConfirmed && player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount));
-  const pendingMarkingMode = state.players.filter(player => player.selectionConfirmed && !player.markingModeChosen);
+  const eligiblePlayers = state.players.filter(playerEligibleForRound);
+  const pendingPlayers = eligiblePlayers.filter(player => !(player.nameSet && player.selectionConfirmed && player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount));
+  const pendingMarkingMode = eligiblePlayers.filter(player => player.selectionConfirmed && !player.markingModeChosen);
   const activeCards = ids.length;
   const availableCards = Math.max(0, (state.game?.cards?.length || 0) - new Set(ids).size);
   const errors = [];
-  if (!state.players.length) errors.push('No hay jugadores configurados.');
+  if (eligiblePlayers.length < (TEST_MODE ? 1 : 2)) errors.push('Se necesitan al menos 2 jugadores habilitados para iniciar.');
   if (pendingPlayers.length) errors.push(`${pendingPlayers.length} jugador${pendingPlayers.length === 1 ? '' : 'es'} todavía no confirmó${pendingPlayers.length === 1 ? '' : 'aron'} sus cartones.`);
   if (pendingMarkingMode.length) errors.push(`${pendingMarkingMode.length} jugador${pendingMarkingMode.length === 1 ? '' : 'es'} todavía no ${pendingMarkingMode.length === 1 ? 'eligió' : 'eligieron'} Manual o Automarcado.`);
   if (duplicates.length) errors.push(`Hay ${duplicates.length} cartón${duplicates.length === 1 ? '' : 'es'} duplicado${duplicates.length === 1 ? '' : 's'}.`);
@@ -945,7 +972,8 @@ function preflightPayload() {
   return {
     ok: Boolean(state.active && state.status === 'waiting' && state.game && errors.length === 0),
     totalPlayers: state.players.length,
-    readyPlayers: state.players.length - pendingPlayers.length,
+    eligiblePlayers: eligiblePlayers.length,
+    readyPlayers: eligiblePlayers.length - pendingPlayers.length,
     pendingPlayers: pendingPlayers.map(player => ({ id: player.id, name: playerDisplayName(player), missing: Math.max(0, player.allowedCardCount - player.cardIds.length) })),
     pendingMarkingMode: pendingMarkingMode.map(player => ({ id: player.id, name: playerDisplayName(player) })),
     generatedCards: state.game?.cards?.length || 0,
@@ -1076,7 +1104,7 @@ function autoAssignPendingPlayers(reason = 'timer') {
   purgeExpiredReservations();
 
   const confirmedIds = new Set(state.players.filter(player => player.selectionConfirmed).flatMap(player => player.cardIds || []));
-  const pendingPlayers = state.players.filter(player => !(player.nameSet && player.selectionConfirmed && player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount));
+  const pendingPlayers = state.players.filter(player => playerEligibleForRound(player) && !(player.selectionConfirmed && player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount));
   const validUnassigned = new Set(state.game.cards.map(card => card.id).filter(cardId => !confirmedIds.has(cardId)));
   const preferredByPlayer = new Map();
   const preferredIds = new Set();
@@ -1112,7 +1140,11 @@ function autoAssignPendingPlayers(reason = 'timer') {
     assigned.push({ playerId: player.id, playerName: playerDisplayName(player), cardIds: chosen });
   }
 
-  state.cardReservations = {};
+  for (const item of assigned) {
+    for (const cardId of item.cardIds || []) {
+      if (state.cardReservations?.[cardId]?.playerId === item.playerId) delete state.cardReservations[cardId];
+    }
+  }
   state.assignmentTimer = {
     ...(state.assignmentTimer || blankState().assignmentTimer),
     enabled: true,
@@ -1338,6 +1370,7 @@ function adminPayload() {
       claims: [],
       publicClaims: [],
       readyToStart: false,
+      startPlan: { eligiblePlayers:0, connectedEligiblePlayers:0, selectedPlayers:0, autoAssignPlayers:0, pendingMarkingModePlayers:0, pendingPaymentPlayers:0, pendingPayment:[], canStart:false, canStartFromAdmin:false },
       accessContext: currentAccessContext(),
       lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`)
     };
@@ -1378,7 +1411,8 @@ function adminPayload() {
     pauseReason: state.pauseReason || null,
     adminPresence: adminPresencePayload(), integrity: publicIntegrityPayload(),
     claimAutoResume: claimAutoResumePayload(),
-    readyToStart: preflightPayload().ok,
+    readyToStart: startPlanPayload().canStart,
+    startPlan: startPlanPayload(),
     preflight: preflightPayload(),
     roomCode: state.roomCode,
     createdAt: state.createdAt,
@@ -1498,6 +1532,7 @@ function playerPayload(player) {
       allowedCardCount: player.allowedCardCount,
       paymentStatus: player.paymentStatus || (state.roomSettings?.paymentMode === 'paid' ? 'pending' : 'not_required'),
       paymentConfirmedAt: player.paymentConfirmedAt || null,
+      excludedFromRound: Boolean(player.excludedFromRound),
       recoveryUrl: playerDirectUrl(player),
       selectionConfirmed: player.selectionConfirmed,
       reservedCardIds: player.reservedCardIds || [],
@@ -3315,17 +3350,32 @@ function completeTransition() {
 }
 
 function startRoom(payload = {}) {
-  if (state.roomSettings) state.roomSettings.joinOpen = false;
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'waiting') return adminPayload();
   const forcedSimulationStart = Boolean(state.roomSettings?.adminSimulation && payload?.force === true);
-  if (forcedSimulationStart) {
-    const hasPendingSelections = state.players.some(player => !(player.nameSet && player.selectionConfirmed && player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount));
-    if (hasPendingSelections) autoAssignPendingPlayers('simulation_start');
-    for (const player of state.players) if (!player.markingModeChosen) { player.markingModeChosen = true; player.autoMark = true; syncAutoMarksForPlayer(player); }
+  const planBefore = startPlanPayload();
+  if (!forcedSimulationStart && planBefore.eligiblePlayers < (TEST_MODE ? 1 : 2)) throw new Error('Se necesitan al menos 2 jugadores habilitados para iniciar el sorteo.');
+  if (state.roomSettings) state.roomSettings.joinOpen = false;
+
+  // Al iniciar, ningún salón grande debe quedar esperando a que cada persona elija.
+  // Gratis: todo jugador ingresado es elegible. Paga: solo quienes tienen pago confirmado.
+  const hasPendingEligibleSelections = state.players.some(player => playerEligibleForRound(player) && !(player.selectionConfirmed && player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount));
+  if (hasPendingEligibleSelections) autoAssignPendingPlayers(forcedSimulationStart ? 'simulation_start' : 'admin_start');
+
+  for (const player of state.players) {
+    const eligible = playerEligibleForRound(player);
+    player.excludedFromRound = !eligible;
+    if (!eligible) continue;
+    // No activar Automarcado sin decisión del jugador. Si aún no eligió, comienza Manual.
+    if (!player.markingModeChosen) {
+      player.markingModeChosen = true;
+      player.autoMark = false;
+    }
+    syncAutoMarksForPlayer(player);
   }
+
   const preflight = preflightPayload();
-  if (!preflight.ok && !forcedSimulationStart) throw new Error(preflight.errors[0] || 'La sala todavía no está lista para iniciar.');
+  if (!preflight.ok) throw new Error(preflight.errors[0] || 'No se pudo preparar a todos los jugadores habilitados para iniciar.');
   if (state.game.drawn.length) throw new Error('La ronda ya contiene bolillas. Reiniciala antes de empezar.');
   enforceAutoMarkPolicy();
   if (!(TEST_MODE && state.testDrawOrderFixed && Array.isArray(state.drawOrder) && state.drawOrder.length === state.game.mode)) state.drawOrder = createSecureDrawOrder(state.game.mode);
@@ -5813,9 +5863,12 @@ function handleEvents(req, res, url) {
     if (role === 'admin') writeSse(res, 'state', adminPayload());
     else if (role === 'broadcast') writeSse(res, 'state', broadcastPayload());
     else writeSse(res, 'state', playerPayload(player));
+    // La lista del Admin debe reflejar enseguida quién está realmente conectado.
+    if (role === 'player') setTimeout(() => workspaceContext.run(workspace, () => broadcast()), 0);
     req.on('close', () => workspaceContext.run(workspace, () => {
       sseClients.delete(client);
       if (role === 'admin') markAdminDisconnected(workspace);
+      if (role === 'player') setTimeout(() => workspaceContext.run(workspace, () => broadcast()), 0);
     }));
   });
 }

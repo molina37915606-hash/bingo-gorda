@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const port = 53400 + Math.floor(Math.random() * 200);
 const base = `http://127.0.0.1:${port}`;
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-gorda-alpha4-access-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-gorda-alpha5-access-'));
 const child = spawn(process.execPath, ['server.js'], { cwd:path.join(__dirname,'..'), env:{...process.env,PORT:String(port),BINGO_TEST_MODE:'true',BINGO_DATA_DIR:dataDir,PUBLIC_URL:base}, stdio:['ignore','pipe','pipe'] });
 const wait = ms => new Promise(r=>setTimeout(r,ms));
 async function waitServer(){for(let i=0;i<100;i++){try{const r=await fetch(base+'/healthz');if(r.ok)return}catch{}await wait(40)}throw new Error('Servidor no disponible')}
@@ -78,5 +78,5 @@ function cookieFrom(response){const raw=response.headers.get('set-cookie')||'';c
   // Salir borra cookie y /jugar sin sesión vuelve a acceso, no al login viejo embebido.
   r=await fetch(base+'/jugador/salir',{headers:{Cookie:paidCookie},redirect:'manual'}); assert.equal(r.status,303); assert.equal(r.headers.get('location'),'/jugador');
 
-  console.log('PRUEBA ACCESO ALFA 4: OK · clave/link → sesión cookie → WhatsApp/recarga → aprobación → cartones sin segundo login');
+  console.log('PRUEBA ACCESO ALFA 5: OK · clave/link → sesión cookie → WhatsApp/recarga → aprobación → cartones sin segundo login');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

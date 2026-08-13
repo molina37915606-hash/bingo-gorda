@@ -39,9 +39,14 @@
 - [ ] Probar enlace/token de recuperación en otro dispositivo.
 
 ## Inicio de partida
-- [ ] Con jugadores listos, Admin muestra la partida preparada para iniciar.
-- [ ] En modo Normal, cada jugador elige Manual o Automarcado antes del inicio.
-- [ ] Admin puede INICIAR PARTIDA después de completar los requisitos.
+- [ ] Con 2 jugadores conectados y habilitados aparece INICIAR SORTEO activo.
+- [ ] Un jugador elige sus cartones y otro no elige ninguno.
+- [ ] Al iniciar, quien no eligió recibe automáticamente al azar la cantidad autorizada.
+- [ ] Verificar que los cartones automáticos no se repitan con los de otros jugadores.
+- [ ] Si el jugador no eligió Manual/Auto, comienza en MANUAL.
+- [ ] En partida PAGA, un jugador con pago pendiente NO recibe cartones ni entra en esa ronda.
+- [ ] Admin muestra resumen: habilitados / asignación automática / pagos pendientes.
+- [ ] Probar INICIAR SORTEO con 40–60 jugadores sin esperar selección manual individual.
 
 ## Juego
 - [ ] Bingo 75.
@@ -69,7 +74,9 @@
 
 ## Chat
 - [ ] Escritorio: panel grande y opaco.
-- [ ] Celular: panel compacto.
+- [ ] Celular: panel de aproximadamente media pantalla.
+- [ ] Celular: botón — MINIMIZAR visible y funcional.
+- [ ] Mensajes en celular con poco espacio vertical/padding.
 - [ ] Contador de mensajes al minimizar.
 - [ ] Premio cierra/prioriza sobre chat.
 
@@ -99,3 +106,11 @@
 - [ ] Probar 20 jugadores.
 - [ ] Probar 40 jugadores.
 - [ ] Probar simulación 60 IA.
+
+
+## Pantalla del jugador / carga
+- [ ] Después de nombre y cantidad nunca queda una pantalla totalmente blanca.
+- [ ] Mientras abre /jugar aparece CARGANDO SALA.
+- [ ] Si la interfaz tarda/falla aparece REINTENTAR.
+- [ ] Confirmar cartones y comprobar que pasa a ESPERANDO SORTEO sin pantalla blanca.
+- [ ] Probar el mismo recorrido en PC y celular real.

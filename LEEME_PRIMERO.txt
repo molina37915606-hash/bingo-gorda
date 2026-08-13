@@ -1,4 +1,4 @@
-BINGO DE LA GORDA ALFA · 5.0.0-alpha.5
+BINGO DE LA GORDA ALFA · 5.0.0-alpha.6
 
 1. Instalar Node.js 18 o superior.
 2. Abrir una terminal en esta carpeta.
@@ -17,3 +17,11 @@ IMPORTANTE:
 ACCESO ALFA 3:
 - Manual: /jugador → clave → nombre/cantidad → sala.
 - Directo: enlace de sala → nombre/cantidad → sala, sin pedir clave.
+
+NOVEDAD ALFA 6
+- El modo Jugador real fue reconstruido y separado de DEMO.
+- La sesión es privada HttpOnly y no se muestra en URL/JavaScript.
+- No existe acceso por código personal.
+- Nombres únicos y cartones exclusivos se validan en servidor.
+- Recuperación de acceso: solo desde Admin, link de un solo uso/15 minutos.
+

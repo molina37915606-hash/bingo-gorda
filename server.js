@@ -92,6 +92,7 @@ const DEMO_TTL_MS = 30 * 60 * 1000;
 const DEMO_SESSION_COOKIE = 'bingo_demo_session';
 const PLAYER_SESSION_COOKIE = 'bingo_player_session';
 const PLAYER_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+const PLAYER_RECOVERY_TTL_MS = 15 * 60 * 1000;
 const DEMO_IDLE_TTL_MS = 15 * 60 * 1000;
 const DEMO_CLAIM_WINDOW_MS = 1600;
 const DEMO_START_SEQUENCE_MS = 1200;
@@ -145,11 +146,21 @@ const playerDisplayName = player => String(player?.name || player?.slotLabel || 
 function normalizePlayerName(value) {
   return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 20);
 }
+function canonicalPlayerName(value) {
+  return normalizePlayerName(value)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('es')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim().replace(/\s+/g, ' ');
+}
 function validatePlayerName(value, playerId = null) {
   const name = normalizePlayerName(value);
   if (name.length < 2) throw new Error('Escribí un nombre o apodo de al menos 2 caracteres.');
   if (/^(jugador|player|invitado)(?:\s*[x#_-]?\s*\d*)?$/i.test(name)) throw new Error('Elegí un nombre o apodo propio. No se permite usar “Jugador X”.');
-  const duplicate = state.players?.find(item => item.id !== playerId && item.nameSet && normalizePlayerName(item.name).toLocaleLowerCase('es') === name.toLocaleLowerCase('es'));
+  const canonical = canonicalPlayerName(name);
+  if (canonical.length < 2) throw new Error('Usá al menos 2 letras o números en tu nombre/apodo.');
+  if (COMMUNITY_RESERVED_NAMES.test(name)) throw new Error('Ese nombre está reservado para la administración. Elegí otro.');
+  const duplicate = state.players?.find(item => item.id !== playerId && item.nameSet && canonicalPlayerName(item.name) === canonical);
   if (duplicate) throw new Error('Ese nombre ya está en uso en esta sala. Elegí otro.');
   return name;
 }
@@ -450,7 +461,8 @@ function loadState(stateFile = OWNER_STATE_FILE) {
         notices: player.notices || [],
         sessionDeviceId: String(player.sessionDeviceId || ''),
         code: String(player.code || '').trim().toUpperCase(),
-        directAccessToken: String(player.directAccessToken || randomId('direct'))
+        directAccessToken: player.directAccessToken ? String(player.directAccessToken) : null,
+        recoveryExpiresAt: player.recoveryExpiresAt || null
       };
     });
     return merged;
@@ -1445,7 +1457,7 @@ function adminPayload() {
       nameSet: Boolean(player.nameSet),
       slotLabel: player.slotLabel,
       code: player.code,
-      directJoinUrl: playerDirectUrl(player),
+      recoveryLinkAvailable: !player.virtual,
       requestedCardCount: player.requestedCardCount || player.allowedCardCount,
       allowedCardCount: player.allowedCardCount,
       paymentStatus: player.paymentStatus || (state.roomSettings?.paymentMode === 'paid' ? 'pending' : 'not_required'),
@@ -1527,13 +1539,11 @@ function playerPayload(player) {
       nameSet: Boolean(player.nameSet),
       slotLabel: player.slotLabel,
       personalPresenter: PRESENTER_ID,
-      code: player.code,
       requestedCardCount: player.requestedCardCount || player.allowedCardCount,
       allowedCardCount: player.allowedCardCount,
       paymentStatus: player.paymentStatus || (state.roomSettings?.paymentMode === 'paid' ? 'pending' : 'not_required'),
       paymentConfirmedAt: player.paymentConfirmedAt || null,
       excludedFromRound: Boolean(player.excludedFromRound),
-      recoveryUrl: playerDirectUrl(player),
       selectionConfirmed: player.selectionConfirmed,
       reservedCardIds: player.reservedCardIds || [],
       reservationTtlSeconds: Math.round(CARD_RESERVATION_TTL_MS / 1000),
@@ -1734,7 +1744,8 @@ function emptyRoomPlayer({ name = '', cardIds = [], allowedCardCount = 1, code =
     slotLabel: normalizePlayerName(name) || `Acceso ${(state.players?.length || 0) + 1}`,
     personalPresenter: PRESENTER_ID,
     code: code || randomCode(6),
-    directAccessToken: randomId('direct'),
+    directAccessToken: null,
+    recoveryExpiresAt: null,
     requestedCardCount: allowed,
     allowedCardCount: allowed,
     paymentStatus: paymentStatus || (state.roomSettings?.paymentMode === 'paid' ? 'pending' : 'not_required'),
@@ -1840,12 +1851,6 @@ function openJoinPlayer(payload = {}) {
   if (!state.active || !state.game || !['alpha','test'].includes(state.roomSettings?.roomType)) throw new Error('Este enlace no corresponde a una sala abierta.');
   const deviceId = String(payload.deviceId || '').slice(0, 120);
   if (!deviceId) throw new Error('No se pudo identificar este dispositivo.');
-  const returning = state.players.find(player => player.openJoinDeviceId === deviceId);
-  if (returning) {
-    returning.sessionToken = returning.sessionToken || randomId('session'); returning.sessionDeviceId = deviceId; returning.lastLoginAt = nowIso();
-    saveState(); broadcast();
-    return { token: returning.sessionToken, state: playerPayload(returning), returning: true };
-  }
   if (!state.roomSettings.joinOpen || state.status !== 'waiting') throw new Error('El ingreso a esta sala ya está cerrado.');
   const maxPlayers = Math.max(2, Math.min(MAX_PLAYERS, Number(state.roomSettings.maxOpenPlayers) || MAX_PLAYERS));
   if (state.players.length >= maxPlayers) throw new Error('La sala ya alcanzó el límite de jugadores.');
@@ -1894,17 +1899,35 @@ function updatePlayerApproval(payload = {}) {
   return adminPayload();
 }
 
+function createPlayerRecoveryLink(payload = {}) {
+  const player = state.players.find(item => item.id === String(payload.playerId || '') && !item.virtual);
+  if (!player) throw new Error('No se encontró ese jugador.');
+  const token = randomId('recover');
+  player.directAccessToken = token;
+  player.recoveryExpiresAt = new Date(Date.now() + PLAYER_RECOVERY_TTL_MS).toISOString();
+  const base = PUBLIC_URL || `http://localhost:${PORT}`;
+  const url = `${base}/jugador?recuperar=${encodeURIComponent(token)}`;
+  logEvent('player_recovery_link_created', { playerId: player.id, playerName: playerDisplayName(player), expiresAt: player.recoveryExpiresAt });
+  saveState();
+  return { playerId: player.id, playerName: playerDisplayName(player), url, expiresAt: player.recoveryExpiresAt };
+}
+
 function recoverPlayerByDirectToken(payload = {}) {
   const token = String(payload.recoveryToken || '').trim();
-  const deviceId = String(payload.deviceId || '').trim().slice(0,120);
-  if (!token || !deviceId) throw new Error('El enlace de recuperación no es válido.');
+  const deviceId = String(payload.deviceId || randomId('device')).trim().slice(0,120);
+  if (!token) throw new Error('El enlace de recuperación no es válido.');
   const player = state.players.find(item => item.directAccessToken === token);
-  if (!player) throw new Error('El enlace de recuperación no es válido o ya no pertenece a esta sala.');
+  if (!player || !player.recoveryExpiresAt || new Date(player.recoveryExpiresAt).getTime() <= Date.now()) {
+    throw new Error('El enlace de recuperación venció o ya fue utilizado. Pedile uno nuevo al administrador.');
+  }
+  // Una sola sesión activa: recuperar acceso invalida inmediatamente la sesión anterior.
   player.sessionToken = randomId('session');
   player.sessionDeviceId = deviceId;
   player.openJoinDeviceId = deviceId;
   player.lastLoginAt = nowIso();
-  logEvent('player_session_recovered', { playerId: player.id, playerName: playerDisplayName(player) });
+  player.directAccessToken = null;
+  player.recoveryExpiresAt = null;
+  logEvent('player_session_recovered', { playerId: player.id, playerName: playerDisplayName(player), previousSessionInvalidated: true });
   saveState(); broadcast();
   return { token: player.sessionToken, state: playerPayload(player), recovered: true };
 }
@@ -1944,7 +1967,7 @@ function findWorkspaceByPlayerCode(code) {
 }
 
 function playerDirectUrl(player) {
-  if (!player?.directAccessToken) return '';
+  if (!player?.directAccessToken || !player?.recoveryExpiresAt || new Date(player.recoveryExpiresAt).getTime() <= Date.now()) return '';
   const base = PUBLIC_URL || `http://localhost:${PORT}`;
   return `${base}/jugador?recuperar=${encodeURIComponent(player.directAccessToken)}`;
 }
@@ -2640,7 +2663,8 @@ function configureRoom(payload) {
       slotLabel: `Acceso ${index + 1}`,
       personalPresenter: PRESENTER_ID,
       code: nextPlayerCode(),
-      directAccessToken: randomId('direct'),
+      directAccessToken: null,
+      recoveryExpiresAt: null,
       allowedCardCount,
       cardIds,
       selectionConfirmed: cardIds.length > 0,
@@ -5005,13 +5029,41 @@ function playerAccessContent({ workspace = null, error = '', direct = false } = 
     ${accessErrorMarkup(error)}
     <form method="post" action="/jugador/entrar" autocomplete="off">
       <input type="hidden" name="roomCode" value="${escapeHtml(roomState.roomCode || '')}">
-      <input type="hidden" name="deviceId" value="">
       <div class="field"><label for="playerName">TU NOMBRE O APODO</label><input id="playerName" name="name" maxlength="20" required minlength="2" autofocus placeholder="Ej.: Laura"></div>
       <div class="field"><label for="cardCount">CANTIDAD DE CARTONES</label><select id="cardCount" name="cardCount">${options}</select></div>
       <button class="btn primary" type="submit">ENTRAR A LA SALA</button>
     </form>
     ${paidInfo}
     ${direct ? '' : '<a class="back" href="/jugador">← Cambiar clave</a>'}`;
+}
+
+function playerRecoveryContent({ workspace = null, token = '', error = '' } = {}) {
+  const player = workspace?.state?.players?.find(item => item.directAccessToken === token) || null;
+  if (!workspace || !player) return `<h2>Enlace no disponible</h2>${accessErrorMarkup(error || 'Este enlace venció o ya fue utilizado. Pedile uno nuevo al administrador.')}<a class="btn secondary" href="/jugador" style="text-decoration:none;text-align:center">VOLVER AL INGRESO</a>`;
+  return `<h2>Recuperar acceso</h2>
+    <p class="lead">Vas a recuperar la sesión de <b>${escapeHtml(playerDisplayName(player))}</b> en la sala ${escapeHtml(workspace.state.roomCode || '')}.</p>
+    <div class="notice"><b>IMPORTANTE</b><br>Este enlace funciona una sola vez. Al recuperarlo, cualquier sesión anterior de este jugador quedará cerrada.</div>
+    ${accessErrorMarkup(error)}
+    <form method="post" action="/jugador/recuperar" autocomplete="off">
+      <input type="hidden" name="recoveryToken" value="${escapeHtml(token)}">
+      <button class="btn primary" type="submit">RECUPERAR MI ACCESO</button>
+    </form>`;
+}
+
+function servePlayerRecoveryPage(res, options = {}) {
+  const filePath = path.join(ROOT, 'acceso.html');
+  fs.readFile(filePath, 'utf8', (error, html) => {
+    if (error) return sendJson(res, 500, { error: 'No se pudo abrir la recuperación.' });
+    const output = html.replace('<!--ACCESS_CONTENT-->', playerRecoveryContent(options));
+    res.writeHead(200, {
+      'Content-Type':'text/html; charset=utf-8',
+      'Content-Length':Buffer.byteLength(output),
+      'Cache-Control':'no-store, max-age=0',
+      'X-Content-Type-Options':'nosniff',
+      'Referrer-Policy':'same-origin'
+    });
+    res.end(output);
+  });
 }
 
 function servePlayerAccessPage(res, options = {}) {
@@ -5121,6 +5173,7 @@ function serveFile(res, filePath) {
     path.join(ROOT, 'admin.html'),
     path.join(ROOT, 'acceso.html'),
     path.join(ROOT, 'jugador.html'),
+    path.join(ROOT, 'jugador-alfa.html'),
     path.join(ROOT, 'admin-player-preview.html'),
     path.join(ROOT, 'cast-receiver.html'),
     path.join(ROOT, 'transmision.html'),
@@ -5158,7 +5211,8 @@ function findWorkspaceByAccessKey(accessKey) {
 function findWorkspaceByRecoveryToken(recoveryToken) {
   const token = String(recoveryToken || '').trim();
   if (!token) return null;
-  return [...workspaces.values()].find(workspace => workspace.state?.players?.some(player => player.directAccessToken === token)) || null;
+  const now = Date.now();
+  return [...workspaces.values()].find(workspace => workspace.state?.players?.some(player => player.directAccessToken === token && player.recoveryExpiresAt && new Date(player.recoveryExpiresAt).getTime() > now)) || null;
 }
 
 function findWorkspaceByDemoEntryId(entryId) {
@@ -5525,6 +5579,7 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/add-official-player' && req.method === 'POST') return sendJson(res, 200, addOfficialPlayer(await readJson(req)));
   if (url.pathname === '/api/admin/player-approval' && req.method === 'POST') return sendJson(res, 200, updatePlayerApproval(await readJson(req)));
   if (url.pathname === '/api/admin/player-view-session' && req.method === 'POST') return sendJson(res, 200, createAdminPlayerViewSession(await readJson(req)));
+  if (url.pathname === '/api/admin/player-recovery-link' && req.method === 'POST') return sendJson(res, 200, createPlayerRecoveryLink(await readJson(req)));
   if (url.pathname === '/api/admin/remove-player' && req.method === 'POST') return sendJson(res, 200, removeRoomPlayer(await readJson(req)));
   if (url.pathname === '/api/admin/join-open' && req.method === 'POST') return sendJson(res, 200, updateJoinOpen(await readJson(req)));
   if (url.pathname === '/api/admin/configure' && req.method === 'POST') {
@@ -5659,25 +5714,13 @@ async function handleApi(req, res, url) {
       return workspaceContext.run(workspace, () => sendJson(res, 200, openJoinPlayer(payload)));
     }
     if (url.pathname === '/api/player/login' && req.method === 'POST') {
-      if (!consumeRate(req, 'player-login', 180, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
-      const payload = await readJson(req);
-      const requestedRoom = String(payload.roomCode || '').trim();
-      const workspace = requestedRoom ? findWorkspaceByRoomCode(requestedRoom) : findWorkspaceByPlayerCode(payload.code);
-      if (!workspace) throw new Error(requestedRoom ? 'No se encontró esa sala.' : 'Código incorrecto. Revisalo con el administrador.');
-      return workspaceContext.run(workspace, () => { const result = loginPlayer(payload); return sendJson(res, result.conflict ? 409 : 200, result); });
+      return sendJson(res, 410, { error: 'El acceso por código personal fue eliminado en ALFA. Ingresá por el enlace/clave general y tu sesión privada.' });
     }
     if (url.pathname === '/api/player/request-transfer' && req.method === 'POST') {
-      const payload = await readJson(req);
-      const requestedRoom = String(payload.roomCode || '').trim();
-      const workspace = requestedRoom ? findWorkspaceByRoomCode(requestedRoom) : findWorkspaceByPlayerCode(payload.code);
-      if (!workspace) throw new Error(requestedRoom ? 'No se encontró esa sala.' : 'No se encontró ese código.');
-      return workspaceContext.run(workspace, () => sendJson(res, 200, requestDeviceTransfer(payload)));
+      return sendJson(res, 410, { error: 'El cambio de dispositivo por código fue eliminado. Pedile al administrador un enlace privado de recuperación.' });
     }
     if (url.pathname === '/api/player/transfer-status' && req.method === 'POST') {
-      const payload = await readJson(req);
-      const workspace = findWorkspaceByTransfer(payload.requestId, payload.deviceId);
-      if (!workspace) throw new Error('No se encontró la solicitud.');
-      return workspaceContext.run(workspace, () => sendJson(res, 200, deviceTransferStatus(payload)));
+      return sendJson(res, 410, { error: 'El cambio de dispositivo por código fue eliminado.' });
     }
     if (url.pathname === '/api/admin-player-preview/state' && req.method === 'GET') {
       const token = String(url.searchParams.get('token') || '');
@@ -5907,7 +5950,7 @@ const server = http.createServer(async (req, res) => {
       if (!workspace) return servePlayerAccessPage(res, { error:'La sala ya no está disponible.' });
       return workspaceContext.run(workspace, () => {
         try {
-          const deviceId = String(form.deviceId || '').trim() || randomId('device');
+          const deviceId = randomId('device');
           const joined = openJoinPlayer({ name:form.name, cardCount:Number(form.cardCount) || 1, deviceId });
           const roomCode = String(joined.state?.roomCode || state.roomCode || '').trim().toUpperCase();
           setPlayerSessionCookie(req, res, joined.token);
@@ -5922,6 +5965,29 @@ const server = http.createServer(async (req, res) => {
       });
     } catch (error) {
       return servePlayerAccessPage(res, { workspace, error:error.message || 'No se pudo ingresar a la sala.', direct:Boolean(workspace) });
+    }
+  }
+
+  if (url.pathname === '/jugador/recuperar' && req.method === 'POST') {
+    let workspace = null;
+    try {
+      if (!consumeRate(req, 'player-recovery-form', 40, 10 * 60 * 1000)) return servePlayerRecoveryPage(res, { error:'Demasiados intentos. Esperá unos minutos.' });
+      const form = await readForm(req);
+      const token = String(form.recoveryToken || '').trim();
+      workspace = findWorkspaceByRecoveryToken(token);
+      if (!workspace) return servePlayerRecoveryPage(res, { error:'Este enlace venció o ya fue utilizado.' });
+      return workspaceContext.run(workspace, () => {
+        try {
+          const recovered = recoverPlayerByDirectToken({ recoveryToken:token, deviceId:randomId('device') });
+          setPlayerSessionCookie(req, res, recovered.token);
+          res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0' });
+          return res.end();
+        } catch (error) {
+          return servePlayerRecoveryPage(res, { workspace, token, error:error.message || 'No se pudo recuperar la sesión.' });
+        }
+      });
+    } catch (error) {
+      return servePlayerRecoveryPage(res, { workspace, error:error.message || 'No se pudo recuperar la sesión.' });
     }
   }
 
@@ -6045,16 +6111,18 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(303, { Location: player.selectionConfirmed && player.nameSet ? `/demo/jugar/${entryId}/partida?demo=1` : `/demo/jugar/${entryId}`, 'Cache-Control':'no-store' });
       return res.end();
     }
-    const legacySession = String(url.searchParams.get('session') || '').trim();
-    if (legacySession) {
-      const workspace = findWorkspaceByPlayerToken(legacySession);
-      if (!workspace) return servePlayerAccessPage(res, { error:'Ese acceso ya no es válido.' });
-      setPlayerSessionCookie(req, res, legacySession);
+    const currentSession = String(cookieValue(req, PLAYER_SESSION_COOKIE) || '').trim();
+    if (currentSession && findWorkspaceByPlayerToken(currentSession)) {
       res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0' });
       return res.end();
     }
-    const legacyGameEntry = ['recuperar','acceso','codigo','code','adminpreview'].some(key => url.searchParams.has(key));
-    if (legacyGameEntry) return serveFile(res, path.join(ROOT, 'jugador.html'));
+    if (currentSession) clearPlayerSessionCookie(req, res);
+    const recoveryToken = String(url.searchParams.get('recuperar') || '').trim();
+    if (recoveryToken) {
+      const workspace = findWorkspaceByRecoveryToken(recoveryToken);
+      if (!workspace) return servePlayerRecoveryPage(res, { error:'Este enlace venció o ya fue utilizado.' });
+      return workspaceContext.run(workspace, () => servePlayerRecoveryPage(res, { workspace, token:recoveryToken }));
+    }
     const directRoom = String(url.searchParams.get('sala') || '').trim().toUpperCase();
     if (directRoom) {
       const workspace = findWorkspaceByRoomCode(directRoom);
@@ -6072,20 +6140,22 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
   if (url.pathname === '/jugar' || url.pathname === '/jugar/') {
-    const token = String(url.searchParams.get('session') || cookieValue(req, PLAYER_SESSION_COOKIE) || '').trim();
+    const token = String(cookieValue(req, PLAYER_SESSION_COOKIE) || '').trim();
     const workspace = findWorkspaceByPlayerToken(token);
     if (!workspace) {
       clearPlayerSessionCookie(req, res);
-      return servePlayerAccessPage(res, { error:'Tu sesión ya no está disponible. Ingresá nuevamente a la sala.' });
+      res.writeHead(303, { Location:'/jugador', 'Cache-Control':'no-store, max-age=0' });
+      return res.end();
     }
     return workspaceContext.run(workspace, () => {
       currentWorkspace().lastActivityAt = Date.now();
       const player = state.players.find(item => item.sessionToken === token && !item.demoHuman);
       if (!player || !state.active) {
         clearPlayerSessionCookie(req, res);
-        return servePlayerAccessPage(res, { error:'Tu sesión ya no está disponible. Ingresá nuevamente a la sala.' });
+        res.writeHead(303, { Location:'/jugador', 'Cache-Control':'no-store, max-age=0' });
+        return res.end();
       }
-      return servePlayerGamePage(req, res, playerPayload(player), token);
+      return serveFile(res, path.join(ROOT, 'jugador-alfa.html'));
     });
   }
   if (url.pathname === '/reglamento' || url.pathname === '/reglamento/' || url.pathname === '/reglamento.html') return serveFile(res, path.join(ROOT, 'reglamento.html'));

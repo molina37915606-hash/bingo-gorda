@@ -16,8 +16,5 @@
     <!--ACCESS_CONTENT-->
   </section>
 </div>
-<script>
-(()=>{try{const el=document.querySelector('input[name="deviceId"]');if(!el)return;let id=localStorage.getItem('bingoPlayerDeviceId');if(!id){id='device_'+((crypto.randomUUID&&crypto.randomUUID())||Date.now()+'_'+Math.random().toString(36).slice(2));localStorage.setItem('bingoPlayerDeviceId',id)}el.value=id}catch{}})();
-</script>
 </body>
 </html>

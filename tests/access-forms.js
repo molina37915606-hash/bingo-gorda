@@ -28,9 +28,9 @@ function cookieFrom(response){const raw=response.headers.get('set-cookie')||'';c
   assert.equal(r.status,303); assert.equal(r.headers.get('location'),'/jugar');
   const cookie1=cookieFrom(r);
   r=await fetch(base+'/jugar',{headers:{Cookie:cookie1}}); html=await r.text();
-  assert(r.ok); assert(html.includes('window.__BINGO_PLAYER_BOOTSTRAP__ = {'), 'La pantalla /jugar debe arrancar con sesión embebida.');
-  assert(html.includes('window.__BINGO_PLAYER_DIRECT_TOKEN__ = "session_'), 'La pantalla /jugar debe recibir el token de la sesión validada.');
-  assert(html.includes('data-player-session-boot'), 'La pantalla debe ocultar el login viejo antes de inicializar JS.');
+  assert(r.ok); assert(html.includes('js/player-alfa.js'), 'La pantalla /jugar debe usar el nuevo módulo Jugador ALFA.');
+  assert(!html.includes('BINGO_PLAYER_DIRECT_TOKEN'), 'El token privado no debe quedar expuesto en el HTML/JavaScript.');
+  assert(!html.includes('name="accessKey"'), 'Dentro de /jugar nunca debe existir otro formulario de clave.');
   const playerCookieState=(await json('/api/player/state','GET',undefined,{Cookie:cookie1})).data;
   assert.equal(playerCookieState.player.name,'Jugador Form'); assert.equal(playerCookieState.player.allowedCardCount,1);
 
@@ -45,7 +45,7 @@ function cookieFrom(response){const raw=response.headers.get('set-cookie')||'';c
   assert.equal(directState.player.name,'Jugador Directo'); assert.equal(directState.player.allowedCardCount,2);
   // Recargar /jugar no vuelve a pedir clave.
   r=await fetch(base+'/jugar',{headers:{Cookie:cookie2}}); html=await r.text();
-  assert(r.ok); assert(html.includes('Jugador Directo')); assert(!html.includes('Tu sesión ya no está disponible'));
+  assert(r.ok); assert(html.includes('js/player-alfa.js')); assert(!html.includes('name="accessKey"'));
 
   // Completar gratis e iniciar.
   await json('/api/player/choose','POST',{cardIds:[playerCookieState.player.offeredCards[0].id],name:'Jugador Form'},{Cookie:cookie1});
@@ -72,11 +72,11 @@ function cookieFrom(response){const raw=response.headers.get('set-cookie')||'';c
   paidState=(await json('/api/player/state','GET',undefined,{Cookie:paidCookie})).data;
   assert.equal(paidState.player.paymentStatus,'confirmed'); assert.equal(paidState.player.allowedCardCount,2); assert(paidState.player.offeredCards.length>=2);
   r=await fetch(base+'/jugar',{headers:{Cookie:paidCookie}}); html=await r.text();
-  assert(r.ok); assert(html.includes('Pago Directo')); assert(!html.includes('Tu sesión ya no está disponible'));
+  assert(r.ok); assert(html.includes('js/player-alfa.js')); assert(!html.includes('name="accessKey"'));
   await json('/api/player/choose','POST',{cardIds:paidState.player.offeredCards.slice(0,2).map(card=>card.id),name:'Pago Directo'},{Cookie:paidCookie});
 
   // Salir borra cookie y /jugar sin sesión vuelve a acceso, no al login viejo embebido.
   r=await fetch(base+'/jugador/salir',{headers:{Cookie:paidCookie},redirect:'manual'}); assert.equal(r.status,303); assert.equal(r.headers.get('location'),'/jugador');
 
-  console.log('PRUEBA ACCESO ALFA 5: OK · clave/link → sesión cookie → WhatsApp/recarga → aprobación → cartones sin segundo login');
+  console.log('PRUEBA ACCESO ALFA 6: OK · clave/link → cookie HttpOnly → nuevo jugador sin token expuesto ni segundo login');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

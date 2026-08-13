@@ -86,11 +86,14 @@ async function get(url, headers = {}) {
     // Recuperación con token privado, independiente de la clave compartida.
     state = await get('/api/admin/state', adminHeaders);
     const anaAdmin = state.players.find(player => player.name === 'Ana');
-    const recoveryToken = new URL(anaAdmin.directJoinUrl).searchParams.get('recuperar');
+    const recoveryLink = await post('/api/admin/player-recovery-link', { playerId: anaAdmin.id }, adminHeaders);
+    const recoveryToken = new URL(recoveryLink.url).searchParams.get('recuperar');
     assert(recoveryToken);
     const recovered = await post('/api/player/recover', { recoveryToken, deviceId: 'alfa-ana-segundo' });
     assert.equal(recovered.state.player.name, 'Ana');
     assert.equal(recovered.state.player.cards.length, 2);
+    const reused = await request('/api/player/recover', { method:'POST', headers:jsonHeaders(), body:JSON.stringify({ recoveryToken, deviceId:'alfa-ana-tercero' }) });
+    assert.notEqual(reused.response.status, 200, 'El link de recuperación debe ser de un solo uso.');
     await post('/api/admin/close', {}, adminHeaders);
 
     // 2) Sala paga: no hay cartones antes del OK; admin ajusta cantidad y confirma.

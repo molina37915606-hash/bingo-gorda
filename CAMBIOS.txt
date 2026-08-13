@@ -1,3 +1,20 @@
+BINGO DE LA GORDA ALFA 5.0.0-alpha.6
+
+- MODO JUGADOR RECONSTRUIDO: las partidas reales usan jugador-alfa.html + js/player-alfa.js y ya no dependen del archivo grande de DEMO.
+- La DEMO conserva su cliente actual y queda separada del arranque del jugador real.
+- Link/clave general solo sirven para entrar al lobby; nunca identifican ni autentican a un jugador.
+- Cada jugador recibe una única sesión privada mediante cookie HttpOnly; el token no aparece en la URL ni en el HTML/JavaScript.
+- /jugar acepta únicamente la sesión privada del navegador y no vuelve a pedir clave.
+- Se eliminó el acceso alternativo por código personal y el antiguo cambio de dispositivo por código.
+- Nombre único reforzado por partida: ignora mayúsculas, espacios y tildes (por ejemplo María/maria se consideran el mismo nombre).
+- Los cartones se reservan y confirman exclusivamente en servidor; una sesión no puede elegir, marcar ni reclamar con cartones de otro jugador.
+- En partidas pagas se mantiene: solicitar cantidad → WhatsApp → Admin ajusta/confirma → recién después elegir cartones.
+- Recuperación controlada por Admin: RECUPERAR ACCESO genera un enlace privado de un solo uso, válido 15 minutos.
+- Usar el enlace de recuperación rota la sesión y cierra automáticamente cualquier sesión anterior del jugador.
+- Nuevo jugador incluye sala de espera, pago, elección segura de cartones, Manual/Automarcado, marcado, reclamos, chat compacto/minimizable, emojis y stickers.
+- Si aparece un premio reclamable mientras el chat está abierto, el chat se minimiza para dar prioridad al premio.
+- Se añadieron pruebas de seguridad: nombre duplicado, sesión cruzada, cartón ajeno, token oculto, login viejo deshabilitado y recuperación de un solo uso.
+
 BINGO DE LA GORDA ALFA 5.0.0-alpha.5
 
 - La pantalla del jugador ya no puede quedar completamente en blanco: muestra CARGANDO SALA y ofrece REINTENTAR si la interfaz falla o tarda demasiado.

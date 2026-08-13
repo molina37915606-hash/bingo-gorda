@@ -66,4 +66,11 @@ La batería ALFA comprueba además el acceso servidor en dos pasos (clave → da
 
 ALFA sigue usando el repositorio de archivos del servidor (`BINGO_DATA_DIR`). Para pruebas locales es suficiente. Para partidas reales en Internet, `BINGO_DATA_DIR` debe apuntar a un volumen persistente. Un hosting con disco efímero puede perder partidas y actas después de reinicios o redeploys.
 
-La migración a una base externa como Supabase no está incluida en ALFA 5.0.0-alpha.5 porque requiere definir/configurar el proyecto y credenciales de producción sin reemplazar el motor que ya funciona.
+La migración a una base externa como Supabase no está incluida en ALFA 5.0.0-alpha.6 porque requiere definir/configurar el proyecto y credenciales de producción sin reemplazar el motor que ya funciona.
+
+
+## Modo Jugador ALFA 6
+
+Las partidas reales usan un cliente separado (`jugador-alfa.html` + `js/player-alfa.js`). La clave/link de sala solo abre el lobby. Después, el servidor crea una sesión privada HttpOnly que identifica al jugador. El nombre es único dentro de la partida y los cartones se reservan/confirmán en servidor para impedir duplicados.
+
+La recuperación de acceso no usa nombres ni códigos cortos: el administrador genera un enlace privado de un solo uso y 15 minutos. Al utilizarlo se invalida la sesión anterior.

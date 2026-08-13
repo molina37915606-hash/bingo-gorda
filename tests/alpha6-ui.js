@@ -1,0 +1,16 @@
+'use strict';
+const assert=require('assert'),fs=require('fs'),path=require('path');const root=path.join(__dirname,'..');
+const html=fs.readFileSync(path.join(root,'jugador-alfa.html'),'utf8');const js=fs.readFileSync(path.join(root,'js','player-alfa.js'),'utf8');const server=fs.readFileSync(path.join(root,'server.js'),'utf8');
+assert(html.includes('js/player-alfa.js?v=6.0.0'),'El modo Jugador debe cargar el cliente ALFA 6 nuevo.');
+assert(!html.includes('online-room-player.js'),'El jugador real no debe cargar el cliente grande/DEMO anterior.');
+assert(html.includes('— MINIMIZAR'),'El chat móvil debe tener minimizar visible.');
+assert(html.includes('height:min(48dvh,430px)'),'El chat móvil debe ser compacto.');
+assert(js.includes("new EventSource('/api/events?role=player')"),'El jugador debe usar la cookie privada también para SSE.');
+assert(js.includes("'/api/player/state'"),'El modo Jugador debe reconstruirse desde estado del servidor.');
+assert(js.includes("'/api/player/reserve'"),'La reserva de cartón debe hacerse en servidor.');
+assert(js.includes("'/api/player/choose'"),'La confirmación de cartón debe hacerse en servidor.');
+assert(js.includes("'/api/player/mark'"),'El marcado debe validarse por sesión/cartón en servidor.');
+assert(js.includes("'/api/player/claim'"),'El reclamo debe enviarse al servidor.');
+assert(server.includes("return serveFile(res, path.join(ROOT, 'jugador-alfa.html'))"),'/jugar debe servir el nuevo cliente.');
+assert(!server.includes("Location:'/jugar?session="),'No debe pasar token de jugador por URL.');
+console.log('PRUEBA UI ALFA 6: OK · cliente Jugador separado + chat móvil + estado/reservas por servidor');

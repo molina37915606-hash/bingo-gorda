@@ -1,3 +1,20 @@
+# PRUEBAS PRIORITARIAS — ALFA 6 NUEVO JUGADOR
+
+- [ ] Entrar desde PC por link directo: nombre → cantidad → /jugar sin segunda clave.
+- [ ] Entrar desde celular por el mismo link con otro nombre y comprobar sesión independiente.
+- [ ] Intentar registrar el mismo nombre con mayúsculas/tildes diferentes: debe rechazarlo.
+- [ ] Confirmar que conocer la clave general NO permite abrir la ventana de otro jugador.
+- [ ] Partida paga: solicitar cantidad → WhatsApp → volver sin perder sesión → Admin ajusta/OK → elegir cartones.
+- [ ] Dos jugadores intentan el mismo cartón: solo el primero puede reservar/confirmar.
+- [ ] Confirmar que un jugador no puede marcar/reclamar con un cartón ajeno.
+- [ ] Recargar /jugar varias veces: debe conservar sesión y cartones.
+- [ ] Cerrar pestaña y volver desde /jugador: si la sesión sigue válida debe volver a /jugar.
+- [ ] Admin → RECUPERAR ACCESO: link funciona una sola vez y vence a los 15 minutos.
+- [ ] Usar recuperación en otro dispositivo: el dispositivo anterior debe quedar desconectado.
+- [ ] Chat móvil: abrir, minimizar, mensajes compactos, emojis/stickers.
+- [ ] Si aparece premio reclamable con chat abierto, debe minimizarse el chat.
+- [ ] Iniciar con jugadores sin elegir cartones: autoasignar sin duplicados.
+
 # Checklist de pruebas · BINGO DE LA GORDA ALFA
 
 ## Crear sala

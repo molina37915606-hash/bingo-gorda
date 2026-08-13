@@ -12,7 +12,7 @@ const storage = {
 
 class PlayerApp {
   constructor() {
-    this.token = String(window.__BINGO_DEMO_DIRECT_TOKEN__ || storage.getItem('bingoOnlineToken') || '');
+    this.token = String(window.__BINGO_PLAYER_DIRECT_TOKEN__ || window.__BINGO_DEMO_DIRECT_TOKEN__ || storage.getItem('bingoOnlineToken') || '');
     this.cookieSession = false;
     this.tokenRoom = String(storage.getItem('bingoOnlineRoom') || '').trim().toUpperCase();
     this.deviceId = storage.getItem('bingoPlayerDeviceId') || this.makeDeviceId();
@@ -230,6 +230,8 @@ class PlayerApp {
       this.injectAdminPreviewBadge();
     }
     const demoEntry = params.get('demo') === '1';
+    const directPlayerState = window.__BINGO_PLAYER_BOOTSTRAP__;
+    const playerSessionBoot = Boolean(directPlayerState?.active && directPlayerState?.player);
     const directSession = String(params.get('session') || '').trim();
     const directCode = String(params.get('acceso') || params.get('codigo') || params.get('code') || '').trim().toUpperCase();
     const roomCode = String(params.get('sala') || '').trim().toUpperCase();
@@ -283,6 +285,16 @@ class PlayerApp {
       } else {
         await this.resume({ demoBoot:true });
       }
+    } else if (playerSessionBoot) {
+      this.cookieSession = true;
+      this.token = String(window.__BINGO_PLAYER_DIRECT_TOKEN__ || this.token || '');
+      this.tokenRoom = String(directPlayerState.roomCode || '').trim().toUpperCase();
+      if (this.token) storage.setItem('bingoOnlineToken', this.token);
+      if (this.tokenRoom) storage.setItem('bingoOnlineRoom', this.tokenRoom);
+      this.applyState(directPlayerState);
+      delete document.documentElement.dataset.playerSessionBoot;
+      this.cleanDirectAccessUrl();
+      this.connectEvents();
     } else if (recoveryToken) {
       try {
         const recovered = await this.request('/api/player/recover', { method:'POST', body:JSON.stringify({ recoveryToken, deviceId:this.deviceId }) });
@@ -2448,7 +2460,11 @@ class PlayerApp {
     this.releaseWakeLock();
     this.events?.close(); clearTimeout(this.reconnectRefreshTimer); clearInterval(this.sequenceTimer); this.setFocusMode(false); this.closeOtherPanels(); this.closeResultsViewer(); this.token=''; this.cookieSession=false; this.tokenRoom=''; this.state=null; this.roomClosedShown=false; storage.removeItem('bingoOnlineToken'); storage.removeItem('bingoOnlineRoom'); storage.removeItem('bingoOnlineCard');
     document.body.classList.remove('playerLogged'); $('infoDrawerToggle').classList.add('hidden');
-    if(reload) location.reload(); else { $('gameView').classList.add('hidden'); $('loginView').classList.remove('hidden'); }
+    if (this.adminPreviewMode || window.__BINGO_DEMO_BOOTSTRAP__) {
+      if(reload) location.reload(); else { $('gameView').classList.add('hidden'); $('loginView').classList.remove('hidden'); }
+      return;
+    }
+    location.replace('/jugador/salir');
   }
 }
 

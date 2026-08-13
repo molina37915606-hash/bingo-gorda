@@ -1,6 +1,6 @@
 {
   "name": "bingo-de-la-gorda-alfa",
-  "version": "5.0.0-alpha.3",
+  "version": "5.0.0-alpha.4",
   "private": true,
   "description": "BINGO DE LA GORDA ALFA: salas por clave compartida, sesiones privadas, flujo gratis/pago, modo Solo Manual y administración simplificada.",
   "engines": {

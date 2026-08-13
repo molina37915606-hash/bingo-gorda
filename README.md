@@ -66,4 +66,4 @@ La batería ALFA comprueba además el acceso servidor en dos pasos (clave → da
 
 ALFA sigue usando el repositorio de archivos del servidor (`BINGO_DATA_DIR`). Para pruebas locales es suficiente. Para partidas reales en Internet, `BINGO_DATA_DIR` debe apuntar a un volumen persistente. Un hosting con disco efímero puede perder partidas y actas después de reinicios o redeploys.
 
-La migración a una base externa como Supabase no está incluida en ALFA 5.0.0-alpha.3 porque requiere definir/configurar el proyecto y credenciales de producción sin reemplazar el motor que ya funciona.
+La migración a una base externa como Supabase no está incluida en ALFA 5.0.0-alpha.4 porque requiere definir/configurar el proyecto y credenciales de producción sin reemplazar el motor que ya funciona.

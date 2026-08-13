@@ -90,6 +90,8 @@ const COMMUNITY_REPORT_WINDOW_MAX = 12;
 const COMMUNITY_RESERVED_NAMES = /^(la\s*gorda|administraci[oó]n|admin|administrador(?:a)?|sistema|moderador(?:a)?|staff|oficial)$/i;
 const DEMO_TTL_MS = 30 * 60 * 1000;
 const DEMO_SESSION_COOKIE = 'bingo_demo_session';
+const PLAYER_SESSION_COOKIE = 'bingo_player_session';
+const PLAYER_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 const DEMO_IDLE_TTL_MS = 15 * 60 * 1000;
 const DEMO_CLAIM_WINDOW_MS = 1600;
 const DEMO_START_SEQUENCE_MS = 1200;
@@ -4999,6 +5001,28 @@ function serveDemoPlayerPage(res, initialState, directToken = '') {
   });
 }
 
+function servePlayerGamePage(req, res, initialState, directToken = '') {
+  const filePath = path.join(ROOT, 'jugador.html');
+  fs.readFile(filePath, 'utf8', (error, html) => {
+    if (error) return sendJson(res, 500, { error: 'No se pudo abrir la pantalla del jugador.' });
+    const stateMarker = 'window.__BINGO_PLAYER_BOOTSTRAP__ = null;';
+    const tokenMarker = "window.__BINGO_PLAYER_DIRECT_TOKEN__ = '';";
+    if (!html.includes(stateMarker) || !html.includes(tokenMarker)) return sendJson(res, 500, { error: 'Falta el arranque de sesión del jugador.' });
+    const output = html
+      .replace(stateMarker, `window.__BINGO_PLAYER_BOOTSTRAP__ = ${safeInlineJson(initialState)};`)
+      .replace(tokenMarker, `window.__BINGO_PLAYER_DIRECT_TOKEN__ = ${safeInlineJson(String(directToken || ''))};`);
+    setPlayerSessionCookie(req, res, directToken);
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Length': Buffer.byteLength(output),
+      'Cache-Control': 'no-store, max-age=0',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'same-origin'
+    });
+    res.end(output);
+  });
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[char]));
 }
@@ -5131,8 +5155,33 @@ function clearDemoSessionCookie(req, res) {
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
+function setPlayerSessionCookie(req, res, token) {
+  const value = encodeURIComponent(String(token || ''));
+  const parts = [
+    `${PLAYER_SESSION_COOKIE}=${value}`,
+    'Path=/',
+    `Max-Age=${PLAYER_SESSION_MAX_AGE_SECONDS}`,
+    'HttpOnly',
+    'SameSite=Lax'
+  ];
+  if (requestIsSecure(req)) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+function clearPlayerSessionCookie(req, res) {
+  const parts = [`${PLAYER_SESSION_COOKIE}=`, 'Path=/', 'Max-Age=0', 'HttpOnly', 'SameSite=Lax'];
+  if (requestIsSecure(req)) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
 function playerTokenFrom(req, url) {
-  return String(req.headers['x-player-token'] || url.searchParams.get('token') || cookieValue(req, DEMO_SESSION_COOKIE) || '');
+  const explicit = String(req.headers['x-player-token'] || url.searchParams.get('token') || '');
+  if (explicit) return explicit;
+  const demoToken = cookieValue(req, DEMO_SESSION_COOKIE);
+  if (demoToken && findWorkspaceByPlayerToken(demoToken)) return demoToken;
+  const playerToken = cookieValue(req, PLAYER_SESSION_COOKIE);
+  if (playerToken && findWorkspaceByPlayerToken(playerToken)) return playerToken;
+  return demoToken || playerToken || '';
 }
 
 function publicDemoCreation(result) {
@@ -5808,8 +5857,9 @@ const server = http.createServer(async (req, res) => {
           const deviceId = String(form.deviceId || '').trim() || randomId('device');
           const joined = openJoinPlayer({ name:form.name, cardCount:Number(form.cardCount) || 1, deviceId });
           const roomCode = String(joined.state?.roomCode || state.roomCode || '').trim().toUpperCase();
+          setPlayerSessionCookie(req, res, joined.token);
           res.writeHead(303, {
-            Location: `/jugar?session=${encodeURIComponent(joined.token)}&sala=${encodeURIComponent(roomCode)}`,
+            Location: '/jugar',
             'Cache-Control':'no-store, max-age=0'
           });
           return res.end();
@@ -5942,7 +5992,15 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(303, { Location: player.selectionConfirmed && player.nameSet ? `/demo/jugar/${entryId}/partida?demo=1` : `/demo/jugar/${entryId}`, 'Cache-Control':'no-store' });
       return res.end();
     }
-    const legacyGameEntry = ['session','recuperar','acceso','codigo','code','adminpreview'].some(key => url.searchParams.has(key));
+    const legacySession = String(url.searchParams.get('session') || '').trim();
+    if (legacySession) {
+      const workspace = findWorkspaceByPlayerToken(legacySession);
+      if (!workspace) return servePlayerAccessPage(res, { error:'Ese acceso ya no es válido.' });
+      setPlayerSessionCookie(req, res, legacySession);
+      res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0' });
+      return res.end();
+    }
+    const legacyGameEntry = ['recuperar','acceso','codigo','code','adminpreview'].some(key => url.searchParams.has(key));
     if (legacyGameEntry) return serveFile(res, path.join(ROOT, 'jugador.html'));
     const directRoom = String(url.searchParams.get('sala') || '').trim().toUpperCase();
     if (directRoom) {
@@ -5955,7 +6013,28 @@ const server = http.createServer(async (req, res) => {
     }
     return servePlayerAccessPage(res);
   }
-  if (url.pathname === '/jugar' || url.pathname === '/jugar/') return serveFile(res, path.join(ROOT, 'jugador.html'));
+  if (url.pathname === '/jugador/salir' || url.pathname === '/jugador/salir/') {
+    clearPlayerSessionCookie(req, res);
+    res.writeHead(303, { Location:'/jugador', 'Cache-Control':'no-store, max-age=0' });
+    return res.end();
+  }
+  if (url.pathname === '/jugar' || url.pathname === '/jugar/') {
+    const token = String(url.searchParams.get('session') || cookieValue(req, PLAYER_SESSION_COOKIE) || '').trim();
+    const workspace = findWorkspaceByPlayerToken(token);
+    if (!workspace) {
+      clearPlayerSessionCookie(req, res);
+      return servePlayerAccessPage(res, { error:'Tu sesión ya no está disponible. Ingresá nuevamente a la sala.' });
+    }
+    return workspaceContext.run(workspace, () => {
+      currentWorkspace().lastActivityAt = Date.now();
+      const player = state.players.find(item => item.sessionToken === token && !item.demoHuman);
+      if (!player || !state.active) {
+        clearPlayerSessionCookie(req, res);
+        return servePlayerAccessPage(res, { error:'Tu sesión ya no está disponible. Ingresá nuevamente a la sala.' });
+      }
+      return servePlayerGamePage(req, res, playerPayload(player), token);
+    });
+  }
   if (url.pathname === '/reglamento' || url.pathname === '/reglamento/' || url.pathname === '/reglamento.html') return serveFile(res, path.join(ROOT, 'reglamento.html'));
   const relative = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
   if (!(relative.startsWith('assets/') || relative.startsWith('js/'))) return sendJson(res, 404, { error: 'Archivo no encontrado.' });

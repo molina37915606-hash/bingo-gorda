@@ -1,4 +1,4 @@
-BINGO DE LA GORDA ALFA · 5.0.0-alpha.3
+BINGO DE LA GORDA ALFA · 5.0.0-alpha.4
 
 1. Instalar Node.js 18 o superior.
 2. Abrir una terminal en esta carpeta.

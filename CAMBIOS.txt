@@ -1,5 +1,14 @@
-BINGO DE LA GORDA ALFA 5.0.0-alpha.3
+BINGO DE LA GORDA ALFA 5.0.0-alpha.4
 
+- Se eliminó el segundo ingreso por clave dentro de /jugar.
+- La clave compartida se usa solamente para localizar la sala antes de crear la sesión.
+- El link directo salta la clave y crea la misma sesión privada.
+- La sesión del jugador ahora también se conserva en cookie HttpOnly, además del almacenamiento local.
+- Volver desde WhatsApp, recargar /jugar o cambiar temporalmente de aplicación mantiene la sesión.
+- /jugar valida la sesión en el servidor y nunca muestra el formulario viejo de clave.
+- Si la sesión realmente venció, vuelve a la pantalla inicial con un mensaje claro.
+
+BINGO DE LA GORDA ALFA 5.0.0-alpha.3
 CAMBIOS DE ESTA REVISIÓN
 - Acceso del jugador reconstruido en dos pasos y separado de la interfaz grande del Bingo.
 - Acceso manual: primero valida la clave; después pide nombre y cantidad.

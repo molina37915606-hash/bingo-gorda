@@ -21,6 +21,8 @@
 - [ ] Elegir cartones.
 - [ ] Otro jugador no puede tomar los mismos cartones.
 - [ ] Recargar y conservar sesión/cartones.
+- [ ] Recargar `/jugar` y comprobar que NO vuelve a pedir clave.
+- [ ] Abrir WhatsApp, volver al navegador y comprobar que NO vuelve a pedir clave.
 
 ## Jugador pago
 - [ ] Entrar: clave → nombre/cantidad solicitada → sala.

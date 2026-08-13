@@ -936,7 +936,7 @@ function preflightPayload() {
   const errors = [];
   if (!state.players.length) errors.push('No hay jugadores configurados.');
   if (pendingPlayers.length) errors.push(`${pendingPlayers.length} jugador${pendingPlayers.length === 1 ? '' : 'es'} todavía no confirmó${pendingPlayers.length === 1 ? '' : 'aron'} sus cartones.`);
-  if (pendingMarkingMode.length) errors.push(`${pendingMarkingMode.length} jugador${pendingMarkingMode.length === 1 ? '' : 'es'} todavía no eligió${pendingMarkingMode.length === 1 ? '' : 'ieron'} Manual o Automarcado.`);
+  if (pendingMarkingMode.length) errors.push(`${pendingMarkingMode.length} jugador${pendingMarkingMode.length === 1 ? '' : 'es'} todavía no ${pendingMarkingMode.length === 1 ? 'eligió' : 'eligieron'} Manual o Automarcado.`);
   if (duplicates.length) errors.push(`Hay ${duplicates.length} cartón${duplicates.length === 1 ? '' : 'es'} duplicado${duplicates.length === 1 ? '' : 's'}.`);
   if (activeCards > MAX_ACTIVE_CARDS) errors.push(`Hay ${activeCards} cartones activos y el máximo es ${MAX_ACTIVE_CARDS}.`);
   const enabledPrizes = PRIZE_TYPES.filter(type => isPrizeEnabled(type)).map(type => prizeLabelFor(type, 1, state.game?.mode));
@@ -4918,6 +4918,66 @@ function safeInlineJson(value) {
     .replace(/\u2029/g, '\\u2029');
 }
 
+function accessErrorMarkup(message) {
+  return message ? `<div class="error">${escapeHtml(message)}</div>` : '';
+}
+
+function accessRoomMetaMarkup(roomState) {
+  const settings = roomState?.roomSettings || {};
+  const mode = Number(roomState?.game?.mode) === 75 ? 75 : 90;
+  const paid = settings.paymentMode === 'paid';
+  const lineCount = mode === 90 ? Math.max(1, Math.min(2, Number(settings.linePrizeCount) || 1)) : 1;
+  const marking = settings.markingMode === 'manual_only' ? 'SOLO MANUAL' : 'NORMAL';
+  return `<div class="roomMeta"><span class="chip">${mode} bolas</span><span class="chip">${lineCount} línea${lineCount === 1 ? '' : 's'}</span><span class="chip ${paid ? 'gold' : ''}">${paid ? 'PAGA' : 'GRATIS'}</span><span class="chip">${marking}</span></div>`;
+}
+
+function playerAccessContent({ workspace = null, error = '', direct = false } = {}) {
+  if (!workspace) {
+    return `<h2>Ingresar a la partida</h2>
+      <p class="lead">Primero escribí la clave compartida de la sala.</p>
+      ${accessErrorMarkup(error)}
+      <form method="post" action="/jugador/verificar" autocomplete="off">
+        <div class="field"><label for="accessKey">CLAVE DE LA SALA</label><input class="code" id="accessKey" name="accessKey" maxlength="20" required autofocus placeholder="Ej.: 123321"></div>
+        <button class="btn primary" type="submit">CONTINUAR</button>
+      </form>`;
+  }
+  const roomState = workspace.state || {};
+  const settings = roomState.roomSettings || {};
+  const paid = settings.paymentMode === 'paid';
+  const maxCards = settings.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(settings.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
+  const options = Array.from({ length:maxCards }, (_, index) => index + 1).map(count => `<option value="${count}" ${count === Math.min(2,maxCards) ? 'selected' : ''}>${count} cartón${count === 1 ? '' : 'es'}</option>`).join('');
+  const paidInfo = paid ? `<div class="notice"><b>PARTIDA PAGA</b><br>Primero solicitás la cantidad. Después coordinás el pago por WhatsApp. El administrador puede ajustar la cantidad y dar el OK. Recién entonces elegís tus cartones.${Number(settings.cardPrice) > 0 ? `<div class="price">$${Number(settings.cardPrice).toLocaleString('es-AR')} por cartón</div>` : ''}</div>` : `<div class="notice"><b>PARTIDA GRATIS</b><br>Después de entrar vas a poder elegir tus cartones directamente.</div>`;
+  return `<h2>${direct ? 'Acceso directo listo' : 'Clave correcta'}</h2>
+    <p class="lead">Escribí tu nombre y elegí cuántos cartones querés.</p>
+    ${accessRoomMetaMarkup(roomState)}
+    ${accessErrorMarkup(error)}
+    <form method="post" action="/jugador/entrar" autocomplete="off">
+      <input type="hidden" name="roomCode" value="${escapeHtml(roomState.roomCode || '')}">
+      <input type="hidden" name="deviceId" value="">
+      <div class="field"><label for="playerName">TU NOMBRE O APODO</label><input id="playerName" name="name" maxlength="20" required minlength="2" autofocus placeholder="Ej.: Laura"></div>
+      <div class="field"><label for="cardCount">CANTIDAD DE CARTONES</label><select id="cardCount" name="cardCount">${options}</select></div>
+      <button class="btn primary" type="submit">ENTRAR A LA SALA</button>
+    </form>
+    ${paidInfo}
+    ${direct ? '' : '<a class="back" href="/jugador">← Cambiar clave</a>'}`;
+}
+
+function servePlayerAccessPage(res, options = {}) {
+  const filePath = path.join(ROOT, 'acceso.html');
+  fs.readFile(filePath, 'utf8', (error, html) => {
+    if (error) return sendJson(res, 500, { error: 'No se pudo abrir la pantalla de acceso.' });
+    const output = html.replace('<!--ACCESS_CONTENT-->', playerAccessContent(options));
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Length': Buffer.byteLength(output),
+      'Cache-Control': 'no-store, max-age=0',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'same-origin'
+    });
+    res.end(output);
+  });
+}
+
 function serveDemoPlayerPage(res, initialState, directToken = '') {
   const filePath = path.join(ROOT, 'jugador.html');
   fs.readFile(filePath, 'utf8', (error, html) => {
@@ -4985,6 +5045,7 @@ function serveFile(res, filePath) {
   const jsRoot = `${path.join(ROOT, 'js')}${path.sep}`;
   const allowedHtml = new Set([
     path.join(ROOT, 'admin.html'),
+    path.join(ROOT, 'acceso.html'),
     path.join(ROOT, 'jugador.html'),
     path.join(ROOT, 'admin-player-preview.html'),
     path.join(ROOT, 'cast-receiver.html'),
@@ -5720,6 +5781,47 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res, url);
   if (url.pathname.startsWith('/api/')) return handleApi(req, res, url);
 
+  if (url.pathname === '/jugador/verificar' && req.method === 'POST') {
+    try {
+      if (!consumeRate(req, 'alpha-access-form', 120, 10 * 60 * 1000)) return servePlayerAccessPage(res, { error:'Demasiados intentos. Esperá unos minutos.' });
+      const form = await readForm(req);
+      const workspace = findWorkspaceByAccessKey(form.accessKey);
+      if (!workspace) return servePlayerAccessPage(res, { error:'Clave incorrecta o sala no disponible.' });
+      return workspaceContext.run(workspace, () => {
+        if (!state.active || state.status !== 'waiting' || !state.roomSettings?.joinOpen) return servePlayerAccessPage(res, { error:'El ingreso a esta sala está cerrado.' });
+        return servePlayerAccessPage(res, { workspace, direct:false });
+      });
+    } catch (error) {
+      return servePlayerAccessPage(res, { error:error.message || 'No se pudo verificar la sala.' });
+    }
+  }
+
+  if (url.pathname === '/jugador/entrar' && req.method === 'POST') {
+    let workspace = null;
+    try {
+      if (!consumeRate(req, 'alpha-entry-form', 120, 10 * 60 * 1000)) return servePlayerAccessPage(res, { error:'Demasiados intentos. Esperá unos minutos.' });
+      const form = await readForm(req);
+      workspace = findWorkspaceByRoomCode(form.roomCode);
+      if (!workspace) return servePlayerAccessPage(res, { error:'La sala ya no está disponible.' });
+      return workspaceContext.run(workspace, () => {
+        try {
+          const deviceId = String(form.deviceId || '').trim() || randomId('device');
+          const joined = openJoinPlayer({ name:form.name, cardCount:Number(form.cardCount) || 1, deviceId });
+          const roomCode = String(joined.state?.roomCode || state.roomCode || '').trim().toUpperCase();
+          res.writeHead(303, {
+            Location: `/jugar?session=${encodeURIComponent(joined.token)}&sala=${encodeURIComponent(roomCode)}`,
+            'Cache-Control':'no-store, max-age=0'
+          });
+          return res.end();
+        } catch (error) {
+          return servePlayerAccessPage(res, { workspace, error:error.message || 'No se pudo ingresar a la sala.', direct:true });
+        }
+      });
+    } catch (error) {
+      return servePlayerAccessPage(res, { workspace, error:error.message || 'No se pudo ingresar a la sala.', direct:Boolean(workspace) });
+    }
+  }
+
   if (url.pathname === '/demo/start' && req.method === 'POST') {
     try {
       if (!consumeRate(req, 'demo-create', 40, 10 * 60 * 1000)) {
@@ -5840,8 +5942,20 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(303, { Location: player.selectionConfirmed && player.nameSet ? `/demo/jugar/${entryId}/partida?demo=1` : `/demo/jugar/${entryId}`, 'Cache-Control':'no-store' });
       return res.end();
     }
-    return serveFile(res, path.join(ROOT, 'jugador.html'));
+    const legacyGameEntry = ['session','recuperar','acceso','codigo','code','adminpreview'].some(key => url.searchParams.has(key));
+    if (legacyGameEntry) return serveFile(res, path.join(ROOT, 'jugador.html'));
+    const directRoom = String(url.searchParams.get('sala') || '').trim().toUpperCase();
+    if (directRoom) {
+      const workspace = findWorkspaceByRoomCode(directRoom);
+      if (!workspace) return servePlayerAccessPage(res, { error:'El enlace de acceso no corresponde a una sala disponible.' });
+      return workspaceContext.run(workspace, () => {
+        if (!state.active || state.status !== 'waiting' || !state.roomSettings?.joinOpen) return servePlayerAccessPage(res, { error:'El ingreso a esta sala está cerrado.' });
+        return servePlayerAccessPage(res, { workspace, direct:true });
+      });
+    }
+    return servePlayerAccessPage(res);
   }
+  if (url.pathname === '/jugar' || url.pathname === '/jugar/') return serveFile(res, path.join(ROOT, 'jugador.html'));
   if (url.pathname === '/reglamento' || url.pathname === '/reglamento/' || url.pathname === '/reglamento.html') return serveFile(res, path.join(ROOT, 'reglamento.html'));
   const relative = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
   if (!(relative.startsWith('assets/') || relative.startsWith('js/'))) return sendJson(res, 404, { error: 'Archivo no encontrado.' });

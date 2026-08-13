@@ -16,15 +16,15 @@ ALFA redefine el acceso y la administración sobre el motor funcional de BETA 4.
 
 ### Partida gratis
 
-Clave compartida → nombre → sesión privada → elegir cartones → confirmar → esperar inicio.
+Clave compartida → verificar sala → nombre/cantidad → sesión privada → elegir cartones → confirmar → elegir Manual/Auto → esperar inicio.
 
 No aparece WhatsApp, precio ni confirmación de pago.
 
 ### Partida paga
 
-Clave compartida → nombre → solicitar cantidad → WhatsApp/pago externo → administrador ajusta la cantidad → administrador confirma → jugador elige los cartones autorizados → confirmar → esperar inicio.
+Clave compartida → verificar sala → nombre/cantidad solicitada → sesión privada → WhatsApp/pago externo → administrador ajusta la cantidad → administrador confirma → jugador elige los cartones autorizados → confirmar → elegir Manual/Auto → esperar inicio.
 
-La clave compartida solo permite entrar al lobby. La identidad del jugador y sus cartones dependen de un token privado de sesión. Salir momentáneamente a WhatsApp o recargar la página no debe cerrar la sesión.
+El acceso manual verifica primero la clave y recién después pide nombre/cantidad. El enlace directo salta la clave y abre directamente ese segundo paso. La clave compartida solo permite entrar al lobby. La identidad del jugador y sus cartones dependen de un token privado de sesión. Salir momentáneamente a WhatsApp o recargar la página no debe cerrar la sesión.
 
 ## Modos de marcado
 
@@ -60,10 +60,10 @@ Abrir `http://localhost:3210/admin`.
 npm test
 ```
 
-La batería ALFA comprueba el flujo nuevo de salas, sesiones privadas, pago/aprobación, cartones exclusivos, Solo Manual, moderación, reclamos automáticos, secuencia Línea 1/Línea 2, DEMO, simulación de 60 IA, contingencia y recuperación tras reinicio.
+La batería ALFA comprueba además el acceso servidor en dos pasos (clave → datos → sesión), el enlace directo sin clave y que una sala ingresada por ese flujo pueda llegar a INICIAR PARTIDA. También cubre sesiones privadas, pago/aprobación, cartones exclusivos, Solo Manual, moderación, reclamos automáticos, Línea 1/Línea 2, DEMO, 60 IA, contingencia y recuperación tras reinicio.
 
 ## Persistencia
 
 ALFA sigue usando el repositorio de archivos del servidor (`BINGO_DATA_DIR`). Para pruebas locales es suficiente. Para partidas reales en Internet, `BINGO_DATA_DIR` debe apuntar a un volumen persistente. Un hosting con disco efímero puede perder partidas y actas después de reinicios o redeploys.
 
-La migración a una base externa como Supabase no está incluida en ALFA 5.0.0-alpha.2 porque requiere definir/configurar el proyecto y credenciales de producción sin reemplazar el motor que ya funciona.
+La migración a una base externa como Supabase no está incluida en ALFA 5.0.0-alpha.3 porque requiere definir/configurar el proyecto y credenciales de producción sin reemplazar el motor que ya funciona.

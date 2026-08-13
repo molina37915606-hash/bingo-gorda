@@ -8,13 +8,14 @@
 - [ ] Crear modo SOLO MANUAL.
 - [ ] Solo Manual no permite más de 2 cartones.
 - [ ] Definir clave compartida.
-- [ ] Entrar escribiendo la clave compartida.
-- [ ] Copiar ENLACE DIRECTO y entrar sin escribir clave.
+- [ ] Escribir clave compartida y comprobar que primero valida la sala.
+- [ ] Después de validar clave aparecen nombre y cantidad.
+- [ ] Copiar ENLACE DIRECTO y comprobar que abre directamente nombre/cantidad, sin pedir clave.
 - [ ] Copiar MENSAJE PARA WHATSAPP y verificar que incluya el enlace.
 - [ ] QR abre el acceso directo sin pedir clave.
 
 ## Jugador gratis
-- [ ] Entrar con clave + nombre.
+- [ ] Entrar: clave → nombre/cantidad → sala.
 - [ ] Entrar con enlace directo + nombre.
 - [ ] No aparece WhatsApp ni precio.
 - [ ] Elegir cartones.
@@ -22,7 +23,7 @@
 - [ ] Recargar y conservar sesión/cartones.
 
 ## Jugador pago
-- [ ] Entrar con clave + nombre.
+- [ ] Entrar: clave → nombre/cantidad solicitada → sala.
 - [ ] Solicitar cantidad de cartones.
 - [ ] Aparece botón de WhatsApp.
 - [ ] Ir a WhatsApp y volver sin perder sesión.
@@ -34,6 +35,11 @@
 - [ ] Elegir exactamente la cantidad autorizada.
 - [ ] Recargar y recuperar sesión.
 - [ ] Probar enlace/token de recuperación en otro dispositivo.
+
+## Inicio de partida
+- [ ] Con jugadores listos, Admin muestra la partida preparada para iniciar.
+- [ ] En modo Normal, cada jugador elige Manual o Automarcado antes del inicio.
+- [ ] Admin puede INICIAR PARTIDA después de completar los requisitos.
 
 ## Juego
 - [ ] Bingo 75.

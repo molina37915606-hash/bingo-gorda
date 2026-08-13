@@ -1,3 +1,15 @@
+BINGO DE LA GORDA ALFA 5.0.0-alpha.3
+
+CAMBIOS DE ESTA REVISIÓN
+- Acceso del jugador reconstruido en dos pasos y separado de la interfaz grande del Bingo.
+- Acceso manual: primero valida la clave; después pide nombre y cantidad.
+- Enlace directo: salta la clave y abre directamente nombre/cantidad.
+- El servidor crea la sesión privada y redirige a /jugar.
+- El primer ingreso ya no depende de que online-room-player.js termine de inicializar toda la interfaz.
+- Cache-busting actualizado de online-room-player.js para evitar cargar una revisión anterior.
+- Nueva prueba automática de formulario real HTTP: clave → datos → sesión → link directo → cartones → INICIAR PARTIDA.
+- Se conserva Bingo 90 con 1 o 2 líneas y los botones separados COPIAR ENLACE / COPIAR PARA WHATSAPP.
+
 BINGO DE LA GORDA ALFA 5.0.0-alpha.2
 
 CAMBIOS DE ESTA REVISIÓN

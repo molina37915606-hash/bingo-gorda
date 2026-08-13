@@ -1,4 +1,4 @@
-BINGO DE LA GORDA ALFA · 5.0.0-alpha.2
+BINGO DE LA GORDA ALFA · 5.0.0-alpha.3
 
 1. Instalar Node.js 18 o superior.
 2. Abrir una terminal en esta carpeta.
@@ -13,3 +13,7 @@ IMPORTANTE:
 - Las salas usan una clave compartida y una sesión privada distinta por jugador.
 - En partidas pagas el jugador elige sus cartones RECIÉN después de la confirmación del administrador.
 - Para uso real en Internet, configurar BINGO_DATA_DIR sobre almacenamiento persistente.
+
+ACCESO ALFA 3:
+- Manual: /jugador → clave → nombre/cantidad → sala.
+- Directo: enlace de sala → nombre/cantidad → sala, sin pedir clave.

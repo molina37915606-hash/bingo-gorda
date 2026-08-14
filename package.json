@@ -1,13 +1,13 @@
 {
   "name": "bingo-de-la-gorda-cuasifinal-funcional",
-  "version": "5.1.0-cuasifinal-funcional.1",
+  "version": "5.1.3-cuasifinal-funcional.4",
   "private": true,
-  "description": "BINGO DE LA GORDA CUASIFINAL FUNCIONAL: acceso privado individual, sala de espera social, cartones exclusivos, juego móvil unificado y transmisión permanente.",
+  "description": "BINGO DE LA GORDA CUASIFINAL FUNCIONAL: modo día/noche, chat unificado estilo Comunidad y cantador más natural.",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/functional-ui.js && node tests/functional-invite.js && node tests/demo-unified.js && node tests/preview-unified.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
+    "test": "node tests/line-queue-90.js && node tests/functional-ui.js && node tests/functional-invite.js && node tests/demo-unified.js && node tests/preview-unified.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
   }
 }

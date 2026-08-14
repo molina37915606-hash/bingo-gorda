@@ -93,6 +93,7 @@ const DEMO_SESSION_COOKIE = 'bingo_demo_session';
 const PLAYER_SESSION_COOKIE = 'bingo_player_session';
 const PLAYER_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 const PLAYER_RECOVERY_TTL_MS = 15 * 60 * 1000;
+const INVITATION_ACTIVATION_TTL_MS = 2 * 60 * 1000;
 const DEMO_IDLE_TTL_MS = 15 * 60 * 1000;
 const DEMO_CLAIM_WINDOW_MS = 1600;
 const DEMO_START_SEQUENCE_MS = 1200;
@@ -203,10 +204,28 @@ function winningDetailsForClaim(claim) {
   const lines = claim?.comparison?.completeLines || [];
   if (claim?.type === 'doubleLine') return lines.slice(0, 2);
   if (claim?.type === 'tripleLine') return lines.slice(0, 3);
-  if (claim?.type === 'line') return lines.slice(0, 1);
+  if (claim?.type === 'line') {
+    if (claim?.winningLineKey) {
+      const selected = lines.find(line => line.key === claim.winningLineKey);
+      if (selected) return [selected];
+    }
+    return lines.slice(0, 1);
+  }
   if (claim?.type === 'corners') return claim?.comparison?.cornerDetails || [];
   if (claim?.type === 'ambo') return claim?.comparison?.amboDetails?.slice(0, 1) || [];
   return [];
+}
+
+function consumedLineKeysForCard(cardId) {
+  return new Set(state.claims
+    .filter(claim => claim.type === 'line' && claim.cardId === cardId && claim.status === 'confirmed')
+    .map(claim => claim.winningLineKey || claim?.comparison?.completeLines?.[0]?.key)
+    .filter(Boolean));
+}
+
+function nextUnclaimedLineDetail(cardId, analysis) {
+  const consumed = consumedLineKeysForCard(cardId);
+  return (analysis?.completeLines || []).find(line => !consumed.has(line.key)) || null;
 }
 function winningNumbersForClaim(claim, card) {
   if (claim?.type === 'bingo') return cardNumbers(card);
@@ -619,6 +638,8 @@ function savePlatform() {
 const workspaceContext = new AsyncLocalStorage();
 const workspaces = new Map();
 const playerViewSessions = new Map();
+// Tokens efímeros creados al abrir una invitación. Un GET/HEAD nunca consume la invitación.
+const invitationActivationTokens = new Map();
 
 function safeWorkspaceId(value) {
   return String(value || 'owner').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'owner';
@@ -1999,6 +2020,29 @@ function createBulkInvitedPlayers(payload = {}) {
   return { state: adminPayload(), players: created };
 }
 
+function issueInvitationActivation(inviteToken) {
+  const now = Date.now();
+  for (const [key, item] of invitationActivationTokens.entries()) {
+    if (!item || Number(item.expiresAt || 0) <= now) invitationActivationTokens.delete(key);
+  }
+  const activationToken = randomId('activate');
+  invitationActivationTokens.set(activationToken, {
+    inviteToken: String(inviteToken || ''),
+    expiresAt: now + INVITATION_ACTIVATION_TTL_MS
+  });
+  return activationToken;
+}
+
+function consumeInvitationActivation(activationToken, inviteToken) {
+  const key = String(activationToken || '').trim();
+  const expectedInvite = String(inviteToken || '').trim();
+  const item = invitationActivationTokens.get(key);
+  if (!item) return false;
+  invitationActivationTokens.delete(key);
+  if (Number(item.expiresAt || 0) <= Date.now()) return false;
+  return safeEqual(String(item.inviteToken || ''), expectedInvite);
+}
+
 function claimPlayerInvitation(token, deviceId = '') {
   if (!state.active || !state.game || state.status !== 'waiting') throw new Error('La partida ya no admite ingresos.');
   const normalized = String(token || '').trim();
@@ -2255,7 +2299,7 @@ function createDemoRoom(payload = {}) {
   const autoSeconds = allowedIntervals.has(requestedInterval) ? requestedInterval : 4;
   const defaultRules = mode === 75
     ? { ambocabeza: false, line: true, doubleLine: true, tripleLine: true, corners: true, bingo: true }
-    : { ambocabeza: false, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true };
+    : { ambocabeza: true, line: true, doubleLine: false, tripleLine: false, corners: false, bingo: true };
   const rules = payload.rules && typeof payload.rules === 'object' ? roomRulesFor(mode, payload.rules) : defaultRules;
   if (!Object.values(rules).some(Boolean)) throw new Error('Elegí al menos un premio para la demostración.');
   const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.floor(Number(payload.linePrizeCount) || 2))) : 1;
@@ -4300,9 +4344,13 @@ function createClaim(player, payload) {
   const prizes = prizeStatusPayload();
   const prize = prizes[type];
   if (!prize || prize.closed) throw new Error(`El premio ${prizeLabelFor(type)} ya fue entregado o no está habilitado.`);
-  if (state.claims.some(claim => claim.type === type && claim.cardId === cardId && ['pending', 'confirmed'].includes(claim.status))) throw new Error(`Ese cartón ya reclamó ${prizeLabelFor(type)}.`);
-  if (type === 'line' && Number(state.game.mode) === 90 && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(claim => claim.playerId === player.id)) {
-    throw new Error('Este jugador ya ganó una línea y la sala no permite que gane la segunda.');
+  const isSequentialLine90 = type === 'line' && Number(state.game.mode) === 90;
+  if (isSequentialLine90) {
+    if (state.claims.some(claim => claim.type === 'line' && claim.cardId === cardId && claim.status === 'pending')) {
+      throw new Error('Ese cartón ya tiene un reclamo de línea pendiente.');
+    }
+  } else if (state.claims.some(claim => claim.type === type && claim.cardId === cardId && ['pending', 'confirmed'].includes(claim.status))) {
+    throw new Error(`Ese cartón ya reclamó ${prizeLabelFor(type)}.`);
   }
 
   if (!existingWindow || !windowOpen) {
@@ -4324,7 +4372,8 @@ function createClaim(player, payload) {
   if (windowClaims.length >= 20) throw new Error('Se alcanzó el máximo de alertas simultáneas para esta verificación.');
 
   const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
-  const validity = { ambo: analysis.hasAmbo, line: analysis.hasLine, doubleLine: analysis.hasDoubleLine, tripleLine: analysis.hasTripleLine, corners: analysis.hasCorners, bingo: analysis.hasBingo };
+  const lineDetail = type === 'line' && Number(state.game.mode) === 90 ? nextUnclaimedLineDetail(cardId, analysis) : null;
+  const validity = { ambo: analysis.hasAmbo, line: Number(state.game.mode) === 90 ? Boolean(lineDetail) : analysis.hasLine, doubleLine: analysis.hasDoubleLine, tripleLine: analysis.hasTripleLine, corners: analysis.hasCorners, bingo: analysis.hasBingo };
   const valid = Boolean(validity[type]);
   state.claimSequence = Math.max(0, Number(state.claimSequence) || 0) + 1;
   const sequence = state.claimSequence;
@@ -4338,6 +4387,7 @@ function createClaim(player, payload) {
     createdAt: receivedAt, receivedAt, receivedEpochMs: nowMs, receivedSequence: sequence,
     receivedMonotonicNs: process.hrtime.bigint().toString(), deltaFromFirstMs: Math.max(0, nowMs - firstReceivedMs),
     claimWindowId: window.id, status: 'pending', officialValid: valid, simulated: Boolean(payload.simulated),
+    winningLineKey: type === 'line' && Number(state.game.mode) === 90 ? (lineDetail?.key || null) : null,
     drawnAtClaim: [...state.game.drawn], playerMarksAtClaim: [...(player.marks?.[cardId] || [])], comparison: analysis,
     tieGroupId: state.roomSettings.tiePolicy === 'same_ball' ? window.id : null
   };
@@ -4418,10 +4468,9 @@ function resolveClaim(payload) {
       if (confirmedInWindow.length >= MAX_TIE_WINNERS_PER_PRIZE) throw new Error(`El máximo es de ${MAX_TIE_WINNERS_PER_PRIZE} ganadores simultáneos por premio.`);
       if (current.closed && !confirmedInWindow.length) throw new Error(`El premio ${prizeLabelFor(claim.type, claim.prizeNumber)} ya fue entregado.`);
     }
-    if (claim.type === 'line' && Number(state.game.mode) === 90 && !state.roomSettings.allowSamePlayerSecondLine && confirmedClaims('line').some(item => item.playerId === claim.playerId)) {
-      throw new Error('Este jugador ya ganó una línea y no está habilitado para ganar la segunda.');
+    if (!(claim.type === 'line' && Number(state.game.mode) === 90) && confirmedClaims(claim.type).some(item => item.cardId === claim.cardId)) {
+      throw new Error('Ese cartón ya recibió este premio.');
     }
-    if (confirmedClaims(claim.type).some(item => item.cardId === claim.cardId)) throw new Error('Ese cartón ya recibió este premio.');
     claim.prizeNumber = claim.type === 'line' && Number(state.game.mode) === 90 ? current.awarded + 1 : 1;
     claim.prizeLabel = prizeLabelFor(claim.type, claim.prizeNumber, state.game.mode);
   }
@@ -4441,14 +4490,10 @@ function resolveClaim(payload) {
         rejectPendingClaim(later, 'invalid_card', 'Reclamo inválido registrado durante la misma ventana.', `${later.prizeLabel} rechazado: el cartón no estaba completo.`);
         continue;
       }
-      const samePlayerBlocked = claim.type === 'line' && Number(state.game.mode) === 90 && !state.roomSettings.allowSamePlayerSecondLine
-        && confirmedClaims('line').some(item => item.playerId === later.playerId);
-      if (samePlayerBlocked) {
-        rejectPendingClaim(later, 'same_player_second_line_not_allowed', 'El jugador ya recibió una línea y la configuración no permite que gane la segunda.', 'Reclamo válido, pero este jugador no está habilitado para ganar la segunda línea.');
-        continue;
-      }
-      if (claim.type === 'line' && Number(state.game.mode) === 90 && Number(claim.prizeNumber) === 1) {
-        rejectPendingClaim(later, 'valid_but_received_later', `Reclamo válido recibido ${later.deltaFromFirstMs} ms después del ganador de Línea 1. Línea 2 se habilita después de adjudicar Línea 1.`, `Línea 1 válida, pero recibida después del reclamo ganador. Línea 2 queda habilitada desde ahora.`);
+      if (claim.type === 'line' && Number(state.game.mode) === 90 && !currentAfter?.closed) {
+        // En Bingo 90 las líneas son posiciones globales del juego. Si hay dos premios,
+        // el segundo reclamo válido conserva su lugar en la cola y pasa a disputar Línea 2,
+        // incluso si llegó en la misma bolilla/ventana que Línea 1.
         continue;
       }
       if (currentAfter?.closed) {
@@ -5184,6 +5229,22 @@ function servePlayerRecoveryPage(res, options = {}) {
     });
     res.end(output);
   });
+}
+
+function serveInvitationActivationPage(res, player, inviteToken, activationToken) {
+  const safeName = escapeHtml(playerDisplayName(player));
+  const action = `/invitacion/${encodeURIComponent(String(inviteToken || ''))}`;
+  const safeActivation = escapeHtml(activationToken);
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070914"><meta name="robots" content="noindex,nofollow,noarchive"><title>Entrando · Bingo de la Gorda</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#2c2052,#070914 55%,#02040a);color:#fff;font-family:Segoe UI,Arial,sans-serif;padding:18px;box-sizing:border-box}.box{width:min(460px,100%);background:#11182b;border:1px solid #ffffff24;border-radius:20px;padding:24px;text-align:center;box-shadow:0 20px 70px #0008}.box img{width:92px}.box h1{font-size:24px;margin-bottom:8px}.box p{color:#bac4d8;line-height:1.5}.spinner{width:38px;height:38px;border:4px solid #ffffff22;border-top-color:#ffca2f;border-radius:50%;margin:18px auto;animation:gira .8s linear infinite}.btn{display:inline-block;margin-top:10px;padding:12px 16px;border:0;border-radius:12px;background:#ffca2f;color:#241700;font-weight:900;cursor:pointer}@keyframes gira{to{transform:rotate(360deg)}}</style></head><body><main class="box"><img src="/assets/logo.png" alt="Bingo de la Gorda"><h1>Entrando a la partida</h1><p>Hola <b>${safeName}</b>. Estamos preparando tu sala privada.</p><div class="spinner" aria-hidden="true"></div><form id="activateInvite" method="post" action="${action}" autocomplete="off"><input type="hidden" name="activationToken" value="${safeActivation}"><noscript><button class="btn" type="submit">ENTRAR A LA PARTIDA</button></noscript></form></main><script>(()=>{const f=document.getElementById('activateInvite');const go=()=>{try{if(f.requestSubmit)f.requestSubmit();else f.submit()}catch{f.submit()}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(go,40),{once:true});else setTimeout(go,40)})();</script></body></html>`;
+  res.writeHead(200, {
+    'Content-Type':'text/html; charset=utf-8',
+    'Content-Length':Buffer.byteLength(html),
+    'Cache-Control':'no-store, max-age=0',
+    'X-Content-Type-Options':'nosniff',
+    'Referrer-Policy':'no-referrer',
+    'X-Robots-Tag':'noindex, nofollow, noarchive'
+  });
+  res.end(html);
 }
 
 function serveInvitationErrorPage(res, message) {
@@ -5992,7 +6053,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname.startsWith('/api/')) return handleApi(req, res, url);
 
   const invitationMatch = url.pathname.match(/^\/invitacion\/([^/]+)\/?$/);
-  if (invitationMatch && req.method === 'GET') {
+  if (invitationMatch && (req.method === 'GET' || req.method === 'HEAD')) {
     const inviteToken = decodeURIComponent(invitationMatch[1] || '');
     const workspace = findWorkspaceByInviteToken(inviteToken);
     if (!workspace) return serveInvitationErrorPage(res, 'Este enlace no es válido o la partida ya terminó.');
@@ -6007,15 +6068,53 @@ const server = http.createServer(async (req, res) => {
         }
         return serveInvitationErrorPage(res, `El enlace de ${playerDisplayName(player)} ya fue utilizado. Si cambiaste de dispositivo, pedile al administrador un enlace de recuperación.`);
       }
-      try {
-        const claimed = claimPlayerInvitation(inviteToken, randomId('device'));
-        setPlayerSessionCookie(req, res, claimed.token);
-        res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0', 'Referrer-Policy':'no-referrer' });
+      // WhatsApp, redes y antivirus suelen hacer GET/HEAD para generar una vista previa.
+      // Esas consultas NUNCA deben consumir la invitación.
+      if (req.method === 'HEAD') {
+        res.writeHead(200, {
+          'Content-Type':'text/html; charset=utf-8',
+          'Cache-Control':'no-store, max-age=0',
+          'X-Robots-Tag':'noindex, nofollow, noarchive',
+          'Referrer-Policy':'no-referrer'
+        });
         return res.end();
-      } catch (error) {
-        return serveInvitationErrorPage(res, error.message || 'No se pudo abrir la invitación.');
       }
+      const activationToken = issueInvitationActivation(inviteToken);
+      return serveInvitationActivationPage(res, player, inviteToken, activationToken);
     });
+  }
+  if (invitationMatch && req.method === 'POST') {
+    const inviteToken = decodeURIComponent(invitationMatch[1] || '');
+    const workspace = findWorkspaceByInviteToken(inviteToken);
+    if (!workspace) return serveInvitationErrorPage(res, 'Este enlace no es válido o la partida ya terminó.');
+    try {
+      const form = await readForm(req);
+      return workspaceContext.run(workspace, () => {
+        const player = state.players.find(item => item.inviteToken === inviteToken && !item.virtual);
+        if (!player) return serveInvitationErrorPage(res, 'Este enlace no es válido.');
+        const currentSession = String(cookieValue(req, PLAYER_SESSION_COOKIE) || '').trim();
+        if (player.inviteClaimedAt) {
+          if (currentSession && currentSession === player.sessionToken) {
+            res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0', 'Referrer-Policy':'no-referrer' });
+            return res.end();
+          }
+          return serveInvitationErrorPage(res, `El enlace de ${playerDisplayName(player)} ya fue utilizado. Si cambiaste de dispositivo, pedile al administrador un enlace de recuperación.`);
+        }
+        if (!consumeInvitationActivation(form.activationToken, inviteToken)) {
+          return serveInvitationErrorPage(res, 'La activación venció. Volvé a abrir el enlace de WhatsApp para ingresar.');
+        }
+        try {
+          const claimed = claimPlayerInvitation(inviteToken, randomId('device'));
+          setPlayerSessionCookie(req, res, claimed.token);
+          res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0', 'Referrer-Policy':'no-referrer' });
+          return res.end();
+        } catch (error) {
+          return serveInvitationErrorPage(res, error.message || 'No se pudo abrir la invitación.');
+        }
+      });
+    } catch (error) {
+      return serveInvitationErrorPage(res, error.message || 'No se pudo activar la invitación.');
+    }
   }
 
   if (url.pathname === '/jugador/verificar' && req.method === 'POST') {
@@ -6093,7 +6192,7 @@ const server = http.createServer(async (req, res) => {
       const mode = Number(form.mode) === 75 ? 75 : 90;
       const rules = mode === 75
         ? { ambocabeza:false, line:form.prizeLine === '1', doubleLine:form.prizeDouble === '1', tripleLine:form.prizeTriple === '1', corners:form.prizeCorners === '1', bingo:form.prizeBingo === '1' }
-        : { ambocabeza:false, line:form.prizeLine === '1', doubleLine:false, tripleLine:false, corners:false, bingo:form.prizeBingo === '1' };
+        : { ambocabeza:form.prizeAmbo === '1', line:form.prizeLine === '1', doubleLine:false, tripleLine:false, corners:false, bingo:form.prizeBingo === '1' };
       const created = createDemoRoom({
         mode,
         rules,

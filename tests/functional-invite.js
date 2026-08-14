@@ -11,7 +11,7 @@ async function jsonReq(url,opt={}){const r=await request(url,opt),d=await r.json
 async function post(url,body,headers={}){const {r,d}=await jsonReq(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body||{})});assert(r.ok,`${url} ${r.status} ${JSON.stringify(d)}`);return d}
 async function getJson(url,headers={}){const {r,d}=await jsonReq(url,{headers});assert(r.ok,`${url} ${r.status} ${JSON.stringify(d)}`);return d}
 function cookieFrom(res){const raw=res.headers.get('set-cookie')||'';return raw.split(';')[0]}
-async function claimInvite(url){const u=new URL(url);const r=await request(u.pathname+u.search,{redirect:'manual'});assert.equal(r.status,303,'La invitación debe entrar directamente');assert.equal(r.headers.get('location'),'/jugar');const cookie=cookieFrom(r);assert(cookie.startsWith('bingo_player_session='),'Debe crear cookie privada HttpOnly');return cookie}
+async function claimInvite(url){const u=new URL(url),path=u.pathname+u.search;const head=await request(path,{method:'HEAD',redirect:'manual'});assert.equal(head.status,200,'HEAD de vista previa no debe consumir la invitación');assert(!cookieFrom(head),'HEAD no debe crear sesión');const preview=await request(path,{redirect:'manual'});assert.equal(preview.status,200,'GET de WhatsApp debe devolver una página segura sin consumir');assert(!cookieFrom(preview),'GET de vista previa no debe crear sesión');const html=await preview.text();const match=html.match(/name="activationToken" value="([^"]+)"/);assert(match,'La página real debe incluir activación efímera');const preview2=await request(path,{redirect:'manual'});const html2=await preview2.text();assert(preview2.status===200&&html2.includes('activationToken'),'Una segunda vista previa tampoco debe consumir el link');const r=await request(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`activationToken=${encodeURIComponent(match[1])}`,redirect:'manual'});assert.equal(r.status,303,'El POST interno del navegador debe activar la invitación');assert.equal(r.headers.get('location'),'/jugar');const cookie=cookieFrom(r);assert(cookie.startsWith('bingo_player_session='),'Debe crear cookie privada HttpOnly');return cookie}
 (async()=>{let controllers=[];try{
   await waitServer();
   const login=await post('/api/admin/login',{}),ah={'X-Admin-Token':login.token};
@@ -21,6 +21,12 @@ async function claimInvite(url){const u=new URL(url);const r=await request(u.pat
   const ana=await post('/api/admin/invite-player',{name:'María',allowedCardCount:4},ah);
   const beto=await post('/api/admin/invite-player',{name:'Beto',allowedCardCount:4},ah);
   assert(ana.player.inviteUrl.includes('/invitacion/'));assert(beto.player.inviteUrl.includes('/invitacion/'));
+
+  // Simula la vista previa que hace WhatsApp: HEAD/GET no deben reclamar la invitación.
+  const anaPath=new URL(ana.player.inviteUrl).pathname;
+  let waHead=await request(anaPath,{method:'HEAD',redirect:'manual'});assert.equal(waHead.status,200);
+  let waPreview=await request(anaPath,{redirect:'manual'});assert.equal(waPreview.status,200);assert((await waPreview.text()).includes('activationToken'));
+  let anaAdmin=(await getJson('/api/admin/state',ah)).players.find(p=>p.id===ana.player.id);assert.equal(anaAdmin.invitationClaimed,false,'La vista previa de WhatsApp no debe marcar la invitación como usada');
 
   let dup=await jsonReq('/api/admin/invite-player',{method:'POST',headers:{'Content-Type':'application/json',...ah},body:JSON.stringify({name:'  MARIA ',allowedCardCount:4})});
   assert.equal(dup.r.status,400,'El nombre debe ser único ignorando mayúsculas/espacios/acentos');

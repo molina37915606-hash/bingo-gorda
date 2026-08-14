@@ -46,7 +46,7 @@
 
 ## Reclamos y final
 - [ ] Línea 1 funciona.
-- [ ] En 90 con 2 líneas, Línea 2 solo queda disponible después de Línea 1.
+- [ ] En 90 con 2 líneas, los reclamos válidos se ordenan globalmente: 1.º = Línea 1 y 2.º = Línea 2, incluso si ocurrieron con la misma bolilla.
 - [ ] Bingo funciona.
 - [ ] Si Admin no resuelve un reclamo, el servidor lo verifica automáticamente a los 10 segundos.
 - [ ] Gana el primer reclamo válido.
@@ -71,3 +71,36 @@
 - [ ] Solo Manual limita a 2.
 - [ ] DEMO entra a la misma sala de espera social.
 - [ ] DEMO usa la misma pantalla de juego que una partida real.
+
+
+## Regresión 90 bolas — 5.1.1
+- [ ] AmboCabeza aparece como premio opcional en Admin.
+- [ ] AmboCabeza aparece como premio opcional en DEMO.
+- [ ] Con 2 líneas y dos reclamos válidos en la misma bolilla: primero = Línea 1, segundo = Línea 2.
+- [ ] Un tercer reclamo válido de línea queda sin premio si Línea 1 y Línea 2 ya fueron adjudicadas.
+- [ ] Un mismo cartón no puede reutilizar la misma fila para cobrar Línea 1 y Línea 2.
+
+
+## Regresión WhatsApp y reclamos — 5.1.2
+- [ ] Generar un link privado y pegarlo en WhatsApp sin tocarlo.
+- [ ] Esperar a que WhatsApp genere la vista previa y confirmar en Admin que el link sigue SIN USAR.
+- [ ] Abrir el mismo link desde el celular: debe entrar directo a la sala y recién entonces quedar activado.
+- [ ] Volver a abrir el link desde el mismo celular: debe recuperar/abrir la misma sesión.
+- [ ] Abrir el link ya activado desde otro dispositivo: debe rechazar el acceso y ofrecer recuperación por Admin.
+- [ ] Tocar LÍNEA: el reclamo debe enviarse inmediatamente, sin diálogo de confirmación.
+- [ ] Tocar AMBOCABEZA: el reclamo debe enviarse inmediatamente, sin diálogo de confirmación.
+- [ ] Tocar BINGO: el reclamo debe enviarse inmediatamente, sin diálogo de confirmación.
+- [ ] Confirmar que el botón se bloquea inmediatamente para evitar doble toque mientras el servidor recibe el reclamo.
+
+## Revisión 5.1.3 · pulido funcional
+- [ ] Probar Modo Día/Noche en jugador y comprobar que queda guardado al recargar.
+- [ ] Probar Modo Día/Noche en DEMO, Comunidad y Transmisión/TV.
+- [ ] Confirmar que durante el sorteo ya no aparece un aviso flotante "Bolilla X" por cada extracción.
+- [ ] Confirmar que el progreso se muestra de forma discreta como `X / 75` o `X / 90`.
+- [ ] Activar VOZ y escuchar varias bolillas: el cantado debe ser breve y natural, sin repetir constantemente "Bolilla número...".
+- [ ] Confirmar que Primera Línea / Segunda Línea / AmboCabeza / Bingo se anuncian con frases cortas y claras.
+- [ ] Abrir el chat del juego: debe verse como el chat de Comunidad.
+- [ ] Probar botón ☺ de emojis.
+- [ ] Probar botón ✦ de stickers y comprobar que incluye los stickers de La Gorda.
+- [ ] Confirmar que NO existe botón GIF.
+- [ ] En celular, minimizar el chat y comprobar que el cartón vuelve a quedar completamente priorizado.

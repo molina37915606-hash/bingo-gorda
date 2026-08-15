@@ -117,3 +117,10 @@ La Comunidad tiene además un acceso permanente **🎱 JUGAR DEMO**, disponible 
 
 ### Ajuste móvil 2026-08-15 13:34
 - El chat móvil abierto puede minimizarse con un arrastre claro hacia abajo desde cualquier zona no interactiva del panel. Inputs, botones, stickers y el historial desplazado quedan protegidos contra cierres accidentales.
+
+### Ajuste reclamos + cierre · 2026-08-15 20:25
+- Durante un reclamo, los estados `verifying`, `paused` por reclamo y `resuming` conservan siempre la pantalla del cartón. Se elimina el flash accidental de Sala de espera.
+- Se mantienen los PNG sincronizados de `VERIFICANDO JUGADA`, premio confirmado y reclamo no confirmado sobre el cartón.
+- La pantalla de partida finalizada se renueva sin tocar la interfaz normal del juego: ganador rotativo, accesos compactos a números/acta/sello y botón **JUGAR DE NUEVO**.
+- En DEMO, **JUGAR DE NUEVO** crea una demostración nueva. En una partida real lleva a Comunidad para buscar la próxima, sin reiniciar la sala desde el jugador.
+- El chat final reutiliza exactamente el mismo componente del juego; en móvil entra minimizado y conserva toque/arrastre para abrir o bajar.

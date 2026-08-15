@@ -100,3 +100,10 @@ La Comunidad tiene además un acceso permanente **🎱 JUGAR DEMO**, disponible 
 - La transmisión no usa audios locales. La voz opcional depende de `speechSynthesis` del dispositivo; si la TV no lo soporta, el resto de la pantalla sigue funcionando.
 - Las nuevas salas reciben por defecto un código TV numérico de 6 dígitos.
 - Comunidad ofrece tanto **VER TRANSMISIÓN** como **📺 MODO TV** cuando hay partida activa.
+
+## Ajuste jugador móvil · 2026-08-15 04:30
+- Botón principal único **RECLAMAR**; los premios configurados quedan en una fila compacta de estados.
+- Cuando un premio está matemáticamente disponible se ilumina, pero el jugador debe tocar **RECLAMAR** manualmente.
+- Chat móvil tipo panel inferior: minimizado, desplegable por toque y arrastrable hacia arriba/abajo.
+- Durante la partida móvil quedan visibles Números, Ganadores y Más; se elimina la botonera secundaria duplicada.
+- Bolilla y progreso reacomodados para no tapar información del sorteo.

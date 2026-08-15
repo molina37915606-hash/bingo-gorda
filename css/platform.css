@@ -253,3 +253,65 @@ html[data-theme=day] .claimCelebrationCard{background:#fffffff8;box-shadow:0 20p
 .numbersGrid span.bingo-n{border:1px solid #a45fe5;background:#382052;color:#f1ddff}
 .numbersGrid span.bingo-g{border:1px solid #49cb62;background:#143d1d;color:#d8ffdf}
 .numbersGrid span.bingo-o{border:1px solid #ff744d;background:#542215;color:#ffe2d8}
+
+
+/* === BETA · REDISEÑO JUGADOR MÓVIL 2026-08-15 === */
+.mobileOnlyTool{display:none}
+.claimCenter{display:grid;gap:6px;margin-top:7px}
+.primaryClaim{width:100%;min-height:52px;border:1px solid #6f4a93;border-radius:10px;background:#202943;color:#8f9ab1;font-size:17px;font-weight:1000;letter-spacing:.08em}
+.primaryClaim.ready{background:linear-gradient(135deg,#ffbd24,#ffe36b);color:#241700;border-color:#ffe071;box-shadow:0 0 0 3px #ffd84a20,0 0 24px #ffca2f33;animation:claimMainPulse .95s ease-in-out infinite alternate}
+.primaryClaim:disabled{cursor:default;opacity:.72}
+@keyframes claimMainPulse{to{filter:brightness(1.08);box-shadow:0 0 0 4px #ffd84a30,0 0 30px #ffca2f55}}
+.prizeTrack{display:flex;justify-content:center;gap:5px;overflow-x:auto;scrollbar-width:none}
+.prizeTrack::-webkit-scrollbar{display:none}
+.prizeSquare{min-width:58px;aspect-ratio:1.1/1;border:1px solid #ffffff22;border-radius:9px;background:#141d32;color:#d5deed;padding:5px 3px;display:grid;place-items:center;align-content:center;gap:2px}
+.prizeSquare span{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:#27314a;color:#9ca8bc;font-size:10px;font-weight:1000}
+.prizeSquare b{font-size:9px;line-height:1.02;white-space:nowrap}
+.prizeSquare.ready{background:#392648;border-color:#ffd84a;color:#fff7d0;box-shadow:inset 0 0 0 1px #ffd84a55}
+.prizeSquare.ready span{background:#ffd84a;color:#251700}.prizeSquare.selected{box-shadow:0 0 0 2px #ffd84a88,0 0 18px #ffd84a55}.prizeSquare.awarded{background:#163a30;border-color:#2f8b69;color:#d7ffef}.prizeSquare.awarded span{background:#29c381;color:#06251a}
+.chatHeadActions{display:flex;align-items:center;gap:6px}.chatSheetBadge{display:none;padding:4px 7px;border-radius:999px;background:#26314a;color:#c9d4e7;font-size:8px;font-weight:1000;white-space:nowrap}.chatSheetBadge.hasUnread{display:inline-flex;background:#7c2944;color:#ffe1e9;border:1px solid #d75478}
+.mobileToolsMenu{display:grid;gap:7px}.mobileToolsMenu button{display:flex;align-items:center;gap:10px;width:100%;padding:12px;border-radius:11px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:18px;text-align:left}.mobileToolsMenu button span{font-size:12px;font-weight:900}
+
+@media(max-width:720px){
+  body{padding-bottom:54px}
+  .playerShell.gameMobile .app{padding:4px 4px 60px}
+  .playerShell.gameMobile .top{min-height:46px}
+  .playerShell.gameMobile .platformTools{overflow:visible}
+  .playerShell.gameMobile #soundTool,.playerShell.gameMobile #voiceTool,.playerShell.gameMobile #helpTool,.playerShell.gameMobile #themeTool,.playerShell.gameMobile #fullscreenTool,.playerShell.gameMobile #chatTool{display:none}
+  .playerShell.gameMobile .mobileOnlyTool{display:grid}
+  .playerShell.gameMobile #numbersTool,.playerShell.gameMobile #winnersTool,.playerShell.gameMobile #moreTool{flex:0 0 32px;width:32px;height:32px;font-size:15px}
+  .playerShell.gameMobile .ballPanel{grid-template-columns:92px minmax(0,1fr);grid-template-areas:"ball status" "ball progress" "ball recent";column-gap:9px;min-height:96px;padding:5px 4px 7px;overflow:hidden}
+  .playerShell.gameMobile .ballStage{width:88px;height:88px;margin:0}
+  .playerShell.gameMobile .ballStage:after{width:66px}
+  .playerShell.gameMobile .ball{width:80px;height:80px;border-width:2px;margin:0}
+  .playerShell.gameMobile .ball .ballNumber{font-size:36px;line-height:1}
+  .playerShell.gameMobile .ball .ballLetter{font-size:11px;padding:1px 4px}
+  .playerShell.gameMobile .gameStatus{font-size:11px;line-height:1.1;align-self:end}
+  .playerShell.gameMobile .ballProgress{justify-self:start;margin:0;padding:4px 8px;border-radius:999px}
+  .playerShell.gameMobile .ballProgress strong{font-size:11px}
+  .playerShell.gameMobile .recent{margin:1px 0 0;gap:3px;overflow:hidden;flex-wrap:nowrap}
+  .playerShell.gameMobile .recent span{min-width:29px;height:27px;padding:0 5px;font-size:8px}
+  .playerShell.gameMobile .ticketPanel{margin-top:3px;padding:6px}
+  .playerShell.gameMobile .modeRow{margin-top:5px;gap:5px}.playerShell.gameMobile .modeBtn{padding:7px 5px;font-size:9px;border-radius:9px}
+  .playerShell.gameMobile .claimCenter{margin-top:6px;gap:5px}
+  .playerShell.gameMobile .primaryClaim{min-height:48px;border-radius:9px;font-size:16px}
+  .playerShell.gameMobile .prizeTrack{display:flex;justify-content:flex-start;gap:4px;padding:1px 0 2px;overflow-x:auto}
+  .playerShell.gameMobile .prizeSquare{min-width:58px;max-height:58px;border-radius:8px;padding:4px 2px}.playerShell.gameMobile .prizeSquare b{font-size:8px}.playerShell.gameMobile .prizeSquare span{width:16px;height:16px;font-size:9px}
+  .playerShell.gameMobile .quickStrip{display:none!important}
+  .playerShell.gameMobile .chatPanel.docked-mobile{display:grid;position:fixed;z-index:120;left:4px;right:4px;bottom:4px;width:auto;margin:0;border-radius:14px;background:#0d1426f9;box-shadow:0 -12px 36px #000a;transition:height .2s ease;overflow:hidden;grid-template-rows:auto minmax(0,1fr) auto auto}
+  .playerShell.gameMobile .chatPanel.docked-mobile[data-sheet="collapsed"]{height:50px;grid-template-rows:50px 0 0 0}
+  .playerShell.gameMobile .chatPanel.docked-mobile[data-sheet="peek"]{height:min(44dvh,360px)}
+  .playerShell.gameMobile .chatPanel.docked-mobile[data-sheet="full"]{height:min(78dvh,650px)}
+  .playerShell.gameMobile .chatPanel.docked-mobile[data-sheet="collapsed"] .chatMessages,.playerShell.gameMobile .chatPanel.docked-mobile[data-sheet="collapsed"] .chatPicker,.playerShell.gameMobile .chatPanel.docked-mobile[data-sheet="collapsed"] .communityComposer{visibility:hidden;pointer-events:none}
+  .playerShell.gameMobile .chatPanel.docked-mobile .chatHead{min-height:50px;padding:7px 10px;cursor:ns-resize;touch-action:none;user-select:none;border-radius:14px 14px 0 0}
+  .playerShell.gameMobile .chatPanel.docked-mobile .chatHead:before{content:"";position:absolute;left:50%;top:4px;transform:translateX(-50%);width:38px;height:4px;border-radius:999px;background:#ffffff45}
+  .playerShell.gameMobile .chatPanel.docked-mobile .chatHead b{font-size:11px}.playerShell.gameMobile .chatPanel.docked-mobile .chatHead small{font-size:8px}
+  .playerShell.gameMobile .chatPanel.docked-mobile .chatSheetBadge{display:inline-flex}
+  .playerShell.gameMobile .chatPanel.docked-mobile .minChat{padding:5px 7px;font-size:8px}
+  .playerShell.gameMobile .chatPanel.docked-mobile .chatMessages{padding:6px;gap:4px}
+  .playerShell.gameMobile .chatPanel.docked-mobile .communityComposer{padding:5px;grid-template-columns:36px 36px minmax(0,1fr) 40px}
+  .playerShell.gameMobile .chatPanel.docked-mobile .communityComposer .chatTool{width:36px;height:36px}.playerShell.gameMobile .chatPanel.docked-mobile .communityComposer input{height:36px}.playerShell.gameMobile .chatPanel.docked-mobile .communityComposer .sendBtn{width:40px;height:36px}
+  .playerShell.gameMobile .chatFab{display:none!important}
+}
+
+@media(min-width:721px){.claimCenter{max-width:760px;margin-left:auto;margin-right:auto}.prizeTrack{justify-content:center}.prizeSquare{aspect-ratio:auto;min-width:92px;min-height:48px}.primaryClaim{max-width:420px;justify-self:center}}

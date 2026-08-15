@@ -62,6 +62,8 @@ html[data-theme=day] body{background:radial-gradient(circle at 17% -10%,#d4b9eca
 html[data-theme=day] .header,html[data-theme=day] .draw,html[data-theme=day] .cardsShell,html[data-theme=day] .featured,html[data-theme=day] .chat,html[data-theme=day] .side{background:#ffffffef;color:#111827}
 html[data-theme=day] .iconBtn{background:#e8eef6;color:#111827;border-color:#17203324}
 html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7;color:#111827}
+
+
 </style>
 
 <style id="cuasifinalTransmission">
@@ -92,13 +94,33 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
 @media(max-width:1200px){.draw{grid-template-columns:auto auto minmax(0,1fr)}.drawTicker{grid-column:1/-1;min-height:0;padding:11px 13px;gap:5px}.tickerPrize{font-size:20px}}
 @media(max-width:700px){.drawTicker{display:none}}
 
+
+
+
+/* Beta TV FIX · transmisión estable */
+@media(min-width:821px){
+  .layout,.layout.noChat{grid-template-columns:minmax(0,1fr) clamp(270px,23vw,360px)!important}
+  .draw{grid-template-columns:clamp(82px,8vw,112px) clamp(124px,13vw,182px) minmax(235px,1fr) clamp(245px,23vw,330px)!important;gap:clamp(10px,1.2vw,18px)!important;align-items:center!important}
+  .drawTicker{grid-column:4!important;align-self:stretch!important;min-height:0!important;display:grid!important;visibility:visible;opacity:1;transition:opacity .2s ease!important}
+  .drawTicker.inactive{visibility:hidden!important;opacity:0!important;pointer-events:none!important}
+  .ballZone{justify-self:center!important;width:100%!important}
+  .drawInfo{width:100%!important;min-width:0!important}
+}
+@media(min-width:821px) and (max-width:1050px){
+  .draw{grid-template-columns:74px 132px minmax(205px,1fr) 245px!important;gap:9px!important}
+  .presenter{min-width:70px!important;max-width:74px!important}
+  .ball{width:122px!important;height:122px!important;font-size:48px!important}
+  .drawTicker{padding:10px 12px!important;gap:5px!important}
+  .tickerPrize{font-size:19px!important}.tickerWinner{font-size:14px!important}.tickerMeta{font-size:10px!important}
+}
+@media(max-width:820px){.drawTicker{display:none!important}}
 </style>
 </head>
 <body>
 <main class="screen">
   <header class="header">
     <div class="brand">
-      <img src="/assets/logo.png" alt="La Gorda">
+      <img src="/assets/logo.webp" alt="La Gorda">
       <div class="brandText"><h1>BINGO DE LA GORDA</h1><small id="roomInfo">Transmisión</small></div>
     </div>
     <div class="rightZone"><div class="statusWrap"><span id="liveDot" class="liveDot"></span><div><div id="status" class="status">CONECTANDO…</div><small id="wakeStatus" class="wakeStatus"></small></div></div><div class="txControls"><button id="soundBtn" class="iconBtn" type="button" title="Activar o silenciar efectos" aria-label="Activar o silenciar efectos">🔊</button><button id="voiceBtn" class="iconBtn" type="button" title="Activar o silenciar voz de Vero" aria-label="Activar o silenciar voz de Vero">🗣</button><button id="castBtn" class="iconBtn" type="button" title="Transmitir con Chromecast" aria-label="Transmitir con Chromecast">📺</button><button id="fullBtn" class="iconBtn" type="button" title="Pantalla completa" aria-label="Pantalla completa">⛶</button></div></div>
@@ -106,7 +128,7 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
   <div id="layout" class="layout">
     <section id="mainPanel" class="main">
       <article class="draw">
-        <div class="presenter"><img id="presenterPhoto" class="presenterPhoto" src="/assets/vero.png" alt="Presentadora"><span id="presenterName" class="presenterName">Vero</span></div>
+        <div class="presenter"><img id="presenterPhoto" class="presenterPhoto" src="/assets/vero.webp" alt="Presentadora"><span id="presenterName" class="presenterName">Vero</span></div>
         <div class="ballZone"><div id="ball" class="ball">—</div></div>
         <div class="drawInfo">
           <div id="prizeNow" class="eyebrow">PARTIDA EN VIVO</div>
@@ -159,6 +181,6 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
 <script src="/js/emoji-stickers.js?v=2.2.0"></script>
 <script src="/js/presenter-scripts.js?v=2.1.0"></script>
 <script src="/js/cast-sender.js?v=1.0.0"></script>
-<script src="/js/transmision.js?v=beta-20260815-0210"></script>
+<script src="/js/transmision.js?v=beta-20260815-0215-tvfix"></script>
 </body>
 </html>

@@ -87,3 +87,11 @@ Configurar las variables indicadas en `.env.example` antes de publicar. En produ
 El botón **🌐** del encabezado del Administrador abre la configuración de Comunidad. Desde ahí se puede configurar el WhatsApp de contacto y el grupo, pausar/reactivar el chat, bloquear teléfonos y enlaces de WhatsApp, administrar palabras/frases bloqueadas, revisar reportes y borrar mensajes.
 
 La Comunidad tiene además un acceso permanente **🎱 JUGAR DEMO**, disponible aunque no exista una partida real activa.
+
+
+## Build TV estable 2026-08-15 02:15
+- Transmisión nocturna fija.
+- Panel de premios durante la partida: un premio por vez, rota premios confirmados y excluye Bingo.
+- El cierre final conserva el cartón ganador a pantalla completa.
+- Layout superior con columnas reservadas para evitar saltos del bolillero al cambiar chat/premios.
+- Voz TV con audios locales 1-90 y B-I-N-G-O 75 como respaldo/prioridad, con activación única por interacción si el navegador bloquea autoplay.

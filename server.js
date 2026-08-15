@@ -100,7 +100,7 @@ const DEMO_START_SEQUENCE_MS = 1200;
 const DEMO_READY_COUNTDOWN_MS = Math.max(100, Number(process.env.BINGO_DEMO_READY_COUNTDOWN_MS || (TEST_MODE ? 180 : 5000)));
 const DEMO_RESUME_SEQUENCE_MS = 1400;
 const DEMO_FINAL_SEQUENCE_MS = 2600;
-const APP_PUBLIC_VERSION = 'BINGO DE LA GORDA CUASIFINAL FUNCIONAL';
+const APP_PUBLIC_VERSION = 'BINGO DE LA GORDA - Beta';
 const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bingo'];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
@@ -6386,7 +6386,7 @@ for (const workspace of workspaces.values()) workspaceContext.run(workspace, () 
 });
 
 server.listen(PORT, HOST, () => {
-  console.log('\nBINGO DE LA GORDA CUASIFINAL');
+  console.log('\nBINGO DE LA GORDA - Beta');
   const base = PUBLIC_URL || `http://localhost:${PORT}`;
   console.log(`Administrador: ${base}/admin`);
   console.log(`Jugadores: ${base}/jugador`);

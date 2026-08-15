@@ -1,13 +1,13 @@
 {
-  "name": "bingo-de-la-gorda-cuasifinal-funcional",
-  "version": "5.1.5-cuasifinal-funcional.6",
+  "name": "bingo-de-la-gorda-beta",
+  "version": "0.0.0-beta",
   "private": true,
-  "description": "BINGO DE LA GORDA CUASIFINAL FUNCIONAL: foco automático del cartón con premio, cantador automático, ayuda manual a 20 s, carteles sincronizados y responsive de escritorio.",
+  "description": "BINGO DE LA GORDA - Beta: versión estabilizada para pruebas reales con jugadores, chat permanente, accesibilidad 75 bolas y layouts móvil/escritorio.",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/prize-autofocus-515.js && node tests/functional-polish-514.js && node tests/line-queue-90.js && node tests/functional-ui.js && node tests/functional-invite.js && node tests/demo-unified.js && node tests/preview-unified.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
+    "test": "node tests/beta-stability.js && node tests/prize-autofocus-515.js && node tests/functional-polish-514.js && node tests/line-queue-90.js && node tests/functional-ui.js && node tests/functional-invite.js && node tests/demo-unified.js && node tests/preview-unified.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
   }
 }

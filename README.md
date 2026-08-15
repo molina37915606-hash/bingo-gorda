@@ -1,6 +1,17 @@
-# BINGO DE LA GORDA — CUASIFINAL FUNCIONAL
+# BINGO DE LA GORDA - Beta
 
-Versión 5.1.5-cuasifinal-funcional.6.
+Versión de estabilización preparada para comenzar pruebas con varios jugadores reales. No utiliza numeración visible.
+
+## Objetivos de esta Beta
+
+- ingreso privado y seguro por link individual;
+- sala de espera con chat y minijuegos;
+- chat permanente: móvil debajo del juego y escritorio a la derecha;
+- 75 bolas con columnas B-I-N-G-O por color y bolilla del mismo color;
+- Manual sin pistas durante 20 segundos y ayuda amarilla posterior;
+- cartón y reclamos visibles sin scroll innecesario;
+- cantador automático, carteles de premios, acta y sello;
+- DEMO y jugador real sobre el mismo cliente.
 
 ## Flujo principal
 

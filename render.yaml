@@ -1,4 +1,4 @@
-# BINGO DE LA GORDA CUASIFINAL
+# BINGO DE LA GORDA - Beta
 # Configuración orientada a pruebas. El plan free puede tener disco efímero.
 services:
   - type: web

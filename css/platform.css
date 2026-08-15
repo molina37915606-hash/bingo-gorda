@@ -168,3 +168,88 @@ html[data-theme=day] .claimCelebrationCard{background:#fffffff8;box-shadow:0 20p
   .chatPanel.docked-mobile .communityComposer input{height:38px}
   .chatPanel.docked-mobile .communityComposer .sendBtn{width:42px;height:38px}
 }
+
+/* =========================
+   BINGO DE LA GORDA - Beta
+   Layout estable + accesibilidad 75 bolas
+   ========================= */
+:root{
+  --bingo-b:#1f6feb;
+  --bingo-i:#f2b51d;
+  --bingo-n:#8b45d6;
+  --bingo-g:#31b84d;
+  --bingo-o:#ed5328;
+}
+.playerShell{width:100%;min-height:100dvh}
+.playerShell .app{min-width:0}
+.ticketColumns{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin:0 0 6px}
+.ticketColumns span{display:grid;place-items:center;min-height:30px;border-radius:8px;color:#fff;font-size:15px;font-weight:1000;letter-spacing:.14em;border:1px solid #ffffff2b;text-shadow:0 1px 2px #0008}
+.ticketColumns .bingo-b{background:linear-gradient(180deg,#2980ff,var(--bingo-b))}
+.ticketColumns .bingo-i{background:linear-gradient(180deg,#ffc83e,var(--bingo-i));color:#2a1b00}
+.ticketColumns .bingo-n{background:linear-gradient(180deg,#a95cf3,var(--bingo-n))}
+.ticketColumns .bingo-g{background:linear-gradient(180deg,#4bd668,var(--bingo-g));color:#06230d}
+.ticketColumns .bingo-o{background:linear-gradient(180deg,#ff6b3f,var(--bingo-o))}
+.cell.free.bingo-n{background:linear-gradient(145deg,#9c51e8,#6725a7);color:#fff;font-size:25px;text-shadow:0 2px 8px #2c0d4f}
+.ball.bingo-b{background:radial-gradient(circle at 33% 25%,#eaf5ff 0 9%,#5fa6ff 26%,var(--bingo-b) 63%,#0d3477 100%);box-shadow:0 0 34px #1f6feb88,inset 0 0 22px #fff7}
+.ball.bingo-i{background:radial-gradient(circle at 33% 25%,#fffce7 0 9%,#ffd763 27%,var(--bingo-i) 63%,#8a5900 100%);box-shadow:0 0 34px #f2b51d88,inset 0 0 22px #fff7}
+.ball.bingo-n{background:radial-gradient(circle at 33% 25%,#faefff 0 9%,#c488ff 27%,var(--bingo-n) 63%,#481179 100%);box-shadow:0 0 34px #8b45d688,inset 0 0 22px #fff7}
+.ball.bingo-g{background:radial-gradient(circle at 33% 25%,#f1fff1 0 9%,#7aec88 27%,var(--bingo-g) 63%,#0d6b23 100%);box-shadow:0 0 34px #31b84d88,inset 0 0 22px #fff7}
+.ball.bingo-o{background:radial-gradient(circle at 33% 25%,#fff4ec 0 9%,#ff9b75 27%,var(--bingo-o) 63%,#84210a 100%);box-shadow:0 0 34px #ed532888,inset 0 0 22px #fff7}
+.ball.bingo-b,.ball.bingo-i,.ball.bingo-n,.ball.bingo-g,.ball.bingo-o{color:#071018;border-color:#ffffff66}
+.recent span.bingo-b{border:1px solid #4592ff;background:#153866;color:#dcecff}
+.recent span.bingo-i{border:1px solid #f2b51d;background:#59430c;color:#fff0ae}
+.recent span.bingo-n{border:1px solid #a45fe5;background:#382052;color:#f1ddff}
+.recent span.bingo-g{border:1px solid #49cb62;background:#143d1d;color:#d8ffdf}
+.recent span.bingo-o{border:1px solid #ff744d;background:#542215;color:#ffe2d8}
+.ballProgress{display:inline-flex;align-items:center;justify-content:center;padding:6px 11px;border-radius:999px;background:#17213a;border:1px solid #ffffff1a}
+.ballProgress strong{font-size:14px;line-height:1;color:#fff;white-space:nowrap}
+
+/* El chat queda siempre en el DOM. Solo cambia la disposición por CSS. */
+.chatPanel.docked{position:relative;inset:auto;width:100%;max-width:none;box-shadow:none;z-index:10}
+.chatPanel.docked .minChat{display:none}
+.playerShell.gameDesktop{width:min(1400px,100%);margin:0 auto;padding:8px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:start}
+.playerShell.gameDesktop .app{width:100%;margin:0;padding:0;min-width:0}
+.playerShell.gameDesktop .chatPanel{display:grid;position:sticky;top:8px;height:calc(100dvh - 16px);border-radius:18px;background:#0d1426f7}
+.playerShell.gameDesktop .chatMessages{min-height:0}
+.playerShell.gameDesktop .gameLayout{display:block}
+.playerShell.gameDesktop .gameLayout>section{width:100%;max-width:820px;margin:0 auto}
+.playerShell.gameDesktop .sideInfo{display:none}
+.playerShell.gameDesktop .ballPanel{grid-template-columns:105px minmax(0,1fr);min-height:104px;column-gap:10px;padding:3px 8px}
+.playerShell.gameDesktop .ballStage{width:100px;height:100px}
+.playerShell.gameDesktop .ball{width:88px;height:88px}
+.playerShell.gameDesktop .ball .ballNumber{font-size:40px}
+.playerShell.gameDesktop .ball .ballLetter{font-size:13px}
+.playerShell.gameDesktop .ticketPanel{max-width:760px;margin:5px auto 0;padding:7px}
+.playerShell.gameDesktop .ticketPanel.mode75{max-width:650px}
+.playerShell.gameDesktop .ticket.m75{max-width:600px;margin:0 auto;gap:4px}
+.playerShell.gameDesktop .ticket.m75 .cell{height:60px;min-height:0;aspect-ratio:auto;font-size:27px;border-radius:7px}
+.playerShell.gameDesktop .ticket.m90 .cell{height:49px;min-height:0;aspect-ratio:auto;font-size:21px}
+.playerShell.gameDesktop .ticketColumns{max-width:600px;margin-left:auto;margin-right:auto}
+.playerShell.gameDesktop .modeRow{margin-top:6px}
+.playerShell.gameDesktop .modeBtn{padding:8px}
+.playerShell.gameDesktop .claims{margin-top:6px}
+.playerShell.gameDesktop .claimBtn{min-height:40px;padding:7px 5px}
+.playerShell.gameDesktop .quickStrip{margin:5px auto 0}
+
+@media(max-width:720px){
+  .playerShell.gameMobile{display:block;padding:0}
+  .playerShell.gameMobile .app{width:100%;padding:6px 6px 4px}
+  .playerShell.gameMobile .chatPanel{display:grid;position:relative;left:auto;right:auto;bottom:auto;width:calc(100% - 12px);height:270px;margin:6px;border-radius:14px;background:#0d1426f7;box-shadow:0 12px 30px #0007}
+  .playerShell.gameMobile .chatPanel .chatHead{padding:7px 9px}
+  .playerShell.gameMobile .chatMessages{padding:5px;gap:3px}
+  .playerShell.gameMobile .msg{padding:4px 6px;font-size:10px;line-height:1.18}
+  .playerShell.gameMobile .communityComposer{grid-template-columns:38px 38px minmax(0,1fr) 42px;padding:6px;gap:5px}
+  .playerShell.gameMobile .communityComposer .chatTool{width:38px;height:38px}
+  .playerShell.gameMobile .communityComposer input{height:38px}
+  .playerShell.gameMobile .communityComposer .sendBtn{width:42px;height:38px}
+  .ticketColumns{gap:3px;margin-bottom:4px}
+  .ticketColumns span{min-height:24px;font-size:12px;border-radius:6px}
+  .cell.free.bingo-n{font-size:20px}
+  .ballProgress{padding:5px 9px}
+  .ballProgress strong{font-size:12px}
+}
+.numbersGrid span.bingo-b{border:1px solid #4592ff;background:#153866;color:#dcecff}
+.numbersGrid span.bingo-i{border:1px solid #f2b51d;background:#59430c;color:#fff0ae}
+.numbersGrid span.bingo-n{border:1px solid #a45fe5;background:#382052;color:#f1ddff}
+.numbersGrid span.bingo-g{border:1px solid #49cb62;background:#143d1d;color:#d8ffdf}
+.numbersGrid span.bingo-o{border:1px solid #ff744d;background:#542215;color:#ffe2d8}

@@ -4,25 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#070914">
-<title>Bingo de la Gorda · Cuasifinal Funcional</title>
-<link rel="stylesheet" href="/css/platform.css?v=funcional-7">
+<title>BINGO DE LA GORDA - Beta</title>
+<link rel="stylesheet" href="/css/platform.css?v=beta">
 </head>
 <body>
-<main class="app">
-  <header class="top"><img src="/assets/logo.png" alt=""><div class="brand"><b>BINGO DE LA GORDA</b><small id="playerMeta">Abriendo tu sesión privada…</small></div><nav class="platformTools" aria-label="Herramientas"><button id="soundTool" class="toolBtn active" type="button" title="Sonido">🔊<small>SONIDO</small></button><button id="voiceTool" class="toolBtn" type="button" title="Voz">🗣<small>VOZ</small></button><button id="numbersTool" class="toolBtn" type="button" title="Números salidos">#<small>NÚMEROS</small></button><button id="winnersTool" class="toolBtn" type="button" title="Ganadores">🏆<small>GANADORES</small></button><button id="helpTool" class="toolBtn" type="button" title="Tutorial">?<small>AYUDA</small></button><button id="themeTool" class="toolBtn" type="button" title="Cambiar modo día/noche">☾<small>TEMA</small></button><button id="fullscreenTool" class="toolBtn" type="button" title="Pantalla completa">⛶<small>PANTALLA</small></button><button id="chatTool" class="toolBtn" type="button" title="Chat">💬<small>CHAT</small></button></nav><span id="networkPill" class="net">CONECTANDO</span></header>
-  <section id="root" class="panel"><div class="stateHero"><img src="/assets/logo.png" alt=""><div class="spinner"></div><h1>Cargando sala…</h1><p>Estamos recuperando tu sesión privada. No cierres la página.</p></div></section>
-</main>
+<div id="playerShell" class="playerShell">
+  <main class="app">
+    <header class="top"><img src="/assets/logo.png" alt=""><div class="brand"><b>BINGO DE LA GORDA</b><small id="playerMeta">Abriendo tu sesión privada…</small></div><nav class="platformTools" aria-label="Herramientas"><button id="soundTool" class="toolBtn active" type="button" title="Sonido">🔊<small>SONIDO</small></button><button id="voiceTool" class="toolBtn" type="button" title="Voz">🗣<small>VOZ</small></button><button id="numbersTool" class="toolBtn" type="button" title="Números salidos">#<small>NÚMEROS</small></button><button id="winnersTool" class="toolBtn" type="button" title="Ganadores">🏆<small>GANADORES</small></button><button id="helpTool" class="toolBtn" type="button" title="Tutorial">?<small>AYUDA</small></button><button id="themeTool" class="toolBtn" type="button" title="Cambiar modo día/noche">☾<small>TEMA</small></button><button id="fullscreenTool" class="toolBtn" type="button" title="Pantalla completa">⛶<small>PANTALLA</small></button><button id="chatTool" class="toolBtn" type="button" title="Chat">💬<small>CHAT</small></button></nav><span id="networkPill" class="net">CONECTANDO</span></header>
+    <section id="root" class="panel"><div class="stateHero"><img src="/assets/logo.png" alt=""><div class="spinner"></div><h1>Cargando sala…</h1><p>Estamos recuperando tu sesión privada. No cierres la página.</p></div></section>
+  </main>
+  <section id="chatPanel" class="chatPanel communityStyleChat hidden" aria-label="Chat de la sala">
+    <header class="chatHead"><div><b>💬 CHAT DE LA SALA</b><small id="chatSubline">Emojis · stickers · La Gorda</small></div><button id="minChat" class="minChat" type="button">— MINIMIZAR</button></header>
+    <div id="chatMessages" class="chatMessages"></div>
+    <div id="chatPicker" class="chatPicker"></div>
+    <form id="chatForm" class="chatComposer communityComposer"><button id="chatEmojiBtn" class="chatTool" type="button" aria-label="Emojis">☺</button><button id="chatStickerBtn" class="chatTool" type="button" aria-label="Stickers y La Gorda">✦</button><input id="chatInput" maxlength="160" placeholder="Escribí un mensaje…" autocomplete="off" enterkeyhint="send"><button class="sendBtn" type="submit" aria-label="Enviar">➤</button></form>
+  </section>
+</div>
 <button id="chatFab" class="chatFab hidden" type="button" aria-label="Abrir chat">💬<span id="chatCount" class="chatCount hidden">0</span></button>
-<section id="chatPanel" class="chatPanel communityStyleChat hidden" aria-label="Chat de la sala">
-  <header class="chatHead"><div><b>💬 CHAT DE LA SALA</b><small id="chatSubline">Emojis · stickers · La Gorda</small></div><button id="minChat" class="minChat" type="button">— MINIMIZAR</button></header>
-  <div id="chatMessages" class="chatMessages"></div>
-  <div id="chatPicker" class="chatPicker"></div>
-  <form id="chatForm" class="chatComposer communityComposer"><button id="chatEmojiBtn" class="chatTool" type="button" aria-label="Emojis">☺</button><button id="chatStickerBtn" class="chatTool" type="button" aria-label="Stickers y La Gorda">✦</button><input id="chatInput" maxlength="160" placeholder="Escribí un mensaje…" autocomplete="off" enterkeyhint="send"><button class="sendBtn" type="submit" aria-label="Enviar">➤</button></form>
-</section>
 <section id="modalBackdrop" class="modalBackdrop hidden" aria-modal="true" role="dialog"><div class="modalCard"><header class="modalHead"><h2 id="modalTitle">Información</h2><button id="modalClose" class="modalClose" type="button">CERRAR</button></header><div id="modalBody" class="modalBody"></div></div></section>
 <section id="claimCelebration" class="claimCelebration hidden" aria-live="assertive" aria-atomic="true"><div class="claimCelebrationCard"><img id="claimCelebrationImage" src="" alt=""><div class="claimCelebrationCopy"><b id="claimCelebrationTitle"></b><span id="claimCelebrationText"></span></div></div></section>
 <div id="toast" class="toast"></div>
 <script src="/js/emoji-stickers.js?v=2.2.0"></script>
-<script src="/js/player.js?v=funcional-7"></script>
+<script src="/js/player.js?v=beta"></script>
 </body>
 </html>

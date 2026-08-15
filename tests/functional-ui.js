@@ -34,7 +34,7 @@ const community=fs.readFileSync(path.join(root,'comunidad.html'),'utf8');
 const tx=fs.readFileSync(path.join(root,'transmision.html'),'utf8');
 const txjs=fs.readFileSync(path.join(root,'js/transmision.js'),'utf8');
 const presenter=fs.readFileSync(path.join(root,'js/presenter-scripts.js'),'utf8');
-must(community.includes('communityThemeBtn')&&community.includes('bingo_theme'),'Comunidad debe compartir Día/Noche');
+must(!community.includes('communityThemeBtn')&&community.includes("document.documentElement.dataset.theme='night'"),'Comunidad debe permanecer siempre en modo nocturno');
 must(tx.includes('themeBtn')&&txjs.includes('toggleTheme')&&txjs.includes('bingo_theme'),'Transmisión debe compartir Día/Noche');
 must(!presenter.includes("'Bolilla {n}'")&&presenter.includes("lineConfirmed: '¡{prize} para {name}! Reclamo válido.'"),'Cantador debe ser breve, natural y nombrar Primera/Segunda Línea correctamente');
 console.log('PRUEBA UI CUASIFINAL FUNCIONAL: OK');

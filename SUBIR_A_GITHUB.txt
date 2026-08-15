@@ -1,11 +1,10 @@
-BINGO DE LA GORDA - Beta · paquete GitHub Web
-Build: 2026-08-15 02:46
+BINGO DE LA GORDA - Beta | Paquete para GitHub Web
 
 1. Descomprimí este ZIP.
-2. Entrá a la carpeta BINGO_DE_LA_GORDA_BETA_GITHUB_2026-08-15_0246.
-3. Seleccioná TODO lo que está adentro de la carpeta (no el ZIP).
-4. Arrastralo a la pantalla "Upload files" de GitHub.
-5. Esperá que termine de cargar y tocá "Commit changes".
+2. Entrá a la carpeta descomprimida.
+3. Seleccioná TODO lo que hay adentro (no el ZIP).
+4. Arrastralo a GitHub en “Drag files here to add them to your repository”.
+5. Esperá que termine de cargar.
+6. Hacé clic en “Commit changes”.
 
-Este paquete está preparado con menos de 100 archivos y sin los audios locales de TV.
-La transmisión usa la voz disponible del navegador/TV.
+Este paquete fue preparado con menos de 100 archivos, bajo peso total y ningún archivo pesado para la carga web.

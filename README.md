@@ -89,9 +89,14 @@ El botón **🌐** del encabezado del Administrador abre la configuración de Co
 La Comunidad tiene además un acceso permanente **🎱 JUGAR DEMO**, disponible aunque no exista una partida real activa.
 
 
-## Build TV estable 2026-08-15 02:15
-- Transmisión nocturna fija.
-- Panel de premios durante la partida: un premio por vez, rota premios confirmados y excluye Bingo.
-- El cierre final conserva el cartón ganador a pantalla completa.
-- Layout superior con columnas reservadas para evitar saltos del bolillero al cambiar chat/premios.
-- Voz TV con audios locales 1-90 y B-I-N-G-O 75 como respaldo/prioridad, con activación única por interacción si el navegador bloquea autoplay.
+## Transmisión y Modo TV
+
+- `/transmision/...` conserva la vista completa para PC, celular y tablet.
+- `/tv` es una entrada simplificada para Smart TV; permite escribir el código corto de la sala.
+- `/tv/<código>` abre una vista TV-safe conectada a la misma partida y al mismo estado del servidor.
+- Modo TV prioriza la bolilla más reciente: los estados intermedios pendientes se reemplazan por el último recibido para evitar quedar varias bolillas atrasado.
+- Chat, carrera por el premio y premios confirmados se actualizan por bloques, sin reconstruir toda la pantalla.
+- Modo TV muestra hasta 6 cartones destacados, mantiene el rotador de premios durante la partida y conserva el cartón ganador a pantalla completa al finalizar.
+- La transmisión no usa audios locales. La voz opcional depende de `speechSynthesis` del dispositivo; si la TV no lo soporta, el resto de la pantalla sigue funcionando.
+- Las nuevas salas reciben por defecto un código TV numérico de 6 dígitos.
+- Comunidad ofrece tanto **VER TRANSMISIÓN** como **📺 MODO TV** cuando hay partida activa.

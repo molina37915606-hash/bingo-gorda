@@ -5304,6 +5304,7 @@ function serveFile(res, filePath) {
     path.join(ROOT, 'player.html'),
     path.join(ROOT, 'cast-receiver.html'),
     path.join(ROOT, 'transmision.html'),
+    path.join(ROOT, 'tv.html'),
     path.join(ROOT, 'reglamento.html'),
     path.join(ROOT, 'demo.html'),
     path.join(ROOT, 'comunidad.html')
@@ -5446,7 +5447,7 @@ function broadcastAliasTaken(alias, exceptWorkspaceId = '') {
 
 function freshBroadcastAlias(exceptWorkspaceId = '') {
   let alias = '';
-  do { alias = randomCode(6).toLowerCase(); } while (broadcastAliasTaken(alias, exceptWorkspaceId));
+  do { alias = randomNumericCode(6); } while (broadcastAliasTaken(alias, exceptWorkspaceId));
   return alias;
 }
 
@@ -6073,7 +6074,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: APP_PUBLIC_VERSION, workspaces: workspaces.size });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    return res.end('User-agent: *\nDisallow: /admin\nDisallow: /admin-principal\nDisallow: /operador\nDisallow: /transmision\nDisallow: /v\n');
+    return res.end('User-agent: *\nDisallow: /admin\nDisallow: /admin-principal\nDisallow: /operador\nDisallow: /transmision\nDisallow: /v\nDisallow: /tv\n');
   }
   if (url.pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res, url);
   if (url.pathname.startsWith('/api/')) return handleApi(req, res, url);
@@ -6282,6 +6283,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/comunidad' || url.pathname === '/comunidad/' || url.pathname === '/comunidad.html') return serveFile(res, path.join(ROOT, 'comunidad.html'));
   if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return sendJson(res, 404, { error: 'Los accesos temporales están deshabilitados.' });
   if (/^\/transmision\/[^/]+\/?$/.test(url.pathname) || /^\/v\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'transmision.html'));
+  if (url.pathname === '/tv' || url.pathname === '/tv/' || url.pathname === '/tv.html' || /^\/tv\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'tv.html'));
   if (url.pathname === '/cast-receiver' || url.pathname === '/cast-receiver/') return serveFile(res, path.join(ROOT, 'cast-receiver.html'));
   if (url.pathname === '/jugador' || url.pathname === '/jugador/') {
     if (url.searchParams.get('demo') === '1') {

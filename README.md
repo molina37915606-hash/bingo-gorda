@@ -114,3 +114,6 @@ La Comunidad tiene además un acceso permanente **🎱 JUGAR DEMO**, disponible 
 - Accesos directos visibles en móvil: Números, Ganadores, Ayuda, Tema y Pantalla completa; Más queda reservado para Sonido/Voz.
 - En Bingo 90 con dos líneas se muestran Línea 1 y Línea 2 desde el inicio, usando el mismo reclamo manual seguro del servidor.
 - Chat inferior desplegable se mantiene minimizado por defecto y no tapa el cartón.
+
+### Ajuste móvil 2026-08-15 13:34
+- El chat móvil abierto puede minimizarse con un arrastre claro hacia abajo desde cualquier zona no interactiva del panel. Inputs, botones, stickers y el historial desplazado quedan protegidos contra cierres accidentales.

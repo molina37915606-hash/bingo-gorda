@@ -122,3 +122,49 @@ html[data-theme=day] .claimCelebrationCard{background:#fffffff8;box-shadow:0 20p
 .tabs button.prize{border-color:#ffd84a;background:linear-gradient(135deg,#7a4b00,#c98700);color:#fff7ce;box-shadow:0 0 0 2px #ffd84a33,0 0 18px #ffd84a66;animation:prizeTabPulse .7s ease-in-out infinite alternate}
 .tabs button.prize.active{background:linear-gradient(135deg,#ffb51e,#ffe36b);color:#251700;border-color:#ffe77f}
 @keyframes prizeTabPulse{to{transform:translateY(-1px);box-shadow:0 0 0 3px #ffd84a44,0 0 28px #ffd84a88}}
+
+/* --- 5.1.6 ajustes de jugabilidad y layout --- */
+.ticketColumns{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin:0 0 6px}
+.ticketColumns span{display:grid;place-items:center;min-height:26px;border-radius:9px;background:#1e2740;border:1px solid #ffffff1f;color:#efe8ff;font-size:13px;font-weight:1000;letter-spacing:.18em}
+.ballProgress{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 10px;border-radius:12px;background:#18233d;border:1px solid #ffffff1a}
+.ballProgress span{font-size:10px;font-weight:1000;letter-spacing:.14em;color:var(--muted)}
+.ballProgress strong{font-size:18px;line-height:1;color:#fff}
+.gameChatDock{display:none}
+.mobileAuxPanels{display:none}
+.chatPanel.docked{position:static;left:auto;right:auto;bottom:auto;width:100%;max-width:100%;box-shadow:none}
+.chatPanel.docked .minChat{display:none}
+.chatPanel.docked .chatHead{padding:10px 12px}
+.chatPanel.docked .chatMessages{min-height:0}
+.chatPanel.docked-desktop{height:min(46vh,430px);border-radius:18px;background:#0f1728}
+.chatPanel.docked-mobile{height:250px;margin-top:8px;border-radius:15px;background:#0f1728}
+@media(min-width:1180px){
+  .gameLayout{grid-template-columns:minmax(0,760px) 320px;justify-content:center;align-items:start;gap:14px}
+  .gameLayout>section{max-width:760px}
+  .ballPanel{grid-template-columns:118px minmax(0,1fr);min-height:118px}
+  .ticketPanel.mode75{max-width:640px}
+  .ticket.m75{max-width:580px;margin-inline:auto;gap:5px}
+  .ticket.m75 .cell{height:76px;min-height:0;aspect-ratio:auto;font-size:clamp(22px,2vw,31px)}
+  .ticket.m90 .cell{height:56px;min-height:0;aspect-ratio:auto;font-size:clamp(18px,1.5vw,24px)}
+  .sideInfo{display:grid;grid-template-rows:auto auto minmax(280px,1fr);gap:8px;width:320px}
+  .sideInfo .panel{background:#0e1425}
+  .desktopDock{display:block}
+  .chatPanel.docked-desktop{display:grid}
+}
+@media(max-width:720px){
+  .ballProgress{padding:5px 8px;border-radius:10px}
+  .ballProgress span{font-size:8px}
+  .ballProgress strong{font-size:14px}
+  .ticketColumns{gap:3px;margin-bottom:5px}
+  .ticketColumns span{min-height:22px;font-size:11px;border-radius:7px}
+  .ticketPanel{padding:7px}
+  .mobileAuxPanels{display:grid;gap:8px;margin-top:8px}
+  .gameChatDock.mobileDock{display:block}
+  .chatPanel.docked-mobile{display:grid}
+  .chatPanel.docked-mobile .chatMessages{padding:6px;gap:4px}
+  .chatPanel.docked-mobile .msg{padding:5px 7px;font-size:10px;line-height:1.2}
+  .chatPanel.docked-mobile .msg .premiumSticker{--sticker-size:62px}
+  .chatPanel.docked-mobile .communityComposer{grid-template-columns:38px 38px minmax(0,1fr) 42px;padding:6px;gap:5px}
+  .chatPanel.docked-mobile .communityComposer .chatTool{width:38px;height:38px}
+  .chatPanel.docked-mobile .communityComposer input{height:38px}
+  .chatPanel.docked-mobile .communityComposer .sendBtn{width:42px;height:38px}
+}

@@ -2,6 +2,11 @@
   "name": "bingo-de-la-gorda-beta",
   "version": "0.0.0-beta",
   "private": true,
-  "engines": {"node": ">=18"},
-  "scripts": {"start": "node server.js"}
+  "description": "BINGO DE LA GORDA - Beta: versión estabilizada para pruebas reales con jugadores, chat permanente, accesibilidad 75 bolas y layouts móvil/escritorio.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
 }

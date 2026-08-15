@@ -1,9 +1,9 @@
 BINGO DE LA GORDA - Beta · paquete para GitHub Web
 
 1. Descomprimí este ZIP.
-2. Entrá en la carpeta descomprimida.
+2. Entrá a la carpeta.
 3. Seleccioná TODO lo que está adentro (no el ZIP).
-4. Arrastralo a "Drag files here to add them to your repository".
-5. Esperá la carga y hacé Commit changes.
+4. Arrastralo a Add files > Upload files en GitHub.
+5. Esperá la carga y tocá Commit changes.
 
-Este paquete no incluye las pruebas internas; el juego y sus recursos de producción sí están incluidos.
+Este paquete omite tests y documentación interna, pero conserva el juego y todos los recursos necesarios para producción.

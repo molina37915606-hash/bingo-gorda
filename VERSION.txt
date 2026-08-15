@@ -1,3 +1,2 @@
 BINGO DE LA GORDA - Beta
-Build: 2026-08-15 04:30
-Jugador móvil: reclamo único + chat desplegable
+Build: 2026-08-15 10:57

@@ -107,3 +107,10 @@ La Comunidad tiene además un acceso permanente **🎱 JUGAR DEMO**, disponible 
 - Chat móvil tipo panel inferior: minimizado, desplegable por toque y arrastrable hacia arriba/abajo.
 - Durante la partida móvil quedan visibles Números, Ganadores y Más; se elimina la botonera secundaria duplicada.
 - Bolilla y progreso reacomodados para no tapar información del sorteo.
+
+## Ajuste jugador móvil · 2026-08-15 10:57
+- Un solo cartón grande visible en móvil.
+- Rotador visual de premios confirmados debajo de los reclamos; muestra un ganador por vez y no reemplaza el cierre de Bingo.
+- Accesos directos visibles en móvil: Números, Ganadores, Ayuda, Tema y Pantalla completa; Más queda reservado para Sonido/Voz.
+- En Bingo 90 con dos líneas se muestran Línea 1 y Línea 2 desde el inicio, usando el mismo reclamo manual seguro del servidor.
+- Chat inferior desplegable se mantiene minimizado por defecto y no tapa el cartón.

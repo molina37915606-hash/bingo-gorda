@@ -8,6 +8,6 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/beta-stability.js && node tests/prize-autofocus-515.js && node tests/functional-polish-514.js && node tests/line-queue-90.js && node tests/functional-ui.js && node tests/functional-invite.js && node tests/demo-unified.js && node tests/preview-unified.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
+    "test": "node tests/community-admin-beta.js && node tests/beta-stability.js && node tests/prize-autofocus-515.js && node tests/functional-polish-514.js && node tests/line-queue-90.js && node tests/functional-ui.js && node tests/functional-invite.js && node tests/demo-unified.js && node tests/preview-unified.js && node tests/admin-simulation.js && node tests/simulation-stress.js && node tests/admin-contingency.js && node tests/restart-recovery.js"
   }
 }

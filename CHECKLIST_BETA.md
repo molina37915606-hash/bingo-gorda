@@ -119,3 +119,14 @@
 - [ ] Probar botón ✦ de stickers y comprobar que incluye los stickers de La Gorda.
 - [ ] Confirmar que NO existe botón GIF.
 - [ ] En celular, minimizar el chat y comprobar que el cartón vuelve a quedar completamente priorizado.
+
+
+## Comunidad / moderación
+- [ ] En Admin, tocar **🌐 COMUNIDAD** y verificar que abre el panel.
+- [ ] Guardar WhatsApp de contacto y link del grupo; comprobarlos en `/comunidad`.
+- [ ] Pausar/reactivar el chat.
+- [ ] Activar bloqueo de teléfonos y links de WhatsApp.
+- [ ] Agregar/quitar una palabra bloqueada y probar que el filtro actúa.
+- [ ] Reportar un mensaje desde Comunidad y comprobar que aparece en Admin.
+- [ ] Borrar un mensaje y vaciar el chat desde Admin.
+- [ ] En Comunidad, tocar **🎱 JUGAR DEMO** con y sin una partida real activa.

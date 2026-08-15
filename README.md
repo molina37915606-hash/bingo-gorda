@@ -81,3 +81,9 @@ Configurar las variables indicadas en `.env.example` antes de publicar. En produ
 - La pestaña de cualquier otro cartón con premio queda marcada con una estrella y pulso dorado.
 - Si varios cartones quedan listos a la vez, se abre el primero detectado y los demás permanecen señalados.
 - No se marca ni reclama nada automáticamente: el jugador conserva el reclamo de un toque.
+
+## Comunidad desde el Administrador
+
+El botón **🌐** del encabezado del Administrador abre la configuración de Comunidad. Desde ahí se puede configurar el WhatsApp de contacto y el grupo, pausar/reactivar el chat, bloquear teléfonos y enlaces de WhatsApp, administrar palabras/frases bloqueadas, revisar reportes y borrar mensajes.
+
+La Comunidad tiene además un acceso permanente **🎱 JUGAR DEMO**, disponible aunque no exista una partida real activa.

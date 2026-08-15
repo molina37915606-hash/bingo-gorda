@@ -5697,6 +5697,18 @@ async function handleMasterApi(req, res, url) {
 async function dispatchAdminApi(req, res, url, session) {
   currentWorkspace().lastActivityAt = Date.now();
   if (url.pathname === '/api/admin/state' && req.method === 'GET') return sendJson(res, 200, adminPayload());
+  if (url.pathname === '/api/admin/community' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Comunidad solo puede configurarla el administrador principal.' });
+    return sendJson(res, 200, communityAdminPayload());
+  }
+  if (url.pathname === '/api/admin/community/settings' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Comunidad solo puede configurarla el administrador principal.' });
+    return sendJson(res, 200, updateCommunitySettings(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/community/moderate' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Comunidad solo puede moderarla el administrador principal.' });
+    return sendJson(res, 200, moderateCommunity(await readJson(req)));
+  }
   if (url.pathname === '/api/admin/create-simple-room' && req.method === 'POST') return sendJson(res, 200, createSimpleRoom(await readJson(req)));
   if (url.pathname === '/api/admin/create-ai-simulation' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'La simulación masiva solo está disponible para el administrador principal.' });

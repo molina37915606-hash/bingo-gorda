@@ -1402,7 +1402,7 @@ function broadcastPayload() {
     roomSettings: state.roomSettings, transition: state.transition, publicClaims: publicClaimsPayload(), markingPolicy: markingPolicyPayload(),
     adminPresence: adminPresencePayload(), integrity: publicIntegrityPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES) },
-    game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: PRESENTER_ID, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, total: state.game.mode },
+    game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: PRESENTER_ID, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, drawTimestamps: state.game.drawTimestamps || {}, lastDrawnAt: state.game.lastDrawnAt || null, total: state.game.mode },
     pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, createdAt: pendingClaim.createdAt } : null,
     latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, prizeNumber: latestConfirmed.prizeNumber || 1, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt } : null,
     bingoConfirmed: prizeStatusPayload().bingo.closed,
@@ -1581,6 +1581,8 @@ function playerPayload(player) {
       presenter: PRESENTER_ID,
       drawn: state.game.drawn,
       lastBall: state.game.drawn.at(-1) ?? null,
+      drawTimestamps: state.game.drawTimestamps || {},
+      lastDrawnAt: state.game.lastDrawnAt || null,
       phase: state.game.phase
     },
     player: {
@@ -2760,6 +2762,8 @@ function sanitizeGame(game) {
     theme: game.theme || 'clasico',
     phase: game.phase || 'READY',
     drawn: uniqueNumbers(game.drawn).filter(n => n >= 1 && n <= mode),
+    drawTimestamps: game.drawTimestamps && typeof game.drawTimestamps === 'object' ? Object.fromEntries(Object.entries(game.drawTimestamps).filter(([key, value]) => Number(key) >= 1 && Number(key) <= mode && !Number.isNaN(new Date(value).getTime()))) : {},
+    lastDrawnAt: game.lastDrawnAt && !Number.isNaN(new Date(game.lastDrawnAt).getTime()) ? game.lastDrawnAt : null,
     prizes: game.prizes ? deepCopy(game.prizes) : undefined,
     createdAt: game.createdAt || nowIso(),
     updatedAt: game.updatedAt || nowIso(),
@@ -3315,6 +3319,9 @@ function drawNextBall(source = 'manual') {
   const number = state.drawOrder[state.game.drawn.length];
   if (!Number.isFinite(number)) throw new Error('Ya no quedan bolillas por extraer.');
   state.game.drawn.push(number);
+  state.game.drawTimestamps ||= {};
+  state.game.lastDrawnAt = nowIso();
+  state.game.drawTimestamps[String(number)] = state.game.lastDrawnAt;
   state.game.phase = state.game.drawMode === 'automatic' ? 'DRAWING' : 'READY';
   logEvent('ball_drawn', { number, position: state.game.drawn.length, source, drawRevision: Number(state.revision) + 1 });
   syncAllAutoMarks();
@@ -3470,6 +3477,9 @@ function runFinalExtractionStep() {
   const number = state.drawOrder[state.game.drawn.length];
   if (Number.isFinite(number)) {
     state.game.drawn.push(number);
+    state.game.drawTimestamps ||= {};
+    state.game.lastDrawnAt = nowIso();
+    state.game.drawTimestamps[String(number)] = state.game.lastDrawnAt;
     state.game.phase = 'FINAL_EXTRACTION';
     logEvent('ball_drawn', { number, position: state.game.drawn.length, finalVerification: true, source: 'final-extraction' });
     syncAllAutoMarks();
@@ -3512,6 +3522,9 @@ function completeTransition() {
       const number = state.drawOrder[state.game.drawn.length];
       if (!Number.isFinite(number)) break;
       state.game.drawn.push(number);
+      state.game.drawTimestamps ||= {};
+      state.game.lastDrawnAt = nowIso();
+      state.game.drawTimestamps[String(number)] = state.game.lastDrawnAt;
       logEvent('ball_drawn', { number, position: state.game.drawn.length, finalVerification: true, source: 'final-extraction-recovery' });
     }
     syncAllAutoMarks();

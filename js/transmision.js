@@ -6,7 +6,7 @@ let state=null,lastBall=null,hasInitialState=false,rotationIndex=0,rotationTimer
 let showcaseIndex=0,showcaseTimer=null,showcaseSignature='',closingVoiceTimer=null;
 let wakeLock=null;
 let previousCards=new Map(),cardMotion=new Map(),lastLeaderKey='';
-let audioContext=null,audioUnlocked=false,speechUnlocked=false,soundEnabled=localStorage.getItem('lgBroadcastSound')!=='off',voiceEnabled=localStorage.getItem('lgBroadcastVoice')!=='off',theme=localStorage.getItem('bingo_theme')==='day'?'day':'night',voices=[];
+let audioContext=null,audioUnlocked=false,speechUnlocked=localStorage.getItem('lgBroadcastVoice')!=='off',soundEnabled=localStorage.getItem('lgBroadcastSound')!=='off',voiceEnabled=localStorage.getItem('lgBroadcastVoice')!=='off',theme=localStorage.getItem('bingo_theme')==='day'?'day':'night',voices=[];
 const seenChatIds=new Set();
 function label(type,number=1,mode=75){if(type==='bingo')return'BINGO';if(type==='ambo'||type==='ambocabeza')return'AMBO CABEZA';if(type==='corners')return'4 ESQUINAS';if(type==='doubleLine')return'DOBLE LÍNEA';if(type==='tripleLine')return'TRIPLE LÍNEA';if(type==='line'&&Number(mode)===90)return Number(number)===2?'SEGUNDA LÍNEA':'PRIMERA LÍNEA';return'LÍNEA'}
 function ballLabel(n,mode){if(n==null)return'—';return Number(mode)===75?`${'BINGO'[Math.min(4,Math.floor((Number(n)-1)/15))]} ${n}`:String(n)}

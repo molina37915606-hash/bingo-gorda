@@ -10,8 +10,7 @@ const profiles = {
     preview: 'Hola, soy Vero. Desde ahora voy a cantar las bolillas y acompañar cada momento importante de la partida.',
     greeting: 'Hola, soy Vero. Prepará tus cartones porque enseguida comienza el sorteo.',
     ball: [
-      '{n}', 'Número {n}', 'Sale el {n}', 'Vamos con el {n}', 'Atención al {n}', 'El {n}',
-      'Seguimos con el {n}', 'Ahora el {n}', 'Tenemos el {n}', 'Marcamos el {n}'
+      '{n}', '{n}', '{n}', 'Sale el {n}', 'Vamos con el {n}', 'Ahora el {n}'
     ],
 
     stages: {

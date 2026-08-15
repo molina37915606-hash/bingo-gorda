@@ -1,0 +1,12 @@
+const fs=require('fs');const path=require('path');const assert=require('assert');
+const root=path.join(__dirname,'..');
+const player=fs.readFileSync(path.join(root,'js/player.js'),'utf8');
+const css=fs.readFileSync(path.join(root,'css/platform.css'),'utf8');
+assert(player.includes('focusPrizeCard(oldState,newState)'),'Debe existir el foco automático al cartón con premio');
+assert(player.includes('const hasPrize=this.focusPrizeCard(old,d)'),'El foco debe ejecutarse en cada actualización de estado');
+assert(player.includes('if(hasPrize&&this.chatOpen)this.closeChat()'),'El chat debe minimizarse cuando hay un premio');
+assert(player.includes("prize?'★ ':''"),'Los demás cartones con premio deben quedar señalados');
+assert(player.includes('this.readinessHasOpenPrize(r,s)'),'Solo deben enfocarse premios abiertos y reclamables');
+assert(css.includes('.tabs button.prize'),'Falta estilo de pestaña de cartón con premio');
+assert(!player.includes('this.claim(type'), 'No debe existir un reclamo automático provocado por el foco');
+console.log('PRUEBA 5.1.5: OK · foco automático del cartón con premio + chat minimizado + pestañas señaladas');

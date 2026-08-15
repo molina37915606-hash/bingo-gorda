@@ -1,6 +1,6 @@
 # BINGO DE LA GORDA — CUASIFINAL FUNCIONAL
 
-Versión 5.1.2-cuasifinal-funcional.3.
+Versión 5.1.5-cuasifinal-funcional.6.
 
 ## Flujo principal
 
@@ -53,3 +53,20 @@ Configurar las variables indicadas en `.env.example` antes de publicar. En produ
 - La voz canta números de forma más breve y natural; los eventos de Línea/Ambo/Bingo usan guiones más directos.
 - El chat del juego adopta el patrón visual de Comunidad: botón de emoji, botón de stickers (incluye La Gorda), campo compacto y enviar. Sin GIF.
 - En móvil el chat sigue siendo un panel fijo/minimizable y no empuja el cartón fuera de la pantalla.
+
+
+## Cambios 5.1.4 · Cuasifinal Funcional 5
+- El cantador/voz del jugador queda **activado por defecto**. Cada dispositivo puede silenciarlo y la preferencia queda guardada.
+- En Manual, un número salido sin marcar recibe una **ayuda luminosa recién después de 20 segundos**. Nunca se marca automáticamente.
+- Los reclamos pendientes, confirmados o rechazados vuelven a usar los carteles gráficos de `assets/celebrations/` y se muestran sincronizados en los jugadores.
+- El layout de escritorio fue redimensionado: el cartón de 75 bolas tiene tamaño máximo y ya no escala hasta ocupar toda la pantalla.
+- Se incorporan timestamps de extracción por bolilla para que la ayuda Manual se base en tiempo real de salida y sobreviva a refrescos/reconexión.
+
+
+## Cambios 5.1.5 · Foco automático de premios
+
+- Si cualquiera de tus cartones tiene un premio abierto para reclamar, la interfaz cambia automáticamente a ese cartón.
+- Si el chat está abierto, se minimiza para priorizar el reclamo.
+- La pestaña de cualquier otro cartón con premio queda marcada con una estrella y pulso dorado.
+- Si varios cartones quedan listos a la vez, se abre el primero detectado y los demás permanecen señalados.
+- No se marca ni reclama nada automáticamente: el jugador conserva el reclamo de un toque.

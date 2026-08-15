@@ -104,3 +104,21 @@ html[data-theme=day] .modalBackdrop{background:#dbe5f0cc}
   .communityStyleChat .chatPicker{bottom:52px;max-height:min(250px,36dvh)}
   .ballStage{width:126px;height:126px}.ball{width:108px;height:108px}.ball .ballNumber{font-size:48px}.ball .ballLetter{font-size:15px}.ballProgress{margin-top:0;padding:4px 9px}
 }
+
+
+/* === CUASIFINAL FUNCIONAL 5.1.4 · ayudas, carteles y escritorio === */
+.cell.manual-help:not(.marked){animation:manualHelpPulse 1.35s ease-in-out infinite;border:2px solid #ffd85a;box-shadow:0 0 0 2px #ffd85a30,0 0 16px #ffd85a88;background:linear-gradient(145deg,var(--drawn),#fff4b7)}
+@keyframes manualHelpPulse{0%,100%{filter:brightness(1);transform:scale(1)}50%{filter:brightness(1.12);transform:scale(1.035)}}
+.tabs button.assist:not(.active){border-color:#ffd85a;box-shadow:inset 0 0 0 1px #ffd85a55,0 0 12px #ffd85a35}
+.claimCelebration{position:fixed;inset:0;z-index:145;display:grid;place-items:start center;padding:clamp(78px,12vh,120px) 14px 14px;background:linear-gradient(180deg,#03071299,#03071233 55%,transparent);pointer-events:none;opacity:0;transition:opacity .2s ease}
+.claimCelebration.show{opacity:1}.claimCelebrationCard{width:min(520px,92vw);display:grid;grid-template-columns:minmax(115px,42%) 1fr;align-items:center;gap:12px;padding:10px;border:1px solid #ffffff35;border-radius:20px;background:#0b1224f4;box-shadow:0 20px 70px #000c,0 0 34px #8d4ee844;transform:translateY(-14px) scale(.98);transition:transform .22s ease}.claimCelebration.show .claimCelebrationCard{transform:translateY(0) scale(1)}.claimCelebration img{width:100%;max-height:180px;object-fit:contain;border-radius:14px}.claimCelebrationCopy{display:grid;gap:5px}.claimCelebrationCopy b{font-size:clamp(14px,3vw,22px);color:#ffe26b}.claimCelebrationCopy span{font-size:clamp(11px,2vw,15px);line-height:1.35;color:#eef3ff}
+html[data-theme=day] .claimCelebrationCard{background:#fffffff8;box-shadow:0 20px 60px #33415555}.claimCelebrationCopy span{color:var(--text)}
+@media(min-width:721px){
+  .app{width:min(1160px,100%);padding-bottom:36px}.panel{padding:10px}.top{max-width:1140px;margin-inline:auto}.gameLayout{grid-template-columns:minmax(0,720px) 270px;justify-content:center;align-items:start;gap:12px}.gameLayout>section{width:100%;max-width:720px}.ballPanel{display:grid;grid-template-columns:122px minmax(0,1fr);grid-template-areas:"ball status" "ball progress" "ball recent";align-items:center;column-gap:12px;min-height:124px;padding:5px 10px;text-align:left}.ballStage{grid-area:ball;width:118px;height:118px;margin:0}.ball{width:102px;height:102px;border-width:2px}.ball .ballNumber{font-size:45px}.ball .ballLetter{font-size:14px}.gameStatus{grid-area:status;text-align:left;font-size:13px}.ballProgress{grid-area:progress;justify-self:start;margin:0}.recent{grid-area:recent;justify-content:flex-start;margin-top:3px}.recent span{min-width:31px;height:29px}.ticketPanel{padding:8px;margin-top:6px;margin-inline:auto;width:100%}.ticketPanel.mode75{max-width:590px}.ticketPanel.mode90{max-width:720px}.ticket.m75{max-width:540px;margin-inline:auto;gap:5px}.ticket.m75 .cell{height:92px;min-height:0;aspect-ratio:auto;font-size:clamp(24px,2.3vw,34px);border-radius:8px}.ticket.m90 .cell{height:58px;min-height:0;aspect-ratio:auto;font-size:clamp(18px,1.6vw,25px)}.ticketHead,.tabs,.modeRow,.claims{max-width:100%;margin-left:auto;margin-right:auto}.claimBtn{min-height:42px}.quickStrip{max-width:720px;margin-inline:auto}.sideInfo{width:270px}.chatPanel{width:min(480px,calc(100vw - 24px));height:min(56dvh,500px)}
+}
+@media(max-width:720px){.claimCelebration{padding-top:70px}.claimCelebrationCard{grid-template-columns:105px 1fr;gap:8px;padding:8px;border-radius:15px}.claimCelebration img{max-height:120px}.claimCelebrationCopy b{font-size:13px}.claimCelebrationCopy span{font-size:10px}}
+
+/* === CUASIFINAL FUNCIONAL 5.1.5 · foco automático de premios === */
+.tabs button.prize{border-color:#ffd84a;background:linear-gradient(135deg,#7a4b00,#c98700);color:#fff7ce;box-shadow:0 0 0 2px #ffd84a33,0 0 18px #ffd84a66;animation:prizeTabPulse .7s ease-in-out infinite alternate}
+.tabs button.prize.active{background:linear-gradient(135deg,#ffb51e,#ffe36b);color:#251700;border-color:#ffe77f}
+@keyframes prizeTabPulse{to{transform:translateY(-1px);box-shadow:0 0 0 3px #ffd84a44,0 0 28px #ffd84a88}}

@@ -68,6 +68,30 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
 .ball{background:radial-gradient(circle at 32% 22%,#fff 0 8%,#f3e8ff 11%,#cf9bff 26%,#9050d9 47%,#5e259a 66%,#2c0e51 86%,#160525 100%)!important;color:#fff!important;border:2px solid #ffffff75!important;box-shadow:inset -18px -22px 30px #16052599,inset 12px 14px 22px #fff7,0 0 0 6px #8f4bd53d,0 15px 38px #0009,0 0 42px #8f4bd566!important;text-shadow:0 3px 8px #210637;overflow:hidden}
 .ball:before{content:"";position:absolute;left:22%;top:10%;width:36%;height:20%;border-radius:50%;background:linear-gradient(#fff9,#fff0);transform:rotate(-22deg)}
 .chat{background:#0d1426f7!important}.msg{padding:5px 7px!important}.header{background:#0e1426f4!important}
+.draw{grid-template-columns:auto auto minmax(0,1fr) minmax(260px,29vw,390px)}
+.drawTicker{min-width:0;align-self:stretch;display:grid;align-content:center;gap:8px;padding:14px 16px;border-radius:18px;border:1px solid #ffc92c3d;background:linear-gradient(145deg,#1f1429,#120c1e);box-shadow:inset 0 1px #ffffff0c}
+.tickerLabel{font-size:10px;color:var(--gold);font-weight:1000;letter-spacing:.16em;text-transform:uppercase}
+.tickerPrize{font-size:clamp(20px,2vw,30px);font-weight:1000;line-height:1.04;color:#fff}
+.tickerWinner{font-size:clamp(14px,1.15vw,17px);font-weight:900;color:#efe8ff;overflow-wrap:anywhere}
+.tickerMeta{font-size:clamp(11px,.95vw,13px);font-weight:800;color:#bcaec7}
+.tickerCounter{justify-self:start;padding:5px 9px;border-radius:999px;background:#ffffff10;border:1px solid #ffffff14;font-size:10px;font-weight:1000;color:#f5ebff;letter-spacing:.08em}
+.ball small{display:block;font-size:.38em;line-height:1;letter-spacing:.16em;margin-bottom:-.08em}
+.closingBall{display:grid;place-items:center;align-content:center;gap:2px}
+.closingBall small{display:block;font-size:.38em;line-height:1;letter-spacing:.16em}
+.ball.bingo-b,.closingBall.bingo-b{background:radial-gradient(circle at 33% 25%,#eaf5ff 0 9%,#5fa6ff 26%,#1f6feb 63%,#0d3477 100%);box-shadow:0 0 34px #1f6feb88,inset 0 0 22px #fff7;color:#071018;border-color:#ffffff66}
+.ball.bingo-i,.closingBall.bingo-i{background:radial-gradient(circle at 33% 25%,#fffce7 0 9%,#ffd763 27%,#f2b51d 63%,#8a5900 100%);box-shadow:0 0 34px #f2b51d88,inset 0 0 22px #fff7;color:#2a1b00;border-color:#ffffff66}
+.ball.bingo-n,.closingBall.bingo-n{background:radial-gradient(circle at 33% 25%,#faefff 0 9%,#c488ff 27%,#8b45d6 63%,#481179 100%);box-shadow:0 0 34px #8b45d688,inset 0 0 22px #fff7;color:#071018;border-color:#ffffff66}
+.ball.bingo-g,.closingBall.bingo-g{background:radial-gradient(circle at 33% 25%,#f1fff1 0 9%,#7aec88 27%,#31b84d 63%,#0d6b23 100%);box-shadow:0 0 34px #31b84d88,inset 0 0 22px #fff7;color:#071018;border-color:#ffffff66}
+.ball.bingo-o,.closingBall.bingo-o{background:radial-gradient(circle at 33% 25%,#fff4ec 0 9%,#ff9b75 27%,#ed5328 63%,#84210a 100%);box-shadow:0 0 34px #ed532888,inset 0 0 22px #fff7;color:#071018;border-color:#ffffff66}
+.recent span.bingo-b{border:1px solid #4592ff;background:#153866;color:#dcecff}
+.recent span.bingo-i{border:1px solid #f2b51d;background:#59430c;color:#fff0ae}
+.recent span.bingo-n{border:1px solid #a45fe5;background:#382052;color:#f1ddff}
+.recent span.bingo-g{border:1px solid #49cb62;background:#143d1d;color:#d8ffdf}
+.recent span.bingo-o{border:1px solid #ff744d;background:#542215;color:#ffe2d8}
+.contingencyBanner{display:none!important}
+@media(max-width:1200px){.draw{grid-template-columns:auto auto minmax(0,1fr)}.drawTicker{grid-column:1/-1;min-height:0;padding:11px 13px;gap:5px}.tickerPrize{font-size:20px}}
+@media(max-width:700px){.drawTicker{display:none}}
+
 </style>
 </head>
 <body>
@@ -77,7 +101,7 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
       <img src="/assets/logo.png" alt="La Gorda">
       <div class="brandText"><h1>BINGO DE LA GORDA</h1><small id="roomInfo">Transmisión</small></div>
     </div>
-    <div class="rightZone"><div class="statusWrap"><span id="liveDot" class="liveDot"></span><div><div id="status" class="status">CONECTANDO…</div><small id="wakeStatus" class="wakeStatus"></small></div></div><div class="txControls"><button id="soundBtn" class="iconBtn" type="button" title="Activar o silenciar efectos" aria-label="Activar o silenciar efectos">🔊</button><button id="voiceBtn" class="iconBtn" type="button" title="Activar o silenciar voz de Vero" aria-label="Activar o silenciar voz de Vero">🗣</button><button id="castBtn" class="iconBtn" type="button" title="Transmitir con Chromecast" aria-label="Transmitir con Chromecast">📺</button><button id="themeBtn" class="iconBtn" type="button" title="Cambiar modo día/noche" aria-label="Cambiar modo día/noche">☾</button><button id="fullBtn" class="iconBtn" type="button" title="Pantalla completa" aria-label="Pantalla completa">⛶</button></div></div>
+    <div class="rightZone"><div class="statusWrap"><span id="liveDot" class="liveDot"></span><div><div id="status" class="status">CONECTANDO…</div><small id="wakeStatus" class="wakeStatus"></small></div></div><div class="txControls"><button id="soundBtn" class="iconBtn" type="button" title="Activar o silenciar efectos" aria-label="Activar o silenciar efectos">🔊</button><button id="voiceBtn" class="iconBtn" type="button" title="Activar o silenciar voz de Vero" aria-label="Activar o silenciar voz de Vero">🗣</button><button id="castBtn" class="iconBtn" type="button" title="Transmitir con Chromecast" aria-label="Transmitir con Chromecast">📺</button><button id="fullBtn" class="iconBtn" type="button" title="Pantalla completa" aria-label="Pantalla completa">⛶</button></div></div>
   </header>
   <div id="layout" class="layout">
     <section id="mainPanel" class="main">
@@ -91,6 +115,13 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
           <div class="recentLabel">Últimas bolillas</div>
           <div id="recent" class="recent"></div>
         </div>
+        <aside id="prizeTicker" class="drawTicker" aria-live="polite">
+          <div class="tickerLabel">PREMIO CONFIRMADO</div>
+          <div id="tickerPrize" class="tickerPrize">Aún no hay premios confirmados</div>
+          <div id="tickerWinner" class="tickerWinner">La próxima validación aparecerá aquí.</div>
+          <div id="tickerMeta" class="tickerMeta">Esperando premios…</div>
+          <div id="tickerCounter" class="tickerCounter"></div>
+        </aside>
       </article>
       <section id="cardsShell" class="cardsShell">
         <header class="cardsHeading"><div class="cardsTitle"><strong>CARRERA POR EL PREMIO</strong><small id="cardsSubtitle">Los más cerca de ganar</small></div><div id="rotationDots" class="rotationDots"></div></header>
@@ -128,6 +159,6 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
 <script src="/js/emoji-stickers.js?v=2.2.0"></script>
 <script src="/js/presenter-scripts.js?v=2.1.0"></script>
 <script src="/js/cast-sender.js?v=1.0.0"></script>
-<script src="/js/transmision.js?v=5.1.3"></script>
+<script src="/js/transmision.js?v=beta-20260815-0210"></script>
 </body>
 </html>

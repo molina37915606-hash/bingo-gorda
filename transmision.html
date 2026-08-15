@@ -114,6 +114,14 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
   .tickerPrize{font-size:19px!important}.tickerWinner{font-size:14px!important}.tickerMeta{font-size:10px!important}
 }
 @media(max-width:820px){.drawTicker{display:none!important}}
+
+/* Beta carrera TV · distribución fija por modalidad */
+.cards.mode75Cards{grid-template-columns:repeat(3,minmax(0,1fr)) minmax(125px,.62fr)!important;grid-template-rows:repeat(3,minmax(0,1fr))!important;gap:6px!important}
+.cards.mode75Cards>.featured:nth-child(1){grid-column:1;grid-row:1/-1}.cards.mode75Cards>.featured:nth-child(2){grid-column:2;grid-row:1/-1}.cards.mode75Cards>.featured:nth-child(3){grid-column:3;grid-row:1/-1}.cards.mode75Cards>.featured:nth-child(4){grid-column:4;grid-row:1}.cards.mode75Cards>.featured:nth-child(5){grid-column:4;grid-row:2}.cards.mode75Cards>.featured:nth-child(6){grid-column:4;grid-row:3}
+.cards.mode75Cards .featured.compact{padding:4px;border-radius:12px;gap:3px}.cards.mode75Cards .featured.compact .cardHead{min-height:26px;gap:3px}.cards.mode75Cards .featured.compact .rankPill{width:21px;height:21px;border-radius:7px;font-size:8px}.cards.mode75Cards .featured.compact .identity{column-gap:4px}.cards.mode75Cards .featured.compact .player{font-size:10px}.cards.mode75Cards .featured.compact .cardNumber{font-size:7px;margin-top:0}.cards.mode75Cards .featured.compact .badges{max-width:44%}.cards.mode75Cards .featured.compact .badge{font-size:6px;min-height:14px;padding:1px 4px}.cards.mode75Cards .featured.compact .detailBadge{display:none}.cards.mode75Cards .featured.compact .grid{gap:1px}.cards.mode75Cards .featured.compact .cell{font-size:clamp(6px,.55vw,9px);border-radius:2px}.cards.mode75Cards .featured.compact .cell.free{font-size:5px}
+.cards.mode90Cards{grid-template-columns:repeat(3,minmax(0,1fr))!important;grid-template-rows:repeat(2,minmax(0,1fr))!important;gap:6px!important}.cards.mode90Cards .featured{padding:6px;gap:4px}.cards.mode90Cards .cardHead{min-height:34px}.cards.mode90Cards .cell{font-size:clamp(8px,.78vw,13px)}
+.featured.placeholder{visibility:hidden!important;pointer-events:none!important}.rotationDots{display:none!important}
+@media(max-width:820px){.cards.mode75Cards,.cards.mode90Cards{grid-template-columns:1fr!important;grid-template-rows:1fr!important}.cards.mode75Cards>.featured,.cards.mode90Cards>.featured{grid-column:1!important;grid-row:1!important}.cards.mode75Cards>.featured:nth-child(n+2),.cards.mode90Cards>.featured:nth-child(n+2){display:none!important}}
 </style>
 </head>
 <body>
@@ -155,7 +163,6 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
 </main>
 <div id="contingencyBanner" class="contingencyBanner"></div>
 <div id="soundHint" class="soundHint">Tocá 🔊 o 🗣 para activar el audio</div>
-<div id="leaderToast" class="leaderToast"><div class="leaderFlame">🔥</div><div><b>NUEVO LÍDER</b><span id="leaderToastText"></span></div></div>
 <div id="claimToast" class="claimToast"><div class="claimIcon">!</div><div><b id="claimToastTitle">RECLAMO RECIBIDO</b><span id="claimToastText"></span></div></div>
 <div id="prizeBanner" class="prizeBanner"><strong>¡HAY PREMIO!</strong><span id="prizeBannerText"></span><small id="prizeBannerType"></small></div>
 <div id="bingoOverlay" class="bingoOverlay" aria-hidden="true">
@@ -181,6 +188,6 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
 <script src="/js/emoji-stickers.js?v=2.2.0"></script>
 <script src="/js/presenter-scripts.js?v=2.1.0"></script>
 <script src="/js/cast-sender.js?v=1.0.0"></script>
-<script src="/js/transmision.js?v=beta-20260815-0215-tvfix"></script>
+<script src="/js/transmision.js?v=beta-20260815-0246"></script>
 </body>
 </html>

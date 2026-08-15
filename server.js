@@ -2263,7 +2263,7 @@ function highlightedBroadcastCards() {
   }
   return rows
     .sort((a,b) => a.score - b.score || a.bingoMissing - b.bingoMissing || String(a.cardNumber).localeCompare(String(b.cardNumber)))
-    .slice(0, 4)
+    .slice(0, 6)
     .map((item, index) => ({ ...item, rank: index + 1 }));
 }
 
@@ -2460,7 +2460,7 @@ function createAdminSimulationRoom(payload = {}) {
       prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 },
       argentinaHint: true,
       presenterVoiceGender: 'female',
-      transmission: normalizeTransmissionSettings({ showNames: false })
+      transmission: normalizeTransmissionSettings({ showNames: true })
     },
     assignmentTimer: { enabled: false, durationMinutes: 10 }
   });

@@ -429,3 +429,19 @@ html[data-theme=day] .finalWinnerTicker{background:linear-gradient(135deg,#f8f3f
 /* Final · cobro privado de ganadores */
 .winnerPayoutCard{max-width:620px;margin:8px auto 12px;padding:14px;border:1px solid color-mix(in srgb,var(--gold) 55%,var(--line));border-radius:16px;background:linear-gradient(180deg,color-mix(in srgb,var(--gold) 9%,var(--panel2)),var(--panel2));text-align:left;display:grid;gap:10px}.winnerPayoutKicker{font-size:10px;font-weight:1000;letter-spacing:.06em;color:var(--gold)}.winnerPayoutCard h2{margin:0;font-size:20px}.winnerPayoutPrizes{display:grid;gap:4px;font-size:11px}.winnerPayoutForm{display:grid;grid-template-columns:1fr 1fr;gap:8px}.winnerPayoutForm label{display:grid;gap:4px;font-size:9px;font-weight:1000;color:var(--muted)}.winnerPayoutForm label:nth-child(3){grid-column:1/-1}.winnerPayoutForm input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:var(--panel3);color:var(--text);padding:10px;font:inherit}.winnerPayoutForm .btn{grid-column:1/-1;margin:0}.winnerWhatsapp{display:grid;place-items:center;text-decoration:none;margin:0}.winnerPayoutPrivacy{font-size:9px;color:var(--muted);line-height:1.35}.winnerPayoutAdmin{display:grid;gap:8px}.winnerPayoutRow{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,auto);gap:10px;align-items:center;padding:11px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}.winnerPayoutRow>div:first-child{display:grid;gap:2px}.winnerPayoutRow span{font-size:10px;color:var(--muted)}.winnerPayoutData{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 7px;align-items:center;text-align:right}.winnerPayoutData span{grid-column:1/-1}.winnerPayoutData strong{word-break:break-all}.winnerPayoutPending{font-size:10px;color:var(--muted);text-align:right}@media(max-width:720px){.winnerPayoutCard{margin:7px 1px 10px;padding:11px;border-radius:14px}.winnerPayoutCard h2{font-size:18px}.winnerPayoutForm{grid-template-columns:1fr}.winnerPayoutForm label:nth-child(3),.winnerPayoutForm .btn{grid-column:auto}.winnerPayoutForm input{padding:9px}.winnerPayoutRow{grid-template-columns:1fr}.winnerPayoutData{text-align:left}.winnerPayoutPending{text-align:left}}
 .finalContactHelp{max-width:620px;margin:6px auto}.finalContactHelp .btn{width:100%;margin:0}
+
+
+/* Final · 2026-08-16 18:25 · restaurar barra móvil + audio unificado */
+.legacyVoiceTool{display:none!important}
+@media(max-width:720px){
+  .playerShell.gameMobile #voiceTool,
+  .playerShell.gameMobile #moreTool,
+  .playerShell.gameMobile #chatTool{display:none!important}
+  .playerShell.gameMobile #soundTool,
+  .playerShell.gameMobile #numbersTool,
+  .playerShell.gameMobile #winnersTool,
+  .playerShell.gameMobile #helpTool,
+  .playerShell.gameMobile #themeTool,
+  .playerShell.gameMobile #fullscreenTool{display:grid!important;width:100%;height:34px;min-width:0;max-width:none;flex:none;font-size:15px}
+  .playerShell.gameMobile .platformTools{grid-template-columns:repeat(6,minmax(0,1fr))!important}
+}

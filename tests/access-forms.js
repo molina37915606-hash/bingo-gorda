@@ -19,10 +19,12 @@ function cookieFrom(r){const c=(r.headers.get('set-cookie')||'').split(';')[0];a
   room=(await json('/api/admin/join-open','POST',{open:true},ah)).data;
   r=await fetch(base+joinPath);html=await r.text();assert(r.ok&&html.includes('name="name"')&&html.includes('name="cardCount"'));assert(!html.includes('name="accessKey"'));
   r=await form('/jugador/entrar',{roomCode:room.roomCode,name:'Jugador Form',cardCount:'1'});assert.equal(r.status,303);assert.equal(r.headers.get('location'),'/jugar');const c1=cookieFrom(r);
+  let p1=(await json('/api/player/state','GET',undefined,{Cookie:c1})).data;assert.equal(p1.player.name,'Jugador Form');
+  await json('/api/player/choose','POST',{cardIds:[p1.player.offeredCards[0].id]},{Cookie:c1});
   r=await form('/jugador/entrar',{roomCode:room.roomCode,name:'Jugador Directo',cardCount:'2'});assert.equal(r.status,303);const c2=cookieFrom(r);assert.notEqual(c1,c2);
-  let p1=(await json('/api/player/state','GET',undefined,{Cookie:c1})).data,p2=(await json('/api/player/state','GET',undefined,{Cookie:c2})).data;assert.equal(p1.player.name,'Jugador Form');assert.equal(p2.player.allowedCardCount,2);
+  let p2=(await json('/api/player/state','GET',undefined,{Cookie:c2})).data;assert.equal(p2.player.allowedCardCount,2);
   r=await fetch(base+'/jugar',{headers:{Cookie:c2}});html=await r.text();assert(r.ok&&html.includes('js/player.js'));assert(!html.includes('BINGO_PLAYER_DIRECT_TOKEN'));assert(!html.includes('name="accessKey"'));
-  await json('/api/player/choose','POST',{cardIds:[p1.player.offeredCards[0].id]},{Cookie:c1});await json('/api/player/choose','POST',{cardIds:p2.player.offeredCards.slice(0,2).map(c=>c.id)},{Cookie:c2});
+  await json('/api/player/choose','POST',{cardIds:p2.player.offeredCards.slice(0,2).map(c=>c.id)},{Cookie:c2});
   await json('/api/admin/join-open','POST',{open:false},ah);let admin=(await json('/api/admin/state','GET',undefined,ah)).data;assert.equal(admin.startPlan.eligiblePlayers,2);await json('/api/admin/start','POST',{},ah);
 
   await json('/api/admin/close','POST',{},ah);

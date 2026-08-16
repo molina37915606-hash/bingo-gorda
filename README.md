@@ -1,6 +1,6 @@
 # BINGO DE LA GORDA - Final
 
-Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de juego del jugador se mantiene como base aprobada. Esta entrega suma una Comunidad móvil más directa y una agenda administrativa para anunciar próximas partidas con horario y precio, además de conservar el flujo de inscripción, pagos, recuperación y sorteo ya estabilizado.
+Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de juego del jugador se mantiene como base aprobada. Esta entrega conserva la Comunidad móvil y agenda ya estabilizadas y completa el flujo posterior a la partida: los ganadores pueden dejar sus datos privados de cobro y contactar por WhatsApp a la administración sin reutilizar los datos de quien pagó los cartones.
 
 ## Flujo de una partida
 
@@ -40,6 +40,14 @@ El Admin puede programar futuras partidas indicando fecha/hora, modalidad, gratu
 En Comunidad móvil, la tarjeta principal cambia según el estado: próxima partida, inscripciones abiertas, por comenzar o en vivo. Cuando una sala oficial tiene el ingreso general abierto, el botón principal es ENTRAR A JUGAR y lleva directamente al formulario general. Las partidas programadas muestran horario y precio; las gratuitas muestran CARTÓN GRATIS. Demo, WhatsApp y Transmisión usan accesos compactos.
 
 El chat de Comunidad conserva mensajes, emojis, stickers y moderación, pero en móvil funciona como panel inferior desplazable similar al chat del jugador, sin ocupar permanentemente toda la pantalla.
+
+## Cobro de premios
+
+Al finalizar una partida real, cada jugador con uno o más premios confirmados ve un bloque propio para coordinar el cobro. Puede guardar alias, titular de la cuenta y billetera/banco opcional. Esos datos se asocian al jugador ganador, no a la persona que pagó la inscripción, y solo aparecen en su sesión y en Admin.
+
+El ganador puede abrir WhatsApp con un mensaje prearmado que identifica sala, premio y cartón. Los jugadores sin premio también conservan un acceso pequeño a WhatsApp para consultas. El WhatsApp de contacto/premios se configura por sala y, si se deja vacío, toma como respaldo el número configurado en Comunidad.
+
+Los datos de cobro del ganador no se publican en Comunidad, Transmisión, chat ni actas. Admin ve cada premio confirmado junto con el alias informado y puede copiarlo para realizar el pago por fuera del sistema.
 
 ## Reglas preservadas
 

@@ -502,6 +502,10 @@ function loadState(stateFile = OWNER_STATE_FILE) {
         paymentTransferHolder: normalizePlayerName(player.paymentTransferHolder || '').slice(0, 60),
         paymentChangeRequestedCount: player.paymentChangeRequestedCount == null ? null : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(player.paymentChangeRequestedCount) || allowedCardCount)),
         paymentChangeRequestedAt: player.paymentChangeRequestedAt || null,
+        prizePayoutAlias: String(player.prizePayoutAlias || '').trim().slice(0, 80),
+        prizePayoutAccountHolder: normalizePlayerName(player.prizePayoutAccountHolder || '').slice(0, 80),
+        prizePayoutProvider: String(player.prizePayoutProvider || '').trim().replace(/\s+/g, ' ').slice(0, 80),
+        prizePayoutUpdatedAt: player.prizePayoutUpdatedAt || null,
         selectionConfirmed: player.selectionConfirmed === undefined ? cardIds.length > 0 : Boolean(player.selectionConfirmed && cardIds.length > 0),
         offeredCardIds: Array.isArray(player.offeredCardIds) ? player.offeredCardIds.map(String) : [],
         reservedCardIds: Array.isArray(player.reservedCardIds) ? player.reservedCardIds.map(String) : [],
@@ -1593,6 +1597,10 @@ function adminPayload() {
       paymentTransferHolder: String(player.paymentTransferHolder || ''),
       paymentChangeRequestedCount: player.paymentChangeRequestedCount == null ? null : Number(player.paymentChangeRequestedCount),
       paymentChangeRequestedAt: player.paymentChangeRequestedAt || null,
+      prizePayoutAlias: String(player.prizePayoutAlias || ''),
+      prizePayoutAccountHolder: String(player.prizePayoutAccountHolder || ''),
+      prizePayoutProvider: String(player.prizePayoutProvider || ''),
+      prizePayoutUpdatedAt: player.prizePayoutUpdatedAt || null,
       cardIds: player.cardIds,
       selectionConfirmed: player.selectionConfirmed,
       offeredCardIds: player.offeredCardIds,
@@ -1682,6 +1690,11 @@ function playerPayload(player) {
       paymentTransferHolder: String(player.paymentTransferHolder || ''),
       paymentChangeRequestedCount: player.paymentChangeRequestedCount == null ? null : Number(player.paymentChangeRequestedCount),
       paymentChangeRequestedAt: player.paymentChangeRequestedAt || null,
+      prizePayoutAlias: String(player.prizePayoutAlias || ''),
+      prizePayoutAccountHolder: String(player.prizePayoutAccountHolder || ''),
+      prizePayoutProvider: String(player.prizePayoutProvider || ''),
+      prizePayoutUpdatedAt: player.prizePayoutUpdatedAt || null,
+      confirmedPrizes: state.claims.filter(claim => claim.playerId === player.id && claim.status === 'confirmed').map(claim => ({ id: claim.id, type: claim.type, prizeNumber: claim.prizeNumber || 1, prizeLabel: claim.prizeLabel || prizeLabelFor(claim.type, claim.prizeNumber, state.game?.mode), cardNumber: claim.cardNumber, resolvedAt: claim.resolvedAt || null })),
       excludedFromRound: Boolean(player.excludedFromRound),
       selectionConfirmed: player.selectionConfirmed,
       reservedCardIds: player.reservedCardIds || [],
@@ -1897,6 +1910,10 @@ function emptyRoomPlayer({ name = '', cardIds = [], allowedCardCount = 1, code =
     paymentTransferHolder: '',
     paymentChangeRequestedCount: null,
     paymentChangeRequestedAt: null,
+    prizePayoutAlias: '',
+    prizePayoutAccountHolder: '',
+    prizePayoutProvider: '',
+    prizePayoutUpdatedAt: null,
     cardIds: [...cardIds],
     selectionConfirmed: cardIds.length > 0,
     offeredCardIds: [], reservedCardIds: [],
@@ -1966,7 +1983,7 @@ function createSimpleRoom(payload = {}) {
   const paymentAlias = paymentMode === 'paid' ? String(payload.paymentAlias || '').trim().slice(0, 80) : '';
   const paymentAccountHolder = paymentMode === 'paid' ? normalizePlayerName(payload.paymentAccountHolder || '').slice(0, 80) : '';
   const paymentProvider = paymentMode === 'paid' ? String(payload.paymentProvider || '').trim().replace(/\s+/g, ' ').slice(0, 80) : '';
-  const whatsapp = paymentMode === 'paid' ? String(payload.whatsapp || '').trim().slice(0, 40) : String(payload.whatsapp || '').trim().slice(0, 40);
+  const whatsapp = String(payload.whatsapp || platform.community?.whatsappNumber || '').trim().slice(0, 40);
   const communityScheduleId = String(payload.communityScheduleId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
   const communitySchedule = communityScheduleId ? communityScheduledGames().find(item => item.id === communityScheduleId) : null;
   if (communityScheduleId && !communitySchedule) throw new Error('La partida programada ya no existe. Volvé a abrir la Agenda.');
@@ -2104,6 +2121,25 @@ function updatePlayerOrder(player, payload = {}) {
     player.notices.push({ id: randomId('notice'), createdAt: nowIso(), kind: 'payment_report_reset', text: 'El pedido volvió a pendiente para que puedas corregir la cantidad antes de transferir.' });
   }
   logEvent('player_order_updated', { playerId:player.id, playerName:playerDisplayName(player), requestedCards:player.requestedCardCount, paymentStatus:player.paymentStatus });
+  saveState(); broadcast();
+  return playerPayload(player);
+}
+
+function updatePlayerPrizePayout(player, payload = {}) {
+  if (!state.active || !state.game) throw new Error('La sala no está activa.');
+  if (currentWorkspace().isDemo || state.roomSettings?.gameType === 'test') throw new Error('La demostración no utiliza cobro de premios.');
+  const ownWins = state.claims.filter(claim => claim.playerId === player.id && claim.status === 'confirmed');
+  if (!ownWins.length) throw new Error('No hay un premio confirmado para este jugador.');
+  const alias = String(payload.alias || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+  const accountHolder = normalizePlayerName(payload.accountHolder || '').slice(0, 80);
+  const provider = String(payload.provider || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+  if (alias.length < 2) throw new Error('Ingresá el alias donde querés recibir el premio.');
+  if (accountHolder.length < 2) throw new Error('Ingresá el titular de la cuenta donde querés cobrar.');
+  player.prizePayoutAlias = alias;
+  player.prizePayoutAccountHolder = accountHolder;
+  player.prizePayoutProvider = provider;
+  player.prizePayoutUpdatedAt = nowIso();
+  logEvent('winner_payout_details_updated', { playerId: player.id, playerName: playerDisplayName(player), prizeCount: ownWins.length });
   saveState(); broadcast();
   return playerPayload(player);
 }
@@ -6189,6 +6225,7 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
         if (url.pathname === '/api/player/name' && req.method === 'POST') return sendJson(res, 200, setPlayerName(player, await readJson(req)));
         if (url.pathname === '/api/player/payment-report' && req.method === 'POST') return sendJson(res, 200, reportPlayerPayment(player, await readJson(req)));
+        if (url.pathname === '/api/player/prize-payout' && req.method === 'POST') return sendJson(res, 200, updatePlayerPrizePayout(player, await readJson(req)));
         if (url.pathname === '/api/player/order' && req.method === 'POST') return sendJson(res, 200, updatePlayerOrder(player, await readJson(req)));
         if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
         if (url.pathname === '/api/player/demo/tutorial' && req.method === 'POST') return sendJson(res, 200, resolveDemoTutorial(player, await readJson(req)));

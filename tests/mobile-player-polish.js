@@ -11,6 +11,6 @@ assert(css.includes('.playerShell.gameMobile .playerWinnerTicker'), 'Falta dise�
 assert(player.includes("visualKey:`line:${prizeNumber}`"), 'Bingo 90 con dos líneas debe crear Línea 1 y Línea 2 visualmente desde el inicio');
 assert(player.includes("shortLabel:`LÍNEA ${prizeNumber}`"), 'Los dos premios de línea deben estar identificados claramente');
 assert(html.includes('id="helpTool"')&&html.includes('id="themeTool"')&&html.includes('id="fullscreenTool"'), 'Ayuda, tema y pantalla completa deben existir como accesos directos');
-assert(css.includes('#helpTool,')&&css.includes('#themeTool,')&&css.includes('#fullscreenTool,'), 'Ayuda, tema y pantalla completa deben mostrarse en la barra móvil');
-assert(player.includes("openMobileTools(){this.openModal('Audio'"), 'El menú Más móvil debe reservarse para audio y evitar duplicar herramientas visibles');
+assert(css.includes('.playerShell.gameMobile #soundTool,.playerShell.gameMobile #voiceTool,.playerShell.gameMobile #helpTool,.playerShell.gameMobile #themeTool,.playerShell.gameMobile #fullscreenTool,.playerShell.gameMobile #chatTool{display:none}'), 'La barra móvil aprobada no debe sumar botones ni cambiar su distribución');
+assert(player.includes('data-mobile-tool=\"help\"')&&player.includes('Ayuda / tutorial'), 'El menú Más móvil debe permitir reabrir el tutorial sin rediseñar la barra superior');
 console.log('PRUEBA PULIDO JUGADOR MÓVIL: OK');

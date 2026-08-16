@@ -6,7 +6,7 @@ Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de jueg
 
 1. El Admin crea una partida gratuita o paga.
 2. Puede agregar jugadores mediante invitaciones privadas y/o abrir el link general reutilizable.
-3. En partidas pagas, el jugador indica nombre y cantidad de cartones, ve el total y el alias, e informa DNI y nombre del titular que realizó la transferencia. No se suben comprobantes.
+3. En partidas pagas, el jugador indica nombre y cantidad de cartones, ve el total, la billetera/banco, el titular receptor y el alias, e informa DNI y nombre del titular que realizó la transferencia. No se suben comprobantes.
 4. El Admin verifica el dinero por fuera del sistema y confirma el pago manualmente.
 5. El Admin ve en tiempo real cartones solicitados, confirmados y asignados, con el dato destacado de cuántos cartones jugarán.
 6. El Admin cierra inscripciones sin iniciar el sorteo. Los jugadores ya registrados conservan su derecho a entrar o recuperar acceso.
@@ -22,7 +22,7 @@ Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de jueg
 
 ## Partidas pagas
 
-El Admin configura precio por cartón, alias y WhatsApp de contacto. El jugador elige la cantidad, que fija la cantidad exacta de cartones a jugar una vez confirmado el pago. El formulario registra solamente los datos necesarios para identificar la transferencia: DNI y nombre del titular transferente.
+El Admin configura precio por cartón, billetera/banco, titular de la cuenta receptora, alias y WhatsApp de contacto. El jugador elige la cantidad, que fija la cantidad exacta de cartones a jugar una vez confirmado el pago. Antes de informar la transferencia puede corregir esa cantidad libremente. Si ya informó que transfirió, un cambio queda pendiente de revisión administrativa; después de confirmar el pago, solo el Admin puede modificar la cantidad. El formulario registra solamente los datos necesarios para identificar la transferencia: DNI y nombre del titular transferente.
 
 Estados operativos: PAGO PENDIENTE, TRANSFERENCIA INFORMADA y PAGO OK. Los pagos pendientes bloquean el inicio hasta que el Admin confirme o quite explícitamente al jugador.
 
@@ -30,7 +30,7 @@ Los datos de transferencia no forman parte de Comunidad, Transmisión, chat ni a
 
 ## Preparación y tutorial
 
-INICIAR SORTEO es independiente de CERRAR INSCRIPCIONES. Durante el estado de preparación, el jugador ya ve su interfaz real de juego y puede recorrer un tutorial contextual por globos sobre bolilla, cartones, marcado, RECLAMAR, premios, chat y herramientas. El servidor controla el tiempo previo a la primera bolilla para mantener a todos sincronizados.
+INICIAR SORTEO es independiente de CERRAR INSCRIPCIONES. Durante el estado de preparación, el jugador ya ve su interfaz real de juego y puede recorrer un tutorial contextual por globos anclados a bolilla, cartones, marcado, RECLAMAR, premios, chat y herramientas. En móvil, cada globo calcula su posición usando el viewport visible para mantenerse dentro de la pantalla. Los premios activos se explican uno por uno y se resaltan temporalmente las casillas involucradas sin modificar el cartón ni sus marcas. El servidor controla el tiempo previo a la primera bolilla para mantener a todos sincronizados.
 
 ## Reglas preservadas
 

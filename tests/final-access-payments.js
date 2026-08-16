@@ -18,10 +18,12 @@ async function claimInvite(inviteUrl){const invitePath=new URL(inviteUrl).pathna
   const login=await post('/api/admin/login',{}),ah={'X-Admin-Token':login.token};
 
   // Partida paga: inscripción, total, datos del transferente y confirmación manual.
-  let room=await post('/api/admin/create-simple-room',{mode:90,cardCount:80,autoSeconds:60,rules:{line:true,bingo:true},linePrizeCount:2,maxCardsPerPlayer:4,markingMode:'normal',paymentMode:'paid',cardPrice:2500,paymentAlias:'lagorda.prueba',whatsapp:'5491112345678'},ah);
+  let room=await post('/api/admin/create-simple-room',{mode:90,cardCount:80,autoSeconds:60,rules:{line:true,bingo:true},linePrizeCount:2,maxCardsPerPlayer:4,markingMode:'normal',paymentMode:'paid',cardPrice:2500,paymentAlias:'lagorda.prueba',paymentAccountHolder:'La Gorda',paymentProvider:'Mercado Pago',whatsapp:'5491112345678'},ah);
   assert.equal(room.roomSettings.paymentMode,'paid');
   assert.equal(room.roomSettings.cardPrice,2500);
   assert.equal(room.roomSettings.paymentAlias,'lagorda.prueba');
+  assert.equal(room.roomSettings.paymentAccountHolder,'La Gorda');
+  assert.equal(room.roomSettings.paymentProvider,'Mercado Pago');
   assert.equal(room.roomSettings.joinOpen,false,'Las inscripciones deben iniciar cerradas');
 
   room=await post('/api/admin/join-open',{open:true},ah);
@@ -31,15 +33,34 @@ async function claimInvite(inviteUrl){const invitePath=new URL(inviteUrl).pathna
   assert.equal(player.player.paymentStatus,'pending');
   assert.equal(player.player.offeredCards.length,0,'No debe ofrecer cartones antes del pago confirmado');
 
+  // Antes de informar pago, el jugador puede corregir libremente la cantidad.
+  player=await post('/api/player/order',{cardCount:3},{Cookie:cookie});
+  assert.equal(player.player.requestedCardCount,3);
+  assert.equal(player.player.allowedCardCount,3);
+  assert.equal(player.player.paymentStatus,'pending');
+
   player=await post('/api/player/payment-report',{dni:'12.345.678',holder:'Rubén Pérez'},{Cookie:cookie});
   assert.equal(player.player.paymentStatus,'reported');
   assert.equal(player.player.paymentTransferDni,'12345678');
   assert.equal(player.player.paymentTransferHolder,'Rubén Pérez');
 
+  // Si informó por error pero todavía no transfirió, puede volver a pendiente y corregir.
+  player=await post('/api/player/order',{cardCount:2,transferState:'not_transferred'},{Cookie:cookie});
+  assert.equal(player.player.paymentStatus,'pending');
+  assert.equal(player.player.requestedCardCount,2);
+  player=await post('/api/player/payment-report',{dni:'12.345.678',holder:'Rubén Pérez'},{Cookie:cookie});
+
+  // Si ya transfirió, el cambio queda para revisión del Admin y no altera el pedido silenciosamente.
+  player=await post('/api/player/order',{cardCount:3,transferState:'already_transferred'},{Cookie:cookie});
+  assert.equal(player.player.paymentStatus,'reported');
+  assert.equal(player.player.requestedCardCount,2);
+  assert.equal(player.player.paymentChangeRequestedCount,3);
+
   let admin=await get('/api/admin/state',ah);
   let maria=admin.players.find(p=>p.name==='María Jugadora');
   assert(maria);
   assert.equal(maria.paymentStatus,'reported');
+  assert.equal(maria.paymentChangeRequestedCount,3);
   assert.equal(admin.registrationSummary.requestedCards,2);
   assert.equal(admin.registrationSummary.confirmedCards,0);
   assert.equal(admin.startPlan.pendingPaymentPlayers,1);
@@ -50,22 +71,28 @@ async function claimInvite(inviteUrl){const invitePath=new URL(inviteUrl).pathna
   const blocked=await postFail('/api/admin/start',{},ah);
   assert(/pagos pendientes/i.test(blocked.d.error),'No debe iniciar con pagos pendientes');
 
-  admin=await post('/api/admin/player-approval',{playerId:maria.id,allowedCardCount:2,confirmPayment:true},ah);
+  const changeBlocked=await postFail('/api/admin/player-approval',{playerId:maria.id,allowedCardCount:2,confirmPayment:true},ah);
+  assert(/cambio de cantidad/i.test(changeBlocked.d.error),'No debe confirmar el pago sin resolver antes el cambio solicitado');
+  admin=await post('/api/admin/player-approval',{playerId:maria.id,applyRequestedChange:true,allowedCardCount:3},ah);
+  maria=admin.players.find(p=>p.id===maria.id);
+  assert.equal(maria.allowedCardCount,3);
+  assert.equal(maria.paymentChangeRequestedCount,null);
+  admin=await post('/api/admin/player-approval',{playerId:maria.id,allowedCardCount:3,confirmPayment:true},ah);
   maria=admin.players.find(p=>p.id===maria.id);
   assert.equal(maria.paymentStatus,'confirmed');
-  assert.equal(admin.registrationSummary.confirmedCards,2,'Admin debe ver cuántos cartones jugarán');
+  assert.equal(admin.registrationSummary.confirmedCards,3,'Admin debe ver cuántos cartones jugarán');
 
   player=await get('/api/player/state',{Cookie:cookie});
-  assert(player.player.offeredCards.length>=2,'Al confirmar pago debe ofrecer cartones');
-  const offered=player.player.offeredCards.slice(0,2).map(c=>c.id);
-  const partial=await postFail('/api/player/choose',{cardIds:[offered[0]]},{Cookie:cookie});
-  assert(/exactamente 2/i.test(partial.d.error),'En paga debe elegir exactamente la cantidad confirmada');
+  assert(player.player.offeredCards.length>=3,'Al confirmar pago debe ofrecer cartones');
+  const offered=player.player.offeredCards.slice(0,3).map(c=>c.id);
+  const partial=await postFail('/api/player/choose',{cardIds:offered.slice(0,2)},{Cookie:cookie});
+  assert(/exactamente 3/i.test(partial.d.error),'En paga debe elegir exactamente la cantidad confirmada');
   player=await post('/api/player/choose',{cardIds:offered},{Cookie:cookie});
-  assert.equal(player.player.cards.length,2);
+  assert.equal(player.player.cards.length,3);
 
   admin=await get('/api/admin/state',ah);
-  assert.equal(admin.registrationSummary.assignedCards,2);
-  assert.equal(admin.registrationSummary.playingCards,2);
+  assert.equal(admin.registrationSummary.assignedCards,3);
+  assert.equal(admin.registrationSummary.playingCards,3);
   const started=await post('/api/admin/start',{},ah);
   assert.equal(started.status,'starting');
   assert.equal(started.game.drawn.length,0,'No debe salir una bolilla al pulsar iniciar');
@@ -110,6 +137,12 @@ async function claimInvite(inviteUrl){const invitePath=new URL(inviteUrl).pathna
 
   const playerJs=fs.readFileSync(path.join(root,'js','player.js'),'utf8');
   assert(playerJs.includes('openCoachTutorial'),'Debe existir tutorial contextual sobre la interfaz real');
+  assert(playerJs.includes('coachPrizeSteps'),'El tutorial debe explicar individualmente los premios activos');
+  assert(playerJs.includes('data-prize-visual'),'Cada premio debe tener un ancla propia para el globo');
+  assert(playerJs.includes('coachPrizeCell'),'El tutorial debe demostrar visualmente las casillas del premio');
+  assert(playerJs.includes('visualViewport'),'El posicionamiento debe respetar el viewport móvil real');
+  assert(playerJs.includes('AmboCabeza')&&playerJs.includes('Doble Línea')&&playerJs.includes('4 Esquinas'),'El tutorial debe explicar las jugadas configurables');
+  assert(playerJs.includes('paymentAccountHolder')&&playerJs.includes('paymentProvider'),'El jugador debe ver titular y billetera/banco de destino');
   assert(playerJs.includes('Primera bolilla en'),'Debe mostrarse cuenta regresiva de preparación');
   console.log('PRUEBA FINAL ACCESO + PAGOS + INGRESO TARDÍO: OK');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

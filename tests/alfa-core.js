@@ -101,7 +101,7 @@ async function get(url, headers = {}) {
     state = await post('/api/admin/create-simple-room', {
       mode: 90, cardCount: 120, autoSeconds: 60,
       rules: { line: true, bingo: true }, paymentMode: 'paid', markingMode: 'normal',
-      accessKey: 'ALFAPAGA', maxCardsPerPlayer: 4, cardPrice: 1000, paymentAlias: 'lagorda.core', whatsapp: '3757624388', linePrizeCount: 1
+      accessKey: 'ALFAPAGA', maxCardsPerPlayer: 4, cardPrice: 1000, paymentAlias: 'lagorda.core', paymentAccountHolder: 'La Gorda', paymentProvider: 'Mercado Pago', whatsapp: '3757624388', linePrizeCount: 1
     }, adminHeaders);
     assert.equal(state.roomSettings.linePrizeCount, 1, 'Bingo 90 debe permitir una sola línea.');
     state = await post('/api/admin/join-open', { open: true }, adminHeaders);

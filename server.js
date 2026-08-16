@@ -334,6 +334,8 @@ function blankState() {
       paymentMode: 'free',
       cardPrice: 0,
       paymentAlias: '',
+      paymentAccountHolder: '',
+      paymentProvider: '',
       maxCardsPerPlayer: 4,
       markingMode: 'normal',
       claimAutoVerifySeconds: 10,
@@ -433,6 +435,8 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.paymentMode = merged.roomSettings.paymentMode === 'paid' ? 'paid' : 'free';
     merged.roomSettings.cardPrice = Math.max(0, Number(merged.roomSettings.cardPrice) || 0);
     merged.roomSettings.paymentAlias = String(merged.roomSettings.paymentAlias || '').trim().slice(0, 80);
+    merged.roomSettings.paymentAccountHolder = normalizePlayerName(merged.roomSettings.paymentAccountHolder || '').slice(0, 80);
+    merged.roomSettings.paymentProvider = String(merged.roomSettings.paymentProvider || '').trim().replace(/\s+/g, ' ').slice(0, 80);
     merged.roomSettings.markingMode = merged.roomSettings.markingMode === 'manual_only' ? 'manual_only' : 'normal';
     merged.roomSettings.maxCardsPerPlayer = merged.roomSettings.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(merged.roomSettings.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
     merged.roomSettings.claimAutoVerifySeconds = 10;
@@ -496,6 +500,8 @@ function loadState(stateFile = OWNER_STATE_FILE) {
         paymentReportedAt: player.paymentReportedAt || null,
         paymentTransferDni: String(player.paymentTransferDni || '').replace(/\D/g,'').slice(0, 12),
         paymentTransferHolder: normalizePlayerName(player.paymentTransferHolder || '').slice(0, 60),
+        paymentChangeRequestedCount: player.paymentChangeRequestedCount == null ? null : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(player.paymentChangeRequestedCount) || allowedCardCount)),
+        paymentChangeRequestedAt: player.paymentChangeRequestedAt || null,
         selectionConfirmed: player.selectionConfirmed === undefined ? cardIds.length > 0 : Boolean(player.selectionConfirmed && cardIds.length > 0),
         offeredCardIds: Array.isArray(player.offeredCardIds) ? player.offeredCardIds.map(String) : [],
         reservedCardIds: Array.isArray(player.reservedCardIds) ? player.reservedCardIds.map(String) : [],
@@ -1558,6 +1564,8 @@ function adminPayload() {
       paymentReportedAt: player.paymentReportedAt || null,
       paymentTransferDni: String(player.paymentTransferDni || ''),
       paymentTransferHolder: String(player.paymentTransferHolder || ''),
+      paymentChangeRequestedCount: player.paymentChangeRequestedCount == null ? null : Number(player.paymentChangeRequestedCount),
+      paymentChangeRequestedAt: player.paymentChangeRequestedAt || null,
       cardIds: player.cardIds,
       selectionConfirmed: player.selectionConfirmed,
       offeredCardIds: player.offeredCardIds,
@@ -1645,6 +1653,8 @@ function playerPayload(player) {
       paymentReportedAt: player.paymentReportedAt || null,
       paymentTransferDni: String(player.paymentTransferDni || ''),
       paymentTransferHolder: String(player.paymentTransferHolder || ''),
+      paymentChangeRequestedCount: player.paymentChangeRequestedCount == null ? null : Number(player.paymentChangeRequestedCount),
+      paymentChangeRequestedAt: player.paymentChangeRequestedAt || null,
       excludedFromRound: Boolean(player.excludedFromRound),
       selectionConfirmed: player.selectionConfirmed,
       reservedCardIds: player.reservedCardIds || [],
@@ -1858,6 +1868,8 @@ function emptyRoomPlayer({ name = '', cardIds = [], allowedCardCount = 1, code =
     paymentReportedAt: null,
     paymentTransferDni: '',
     paymentTransferHolder: '',
+    paymentChangeRequestedCount: null,
+    paymentChangeRequestedAt: null,
     cardIds: [...cardIds],
     selectionConfirmed: cardIds.length > 0,
     offeredCardIds: [], reservedCardIds: [],
@@ -1925,9 +1937,13 @@ function createSimpleRoom(payload = {}) {
   const paymentMode = payload.paymentMode === 'paid' ? 'paid' : 'free';
   const cardPrice = paymentMode === 'paid' ? Math.max(1, Number(payload.cardPrice) || 0) : 0;
   const paymentAlias = paymentMode === 'paid' ? String(payload.paymentAlias || '').trim().slice(0, 80) : '';
+  const paymentAccountHolder = paymentMode === 'paid' ? normalizePlayerName(payload.paymentAccountHolder || '').slice(0, 80) : '';
+  const paymentProvider = paymentMode === 'paid' ? String(payload.paymentProvider || '').trim().replace(/\s+/g, ' ').slice(0, 80) : '';
   const whatsapp = paymentMode === 'paid' ? String(payload.whatsapp || '').trim().slice(0, 40) : String(payload.whatsapp || '').trim().slice(0, 40);
   if (paymentMode === 'paid' && !cardPrice) throw new Error('Ingresá el precio por cartón para la partida paga.');
   if (paymentMode === 'paid' && !paymentAlias) throw new Error('Ingresá el alias de transferencia para la partida paga.');
+  if (paymentMode === 'paid' && !paymentAccountHolder) throw new Error('Ingresá el titular de la cuenta que recibirá las transferencias.');
+  if (paymentMode === 'paid' && !paymentProvider) throw new Error('Ingresá la billetera o banco que recibirá las transferencias.');
   if (paymentMode === 'paid' && !whatsapp) throw new Error('Ingresá el WhatsApp de contacto para la partida paga.');
   // Final: 4 cartones por defecto. Solo Manual fuerza máximo 2.
   const roomMaxCards = markingMode === 'manual_only'
@@ -1944,7 +1960,7 @@ function createSimpleRoom(payload = {}) {
       // El acceso normal es exclusivamente mediante invitaciones privadas por jugador.
       joinOpen: false,
       maxOpenPlayers: MAX_PLAYERS,
-      accessKey: '', paymentMode, cardPrice, paymentAlias, whatsapp,
+      accessKey: '', paymentMode, cardPrice, paymentAlias, paymentAccountHolder, paymentProvider, whatsapp,
       maxCardsPerPlayer: roomMaxCards, markingMode,
       claimAutoVerifySeconds: 10,
       presenterVoiceGender: 'female',
@@ -2005,13 +2021,70 @@ function reportPlayerPayment(player, payload = {}) {
   return playerPayload(player);
 }
 
+function updatePlayerOrder(player, payload = {}) {
+  if (!state.active || !state.game || state.status !== 'waiting') throw new Error('El pedido solo puede modificarse antes de iniciar el sorteo.');
+  if (state.roomSettings?.paymentMode !== 'paid') throw new Error('Esta partida no usa pedidos pagos.');
+  if (player.selectionConfirmed) throw new Error('Ya confirmaste tus cartones.');
+  if (player.paymentStatus === 'confirmed') throw new Error('Tu pago ya fue confirmado. Pedile al administrador cualquier cambio.');
+  const roomMax = state.roomSettings?.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(state.roomSettings?.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
+  const wanted = Math.max(1, Math.min(roomMax, Number(payload.cardCount) || player.requestedCardCount || player.allowedCardCount || 1));
+  const current = Math.max(1, Number(player.allowedCardCount) || 1);
+  const others = state.players.filter(item => item.id !== player.id).reduce((sum,item)=>sum+Math.max(1,Number(item.allowedCardCount)||1),0);
+  if (others + wanted > state.game.cards.length || others + wanted > MAX_ACTIVE_CARDS) throw new Error('No quedan suficientes cartones disponibles para esa cantidad.');
+  const transferState = String(payload.transferState || '').trim();
+
+  if (player.paymentStatus === 'reported' && transferState !== 'not_transferred') {
+    if (wanted === current) {
+      player.paymentChangeRequestedCount = null;
+      player.paymentChangeRequestedAt = null;
+      saveState(); broadcast();
+      return playerPayload(player);
+    }
+    player.paymentChangeRequestedCount = wanted;
+    player.paymentChangeRequestedAt = nowIso();
+    player.notices ||= [];
+    player.notices.push({ id: randomId('notice'), createdAt: nowIso(), kind: 'payment_change_requested', text: `Pediste cambiar de ${current} a ${wanted} cartón${wanted===1?'':'es'}. El administrador debe revisarlo antes de confirmar el pago.` });
+    logEvent('player_payment_change_requested', { playerId:player.id, playerName:playerDisplayName(player), from:current, to:wanted });
+    saveState(); broadcast();
+    return playerPayload(player);
+  }
+
+  if (wanted !== current) {
+    releaseReservationsForPlayer(player);
+    player.allowedCardCount = wanted;
+    player.requestedCardCount = wanted;
+    player.offeredCardIds = [];
+  }
+  player.paymentChangeRequestedCount = null;
+  player.paymentChangeRequestedAt = null;
+  if (player.paymentStatus === 'reported' && transferState === 'not_transferred') {
+    player.paymentStatus = 'pending';
+    player.paymentReportedAt = null;
+    player.notices ||= [];
+    player.notices.push({ id: randomId('notice'), createdAt: nowIso(), kind: 'payment_report_reset', text: 'El pedido volvió a pendiente para que puedas corregir la cantidad antes de transferir.' });
+  }
+  logEvent('player_order_updated', { playerId:player.id, playerName:playerDisplayName(player), requestedCards:player.requestedCardCount, paymentStatus:player.paymentStatus });
+  saveState(); broadcast();
+  return playerPayload(player);
+}
+
 function updatePlayerApproval(payload = {}) {
   if (!state.active || !state.game || state.status !== 'waiting') throw new Error('La sala no está disponible para modificar jugadores.');
   const player = state.players.find(item => item.id === String(payload.playerId || ''));
   if (!player) throw new Error('No se encontró el jugador.');
+  if (payload.rejectRequestedChange === true) {
+    player.paymentChangeRequestedCount = null;
+    player.paymentChangeRequestedAt = null;
+    player.notices ||= [];
+    player.notices.push({ id: randomId('notice'), createdAt: nowIso(), kind: 'payment_change_rejected', text: `El administrador mantuvo tu pedido en ${player.allowedCardCount} cartón${Number(player.allowedCardCount)===1?'':'es'}.` });
+    logEvent('player_payment_change_rejected', { playerId:player.id, kept:player.allowedCardCount });
+    saveState(); broadcast();
+    return adminPayload();
+  }
   if (player.selectionConfirmed) throw new Error('El jugador ya confirmó sus cartones.');
   const roomMax = state.roomSettings?.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(state.roomSettings?.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
-  const wanted = Math.max(1, Math.min(roomMax, Number(payload.allowedCardCount ?? payload.cardCount) || player.allowedCardCount || 1));
+  const requestedChange = player.paymentChangeRequestedCount == null ? null : Math.max(1, Math.min(roomMax, Number(player.paymentChangeRequestedCount) || player.allowedCardCount || 1));
+  const wanted = Math.max(1, Math.min(roomMax, Number(payload.applyRequestedChange === true && requestedChange != null ? requestedChange : (payload.allowedCardCount ?? payload.cardCount)) || player.allowedCardCount || 1));
   const others = state.players.filter(item => item.id !== player.id).reduce((sum,item)=>sum+Math.max(1,Number(item.allowedCardCount)||1),0);
   if (others + wanted > state.game.cards.length || others + wanted > MAX_ACTIVE_CARDS) throw new Error('No hay suficientes cartones disponibles para autorizar esa cantidad.');
   if (wanted !== player.allowedCardCount) {
@@ -2020,8 +2093,15 @@ function updatePlayerApproval(payload = {}) {
     if (state.roomSettings?.paymentMode === 'paid') player.requestedCardCount = wanted;
     player.offeredCardIds = [];
   }
+  if (payload.applyRequestedChange === true || (player.paymentChangeRequestedCount != null && wanted === Number(player.paymentChangeRequestedCount))) {
+    player.paymentChangeRequestedCount = null;
+    player.paymentChangeRequestedAt = null;
+    player.notices ||= [];
+    player.notices.push({ id: randomId('notice'), createdAt: nowIso(), kind: 'payment_change_applied', text: `El administrador actualizó tu pedido a ${wanted} cartón${wanted===1?'':'es'}.` });
+  }
   if (payload.confirmPayment === true) {
     if (state.roomSettings?.paymentMode === 'paid') {
+      if (player.paymentChangeRequestedCount != null) throw new Error('Primero resolvé el cambio de cantidad solicitado por el jugador.');
       player.paymentStatus = 'confirmed';
       player.paymentConfirmedAt = nowIso();
     } else player.paymentStatus = 'not_required';
@@ -5292,7 +5372,7 @@ function playerAccessContent({ workspace = null, error = '', direct = false, clo
   }
   const maxCards = settings.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(settings.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
   const options = Array.from({ length:maxCards }, (_, index) => index + 1).map(count => `<option value="${count}" ${count === Math.min(2,maxCards) ? 'selected' : ''}>${count} cartón${count === 1 ? '' : 'es'}</option>`).join('');
-  const paidInfo = paid ? `<div class="notice"><b>PARTIDA PAGA</b><br>Elegí cuántos cartones querés. Al entrar vas a ver el total a transferir, el alias y los campos del titular de la transferencia. No hace falta subir comprobante.${Number(settings.cardPrice) > 0 ? `<div class="price">$${Number(settings.cardPrice).toLocaleString('es-AR')} por cartón</div>` : ''}</div>` : `<div class="notice"><b>PARTIDA GRATIS</b><br>Después de entrar vas a poder elegir tus cartones directamente.</div>`;
+  const paidInfo = paid ? `<div class="notice"><b>PARTIDA PAGA</b><br>Elegí cuántos cartones querés. Al entrar vas a ver el total, la billetera/banco, el titular de la cuenta y el alias para transferir. Después informás quién hizo la transferencia. No hace falta subir comprobante.${Number(settings.cardPrice) > 0 ? `<div class="price">$${Number(settings.cardPrice).toLocaleString('es-AR')} por cartón</div>` : ''}</div>` : `<div class="notice"><b>PARTIDA GRATIS</b><br>Después de entrar vas a poder elegir tus cartones directamente.</div>`;
   return `<h2>${direct ? 'Acceso directo listo' : 'Clave correcta'}</h2>
     <p class="lead">Escribí tu nombre y elegí cuántos cartones querés.</p>
     ${accessRoomMetaMarkup(roomState)}
@@ -5994,6 +6074,7 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
         if (url.pathname === '/api/player/name' && req.method === 'POST') return sendJson(res, 200, setPlayerName(player, await readJson(req)));
         if (url.pathname === '/api/player/payment-report' && req.method === 'POST') return sendJson(res, 200, reportPlayerPayment(player, await readJson(req)));
+        if (url.pathname === '/api/player/order' && req.method === 'POST') return sendJson(res, 200, updatePlayerOrder(player, await readJson(req)));
         if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
         if (url.pathname === '/api/player/demo/tutorial' && req.method === 'POST') return sendJson(res, 200, resolveDemoTutorial(player, await readJson(req)));
         if (url.pathname === '/api/player/demo/retry' && req.method === 'POST') return sendJson(res, 200, retryDemoServerStart(player));

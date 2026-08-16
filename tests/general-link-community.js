@@ -14,7 +14,7 @@ function cookie(res){return (res.headers.get('set-cookie')||'').split(';')[0]}
  let room=await postJson('/api/admin/create-simple-room',{mode:90,cardCount:100,autoSeconds:20,rules:{line:true,bingo:true},linePrizeCount:2,maxCardsPerPlayer:4,markingMode:'normal'},ah);
  assert.equal(room.roomSettings.joinOpen,false,'El link general debe arrancar cerrado por seguridad');
  assert(room.joinUrl&&room.joinUrl.includes('/jugador?sala='),'Admin debe recibir un link general reutilizable');
- let closed=await fetch(room.joinUrl,{redirect:'manual'});assert.equal(closed.status,200);assert((await closed.text()).includes('ingreso a esta sala está cerrado'));
+ let closed=await fetch(room.joinUrl,{redirect:'manual'});assert.equal(closed.status,200);assert((await closed.text()).includes('Inscripciones cerradas'));
  room=await postJson('/api/admin/join-open',{open:true},ah);assert.equal(room.roomSettings.joinOpen,true);
  const joinPath=new URL(room.joinUrl).pathname+new URL(room.joinUrl).search;
  let page=await fetch(base+joinPath);let html=await page.text();assert(page.ok&&html.includes('ENTRAR A LA SALA'),'Link general abierto debe mostrar formulario');
@@ -22,7 +22,7 @@ function cookie(res){return (res.headers.get('set-cookie')||'').split(';')[0]}
  const a=await form('Ana General'),b=await form('Beto General');assert.equal(a.status,303);assert.equal(b.status,303);assert(cookie(a)&&cookie(b)&&cookie(a)!==cookie(b),'El mismo link general debe crear sesiones privadas diferentes');
  const st=await (await fetch(base+'/api/admin/state',{headers:ah})).json();assert(st.players.some(p=>p.name==='Ana General'&&p.accessType==='general'));assert(st.players.some(p=>p.name==='Beto General'&&p.accessType==='general'));
  const invite=await postJson('/api/admin/invite-player',{name:'Privado',allowedCardCount:2},ah);assert(invite.player.inviteUrl.includes('/invitacion/'),'Las invitaciones privadas deben seguir funcionando');
- await postJson('/api/admin/join-open',{open:false},ah);closed=await fetch(base+joinPath);assert((await closed.text()).includes('ingreso a esta sala está cerrado'),'Cerrar ingreso debe bloquear nuevas altas sin invalidar sesiones existentes');
+ await postJson('/api/admin/join-open',{open:false},ah);closed=await fetch(base+joinPath);assert((await closed.text()).includes('Inscripciones cerradas'),'Cerrar ingreso debe bloquear nuevas altas sin invalidar sesiones existentes');
  const communityJs=fs.readFileSync(path.join(root,'js','community.js'),'utf8');assert(!communityJs.includes('MODO TV'),'Comunidad no debe promocionar Modo TV');assert(communityJs.includes('VER TRANSMISIÓN'),'Comunidad debe abrir la transmisión completa');
  console.log('PRUEBA LINK GENERAL + COMUNIDAD: OK');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

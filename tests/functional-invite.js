@@ -56,8 +56,9 @@ async function claimInvite(url){const u=new URL(url),path=u.pathname+u.search;co
   const aIds=a.player.offeredCards.slice(0,2).map(c=>c.id);
   await post('/api/player/choose',{cardIds:aIds},{Cookie:cookieA});
   a=await getJson('/api/player/state',{Cookie:cookieA});assert.equal(a.player.cards.length,2);assert.equal(a.player.selectionConfirmed,true);
+  let countState=await getJson('/api/admin/state',ah);assert.equal(countState.registrationSummary.confirmedCards,6,'El Admin debe contar 2 elegidos de María + 4 que Beto recibirá automáticamente, no el máximo anterior de María.');
 
-  // Mantener dos conexiones SSE reales para habilitar INICIAR SORTEO.
+  // Mantener dos conexiones SSE reales para verificar también el indicador de conectados.
   for(const cookie of [cookieA,cookieB]){const ctrl=new AbortController();controllers.push(ctrl);const r=await request('/api/events?role=player',{headers:{Cookie:cookie},signal:ctrl.signal});assert.equal(r.status,200)}
   await wait(120);
   const adm=await getJson('/api/admin/state',ah);assert.equal(adm.startPlan.connectedEligiblePlayers,2);assert.equal(adm.startPlan.autoAssignPlayers,1);assert.equal(adm.startPlan.canStartFromAdmin,true);

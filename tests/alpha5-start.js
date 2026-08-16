@@ -1,47 +1,19 @@
 'use strict';
-const assert = require('assert');
-const { spawn } = require('child_process');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const port = 53800 + Math.floor(Math.random() * 150);
-const base = `http://127.0.0.1:${port}`;
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bingo-gorda-alpha5-start-'));
-const child = spawn(process.execPath, ['server.js'], { cwd:path.join(__dirname,'..'), env:{...process.env,PORT:String(port),BINGO_TEST_MODE:'true',BINGO_DATA_DIR:dataDir,PUBLIC_URL:base}, stdio:['ignore','pipe','pipe'] });
-const wait = ms => new Promise(r=>setTimeout(r,ms));
-async function waitServer(){for(let i=0;i<100;i++){try{const r=await fetch(base+'/healthz');if(r.ok)return}catch{}await wait(40)}throw new Error('Servidor no disponible')}
-async function json(url,method='GET',body,headers={}){const r=await fetch(base+url,{method,headers:{...(body!==undefined?{'Content-Type':'application/json'}:{}),...headers},body:body===undefined?undefined:JSON.stringify(body)});const d=await r.json().catch(()=>({}));assert(r.ok,`${url}: ${r.status} ${JSON.stringify(d)}`);return d}
-(async()=>{try{
-  await waitServer();
-  const login=await json('/api/admin/login','POST',{}); const ah={'X-Admin-Token':login.token};
-  await json('/api/admin/create-simple-room','POST',{mode:90,cardCount:100,autoSeconds:60,rules:{line:true,bingo:true},paymentMode:'free',markingMode:'normal',accessKey:'AUTO555',maxCardsPerPlayer:3,linePrizeCount:2},ah);
-  const a=await json('/api/player/alpha-join','POST',{accessKey:'AUTO555',name:'Ana',cardCount:2,deviceId:'alpha5-a'});
-  const b=await json('/api/player/alpha-join','POST',{accessKey:'AUTO555',name:'Beto',cardCount:3,deviceId:'alpha5-b'});
-  const c=await json('/api/player/alpha-join','POST',{accessKey:'AUTO555',name:'Ceci',cardCount:1,deviceId:'alpha5-c'});
-  let st=await json('/api/admin/state','GET',undefined,ah);
-  assert.equal(st.startPlan.autoAssignPlayers,3);
-  await json('/api/admin/start','POST',{},ah);
-  st=await json('/api/admin/state','GET',undefined,ah);
-  assert.equal(st.players.filter(p=>p.selectionConfirmed).length,3);
-  assert.equal(st.players.every(p=>p.markingModeChosen && !p.autoMark),true,'Quien no eligió modo debe iniciar Manual');
-  const ids=st.players.flatMap(p=>p.cardIds); assert.equal(new Set(ids).size,ids.length,'No puede haber cartones duplicados');
-  assert.deepEqual(st.players.map(p=>p.cardIds.length).sort((x,y)=>x-y),[1,2,3]);
-  await json('/api/admin/close','POST',{},ah);
+// Regresión histórica actualizada: autoasignación, cierre de inscripciones y pagos pendientes.
+const assert=require('assert'),{spawn}=require('child_process'),fs=require('fs'),os=require('os'),path=require('path');
+const port=53800+Math.floor(Math.random()*150),base=`http://127.0.0.1:${port}`,dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'bingo-final-start-')),root=path.join(__dirname,'..');
+const child=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port),BINGO_TEST_MODE:'true',BINGO_DATA_DIR:dataDir,PUBLIC_URL:base,BINGO_START_SEQUENCE_MS:'100'},stdio:['ignore','pipe','pipe']});
+const wait=ms=>new Promise(r=>setTimeout(r,ms));async function waitServer(){for(let i=0;i<100;i++){try{if((await fetch(base+'/healthz')).ok)return}catch{}await wait(40)}throw Error('server')}
+async function req(url,opt={}){const r=await fetch(base+url,opt),d=await r.json().catch(()=>({}));return{r,d}}async function post(url,body={},headers={}){const o=await req(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});assert(o.r.ok,`${url}: ${o.r.status} ${JSON.stringify(o.d)}`);return o.d}async function fail(url,body={},headers={}){const o=await req(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});assert(!o.r.ok,`${url} debía fallar`);return o.d}async function get(url,headers={}){const o=await req(url,{headers});assert(o.r.ok);return o.d}
+(async()=>{try{await waitServer();const login=await post('/api/admin/login',{}),ah={'X-Admin-Token':login.token};
+ let st=await post('/api/admin/create-simple-room',{mode:90,cardCount:100,autoSeconds:60,rules:{line:true,bingo:true},paymentMode:'free',markingMode:'normal',maxCardsPerPlayer:3,linePrizeCount:2},ah);await post('/api/admin/join-open',{open:true},ah);
+ for(const [name,count,dev] of [['Ana',2,'a'],['Beto',3,'b'],['Ceci',1,'c']])await post('/api/player/open-join',{roomCode:st.roomCode,name,cardCount:count,deviceId:`final-${dev}`});
+ st=await get('/api/admin/state',ah);assert.equal(st.startPlan.autoAssignPlayers,3);let error=await fail('/api/admin/start',{},ah);assert(/cerrá las inscripciones/i.test(error.error));
+ await post('/api/admin/join-open',{open:false},ah);await post('/api/admin/start',{},ah);st=await get('/api/admin/state',ah);assert.equal(st.players.filter(p=>p.selectionConfirmed).length,3);assert.equal(st.players.every(p=>p.markingModeChosen&&!p.autoMark),true);const ids=st.players.flatMap(p=>p.cardIds);assert.equal(new Set(ids).size,ids.length);assert.deepEqual(st.players.map(p=>p.cardIds.length).sort((a,b)=>a-b),[1,2,3]);await post('/api/admin/close',{},ah);
 
-  await json('/api/admin/create-simple-room','POST',{mode:90,cardCount:100,autoSeconds:60,rules:{line:true,bingo:true},paymentMode:'paid',cardPrice:1000,whatsapp:'3757624388',markingMode:'normal',accessKey:'PAGO555',maxCardsPerPlayer:3,linePrizeCount:1},ah);
-  const p1=await json('/api/player/alpha-join','POST',{accessKey:'PAGO555',name:'Pago Uno',cardCount:2,deviceId:'pay1'});
-  const p2=await json('/api/player/alpha-join','POST',{accessKey:'PAGO555',name:'Pago Dos',cardCount:2,deviceId:'pay2'});
-  const p3=await json('/api/player/alpha-join','POST',{accessKey:'PAGO555',name:'Pendiente',cardCount:3,deviceId:'pay3'});
-  st=await json('/api/admin/state','GET',undefined,ah);
-  const one=st.players.find(p=>p.name==='Pago Uno'),two=st.players.find(p=>p.name==='Pago Dos');
-  await json('/api/admin/player-approval','POST',{playerId:one.id,allowedCardCount:2,confirmPayment:true},ah);
-  await json('/api/admin/player-approval','POST',{playerId:two.id,allowedCardCount:1,confirmPayment:true},ah);
-  await json('/api/admin/start','POST',{},ah);
-  st=await json('/api/admin/state','GET',undefined,ah);
-  const pend=st.players.find(p=>p.name==='Pendiente');
-  assert.equal(pend.selectionConfirmed,false,'Pago pendiente no debe recibir cartones');
-  assert.equal(pend.cardIds.length,0);
-  assert.equal(st.players.find(p=>p.name==='Pago Uno').selectionConfirmed,true);
-  assert.equal(st.players.find(p=>p.name==='Pago Dos').selectionConfirmed,true);
-  console.log('PRUEBA ALFA 5 INICIO: OK · asignación automática sin duplicados + pago pendiente excluido');
+ st=await post('/api/admin/create-simple-room',{mode:90,cardCount:100,autoSeconds:60,rules:{line:true,bingo:true},paymentMode:'paid',cardPrice:1000,paymentAlias:'lagorda.start',whatsapp:'5493757624388',markingMode:'normal',maxCardsPerPlayer:3,linePrizeCount:1},ah);await post('/api/admin/join-open',{open:true},ah);
+ for(const [name,count,dev] of [['Pago Uno',2,'p1'],['Pago Dos',2,'p2'],['Pendiente',3,'p3']])await post('/api/player/open-join',{roomCode:st.roomCode,name,cardCount:count,deviceId:dev});
+ st=await get('/api/admin/state',ah);const one=st.players.find(p=>p.name==='Pago Uno'),two=st.players.find(p=>p.name==='Pago Dos'),pend=st.players.find(p=>p.name==='Pendiente');await post('/api/admin/player-approval',{playerId:one.id,allowedCardCount:2,confirmPayment:true},ah);await post('/api/admin/player-approval',{playerId:two.id,allowedCardCount:1,confirmPayment:true},ah);await post('/api/admin/join-open',{open:false},ah);
+ error=await fail('/api/admin/start',{},ah);assert(/pagos pendientes/i.test(error.error),'Un pago pendiente debe bloquear el inicio, no excluirse silenciosamente');await post('/api/admin/remove-player',{playerId:pend.id},ah);await post('/api/admin/start',{},ah);st=await get('/api/admin/state',ah);assert.equal(st.players.length,2);assert.deepEqual(st.players.map(p=>p.cardIds.length).sort((a,b)=>a-b),[1,2]);assert.equal(new Set(st.players.flatMap(p=>p.cardIds)).size,3);
+ console.log('PRUEBA INICIO FINAL: OK · cierre separado + autoasignación + pagos pendientes bloquean inicio');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

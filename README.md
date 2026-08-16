@@ -1,133 +1,52 @@
-# BINGO DE LA GORDA - Beta
+# BINGO DE LA GORDA - Final
 
-Versión de estabilización preparada para comenzar pruebas con varios jugadores reales. No utiliza numeración visible.
+Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de juego del jugador se mantiene como base aprobada; esta entrega refuerza principalmente inscripción, organización administrativa, pagos informados, acceso tardío, recuperación y preparación del sorteo.
 
-## Objetivos de esta Beta
+## Flujo de una partida
 
-- ingreso privado y seguro por link individual;
-- sala de espera con chat y minijuegos;
-- chat permanente: móvil debajo del juego y escritorio a la derecha;
-- 75 bolas con columnas B-I-N-G-O por color y bolilla del mismo color;
-- Manual sin pistas durante 20 segundos y ayuda amarilla posterior;
-- cartón y reclamos visibles sin scroll innecesario;
-- cantador automático, carteles de premios, acta y sello;
-- DEMO y jugador real sobre el mismo cliente.
+1. El Admin crea una partida gratuita o paga.
+2. Puede agregar jugadores mediante invitaciones privadas y/o abrir el link general reutilizable.
+3. En partidas pagas, el jugador indica nombre y cantidad de cartones, ve el total y el alias, e informa DNI y nombre del titular que realizó la transferencia. No se suben comprobantes.
+4. El Admin verifica el dinero por fuera del sistema y confirma el pago manualmente.
+5. El Admin ve en tiempo real cartones solicitados, confirmados y asignados, con el dato destacado de cuántos cartones jugarán.
+6. El Admin cierra inscripciones sin iniciar el sorteo. Los jugadores ya registrados conservan su derecho a entrar o recuperar acceso.
+7. Al pulsar INICIAR SORTEO, el servidor asigna automáticamente los cartones faltantes de jugadores habilitados y mantiene un período de preparación/tutorial antes de la primera bolilla.
+8. El juego continúa con el mismo motor compartido por jugador, DEMO, Admin, Transmisión y TV.
 
-## Flujo principal
+## Accesos
 
-1. El administrador crea una partida.
-2. Agrega cada jugador y autoriza hasta 4 cartones (máximo 2 en Solo Manual).
-3. El sistema genera un link privado individual para enviar por WhatsApp.
-4. Las vistas previas de WhatsApp/redes pueden consultar el link sin consumirlo. Cuando el jugador lo toca en un navegador real, la página activa automáticamente su sesión privada y entra sin botones extra.
-5. El jugador entra directamente a la sala de espera: elige cartones, usa chat, emojis, stickers de La Gorda y minijuegos.
-6. Al iniciar, quienes no confirmaron cartones reciben automáticamente la cantidad autorizada. Quien confirmó menos conserva exactamente su selección.
-7. Comienza el Bingo con una misma interfaz para DEMO y partidas reales.
+- Link privado individual: seguro, personal y compatible con vistas previas de WhatsApp sin consumir la invitación.
+- Link general de partida: se abre/cierra desde Admin; crea una sesión privada distinta para cada jugador.
+- Recuperación: link temporal de un solo uso generado por Admin. Puede utilizarse aunque la partida ya haya comenzado.
+- Un jugador previamente registrado puede abrir su link privado tarde y entrar a la partida en curso con los cartones que el servidor le asignó al inicio.
 
-## Seguridad funcional
+## Partidas pagas
 
-- Un nombre por jugador dentro de cada partida.
-- Un link privado no puede reutilizarse en otro dispositivo.
-- Recuperación mediante link temporal de un solo uso generado por Admin.
-- Los cartones se reservan y confirman en servidor; no pueden duplicarse entre jugadores.
-- La sesión del jugador usa cookie HttpOnly.
+El Admin configura precio por cartón, alias y WhatsApp de contacto. El jugador elige la cantidad, que fija la cantidad exacta de cartones a jugar una vez confirmado el pago. El formulario registra solamente los datos necesarios para identificar la transferencia: DNI y nombre del titular transferente.
 
-## Configuración
+Estados operativos: PAGO PENDIENTE, TRANSFERENCIA INFORMADA y PAGO OK. Los pagos pendientes bloquean el inicio hasta que el Admin confirme o quite explícitamente al jugador.
 
-La transmisión existe siempre y no forma parte de la creación de la partida. La sala de espera incluye chat y minijuegos de forma predeterminada.
+Los datos de transferencia no forman parte de Comunidad, Transmisión, chat ni actas públicas.
 
-## Desarrollo local
+## Preparación y tutorial
+
+INICIAR SORTEO es independiente de CERRAR INSCRIPCIONES. Durante el estado de preparación, el jugador ya ve su interfaz real de juego y puede recorrer un tutorial contextual por globos sobre bolilla, cartones, marcado, RECLAMAR, premios, chat y herramientas. El servidor controla el tiempo previo a la primera bolilla para mantener a todos sincronizados.
+
+## Reglas preservadas
+
+- Reclamos siempre manuales; Automarcado solo marca.
+- En Manual no hay pista visual durante los primeros 20 segundos de un número salido sin marcar.
+- Durante verificación/pausa/reanudación el jugador permanece visualmente en su cartón.
+- Bingo 90 con dos líneas usa orden global de reclamos válidos; dos líneas válidas pueden adjudicarse sobre la misma bolilla.
+- Cartones exclusivos del lado servidor.
+- Integridad SHA-256, sello, acta y resultados oficiales se mantienen.
+- Comunidad y Transmisión no fueron rediseñadas en esta entrega.
+
+## Desarrollo y pruebas
 
 ```bash
 npm start
+npm test
 ```
 
-Configurar las variables indicadas en `.env.example` antes de publicar. En producción, `BINGO_DATA_DIR` debe apuntar a almacenamiento persistente.
-
-
-## Ajuste 5.1.1
-- Bingo 90 recupera **AmboCabeza** como premio opcional.
-- Con 2 líneas, los reclamos válidos forman una cola global: **1.º válido = Línea 1; 2.º válido = Línea 2**.
-- Si Juan y Pedro reclaman línea en la misma bolilla, el segundo reclamo válido no se descarta: conserva su orden y puede adjudicarse Línea 2.
-- Un mismo cartón puede ganar la segunda línea solo si completa una **línea distinta** de la que ya le dio un premio; no puede volver a reclamar la misma fila.
-
-
-## Ajuste 5.1.2
-- El **GET/HEAD de una invitación nunca la consume**. Esto evita que la vista previa de WhatsApp marque el acceso como usado.
-- La página de invitación genera una activación efímera y el navegador hace un **POST interno automático**; para el jugador sigue siendo un solo toque.
-- Una vez activada realmente, el mismo navegador puede volver a abrir el link y otro dispositivo queda rechazado.
-- **Línea, AmboCabeza y Bingo se reclaman con un solo toque**, sin ventana de confirmación previa. El primer toque que llega al servidor fija el orden del reclamo.
-
-
-## Cambios 5.1.3 · Cuasifinal Funcional 4
-- Recupera modo Día/Noche en jugador, DEMO, Comunidad y transmisión; Admin conserva su selector existente.
-- El panel del jugador ya no muestra el rótulo flotante “BOLILLA” ni genera un aviso “Bolilla X” por cada extracción.
-- La voz canta números de forma más breve y natural; los eventos de Línea/Ambo/Bingo usan guiones más directos.
-- El chat del juego adopta el patrón visual de Comunidad: botón de emoji, botón de stickers (incluye La Gorda), campo compacto y enviar. Sin GIF.
-- En móvil el chat sigue siendo un panel fijo/minimizable y no empuja el cartón fuera de la pantalla.
-
-
-## Cambios 5.1.4 · Cuasifinal Funcional 5
-- El cantador/voz del jugador queda **activado por defecto**. Cada dispositivo puede silenciarlo y la preferencia queda guardada.
-- En Manual, un número salido sin marcar recibe una **ayuda luminosa recién después de 20 segundos**. Nunca se marca automáticamente.
-- Los reclamos pendientes, confirmados o rechazados vuelven a usar los carteles gráficos de `assets/celebrations/` y se muestran sincronizados en los jugadores.
-- El layout de escritorio fue redimensionado: el cartón de 75 bolas tiene tamaño máximo y ya no escala hasta ocupar toda la pantalla.
-- Se incorporan timestamps de extracción por bolilla para que la ayuda Manual se base en tiempo real de salida y sobreviva a refrescos/reconexión.
-
-
-## Cambios 5.1.5 · Foco automático de premios
-
-- Si cualquiera de tus cartones tiene un premio abierto para reclamar, la interfaz cambia automáticamente a ese cartón.
-- Si el chat está abierto, se minimiza para priorizar el reclamo.
-- La pestaña de cualquier otro cartón con premio queda marcada con una estrella y pulso dorado.
-- Si varios cartones quedan listos a la vez, se abre el primero detectado y los demás permanecen señalados.
-- No se marca ni reclama nada automáticamente: el jugador conserva el reclamo de un toque.
-
-## Comunidad desde el Administrador
-
-El botón **🌐** del encabezado del Administrador abre la configuración de Comunidad. Desde ahí se puede configurar el WhatsApp de contacto y el grupo, pausar/reactivar el chat, bloquear teléfonos y enlaces de WhatsApp, administrar palabras/frases bloqueadas, revisar reportes y borrar mensajes.
-
-La Comunidad tiene además un acceso permanente **🎱 JUGAR DEMO**, disponible aunque no exista una partida real activa.
-
-
-## Transmisión y Modo TV
-
-- `/transmision/...` conserva la vista completa para PC, celular y tablet.
-- `/tv` es una entrada simplificada para Smart TV; permite escribir el código corto de la sala.
-- `/tv/<código>` abre una vista TV-safe conectada a la misma partida y al mismo estado del servidor.
-- Modo TV prioriza la bolilla más reciente: los estados intermedios pendientes se reemplazan por el último recibido para evitar quedar varias bolillas atrasado.
-- Chat, carrera por el premio y premios confirmados se actualizan por bloques, sin reconstruir toda la pantalla.
-- Modo TV muestra hasta 6 cartones destacados, mantiene el rotador de premios durante la partida y conserva el cartón ganador a pantalla completa al finalizar.
-- La transmisión no usa audios locales. La voz opcional depende de `speechSynthesis` del dispositivo; si la TV no lo soporta, el resto de la pantalla sigue funcionando.
-- Las nuevas salas reciben por defecto un código TV numérico de 6 dígitos.
-- Comunidad ofrece tanto **VER TRANSMISIÓN** como **📺 MODO TV** cuando hay partida activa.
-
-## Ajuste jugador móvil · 2026-08-15 04:30
-- Botón principal único **RECLAMAR**; los premios configurados quedan en una fila compacta de estados.
-- Cuando un premio está matemáticamente disponible se ilumina, pero el jugador debe tocar **RECLAMAR** manualmente.
-- Chat móvil tipo panel inferior: minimizado, desplegable por toque y arrastrable hacia arriba/abajo.
-- Durante la partida móvil quedan visibles Números, Ganadores y Más; se elimina la botonera secundaria duplicada.
-- Bolilla y progreso reacomodados para no tapar información del sorteo.
-
-## Ajuste jugador móvil · 2026-08-15 10:57
-- Un solo cartón grande visible en móvil.
-- Rotador visual de premios confirmados debajo de los reclamos; muestra un ganador por vez y no reemplaza el cierre de Bingo.
-- Accesos directos visibles en móvil: Números, Ganadores, Ayuda, Tema y Pantalla completa; Más queda reservado para Sonido/Voz.
-- En Bingo 90 con dos líneas se muestran Línea 1 y Línea 2 desde el inicio, usando el mismo reclamo manual seguro del servidor.
-- Chat inferior desplegable se mantiene minimizado por defecto y no tapa el cartón.
-
-### Ajuste móvil 2026-08-15 13:34
-- El chat móvil abierto puede minimizarse con un arrastre claro hacia abajo desde cualquier zona no interactiva del panel. Inputs, botones, stickers y el historial desplazado quedan protegidos contra cierres accidentales.
-
-### Ajuste reclamos + cierre · 2026-08-15 20:25
-- Durante un reclamo, los estados `verifying`, `paused` por reclamo y `resuming` conservan siempre la pantalla del cartón. Se elimina el flash accidental de Sala de espera.
-- Se mantienen los PNG sincronizados de `VERIFICANDO JUGADA`, premio confirmado y reclamo no confirmado sobre el cartón.
-- La pantalla de partida finalizada se renueva sin tocar la interfaz normal del juego: ganador rotativo, accesos compactos a números/acta/sello y botón **JUGAR DE NUEVO**.
-- En DEMO, **JUGAR DE NUEVO** crea una demostración nueva. En una partida real lleva a Comunidad para buscar la próxima, sin reiniciar la sala desde el jugador.
-- El chat final reutiliza exactamente el mismo componente del juego; en móvil entra minimizado y conserva toque/arrastre para abrir o bajar.
-
-
-## Link general de partida
-
-En la sala de espera del Admin se puede activar **LINK GENERAL**. Una vez abierto, el mismo enlace se puede compartir con todos los jugadores: cada persona escribe su nombre, elige hasta la cantidad máxima de cartones configurada y recibe una sesión privada propia. Los nombres continúan siendo únicos dentro de la sala. Las invitaciones privadas siguen disponibles como opción adicional. Al iniciar el sorteo, el ingreso general se cierra automáticamente.
-
-En Comunidad, **VER TRANSMISIÓN** abre la transmisión completa. El Modo TV liviano se conserva únicamente como herramienta secundaria del Admin.
+Antes de publicar, configurar las variables de `.env.example`. En producción, `BINGO_DATA_DIR` debe apuntar a almacenamiento persistente.

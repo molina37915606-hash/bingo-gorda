@@ -59,14 +59,15 @@ async function get(url, headers = {}) {
       rules: { line: true, corners: true, bingo: true },
       paymentMode: 'free', markingMode: 'normal', accessKey: 'ALFAFREE', maxCardsPerPlayer: 4
     }, adminHeaders);
-    assert.equal(state.roomSettings.accessKey, 'ALFAFREE');
+    assert.equal(state.roomSettings.accessKey, '', 'La clave compartida fue eliminada; se usa link general + sesión privada.');
     assert.equal(state.roomSettings.paymentMode, 'free');
     assert.match(state.joinUrl, /sala=/);
     assert.match(state.joinUrl, /directo=1/);
     assert.equal(state.roomSettings.linePrizeCount, 1);
+    state = await post('/api/admin/join-open', { open: true }, adminHeaders);
 
-    const ana = await post('/api/player/alpha-join', { accessKey: 'ALFAFREE', name: 'Ana', cardCount: 2, deviceId: 'alfa-ana' });
-    const beto = await post('/api/player/alpha-join', { accessKey: 'ALFAFREE', name: 'Beto', cardCount: 2, deviceId: 'alfa-beto' });
+    const ana = await post('/api/player/open-join', { roomCode: state.roomCode, name: 'Ana', cardCount: 2, deviceId: 'alfa-ana' });
+    const beto = await post('/api/player/open-join', { roomCode: state.roomCode, name: 'Beto', cardCount: 2, deviceId: 'alfa-beto' });
     const ciro = await post('/api/player/open-join', { roomCode: state.roomCode, name: 'Ciro', cardCount: 1, deviceId: 'alfa-ciro' });
     assert.equal(ciro.state.player.name, 'Ciro', 'El enlace directo debe permitir entrar sin escribir la clave.');
     assert.notEqual(ana.token, beto.token, 'Dos jugadores con la misma clave deben tener sesiones privadas distintas.');
@@ -100,10 +101,11 @@ async function get(url, headers = {}) {
     state = await post('/api/admin/create-simple-room', {
       mode: 90, cardCount: 120, autoSeconds: 60,
       rules: { line: true, bingo: true }, paymentMode: 'paid', markingMode: 'normal',
-      accessKey: 'ALFAPAGA', maxCardsPerPlayer: 4, cardPrice: 1000, whatsapp: '3757624388', linePrizeCount: 1
+      accessKey: 'ALFAPAGA', maxCardsPerPlayer: 4, cardPrice: 1000, paymentAlias: 'lagorda.core', whatsapp: '3757624388', linePrizeCount: 1
     }, adminHeaders);
     assert.equal(state.roomSettings.linePrizeCount, 1, 'Bingo 90 debe permitir una sola línea.');
-    const carla = await post('/api/player/alpha-join', { accessKey: 'ALFAPAGA', name: 'Carla', cardCount: 4, deviceId: 'alfa-carla' });
+    state = await post('/api/admin/join-open', { open: true }, adminHeaders);
+    const carla = await post('/api/player/open-join', { roomCode: state.roomCode, name: 'Carla', cardCount: 4, deviceId: 'alfa-carla' });
     const carlaHeaders = { 'X-Player-Token': carla.token };
     assert.equal(carla.state.player.paymentStatus, 'pending');
     assert.equal(carla.state.player.offeredCards.length, 0, 'No debe elegir cartones antes de confirmar el pago.');
@@ -127,7 +129,8 @@ async function get(url, headers = {}) {
       mode: 75, cardCount: 60, autoSeconds: 60, rules: { line: true, bingo: true },
       paymentMode: 'free', markingMode: 'manual_only', accessKey: 'MANUAL2', maxCardsPerPlayer: 4
     }, adminHeaders);
-    const diego = await post('/api/player/alpha-join', { accessKey: 'MANUAL2', name: 'Diego', cardCount: 4, deviceId: 'alfa-diego' });
+    state = await post('/api/admin/join-open', { open: true }, adminHeaders);
+    const diego = await post('/api/player/open-join', { roomCode: state.roomCode, name: 'Diego', cardCount: 4, deviceId: 'alfa-diego' });
     const diegoHeaders = { 'X-Player-Token': diego.token };
     assert.equal(diego.state.player.allowedCardCount, 2);
     playerState = await post('/api/player/choose', { cardIds: diego.state.player.offeredCards.slice(0, 2).map(card => card.id), name: 'Diego' }, diegoHeaders);
@@ -159,13 +162,15 @@ async function get(url, headers = {}) {
       mode: 90, cardCount: 60, autoSeconds: 60, rules: { line: true, bingo: true },
       paymentMode: 'free', markingMode: 'normal', accessKey: 'CLAIM90', maxCardsPerPlayer: 1, linePrizeCount: 1
     }, adminHeaders);
-    const linePlayer = await post('/api/player/alpha-join', { accessKey: 'CLAIM90', name: 'Linea', cardCount: 1, deviceId: 'alfa-linea' });
+    state = await post('/api/admin/join-open', { open: true }, adminHeaders);
+    const linePlayer = await post('/api/player/open-join', { roomCode: state.roomCode, name: 'Linea', cardCount: 1, deviceId: 'alfa-linea' });
     const lineHeaders = { 'X-Player-Token': linePlayer.token };
     const lineCard = linePlayer.state.player.offeredCards[0];
     await post('/api/player/choose', { cardIds: [lineCard.id], name: 'Linea' }, lineHeaders);
     await post('/api/player/automark', { enabled: false }, lineHeaders);
     const lineNumbers = lineCard.grid[0].filter(Number.isFinite);
     await post('/api/admin/test/draw-order', { sequence: lineNumbers }, adminHeaders);
+    await post('/api/admin/join-open', { open: false }, adminHeaders);
     await post('/api/admin/start', {}, adminHeaders);
     await wait(220);
     for (const _ of lineNumbers) await post('/api/admin/draw', { source: 'alfa-test' }, adminHeaders);
@@ -185,9 +190,10 @@ async function get(url, headers = {}) {
     }, adminHeaders);
     state = await get('/api/admin/state', adminHeaders);
     assert.equal(state.roomSettings.linePrizeCount, 2, 'Bingo 90 debe permitir dos líneas.');
+    state = await post('/api/admin/join-open', { open: true }, adminHeaders);
     const linePlayers = [];
     for (const [name, deviceId] of [['Uno', 'alfa-u'], ['Dos', 'alfa-d']]) {
-      const entry = await post('/api/player/alpha-join', { accessKey: 'LINESEQ', name, cardCount: 1, deviceId });
+      const entry = await post('/api/player/open-join', { roomCode: state.roomCode, name, cardCount: 1, deviceId });
       const headers = { 'X-Player-Token': entry.token };
       const card = entry.state.player.offeredCards[0];
       await post('/api/player/choose', { cardIds: [card.id], name }, headers);
@@ -197,6 +203,7 @@ async function get(url, headers = {}) {
     const sequence = [];
     for (const item of linePlayers) for (const number of item.card.grid[0].filter(Number.isFinite)) if (!sequence.includes(number)) sequence.push(number);
     await post('/api/admin/test/draw-order', { sequence }, adminHeaders);
+    await post('/api/admin/join-open', { open: false }, adminHeaders);
     await post('/api/admin/start', {}, adminHeaders);
     await wait(220);
     for (const _ of sequence) await post('/api/admin/draw', { source: 'alfa-test' }, adminHeaders);
@@ -210,9 +217,8 @@ async function get(url, headers = {}) {
     const c2 = state.claims.find(item => item.id === secondClaim.id);
     assert.equal(c1.status, 'confirmed');
     assert.equal(c1.prizeNumber, 1);
-    assert.equal(c2.status, 'rejected');
-    assert.equal(c2.resolutionReason, 'valid_but_received_later');
-    assert.equal(c2.prizeNumber, 1);
+    assert.equal(c2.status, 'confirmed', 'El segundo reclamo válido de la misma bolilla debe ocupar Línea 2.');
+    assert.equal(c2.prizeNumber, 2);
     assert.equal(state.prizeStatus.line.nextNumber, 2);
     await post('/api/admin/close', {}, adminHeaders);
 
@@ -221,11 +227,13 @@ async function get(url, headers = {}) {
       mode: 90, cardCount: 60, autoSeconds: 60, rules: { line: true, bingo: true },
       paymentMode: 'free', markingMode: 'manual_only', accessKey: 'ARRANQUE', maxCardsPerPlayer: 2, linePrizeCount: 1
     }, adminHeaders);
+    state = await post('/api/admin/join-open', { open: true }, adminHeaders);
     const direct = await post('/api/player/open-join', { roomCode: state.roomCode, name: 'Prueba Inicio', cardCount: 1, deviceId: 'alfa-start-direct' });
     const directHeaders = { 'X-Player-Token': direct.token };
     await post('/api/player/choose', { cardIds: [direct.state.player.offeredCards[0].id], name: 'Prueba Inicio' }, directHeaders);
     state = await get('/api/admin/state', adminHeaders);
     assert.equal(state.preflight.ok, true, `La partida debería estar lista: ${JSON.stringify(state.preflight.errors)}`);
+    await post('/api/admin/join-open', { open: false }, adminHeaders);
     state = await post('/api/admin/start', {}, adminHeaders);
     assert(['starting','playing'].includes(state.status), 'El administrador debe poder iniciar una sala creada con acceso directo.');
 

@@ -1,8 +1,8 @@
 const fs=require('fs');const assert=require('assert');
 const js=fs.readFileSync(require('path').join(__dirname,'../js/player.js'),'utf8');
 const css=fs.readFileSync(require('path').join(__dirname,'../css/platform.css'),'utf8');
-assert(js.includes("['playing','paused','verifying','resuming','finalizing'].includes(s.status)"),'resuming debe renderizar el juego');
-assert(js.includes("['playing','paused','verifying','resuming','finalizing','finished'].includes(this.state?.status)"),'chat/dock debe reconocer resuming y finished');
+assert(js.includes("['starting','playing','paused','verifying','resuming','finalizing'].includes(s.status)"),'starting y resuming deben renderizar el juego sin cambiar de layout');
+assert(js.includes("['starting','playing','paused','verifying','resuming','finalizing','finished'].includes(this.state?.status)"),'chat/dock debe reconocer starting, resuming y finished');
 assert(js.includes("s.status==='resuming'?'CONTINUANDO'"),'resuming debe tener etiqueta de juego');
 assert(js.includes('verificando-jugada'),'debe conservar el PNG de verificando');
 assert(js.includes('renderFinished(){'),'debe existir cierre dedicado');

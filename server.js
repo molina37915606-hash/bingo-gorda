@@ -54,7 +54,7 @@ const CLAIM_QUEUE_WINDOW_MS = Math.max(100, Number(process.env.BINGO_CLAIM_WINDO
 const CLAIM_ADMIN_AUTO_VERIFY_MS = Math.max(TEST_MODE ? 200 : 1000, Number(process.env.BINGO_CLAIM_AUTO_VERIFY_MS || 10_000));
 const FINAL_CLAIM_GRACE_MS = Math.max(1000, Number(process.env.BINGO_FINAL_CLAIM_GRACE_MS || 5000));
 const TEST_EVENT_TTL_MS = 20 * 1000;
-const START_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_START_SEQUENCE_MS || 11_000));
+const START_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_START_SEQUENCE_MS || 25_000));
 const LARGE_ROOM_NOTICE_THRESHOLD = Math.max(2, Number(process.env.BINGO_LARGE_ROOM_NOTICE_THRESHOLD || 20));
 const LARGE_ROOM_NOTICE_MS = Math.max(1000, Number(process.env.BINGO_LARGE_ROOM_NOTICE_MS || 6_000));
 const LARGE_ROOM_NOTICE_TITLE = 'CRITERIO DE ADJUDICACIÓN DE PREMIOS';
@@ -100,7 +100,7 @@ const DEMO_START_SEQUENCE_MS = 1200;
 const DEMO_READY_COUNTDOWN_MS = Math.max(100, Number(process.env.BINGO_DEMO_READY_COUNTDOWN_MS || (TEST_MODE ? 180 : 5000)));
 const DEMO_RESUME_SEQUENCE_MS = 1400;
 const DEMO_FINAL_SEQUENCE_MS = 2600;
-const APP_PUBLIC_VERSION = 'BINGO DE LA GORDA - Beta';
+const APP_PUBLIC_VERSION = 'BINGO DE LA GORDA - Final';
 const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bingo'];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
@@ -333,6 +333,7 @@ function blankState() {
       accessKey: '',
       paymentMode: 'free',
       cardPrice: 0,
+      paymentAlias: '',
       maxCardsPerPlayer: 4,
       markingMode: 'normal',
       claimAutoVerifySeconds: 10,
@@ -431,6 +432,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.accessKey = normalizeAccessKey(merged.roomSettings.accessKey || merged.roomCode || '');
     merged.roomSettings.paymentMode = merged.roomSettings.paymentMode === 'paid' ? 'paid' : 'free';
     merged.roomSettings.cardPrice = Math.max(0, Number(merged.roomSettings.cardPrice) || 0);
+    merged.roomSettings.paymentAlias = String(merged.roomSettings.paymentAlias || '').trim().slice(0, 80);
     merged.roomSettings.markingMode = merged.roomSettings.markingMode === 'manual_only' ? 'manual_only' : 'normal';
     merged.roomSettings.maxCardsPerPlayer = merged.roomSettings.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(merged.roomSettings.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
     merged.roomSettings.claimAutoVerifySeconds = 10;
@@ -489,8 +491,11 @@ function loadState(stateFile = OWNER_STATE_FILE) {
         cardIds,
         allowedCardCount,
         requestedCardCount: Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(player.requestedCardCount) || allowedCardCount)),
-        paymentStatus: player.paymentStatus || (merged.roomSettings.paymentMode === 'paid' ? 'pending' : 'not_required'),
+        paymentStatus: ['pending','reported','confirmed','not_required'].includes(player.paymentStatus) ? player.paymentStatus : (merged.roomSettings.paymentMode === 'paid' ? 'pending' : 'not_required'),
         paymentConfirmedAt: player.paymentConfirmedAt || null,
+        paymentReportedAt: player.paymentReportedAt || null,
+        paymentTransferDni: String(player.paymentTransferDni || '').replace(/\D/g,'').slice(0, 12),
+        paymentTransferHolder: normalizePlayerName(player.paymentTransferHolder || '').slice(0, 60),
         selectionConfirmed: player.selectionConfirmed === undefined ? cardIds.length > 0 : Boolean(player.selectionConfirmed && cardIds.length > 0),
         offeredCardIds: Array.isArray(player.offeredCardIds) ? player.offeredCardIds.map(String) : [],
         reservedCardIds: Array.isArray(player.reservedCardIds) ? player.reservedCardIds.map(String) : [],
@@ -977,18 +982,55 @@ function updateCardDisplayNames() {
 
 function playerEligibleForRound(player) {
   if (!player?.nameSet) return false;
-  // En el flujo funcional una invitación privada debe haber sido utilizada al menos una vez.
-  // Después puede estar desconectado y reconectarse sin perder su lugar.
-  if (player?.inviteToken && !player?.inviteClaimedAt) return false;
+  // Una invitación privada creada antes del sorteo ya representa a un jugador registrado.
+  // Abrir el enlace no es requisito para conservar su lugar: el servidor puede asignarle
+  // sus cartones antes de iniciar y permitir que entre más tarde con el mismo vínculo.
   if (state.roomSettings?.paymentMode === 'paid' && player.paymentStatus !== 'confirmed') return false;
   return true;
+}
+
+function playerSelectionComplete(player) {
+  if (!player?.selectionConfirmed) return false;
+  const selectedCount = Array.isArray(player.cardIds) ? player.cardIds.length : 0;
+  const allowedCount = Math.max(1, Number(player.allowedCardCount) || 1);
+  if (selectedCount < 1) return false;
+  return state.roomSettings?.paymentMode === 'paid'
+    ? selectedCount === allowedCount
+    : selectedCount <= allowedCount;
+}
+
+function registrationSummaryPayload() {
+  const registered = state.players.filter(player => player?.nameSet && !player.virtual);
+  const requestedCards = registered.reduce((sum, player) => sum + Math.max(1, Number(player.requestedCardCount) || Number(player.allowedCardCount) || 1), 0);
+  const confirmedPlayers = registered.filter(player => state.roomSettings?.paymentMode !== 'paid' || player.paymentStatus === 'confirmed');
+  // Cantidad que efectivamente jugaría si el Admin iniciara ahora: quien ya eligió
+  // conserva su selección; quien todavía no eligió recibirá su cantidad autorizada.
+  const confirmedCards = confirmedPlayers.reduce((sum, player) => sum + (player.selectionConfirmed
+    ? (player.cardIds || []).length
+    : Math.max(1, Number(player.allowedCardCount) || 1)), 0);
+  const assignedCards = confirmedPlayers.reduce((sum, player) => sum + (player.selectionConfirmed ? (player.cardIds || []).length : 0), 0);
+  const pendingSelectionCards = confirmedPlayers.reduce((sum, player) => sum + (player.selectionConfirmed ? 0 : Math.max(1, Number(player.allowedCardCount) || 1)), 0);
+  const paymentPendingPlayers = registered.filter(player => state.roomSettings?.paymentMode === 'paid' && player.paymentStatus === 'pending').length;
+  const paymentReportedPlayers = registered.filter(player => state.roomSettings?.paymentMode === 'paid' && player.paymentStatus === 'reported').length;
+  const paymentConfirmedPlayers = registered.filter(player => state.roomSettings?.paymentMode === 'paid' && player.paymentStatus === 'confirmed').length;
+  return {
+    registeredPlayers: registered.length,
+    requestedCards,
+    confirmedCards,
+    assignedCards,
+    pendingSelectionCards,
+    playingCards: state.status === 'waiting' ? confirmedCards : assignedCards,
+    paymentPendingPlayers,
+    paymentReportedPlayers,
+    paymentConfirmedPlayers
+  };
 }
 
 function startPlanPayload() {
   const connected = connectedPlayerIds();
   const eligible = state.players.filter(playerEligibleForRound);
   const pendingPayment = state.players.filter(player => player?.nameSet && state.roomSettings?.paymentMode === 'paid' && player.paymentStatus !== 'confirmed');
-  const pendingSelection = eligible.filter(player => !(player.selectionConfirmed && player.cardIds?.length > 0 && player.cardIds.length <= player.allowedCardCount));
+  const pendingSelection = eligible.filter(player => !playerSelectionComplete(player));
   const pendingMarkingMode = eligible.filter(player => !player.markingModeChosen);
   const connectedEligible = eligible.filter(player => player.virtual || connected.has(player.id));
   return {
@@ -1000,14 +1042,13 @@ function startPlanPayload() {
     pendingPaymentPlayers: pendingPayment.length,
     pendingPayment: pendingPayment.map(player => ({ id:player.id, name:playerDisplayName(player), requestedCardCount:player.requestedCardCount || player.allowedCardCount })),
     canStart: eligible.length >= (TEST_MODE ? 1 : 2),
-    canStartFromAdmin: connectedEligible.length >= (TEST_MODE ? 1 : 2) || Boolean(state.roomSettings?.adminSimulation)
+    canStartFromAdmin: eligible.length >= (TEST_MODE ? 1 : 2) || Boolean(state.roomSettings?.adminSimulation)
   };
 }
 
 function allPlayersReady() {
   return state.players.length > 0 && state.players.every(player =>
-    player.nameSet && player.selectionConfirmed && Boolean(player.markingModeChosen) &&
-    player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount
+    player.nameSet && playerSelectionComplete(player) && Boolean(player.markingModeChosen)
   );
 }
 
@@ -1017,7 +1058,7 @@ function preflightPayload() {
   const ids = assigned.map(item => item.cardId);
   const duplicates = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
   const eligiblePlayers = state.players.filter(playerEligibleForRound);
-  const pendingPlayers = eligiblePlayers.filter(player => !(player.nameSet && player.selectionConfirmed && player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount));
+  const pendingPlayers = eligiblePlayers.filter(player => !(player.nameSet && playerSelectionComplete(player)));
   const pendingMarkingMode = eligiblePlayers.filter(player => player.selectionConfirmed && !player.markingModeChosen);
   const activeCards = ids.length;
   const availableCards = Math.max(0, (state.game?.cards?.length || 0) - new Set(ids).size);
@@ -1163,7 +1204,7 @@ function autoAssignPendingPlayers(reason = 'timer') {
   purgeExpiredReservations();
 
   const confirmedIds = new Set(state.players.filter(player => player.selectionConfirmed).flatMap(player => player.cardIds || []));
-  const pendingPlayers = state.players.filter(player => playerEligibleForRound(player) && !(player.selectionConfirmed && player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount));
+  const pendingPlayers = state.players.filter(player => playerEligibleForRound(player) && !playerSelectionComplete(player));
   const validUnassigned = new Set(state.game.cards.map(card => card.id).filter(cardId => !confirmedIds.has(cardId)));
   const preferredByPlayer = new Map();
   const preferredIds = new Set();
@@ -1430,6 +1471,7 @@ function adminPayload() {
       publicClaims: [],
       readyToStart: false,
       startPlan: { eligiblePlayers:0, connectedEligiblePlayers:0, selectedPlayers:0, autoAssignPlayers:0, pendingMarkingModePlayers:0, pendingPaymentPlayers:0, pendingPayment:[], canStart:false, canStartFromAdmin:false },
+      registrationSummary: { registeredPlayers:0, requestedCards:0, confirmedCards:0, assignedCards:0, pendingSelectionCards:0, playingCards:0, paymentPendingPlayers:0, paymentReportedPlayers:0, paymentConfirmedPlayers:0 },
       accessContext: currentAccessContext(),
       lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`)
     };
@@ -1472,6 +1514,7 @@ function adminPayload() {
     claimAutoResume: claimAutoResumePayload(),
     readyToStart: startPlanPayload().canStart,
     startPlan: startPlanPayload(),
+    registrationSummary: registrationSummaryPayload(),
     preflight: preflightPayload(),
     roomCode: state.roomCode,
     createdAt: state.createdAt,
@@ -1512,6 +1555,9 @@ function adminPayload() {
       allowedCardCount: player.allowedCardCount,
       paymentStatus: player.paymentStatus || (state.roomSettings?.paymentMode === 'paid' ? 'pending' : 'not_required'),
       paymentConfirmedAt: player.paymentConfirmedAt || null,
+      paymentReportedAt: player.paymentReportedAt || null,
+      paymentTransferDni: String(player.paymentTransferDni || ''),
+      paymentTransferHolder: String(player.paymentTransferHolder || ''),
       cardIds: player.cardIds,
       selectionConfirmed: player.selectionConfirmed,
       offeredCardIds: player.offeredCardIds,
@@ -1596,6 +1642,9 @@ function playerPayload(player) {
       allowedCardCount: player.allowedCardCount,
       paymentStatus: player.paymentStatus || (state.roomSettings?.paymentMode === 'paid' ? 'pending' : 'not_required'),
       paymentConfirmedAt: player.paymentConfirmedAt || null,
+      paymentReportedAt: player.paymentReportedAt || null,
+      paymentTransferDni: String(player.paymentTransferDni || ''),
+      paymentTransferHolder: String(player.paymentTransferHolder || ''),
       excludedFromRound: Boolean(player.excludedFromRound),
       selectionConfirmed: player.selectionConfirmed,
       reservedCardIds: player.reservedCardIds || [],
@@ -1806,6 +1855,9 @@ function emptyRoomPlayer({ name = '', cardIds = [], allowedCardCount = 1, code =
     allowedCardCount: allowed,
     paymentStatus: paymentStatus || (state.roomSettings?.paymentMode === 'paid' ? 'pending' : 'not_required'),
     paymentConfirmedAt: state.roomSettings?.paymentMode === 'paid' ? null : nowIso(),
+    paymentReportedAt: null,
+    paymentTransferDni: '',
+    paymentTransferHolder: '',
     cardIds: [...cardIds],
     selectionConfirmed: cardIds.length > 0,
     offeredCardIds: [], reservedCardIds: [],
@@ -1870,7 +1922,14 @@ function waitingGamePayload() {
 function createSimpleRoom(payload = {}) {
   const game = createGeneratedGame(payload);
   const markingMode = payload.markingMode === 'manual_only' ? 'manual_only' : 'normal';
-  // CUASIFINAL FUNCIONAL: 4 cartones por defecto. Solo Manual fuerza máximo 2.
+  const paymentMode = payload.paymentMode === 'paid' ? 'paid' : 'free';
+  const cardPrice = paymentMode === 'paid' ? Math.max(1, Number(payload.cardPrice) || 0) : 0;
+  const paymentAlias = paymentMode === 'paid' ? String(payload.paymentAlias || '').trim().slice(0, 80) : '';
+  const whatsapp = paymentMode === 'paid' ? String(payload.whatsapp || '').trim().slice(0, 40) : String(payload.whatsapp || '').trim().slice(0, 40);
+  if (paymentMode === 'paid' && !cardPrice) throw new Error('Ingresá el precio por cartón para la partida paga.');
+  if (paymentMode === 'paid' && !paymentAlias) throw new Error('Ingresá el alias de transferencia para la partida paga.');
+  if (paymentMode === 'paid' && !whatsapp) throw new Error('Ingresá el WhatsApp de contacto para la partida paga.');
+  // Final: 4 cartones por defecto. Solo Manual fuerza máximo 2.
   const roomMaxCards = markingMode === 'manual_only'
     ? 2
     : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(payload.maxCardsPerPlayer) || 4));
@@ -1885,7 +1944,7 @@ function createSimpleRoom(payload = {}) {
       // El acceso normal es exclusivamente mediante invitaciones privadas por jugador.
       joinOpen: false,
       maxOpenPlayers: MAX_PLAYERS,
-      accessKey: '', paymentMode: 'free', cardPrice: 0, whatsapp: '',
+      accessKey: '', paymentMode, cardPrice, paymentAlias, whatsapp,
       maxCardsPerPlayer: roomMaxCards, markingMode,
       claimAutoVerifySeconds: 10,
       presenterVoiceGender: 'female',
@@ -1897,7 +1956,7 @@ function createSimpleRoom(payload = {}) {
     drawOrder: createSecureDrawOrder(game.mode), game, players: [], cardReservations: {}, claims: [], eventLog: [],
     chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} }
   });
-  logEvent('functional_room_created', { markingMode, mode: game.mode, cards: game.cards.length, maxCardsPerPlayer: roomMaxCards });
+  logEvent('functional_room_created', { markingMode, mode: game.mode, cards: game.cards.length, maxCardsPerPlayer: roomMaxCards, paymentMode });
   saveState(); broadcast();
   return adminPayload();
 }
@@ -1926,6 +1985,26 @@ function openJoinPlayer(payload = {}) {
   return { token: player.sessionToken, state: playerPayload(player), returning: false };
 }
 
+function reportPlayerPayment(player, payload = {}) {
+  if (!state.active || !state.game) throw new Error('La sala no está activa.');
+  if (state.roomSettings?.paymentMode !== 'paid') throw new Error('Esta partida no requiere transferencia.');
+  if (!['waiting','starting'].includes(state.status)) throw new Error('La inscripción de pagos ya está cerrada para esta ronda.');
+  if (player.paymentStatus === 'confirmed') return playerPayload(player);
+  const dni = String(payload.dni || '').replace(/\D/g, '').slice(0, 12);
+  const holder = normalizePlayerName(payload.holder || '').slice(0, 60);
+  if (dni.length < 6) throw new Error('Ingresá el DNI del titular que hizo la transferencia.');
+  if (holder.length < 2) throw new Error('Ingresá el nombre del titular de la transferencia.');
+  player.paymentTransferDni = dni;
+  player.paymentTransferHolder = holder;
+  player.paymentReportedAt = nowIso();
+  player.paymentStatus = 'reported';
+  player.notices ||= [];
+  player.notices.push({ id: randomId('notice'), createdAt: nowIso(), kind: 'payment_reported', text: 'Transferencia informada. Estamos esperando la confirmación del administrador.' });
+  logEvent('player_payment_reported', { playerId: player.id, playerName: playerDisplayName(player), requestedCards: player.requestedCardCount });
+  saveState(); broadcast();
+  return playerPayload(player);
+}
+
 function updatePlayerApproval(payload = {}) {
   if (!state.active || !state.game || state.status !== 'waiting') throw new Error('La sala no está disponible para modificar jugadores.');
   const player = state.players.find(item => item.id === String(payload.playerId || ''));
@@ -1938,6 +2017,7 @@ function updatePlayerApproval(payload = {}) {
   if (wanted !== player.allowedCardCount) {
     releaseReservationsForPlayer(player);
     player.allowedCardCount = wanted;
+    if (state.roomSettings?.paymentMode === 'paid') player.requestedCardCount = wanted;
     player.offeredCardIds = [];
   }
   if (payload.confirmPayment === true) {
@@ -1945,7 +2025,7 @@ function updatePlayerApproval(payload = {}) {
       player.paymentStatus = 'confirmed';
       player.paymentConfirmedAt = nowIso();
     } else player.paymentStatus = 'not_required';
-    refreshOffersForPlayer(player, true);
+    if (state.status === 'waiting') refreshOffersForPlayer(player, true);
     player.notices ||= [];
     player.notices.push({ id: randomId('notice'), createdAt: nowIso(), kind: 'payment_confirmed', text: state.roomSettings?.paymentMode === 'paid' ? `Pago confirmado. Ya podés elegir tus ${wanted} cartón${wanted===1?'':'es'}.` : 'Ya podés elegir tus cartones.' });
   }
@@ -1975,7 +2055,8 @@ function createInvitedPlayer(payload = {}) {
   const allowed = Math.max(1, Math.min(roomMax, Number(payload.allowedCardCount ?? payload.cardCount) || roomMax));
   const totalAuthorized = state.players.reduce((sum, player) => sum + Math.max(1, Number(player.allowedCardCount) || 1), 0);
   if (totalAuthorized + allowed > state.game.cards.length || totalAuthorized + allowed > MAX_ACTIVE_CARDS) throw new Error('No quedan suficientes cartones para autorizar esa cantidad.');
-  const player = emptyRoomPlayer({ name, cardIds: [], allowedCardCount: allowed, openJoin: false, paymentStatus: 'not_required' });
+  const invitePaymentStatus = state.roomSettings?.paymentMode === 'paid' ? 'pending' : 'not_required';
+  const player = emptyRoomPlayer({ name, cardIds: [], allowedCardCount: allowed, openJoin: false, paymentStatus: invitePaymentStatus });
   player.name = name;
   player.nameSet = true;
   player.slotNumber = state.players.length + 1;
@@ -1988,8 +2069,8 @@ function createInvitedPlayer(payload = {}) {
   player.openJoinDeviceId = '';
   player.codeStatus = 'private-invite';
   player.requestedCardCount = allowed;
-  player.paymentStatus = 'not_required';
-  player.paymentConfirmedAt = nowIso();
+  player.paymentStatus = invitePaymentStatus;
+  player.paymentConfirmedAt = invitePaymentStatus === 'confirmed' || invitePaymentStatus === 'not_required' ? nowIso() : null;
   state.players.push(player);
   logEvent('player_invited', { playerId: player.id, playerName: name, allowedCardCount: allowed });
   saveState(); broadcast();
@@ -2047,7 +2128,7 @@ function consumeInvitationActivation(activationToken, inviteToken) {
 }
 
 function claimPlayerInvitation(token, deviceId = '') {
-  if (!state.active || !state.game || state.status !== 'waiting') throw new Error('La partida ya no admite ingresos.');
+  if (!state.active || !state.game || !['waiting','starting','playing','verifying','paused','resuming','finalizing','finished'].includes(state.status)) throw new Error('La partida ya no admite ingresos.');
   const normalized = String(token || '').trim();
   const player = state.players.find(item => item.inviteToken === normalized && !item.virtual);
   if (!player) throw new Error('Este enlace de invitación no es válido.');
@@ -2057,7 +2138,7 @@ function claimPlayerInvitation(token, deviceId = '') {
   player.openJoinDeviceId = player.sessionDeviceId;
   player.lastLoginAt = nowIso();
   player.inviteClaimedAt = nowIso();
-  refreshOffersForPlayer(player, true);
+  if (state.status === 'waiting') refreshOffersForPlayer(player, true);
   logEvent('player_invitation_claimed', { playerId: player.id, playerName: playerDisplayName(player), allowedCardCount: player.allowedCardCount });
   saveState(); broadcast();
   return { token: player.sessionToken, playerId: player.id, playerName: playerDisplayName(player), state: playerPayload(player) };
@@ -3559,12 +3640,14 @@ function startRoom(payload = {}) {
   if (state.status !== 'waiting') return adminPayload();
   const forcedSimulationStart = Boolean(state.roomSettings?.adminSimulation && payload?.force === true);
   const planBefore = startPlanPayload();
+  if (!forcedSimulationStart && state.roomSettings?.joinOpen) throw new Error('Primero cerrá las inscripciones. Cerrarlas no inicia el sorteo.');
+  if (!forcedSimulationStart && state.roomSettings?.paymentMode === 'paid' && planBefore.pendingPaymentPlayers > 0) throw new Error('Hay pagos pendientes. Confirmalos o quitá esos jugadores antes de iniciar.');
   if (!forcedSimulationStart && planBefore.eligiblePlayers < (TEST_MODE ? 1 : 2)) throw new Error('Se necesitan al menos 2 jugadores habilitados para iniciar el sorteo.');
   if (state.roomSettings) state.roomSettings.joinOpen = false;
 
   // Al iniciar, ningún salón grande debe quedar esperando a que cada persona elija.
   // Gratis: todo jugador ingresado es elegible. Paga: solo quienes tienen pago confirmado.
-  const hasPendingEligibleSelections = state.players.some(player => playerEligibleForRound(player) && !(player.selectionConfirmed && player.cardIds.length > 0 && player.cardIds.length <= player.allowedCardCount));
+  const hasPendingEligibleSelections = state.players.some(player => playerEligibleForRound(player) && !playerSelectionComplete(player));
   if (hasPendingEligibleSelections) autoAssignPendingPlayers(forcedSimulationStart ? 'simulation_start' : 'admin_start');
 
   for (const player of state.players) {
@@ -3664,6 +3747,7 @@ function updateRoomSettings(payload) {
     bingo: Math.max(0, Number(payload.prizeAmounts.bingo) || 0)
   };
   if (payload.whatsapp !== undefined) state.roomSettings.whatsapp = String(payload.whatsapp || '').slice(0, 40);
+  if (payload.paymentAlias !== undefined) state.roomSettings.paymentAlias = String(payload.paymentAlias || '').trim().slice(0, 80);
   if (payload.argentinaHint !== undefined) state.roomSettings.argentinaHint = payload.argentinaHint !== false;
   if (payload.transmission && typeof payload.transmission === 'object') state.roomSettings.transmission = normalizeTransmissionSettings(payload.transmission);
   state.roomSettings.broadcastToken ||= randomId('live');
@@ -4240,7 +4324,8 @@ function chooseCards(player, payload) {
   purgeExpiredReservations();
   const selectedName = player.nameSet ? null : validatePlayerName(payload?.name, player.id);
   const selected = [...new Set((payload.cardIds || []).map(String))];
-  if (selected.length < 1 || selected.length > player.allowedCardCount) throw new Error(`Podés elegir entre 1 y ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}.`);
+  if (state.roomSettings?.paymentMode === 'paid' && selected.length !== player.allowedCardCount) throw new Error(`Elegí exactamente ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}, que es la cantidad confirmada.`);
+  if (state.roomSettings?.paymentMode !== 'paid' && (selected.length < 1 || selected.length > player.allowedCardCount)) throw new Error(`Podés elegir entre 1 y ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}.`);
   const offers = new Set(player.offeredCardIds || []);
   if (!selected.every(cardId => offers.has(cardId) || (player.reservedCardIds || []).includes(cardId))) throw new Error('Una de las opciones ya no está disponible. Actualizamos tus opciones de cartones.');
   for (const cardId of selected) {
@@ -5190,7 +5275,7 @@ function accessRoomMetaMarkup(roomState) {
   return `<div class="roomMeta"><span class="chip">${mode} bolas</span><span class="chip">${lineCount} línea${lineCount === 1 ? '' : 's'}</span><span class="chip ${paid ? 'gold' : ''}">${paid ? 'PAGA' : 'GRATIS'}</span><span class="chip">${marking}</span></div>`;
 }
 
-function playerAccessContent({ workspace = null, error = '', direct = false } = {}) {
+function playerAccessContent({ workspace = null, error = '', direct = false, closed = false } = {}) {
   if (!workspace) {
     return `<h2>Tu acceso es personal</h2>
       <p class="lead">Para entrar a una partida, abrí el link privado que te envió el administrador por WhatsApp.</p>
@@ -5200,9 +5285,14 @@ function playerAccessContent({ workspace = null, error = '', direct = false } = 
   const roomState = workspace.state || {};
   const settings = roomState.roomSettings || {};
   const paid = settings.paymentMode === 'paid';
+  if (closed) {
+    const wa = String(settings.whatsapp || '').replace(/\D/g,'');
+    const help = wa ? `<a class="btn primary" href="https://wa.me/${wa}?text=${encodeURIComponent(`Hola. Ya estaba inscripto/a en la sala ${roomState.roomCode || ''} y necesito recuperar mi acceso.`)}" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">PEDIR AYUDA POR WHATSAPP</a>` : '';
+    return `<h2>Inscripciones cerradas</h2><p class="lead">Esta sala ya no acepta jugadores nuevos.</p>${accessRoomMetaMarkup(roomState)}${accessErrorMarkup(error)}<div class="notice"><b>¿YA ESTABAS INSCRIPTO?</b><br>No necesitás volver a anotarte. Entrá desde tu link o sesión privada. Si la perdiste, el administrador puede enviarte un enlace de recuperación.</div>${help}`;
+  }
   const maxCards = settings.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(settings.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
   const options = Array.from({ length:maxCards }, (_, index) => index + 1).map(count => `<option value="${count}" ${count === Math.min(2,maxCards) ? 'selected' : ''}>${count} cartón${count === 1 ? '' : 'es'}</option>`).join('');
-  const paidInfo = paid ? `<div class="notice"><b>PARTIDA PAGA</b><br>Primero solicitás la cantidad. Después coordinás el pago por WhatsApp. El administrador puede ajustar la cantidad y dar el OK. Recién entonces elegís tus cartones.${Number(settings.cardPrice) > 0 ? `<div class="price">$${Number(settings.cardPrice).toLocaleString('es-AR')} por cartón</div>` : ''}</div>` : `<div class="notice"><b>PARTIDA GRATIS</b><br>Después de entrar vas a poder elegir tus cartones directamente.</div>`;
+  const paidInfo = paid ? `<div class="notice"><b>PARTIDA PAGA</b><br>Elegí cuántos cartones querés. Al entrar vas a ver el total a transferir, el alias y los campos del titular de la transferencia. No hace falta subir comprobante.${Number(settings.cardPrice) > 0 ? `<div class="price">$${Number(settings.cardPrice).toLocaleString('es-AR')} por cartón</div>` : ''}</div>` : `<div class="notice"><b>PARTIDA GRATIS</b><br>Después de entrar vas a poder elegir tus cartones directamente.</div>`;
   return `<h2>${direct ? 'Acceso directo listo' : 'Clave correcta'}</h2>
     <p class="lead">Escribí tu nombre y elegí cuántos cartones querés.</p>
     ${accessRoomMetaMarkup(roomState)}
@@ -5903,6 +5993,7 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/reserve' && req.method === 'POST') return sendJson(res, 200, reserveCard(player, await readJson(req)));
         if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
         if (url.pathname === '/api/player/name' && req.method === 'POST') return sendJson(res, 200, setPlayerName(player, await readJson(req)));
+        if (url.pathname === '/api/player/payment-report' && req.method === 'POST') return sendJson(res, 200, reportPlayerPayment(player, await readJson(req)));
         if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
         if (url.pathname === '/api/player/demo/tutorial' && req.method === 'POST') return sendJson(res, 200, resolveDemoTutorial(player, await readJson(req)));
         if (url.pathname === '/api/player/demo/retry' && req.method === 'POST') return sendJson(res, 200, retryDemoServerStart(player));
@@ -6152,7 +6243,7 @@ const server = http.createServer(async (req, res) => {
       const workspace = findWorkspaceByAccessKey(form.accessKey);
       if (!workspace) return servePlayerAccessPage(res, { error:'Clave incorrecta o sala no disponible.' });
       return workspaceContext.run(workspace, () => {
-        if (!state.active || state.status !== 'waiting' || !state.roomSettings?.joinOpen) return servePlayerAccessPage(res, { error:'El ingreso a esta sala está cerrado.' });
+        if (!state.active || state.status !== 'waiting' || !state.roomSettings?.joinOpen) return servePlayerAccessPage(res, { workspace, closed:true, error:'El ingreso general está cerrado.' });
         return servePlayerAccessPage(res, { workspace, direct:false });
       });
     } catch (error) {
@@ -6318,7 +6409,7 @@ const server = http.createServer(async (req, res) => {
       const workspace = findWorkspaceByRoomCode(directRoom);
       if (!workspace) return servePlayerAccessPage(res, { error:'El enlace de acceso no corresponde a una sala disponible.' });
       return workspaceContext.run(workspace, () => {
-        if (!state.active || state.status !== 'waiting' || !state.roomSettings?.joinOpen) return servePlayerAccessPage(res, { error:'El ingreso a esta sala está cerrado.' });
+        if (!state.active || state.status !== 'waiting' || !state.roomSettings?.joinOpen) return servePlayerAccessPage(res, { workspace, direct:true, closed:true, error:'El ingreso general está cerrado.' });
         return servePlayerAccessPage(res, { workspace, direct:true });
       });
     }
@@ -6402,7 +6493,7 @@ for (const workspace of workspaces.values()) workspaceContext.run(workspace, () 
 });
 
 server.listen(PORT, HOST, () => {
-  console.log('\nBINGO DE LA GORDA - Beta');
+  console.log('\nBINGO DE LA GORDA - Final');
   const base = PUBLIC_URL || `http://localhost:${PORT}`;
   console.log(`Administrador: ${base}/admin`);
   console.log(`Jugadores: ${base}/jugador`);

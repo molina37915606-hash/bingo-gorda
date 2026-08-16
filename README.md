@@ -124,3 +124,10 @@ La Comunidad tiene además un acceso permanente **🎱 JUGAR DEMO**, disponible 
 - La pantalla de partida finalizada se renueva sin tocar la interfaz normal del juego: ganador rotativo, accesos compactos a números/acta/sello y botón **JUGAR DE NUEVO**.
 - En DEMO, **JUGAR DE NUEVO** crea una demostración nueva. En una partida real lleva a Comunidad para buscar la próxima, sin reiniciar la sala desde el jugador.
 - El chat final reutiliza exactamente el mismo componente del juego; en móvil entra minimizado y conserva toque/arrastre para abrir o bajar.
+
+
+## Link general de partida
+
+En la sala de espera del Admin se puede activar **LINK GENERAL**. Una vez abierto, el mismo enlace se puede compartir con todos los jugadores: cada persona escribe su nombre, elige hasta la cantidad máxima de cartones configurada y recibe una sesión privada propia. Los nombres continúan siendo únicos dentro de la sala. Las invitaciones privadas siguen disponibles como opción adicional. Al iniciar el sorteo, el ingreso general se cierra automáticamente.
+
+En Comunidad, **VER TRANSMISIÓN** abre la transmisión completa. El Modo TV liviano se conserva únicamente como herramienta secundaria del Admin.

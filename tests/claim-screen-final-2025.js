@@ -1,0 +1,13 @@
+const fs=require('fs');const assert=require('assert');
+const js=fs.readFileSync(require('path').join(__dirname,'../js/player.js'),'utf8');
+const css=fs.readFileSync(require('path').join(__dirname,'../css/platform.css'),'utf8');
+assert(js.includes("['playing','paused','verifying','resuming','finalizing'].includes(s.status)"),'resuming debe renderizar el juego');
+assert(js.includes("['playing','paused','verifying','resuming','finalizing','finished'].includes(this.state?.status)"),'chat/dock debe reconocer resuming y finished');
+assert(js.includes("s.status==='resuming'?'CONTINUANDO'"),'resuming debe tener etiqueta de juego');
+assert(js.includes('verificando-jugada'),'debe conservar el PNG de verificando');
+assert(js.includes('renderFinished(){'),'debe existir cierre dedicado');
+assert(js.includes('finalWinnerTicker'),'el cierre debe tener rotador visual');
+assert(js.includes('finalPlayAgain'),'el cierre debe tener JUGAR DE NUEVO');
+assert(js.includes("/api/player/demo/reset"),'DEMO debe poder jugar de nuevo sin tocar sala real');
+assert(css.includes('.finalWinnerTicker'),'faltan estilos del rotador final');
+console.log('claim-screen-final-2025 OK');

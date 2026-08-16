@@ -7,4 +7,4 @@ BINGO DE LA GORDA - Beta | Paquete para GitHub Web
 5. Esperá que termine de cargar.
 6. Hacé clic en “Commit changes”.
 
-Este paquete fue preparado con menos de 100 archivos, bajo peso total y ningún archivo pesado para la carga web.
+Este paquete tiene menos de 100 archivos y conserva las pruebas necesarias para que GitHub Actions no quede roto.

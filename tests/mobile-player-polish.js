@@ -1,0 +1,16 @@
+'use strict';
+const fs=require('fs'),assert=require('assert'),path=require('path');
+const root=path.join(__dirname,'..');
+const player=fs.readFileSync(path.join(root,'js/player.js'),'utf8');
+const css=fs.readFileSync(path.join(root,'css/platform.css'),'utf8');
+const html=fs.readFileSync(path.join(root,'player.html'),'utf8');
+assert(player.includes('playerWinnerTickerMarkup(confirmed)'), 'Falta rotador visual de ganadores dentro del juego');
+assert(player.includes("x.type!=='bingo'"), 'Bingo no debe entrar en la rotación en juego');
+assert(player.includes('winnerTickerTimer=setInterval'), 'El rotador debe cambiar premios sin reconstruir el juego');
+assert(css.includes('.playerShell.gameMobile .playerWinnerTicker'), 'Falta diseño móvil del rotador de ganadores');
+assert(player.includes("visualKey:`line:${prizeNumber}`"), 'Bingo 90 con dos líneas debe crear Línea 1 y Línea 2 visualmente desde el inicio');
+assert(player.includes("shortLabel:`LÍNEA ${prizeNumber}`"), 'Los dos premios de línea deben estar identificados claramente');
+assert(html.includes('id="helpTool"')&&html.includes('id="themeTool"')&&html.includes('id="fullscreenTool"'), 'Ayuda, tema y pantalla completa deben existir como accesos directos');
+assert(css.includes('#helpTool,')&&css.includes('#themeTool,')&&css.includes('#fullscreenTool,'), 'Ayuda, tema y pantalla completa deben mostrarse en la barra móvil');
+assert(player.includes("openMobileTools(){this.openModal('Audio'"), 'El menú Más móvil debe reservarse para audio y evitar duplicar herramientas visibles');
+console.log('PRUEBA PULIDO JUGADOR MÓVIL: OK');

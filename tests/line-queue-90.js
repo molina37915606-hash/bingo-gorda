@@ -9,6 +9,7 @@ async function waitServer(){for(let i=0;i<120;i++){try{if((await fetch(base+'/he
 async function req(url,opt={}){const r=await fetch(base+url,opt),d=await r.json().catch(()=>({}));return{r,d}}
 async function post(url,body,headers={}){const {r,d}=await req(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body||{})});assert(r.ok,`${url} ${r.status} ${JSON.stringify(d)}`);return d}
 async function get(url,headers={}){const {r,d}=await req(url,{headers});assert(r.ok,`${url} ${r.status} ${JSON.stringify(d)}`);return d}
+async function resumeIfNeeded(ah){const {r,d}=await req('/api/admin/resume',{method:'POST',headers:{'Content-Type':'application/json',...ah},body:JSON.stringify({mode:'manual',immediate:true})});if(!r.ok)assert.equal(d.error,'La partida no está pausada.')}
 function cookieFrom(r){return (r.headers.get('set-cookie')||'').split(';')[0]}
 async function claimInvite(url){const u=new URL(url),path=u.pathname+u.search;const preview=await fetch(base+path,{redirect:'manual'});assert.equal(preview.status,200);const html=await preview.text();const match=html.match(/name="activationToken" value="([^"]+)"/);assert(match);const r=await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`activationToken=${encodeURIComponent(match[1])}`,redirect:'manual'});assert.equal(r.status,303);return cookieFrom(r)}
 async function inviteAndChoose(name,ah){const inv=await post('/api/admin/invite-player',{name,allowedCardCount:1},ah);const cookie=await claimInvite(inv.player.inviteUrl);let st=await get('/api/player/state',{Cookie:cookie});const card=st.player.offeredCards[0];await post('/api/player/choose',{cardIds:[card.id]},{Cookie:cookie});return{cookie,card}}
@@ -51,10 +52,10 @@ async function drawSequence(numbers,ah){for(const _ of numbers)await post('/api/
   await drawSequence(row1,ah);
   const first=await post('/api/player/claim',{type:'line',cardId:solo.card.id},{Cookie:solo.cookie});assert.equal(first.officialValid,true);await wait(500);
   state=await get('/api/admin/state',ah);assert.equal(state.claims.find(c=>c.id===first.id).prizeNumber,1);
-  await post('/api/admin/resume',{mode:'manual',immediate:true},ah);
+  await resumeIfNeeded(ah);
   // Repetir la misma fila no crea una segunda línea válida.
   const repeated=await post('/api/player/claim',{type:'line',cardId:solo.card.id},{Cookie:solo.cookie});assert.equal(repeated.officialValid,false,'La misma fila no puede cobrarse dos veces.');await wait(500);
-  await post('/api/admin/resume',{mode:'manual',immediate:true},ah);
+  await resumeIfNeeded(ah);
   await drawSequence(row2.filter(n=>!row1.includes(n)),ah);
   const second=await post('/api/player/claim',{type:'line',cardId:solo.card.id},{Cookie:solo.cookie});assert.equal(second.officialValid,true,'Una fila distinta del mismo cartón sí puede ser la segunda línea global.');await wait(500);
   state=await get('/api/admin/state',ah);const secondResolved=state.claims.find(c=>c.id===second.id);assert.equal(secondResolved.status,'confirmed');assert.equal(secondResolved.prizeNumber,2);assert.notEqual(secondResolved.winningLineKey,state.claims.find(c=>c.id===first.id).winningLineKey);

@@ -1494,7 +1494,7 @@ function adminPayload() {
     broadcastUrl: shortBroadcastUrlFor(),
     broadcastLongUrl: state.roomSettings?.broadcastToken ? `${PUBLIC_URL || `http://localhost:${PORT}`}/transmision/${encodeURIComponent(state.roomSettings.broadcastToken)}` : null,
     castAppId: CAST_APP_ID || null,
-    joinUrl: null,
+    joinUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode)}&directo=1`,
     lanUrls: getLanAddresses().map(ip => `http://${ip}:${PORT}/jugador`),
     localUrl: `http://localhost:${PORT}`,
     game: state.game,
@@ -1519,6 +1519,7 @@ function adminPayload() {
       autoMark: Boolean(player.autoMark),
       markingModeChosen: Boolean(player.markingModeChosen),
       virtual: Boolean(player.virtual),
+      accessType: player.codeStatus === 'shared-key' ? 'general' : 'private',
       connected: connected.has(player.id),
       transferPending: (state.deviceTransferRequests || []).some(request => request.playerId === player.id && request.status === 'pending')
     })),

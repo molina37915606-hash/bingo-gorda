@@ -11,7 +11,7 @@ assert(player.includes("classes.push('manual-help')"),'La ayuda Manual debe ser 
 assert(!player.includes("/api/player/mark',{method:'POST'" ) || player.includes('async mark('),'El marcado sigue siendo una acción explícita del jugador');
 assert(server.includes('drawTimestamps'),'El servidor debe conservar el momento de cada extracción');
 assert(html.includes('claimCelebration'),'Falta el contenedor de carteles de reclamo');
-for(const f of ['verificando-jugada.png','premio-no-confirmado.png','primera-linea-confirmada.png','segunda-linea-confirmada.png','bingo-confirmado.png','ambocabeza-confirmado.png'])assert(fs.existsSync(path.join(root,'assets','celebrations',f)),`Falta ${f}`);
+for(const f of ['verificando-jugada.webp','premio-no-confirmado.webp','primera-linea-confirmada.webp','segunda-linea-confirmada.webp','bingo-confirmado.webp','ambocabeza-confirmado.webp'])assert(fs.existsSync(path.join(root,'assets','celebrations',f)),`Falta ${f}`);
 assert(player.includes('queueClaimCelebration'),'Los carteles deben encolarse para reclamos simultáneos');
 assert(css.includes('@media(min-width:721px)'),'Falta layout específico de escritorio');
 assert(css.includes('.ticketPanel.mode75{max-width:590px}'),'El cartón 75 debe tener ancho máximo en PC');

@@ -1,6 +1,6 @@
 # BINGO DE LA GORDA - Final
 
-Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de juego del jugador se mantiene como base aprobada; esta entrega refuerza principalmente inscripción, organización administrativa, pagos informados, acceso tardío, recuperación y preparación del sorteo.
+Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de juego del jugador se mantiene como base aprobada. Esta entrega suma una Comunidad móvil más directa y una agenda administrativa para anunciar próximas partidas con horario y precio, además de conservar el flujo de inscripción, pagos, recuperación y sorteo ya estabilizado.
 
 ## Flujo de una partida
 
@@ -32,6 +32,15 @@ Los datos de transferencia no forman parte de Comunidad, Transmisión, chat ni a
 
 INICIAR SORTEO es independiente de CERRAR INSCRIPCIONES. Durante el estado de preparación, el jugador ya ve su interfaz real de juego y puede recorrer un tutorial contextual por globos anclados a bolilla, cartones, marcado, RECLAMAR, premios, chat y herramientas. En móvil, cada globo calcula su posición usando el viewport visible para mantenerse dentro de la pantalla. Los premios activos se explican uno por uno y se resaltan temporalmente las casillas involucradas sin modificar el cartón ni sus marcas. El servidor controla el tiempo previo a la primera bolilla para mantener a todos sincronizados.
 
+
+## Comunidad y agenda
+
+El Admin puede programar futuras partidas indicando fecha/hora, modalidad, gratuita/paga y precio por cartón. La agenda no inicia nada automáticamente: sirve para anunciar la próxima partida y luego precargar esos datos al preparar una sala real.
+
+En Comunidad móvil, la tarjeta principal cambia según el estado: próxima partida, inscripciones abiertas, por comenzar o en vivo. Cuando una sala oficial tiene el ingreso general abierto, el botón principal es ENTRAR A JUGAR y lleva directamente al formulario general. Las partidas programadas muestran horario y precio; las gratuitas muestran CARTÓN GRATIS. Demo, WhatsApp y Transmisión usan accesos compactos.
+
+El chat de Comunidad conserva mensajes, emojis, stickers y moderación, pero en móvil funciona como panel inferior desplazable similar al chat del jugador, sin ocupar permanentemente toda la pantalla.
+
 ## Reglas preservadas
 
 - Reclamos siempre manuales; Automarcado solo marca.
@@ -40,7 +49,7 @@ INICIAR SORTEO es independiente de CERRAR INSCRIPCIONES. Durante el estado de pr
 - Bingo 90 con dos líneas usa orden global de reclamos válidos; dos líneas válidas pueden adjudicarse sobre la misma bolilla.
 - Cartones exclusivos del lado servidor.
 - Integridad SHA-256, sello, acta y resultados oficiales se mantienen.
-- Comunidad y Transmisión no fueron rediseñadas en esta entrega.
+- La interfaz del jugador, el motor, Transmisión y TV no fueron rediseñados en esta entrega.
 
 ## Desarrollo y pruebas
 

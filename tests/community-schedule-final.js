@@ -1,0 +1,57 @@
+'use strict';
+const assert=require('assert');
+const fs=require('fs');
+const os=require('os');
+const path=require('path');
+const {spawn}=require('child_process');
+const root=path.join(__dirname,'..');
+const adminHtml=fs.readFileSync(path.join(root,'admin.html'),'utf8');
+const adminJs=fs.readFileSync(path.join(root,'js/admin.js'),'utf8');
+const communityHtml=fs.readFileSync(path.join(root,'comunidad.html'),'utf8');
+const communityJs=fs.readFileSync(path.join(root,'js/community.js'),'utf8');
+const serverSrc=fs.readFileSync(path.join(root,'server.js'),'utf8');
+for(const id of ['communityScheduleAt','communityScheduleMode','communitySchedulePayment','communitySchedulePrice','saveCommunitySchedule','communityScheduleList'])assert(adminHtml.includes(`id="${id}"`),`Falta agenda Admin: ${id}`);
+assert(adminJs.includes("'/api/admin/community/schedule'"),'Admin debe guardar la agenda por API.');
+assert(adminJs.includes('prepareCommunitySchedule'),'Agenda debe poder precargar CREAR PARTIDA.');
+assert(communityHtml.includes('quickTile demo')&&communityHtml.includes('quickTile whatsapp')&&communityHtml.includes('quickTile transmission'),'Demo, WhatsApp y Transmisión deben ser accesos compactos.');
+assert(communityHtml.includes('grid-template-columns:repeat(3,1fr)'),'Navegación móvil debe quedar simple, con tres accesos.');
+assert(communityHtml.includes('height:min(72dvh,620px)'),'Chat móvil debe ser panel inferior y no pantalla completa.');
+assert(communityHtml.includes('id="mobileChatBar"'),'Chat debe tener barra inferior fácil de abrir.');
+assert(communityJs.includes("panel.addEventListener('touchstart'"),'Chat Comunidad debe poder cerrarse con gesto desde el panel.');
+assert(communityJs.includes('dy<58'),'Chat Comunidad debe tener umbral de arrastre claro.');
+assert(communityJs.includes('ENTRAR A JUGAR'),'Sala abierta debe tener llamado directo para jugar.');
+assert(communityJs.includes('priceLabel'),'Comunidad debe mostrar el precio o GRATIS.');
+assert(serverSrc.includes('communityUpcomingGames'),'Servidor debe publicar partidas programadas.');
+
+const port=56600+Math.floor(Math.random()*120),base=`http://127.0.0.1:${port}`;
+const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'bingo-community-agenda-'));
+const child=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port),ONLINE_MODE:'false',MASTER_ADMIN_PASSWORD:'',ADMIN_PASSWORD:'',BINGO_TEST_MODE:'true',BINGO_DATA_DIR:dataDir,PUBLIC_URL:base},stdio:['ignore','pipe','pipe']});
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function waitServer(){for(let i=0;i<100;i++){try{if((await fetch(base+'/healthz')).ok)return}catch{}await wait(50)}throw Error('No inició servidor')}
+async function req(pathname,{method='GET',body,token}={}){const r=await fetch(base+pathname,{method,headers:{...(body!==undefined?{'Content-Type':'application/json'}:{}),...(token?{'X-Admin-Token':token}:{})},body:body===undefined?undefined:JSON.stringify(body)});const d=await r.json().catch(()=>({}));assert(r.ok,`${pathname}: ${r.status} ${JSON.stringify(d)}`);return d}
+(async()=>{try{
+ await waitServer();
+ const login=await req('/api/admin/login',{method:'POST',body:{}}),token=login.token;
+ const startsAt=new Date(Date.now()+2*60*60*1000).toISOString();
+ let admin=await req('/api/admin/community/schedule',{method:'POST',token,body:{action:'save',startsAt,mode:90,paymentMode:'paid',cardPrice:5000}});
+ assert.equal(admin.scheduledGames.length,1,'Debe guardar una partida programada.');
+ const schedule=admin.scheduledGames[0];assert.equal(schedule.mode,90);assert.equal(schedule.cardPrice,5000);
+ let publicState=await req('/api/community/state');
+ assert.equal(publicState.upcomingGames.length,1,'Comunidad debe publicar la próxima partida.');
+ assert.equal(publicState.upcomingGames[0].paymentMode,'paid');
+ assert.equal(publicState.upcomingGames[0].cardPrice,5000);
+ let room=await req('/api/admin/create-simple-room',{method:'POST',token,body:{mode:90,cardCount:100,autoSeconds:6,rules:{line:true,bingo:true},linePrizeCount:1,markingMode:'normal',maxCardsPerPlayer:4,paymentMode:'paid',cardPrice:5000,paymentAlias:'la.gorda.test',paymentAccountHolder:'La Gorda',paymentProvider:'Mercado Pago',whatsapp:'+5493757123456',communityScheduleId:schedule.id}});
+ assert.equal(room.roomSettings.communityScheduleId,schedule.id,'Sala debe quedar asociada a la programación.');
+ assert.equal(room.roomSettings.scheduledAt,startsAt,'Sala debe conservar el horario anunciado.');
+ publicState=await req('/api/community/state');
+ assert(publicState.activeGame,'Comunidad debe detectar la sala oficial.');
+ assert.equal(publicState.activeGame.canJoin,false,'Sala oficial empieza con inscripciones cerradas.');
+ assert.equal(publicState.activeGame.cardPrice,5000);
+ assert.equal(publicState.upcomingGames.length,0,'La programación asociada no debe duplicarse debajo de la sala activa.');
+ room=await req('/api/admin/join-open',{method:'POST',token,body:{open:true}});
+ assert.equal(room.roomSettings.joinOpen,true);
+ publicState=await req('/api/community/state');
+ assert.equal(publicState.activeGame.canJoin,true,'Sala oficial abierta debe ser jugable desde Comunidad.');
+ assert(publicState.activeGame.joinUrl.includes('directo=1'),'Comunidad debe enlazar al ingreso general oficial, no pedir acceso por WhatsApp.');
+ console.log('PRUEBA FINAL COMUNIDAD · AGENDA + ACCESO DIRECTO + CHAT MÓVIL: OK');
+}catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

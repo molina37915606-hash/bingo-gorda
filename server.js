@@ -532,9 +532,33 @@ function blankCommunity() {
     blockPhoneNumbers: true,
     blockWhatsappLinks: true,
     blockedTerms: [],
+    scheduledGames: [],
     messages: [],
     leaderboards: { red_black: [], higher_lower: [] }
   };
+}
+
+function normalizeCommunityScheduledGame(raw = {}) {
+  const starts = new Date(raw.startsAt || raw.dateTime || '');
+  if (!Number.isFinite(starts.getTime())) return null;
+  const mode = Number(raw.mode) === 75 ? 75 : 90;
+  const paymentMode = raw.paymentMode === 'paid' ? 'paid' : 'free';
+  return {
+    id: String(raw.id || randomId('agenda')).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100),
+    startsAt: starts.toISOString(),
+    mode,
+    paymentMode,
+    cardPrice: paymentMode === 'paid' ? Math.max(1, Math.round(Number(raw.cardPrice) || 0)) : 0,
+    roomCode: String(raw.roomCode || '').replace(/[^A-Z0-9]/gi, '').slice(0, 12),
+    createdAt: String(raw.createdAt || nowIso()),
+    updatedAt: String(raw.updatedAt || nowIso())
+  };
+}
+
+function communityScheduledGames() {
+  const community = platform.community ||= blankCommunity();
+  community.scheduledGames ||= [];
+  return community.scheduledGames;
 }
 
 function normalizeCommunityFilterText(value) {
@@ -615,6 +639,9 @@ function normalizeCommunity(raw = {}) {
     blockWhatsappLinks: raw.blockWhatsappLinks !== false,
     blockedTerms: Array.isArray(raw.blockedTerms)
       ? [...new Set(raw.blockedTerms.map(normalizeCommunityBlockedTerm).filter(Boolean))].slice(0, COMMUNITY_FILTER_MAX_TERMS)
+      : [],
+    scheduledGames: Array.isArray(raw.scheduledGames)
+      ? raw.scheduledGames.map(normalizeCommunityScheduledGame).filter(Boolean).sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt))).slice(0, 40)
       : [],
     messages: Array.isArray(raw.messages) ? raw.messages.slice(-COMMUNITY_CHAT_MAX_MESSAGES).map(message => ({
       ...message,
@@ -1940,6 +1967,9 @@ function createSimpleRoom(payload = {}) {
   const paymentAccountHolder = paymentMode === 'paid' ? normalizePlayerName(payload.paymentAccountHolder || '').slice(0, 80) : '';
   const paymentProvider = paymentMode === 'paid' ? String(payload.paymentProvider || '').trim().replace(/\s+/g, ' ').slice(0, 80) : '';
   const whatsapp = paymentMode === 'paid' ? String(payload.whatsapp || '').trim().slice(0, 40) : String(payload.whatsapp || '').trim().slice(0, 40);
+  const communityScheduleId = String(payload.communityScheduleId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const communitySchedule = communityScheduleId ? communityScheduledGames().find(item => item.id === communityScheduleId) : null;
+  if (communityScheduleId && !communitySchedule) throw new Error('La partida programada ya no existe. Volvé a abrir la Agenda.');
   if (paymentMode === 'paid' && !cardPrice) throw new Error('Ingresá el precio por cartón para la partida paga.');
   if (paymentMode === 'paid' && !paymentAlias) throw new Error('Ingresá el alias de transferencia para la partida paga.');
   if (paymentMode === 'paid' && !paymentAccountHolder) throw new Error('Ingresá el titular de la cuenta que recibirá las transferencias.');
@@ -1961,6 +1991,8 @@ function createSimpleRoom(payload = {}) {
       joinOpen: false,
       maxOpenPlayers: MAX_PLAYERS,
       accessKey: '', paymentMode, cardPrice, paymentAlias, paymentAccountHolder, paymentProvider, whatsapp,
+      communityScheduleId: communitySchedule?.id || '',
+      scheduledAt: communitySchedule?.startsAt || '',
       maxCardsPerPlayer: roomMaxCards, markingMode,
       claimAutoVerifySeconds: 10,
       presenterVoiceGender: 'female',
@@ -1972,7 +2004,15 @@ function createSimpleRoom(payload = {}) {
     drawOrder: createSecureDrawOrder(game.mode), game, players: [], cardReservations: {}, claims: [], eventLog: [],
     chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} }
   });
-  logEvent('functional_room_created', { markingMode, mode: game.mode, cards: game.cards.length, maxCardsPerPlayer: roomMaxCards, paymentMode });
+  if (communitySchedule) {
+    communitySchedule.mode = Number(game.mode) === 75 ? 75 : 90;
+    communitySchedule.paymentMode = paymentMode;
+    communitySchedule.cardPrice = paymentMode === 'paid' ? cardPrice : 0;
+    communitySchedule.roomCode = state.roomCode;
+    communitySchedule.updatedAt = nowIso();
+    savePlatform();
+  }
+  logEvent('functional_room_created', { markingMode, mode: game.mode, cards: game.cards.length, maxCardsPerPlayer: roomMaxCards, paymentMode, communityScheduleId: communitySchedule?.id || null });
   saveState(); broadcast();
   return adminPayload();
 }
@@ -5659,21 +5699,49 @@ function communityActiveGamePayload() {
   const current = ownerWorkspace.state;
   if (!current?.active || !current.game || current.status === 'closed' || current.status === 'finished') return null;
   const roomType = current.roomSettings?.roomType === 'test' ? 'test' : 'official';
-  const canJoin = roomType === 'test' && current.status === 'waiting' && Boolean(current.roomSettings?.joinOpen);
+  const canJoin = current.status === 'waiting' && Boolean(current.roomSettings?.joinOpen);
   current.roomSettings.broadcastToken ||= randomId('live');
   current.roomSettings.broadcastAlias ||= freshBroadcastAlias(ownerWorkspace.id);
   const broadcastToken = current.roomSettings.broadcastToken;
+  const schedule = communityScheduledGames().find(item => item.id === String(current.roomSettings?.communityScheduleId || '') || (item.roomCode && item.roomCode === current.roomCode));
+  const paymentMode = current.roomSettings?.paymentMode === 'paid' ? 'paid' : 'free';
   return {
     roomCode: current.roomCode,
     mode: Number(current.game.mode) === 75 ? 75 : 90,
     status: current.status,
-    playerCount: Array.isArray(current.players) ? current.players.filter(player => player.selectionConfirmed || roomType === 'test').length : 0,
+    playerCount: Array.isArray(current.players) ? current.players.filter(player => player.selectionConfirmed || roomType === 'test' || player.paymentStatus === 'confirmed' || player.paymentStatus === 'not_required').length : 0,
     roomType,
     canJoin,
-    joinUrl: canJoin ? `/jugador?sala=${encodeURIComponent(current.roomCode)}&prueba=1` : '',
+    joinUrl: canJoin ? (roomType === 'test' ? `/jugador?sala=${encodeURIComponent(current.roomCode)}&prueba=1` : `/jugador?sala=${encodeURIComponent(current.roomCode)}&directo=1`) : '',
+    paymentMode,
+    cardPrice: paymentMode === 'paid' ? Math.max(0, Number(current.roomSettings?.cardPrice) || 0) : 0,
+    scheduledAt: String(current.roomSettings?.scheduledAt || schedule?.startsAt || ''),
+    drawnCount: Array.isArray(current.game?.drawn) ? current.game.drawn.length : 0,
     transmissionUrl: broadcastToken ? `/v/${encodeURIComponent(current.roomSettings.broadcastAlias)}` : '',
     transmissionEnabled: Boolean(broadcastToken)
   };
+}
+
+function communityUpcomingGames() {
+  const current = ownerWorkspace.state;
+  const currentRoomCode = current?.active ? String(current.roomCode || '') : '';
+  const cutoff = Date.now() - 3 * 60 * 60 * 1000;
+  return communityScheduledGames()
+    .filter(item => {
+      const time = new Date(item.startsAt).getTime();
+      if (!Number.isFinite(time) || time < cutoff) return false;
+      if (currentRoomCode && item.roomCode === currentRoomCode) return false;
+      return true;
+    })
+    .sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt)))
+    .slice(0, 5)
+    .map(item => ({
+      id: item.id,
+      startsAt: item.startsAt,
+      mode: item.mode,
+      paymentMode: item.paymentMode,
+      cardPrice: item.paymentMode === 'paid' ? item.cardPrice : 0
+    }));
 }
 
 function pruneCommunityVisitors() {
@@ -5702,6 +5770,7 @@ function communityStatePayload(visitorId = '') {
       number: communityWhatsappNumber()
     },
     activeGame: communityActiveGamePayload(),
+    upcomingGames: communityUpcomingGames(),
     leaderboards: {
       red_black: (community.leaderboards?.red_black || []).slice(0, 8),
       higher_lower: (community.leaderboards?.higher_lower || []).slice(0, 8)
@@ -5782,6 +5851,46 @@ function submitCommunityScore(payload = {}) {
   return communityStatePayload(visitorId);
 }
 
+function updateCommunitySchedule(payload = {}) {
+  const action = String(payload.action || 'save').toLowerCase();
+  const games = communityScheduledGames();
+  if (action === 'delete') {
+    const id = String(payload.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+    const index = games.findIndex(item => item.id === id);
+    if (index < 0) throw new Error('La partida programada ya no existe.');
+    games.splice(index, 1);
+    savePlatform();
+    return communityAdminPayload();
+  }
+  if (action !== 'save') throw new Error('Acción de agenda no válida.');
+  const id = String(payload.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const existing = id ? games.find(item => item.id === id) : null;
+  if (id && !existing) throw new Error('La partida programada ya no existe.');
+  if (existing?.roomCode) throw new Error('Esa programación ya fue usada para preparar una sala. Creá una nueva si necesitás otro horario.');
+  const starts = new Date(payload.startsAt || '');
+  if (!Number.isFinite(starts.getTime())) throw new Error('Elegí una fecha y hora válidas.');
+  if (starts.getTime() < Date.now() - 5 * 60 * 1000) throw new Error('La fecha programada no puede estar en el pasado.');
+  const paymentMode = payload.paymentMode === 'paid' ? 'paid' : 'free';
+  const cardPrice = paymentMode === 'paid' ? Math.max(1, Math.round(Number(payload.cardPrice) || 0)) : 0;
+  if (paymentMode === 'paid' && !cardPrice) throw new Error('Ingresá el precio por cartón.');
+  const next = {
+    id: existing?.id || randomId('agenda'),
+    startsAt: starts.toISOString(),
+    mode: Number(payload.mode) === 75 ? 75 : 90,
+    paymentMode,
+    cardPrice,
+    roomCode: '',
+    createdAt: existing?.createdAt || nowIso(),
+    updatedAt: nowIso()
+  };
+  if (existing) Object.assign(existing, next);
+  else games.push(next);
+  games.sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt)));
+  if (games.length > 40) games.splice(40);
+  savePlatform();
+  return communityAdminPayload();
+}
+
 function updateCommunitySettings(payload = {}) {
   const community = platform.community ||= blankCommunity();
   if (payload.whatsappGroup !== undefined) {
@@ -5834,6 +5943,7 @@ function communityAdminPayload() {
     blockPhoneNumbers: community.blockPhoneNumbers !== false,
     blockWhatsappLinks: community.blockWhatsappLinks !== false,
     blockedTerms: (community.blockedTerms || []).slice(0, COMMUNITY_FILTER_MAX_TERMS),
+    scheduledGames: communityScheduledGames().slice().sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt))).map(item => ({ ...item })),
     messages: (community.messages || []).slice(-COMMUNITY_CHAT_MAX_MESSAGES).map(message => ({ ...message, reportCount: Array.isArray(message.reports) ? message.reports.length : 0 })),
     reportedMessages: (community.messages || []).filter(message => Array.isArray(message.reports) && message.reports.length).map(message => ({ ...message, reportCount: message.reports.length })).sort((a,b) => Number(b.reportCount)-Number(a.reportCount) || String(b.createdAt).localeCompare(String(a.createdAt))),
     leaderboards: community.leaderboards || { red_black: [], higher_lower: [] }
@@ -5856,6 +5966,7 @@ async function handleMasterApi(req, res, url) {
   if (!isMasterAuthorized(req, url)) return sendJson(res, 401, { error: 'Ingresá al panel principal.' });
   if (url.pathname === '/api/master/community' && req.method === 'GET') return sendJson(res, 200, communityAdminPayload());
   if (url.pathname === '/api/master/community/settings' && req.method === 'POST') return sendJson(res, 200, updateCommunitySettings(await readJson(req)));
+  if (url.pathname === '/api/master/community/schedule' && req.method === 'POST') return sendJson(res, 200, updateCommunitySchedule(await readJson(req)));
   if (url.pathname === '/api/master/community/moderate' && req.method === 'POST') return sendJson(res, 200, moderateCommunity(await readJson(req)));
   if (url.pathname === '/api/master/admin-session' && req.method === 'POST') {
     return sendJson(res, 200, { adminToken: createAdminSession({ workspaceId: 'owner', role: 'owner' }) });
@@ -5877,6 +5988,10 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/community/settings' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Comunidad solo puede configurarla el administrador principal.' });
     return sendJson(res, 200, updateCommunitySettings(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/community/schedule' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Agenda solo puede configurarla el administrador principal.' });
+    return sendJson(res, 200, updateCommunitySchedule(await readJson(req)));
   }
   if (url.pathname === '/api/admin/community/moderate' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Comunidad solo puede moderarla el administrador principal.' });

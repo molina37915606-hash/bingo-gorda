@@ -8,6 +8,7 @@ const root=path.join(__dirname,'..');
 const adminHtml=fs.readFileSync(path.join(root,'admin.html'),'utf8');
 const adminJs=fs.readFileSync(path.join(root,'js/admin.js'),'utf8');
 const communityJs=fs.readFileSync(path.join(root,'js/community.js'),'utf8');
+const communityHtml=fs.readFileSync(path.join(root,'comunidad.html'),'utf8');
 const serverSrc=fs.readFileSync(path.join(root,'server.js'),'utf8');
 assert(adminHtml.includes('id="communityAdminBtn"'),'Admin debe tener botón visible de Comunidad.');
 assert(adminHtml.includes('id="communityAdminModal"'),'Admin debe tener panel de Comunidad.');
@@ -17,8 +18,8 @@ for(const id of ['communityWhatsappNumber','communityWhatsappGroup','communityCh
 assert(adminJs.includes("this.req('/api/admin/community')"),'Admin debe leer la configuración de Comunidad con su sesión actual.');
 assert(adminJs.includes("'/api/admin/community/settings'"),'Admin debe poder guardar la Comunidad.');
 assert(adminJs.includes("'/api/admin/community/moderate'"),'Admin debe poder moderar la Comunidad.');
-assert(communityJs.includes('href="/demo"'),'Comunidad debe ofrecer acceso permanente al DEMO.');
-assert(communityJs.includes('🎱 JUGAR DEMO'),'El botón de DEMO debe ser claro.');
+assert(communityHtml.includes('href="/demo"'),'Comunidad debe ofrecer acceso permanente al DEMO.');
+assert(communityHtml.includes('JUGAR DEMO'),'El botón de DEMO debe ser claro.');
 assert(serverSrc.includes("url.pathname === '/api/admin/community'"),'Servidor debe exponer Comunidad al admin principal.');
 
 const port=53800+Math.floor(Math.random()*100);

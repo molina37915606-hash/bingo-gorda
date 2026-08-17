@@ -2165,6 +2165,7 @@ function updatePlayerOrder(player, payload = {}) {
 function updatePlayerPrizePayout(player, payload = {}) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
   if (currentWorkspace().isDemo || state.roomSettings?.gameType === 'test') throw new Error('La demostración no utiliza cobro de premios.');
+  if (state.roomSettings?.paymentMode !== 'paid') throw new Error('Esta partida gratuita no utiliza datos de cobro.');
   const ownWins = state.claims.filter(claim => claim.playerId === player.id && claim.status === 'confirmed');
   if (!ownWins.length) throw new Error('No hay un premio confirmado para este jugador.');
   const alias = String(payload.alias || '').trim().replace(/\s+/g, ' ').slice(0, 80);
@@ -5698,8 +5699,10 @@ function setPlayerSessionCookie(req, res, token) {
     'HttpOnly',
     'SameSite=Lax'
   ];
-  if (requestIsSecure(req)) parts.push('Secure');
-  res.setHeader('Set-Cookie', parts.join('; '));
+  const demoClear = [`${DEMO_SESSION_COOKIE}=`, 'Path=/', 'Max-Age=0', 'HttpOnly', 'SameSite=Lax'];
+  if (requestIsSecure(req)) { parts.push('Secure'); demoClear.push('Secure'); }
+  // Una sesión real siempre reemplaza cualquier DEMO previa en el mismo dispositivo.
+  res.setHeader('Set-Cookie', [parts.join('; '), demoClear.join('; ')]);
 }
 
 function clearPlayerSessionCookie(req, res) {
@@ -5711,11 +5714,12 @@ function clearPlayerSessionCookie(req, res) {
 function playerTokenFrom(req, url) {
   const explicit = String(req.headers['x-player-token'] || url.searchParams.get('token') || '');
   if (explicit) return explicit;
-  const demoToken = cookieValue(req, DEMO_SESSION_COOKIE);
-  if (demoToken && findWorkspaceByPlayerToken(demoToken)) return demoToken;
+  // La partida real tiene prioridad. DEMO queda como fallback únicamente en sus rutas.
   const playerToken = cookieValue(req, PLAYER_SESSION_COOKIE);
   if (playerToken && findWorkspaceByPlayerToken(playerToken)) return playerToken;
-  return demoToken || playerToken || '';
+  const demoToken = cookieValue(req, DEMO_SESSION_COOKIE);
+  if (demoToken && findWorkspaceByPlayerToken(demoToken)) return demoToken;
+  return playerToken || demoToken || '';
 }
 
 function publicDemoCreation(result) {
@@ -6867,13 +6871,9 @@ const server = http.createServer(async (req, res) => {
       return res.end();
     }
     const currentSession = String(cookieValue(req, PLAYER_SESSION_COOKIE) || '').trim();
-    if (currentSession && findWorkspaceByPlayerToken(currentSession)) {
-      res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0', 'Referrer-Policy':'no-referrer' });
-      return res.end();
-    }
-    if (currentSession) clearPlayerSessionCookie(req, res);
     const recoveryToken = String(url.searchParams.get('recuperar') || '').trim();
     if (recoveryToken) {
+      // Un enlace explícito de recuperación siempre debe imponerse a una sesión previa.
       const workspace = findWorkspaceByRecoveryToken(recoveryToken);
       if (!workspace) return servePlayerRecoveryPage(res, { error:'Este enlace venció o ya fue utilizado.' });
       return workspaceContext.run(workspace, () => servePlayerRecoveryPage(res, { workspace, token:recoveryToken }));
@@ -6882,11 +6882,23 @@ const server = http.createServer(async (req, res) => {
     if (directRoom) {
       const workspace = findWorkspaceByRoomCode(directRoom);
       if (!workspace) return servePlayerAccessPage(res, { error:'El enlace de acceso no corresponde a una sala disponible.' });
+      const sessionWorkspace = currentSession ? findWorkspaceByPlayerToken(currentSession) : null;
+      const currentPlayer = sessionWorkspace?.state?.players?.find(item => item.sessionToken === currentSession && !item.demoHuman);
+      if (sessionWorkspace === workspace && currentPlayer && workspace.state?.active) {
+        res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0', 'Referrer-Policy':'no-referrer' });
+        return res.end();
+      }
+      if (currentSession && sessionWorkspace !== workspace) clearPlayerSessionCookie(req, res);
       return workspaceContext.run(workspace, () => {
         if (!state.active || state.status !== 'waiting' || !state.roomSettings?.joinOpen) return servePlayerAccessPage(res, { workspace, direct:true, closed:true, error:'El ingreso general está cerrado.' });
         return servePlayerAccessPage(res, { workspace, direct:true });
       });
     }
+    if (currentSession && findWorkspaceByPlayerToken(currentSession)) {
+      res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0', 'Referrer-Policy':'no-referrer' });
+      return res.end();
+    }
+    if (currentSession) clearPlayerSessionCookie(req, res);
     return servePlayerAccessPage(res);
   }
   if (url.pathname === '/jugador/salir' || url.pathname === '/jugador/salir/') {

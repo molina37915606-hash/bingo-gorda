@@ -547,14 +547,28 @@ function normalizeCommunityScheduledGame(raw = {}) {
   if (!Number.isFinite(starts.getTime())) return null;
   const mode = Number(raw.mode) === 75 ? 75 : 90;
   const paymentMode = raw.paymentMode === 'paid' ? 'paid' : 'free';
+  const markingMode = raw.markingMode === 'manual_only' ? 'manual_only' : 'normal';
+  const maxCardsPerPlayer = markingMode === 'manual_only'
+    ? Math.max(1, Math.min(2, Math.round(Number(raw.maxCardsPerPlayer) || 2)))
+    : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Math.round(Number(raw.maxCardsPerPlayer) || 4)));
   return {
     id: String(raw.id || randomId('agenda')).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100),
     startsAt: starts.toISOString(),
     mode,
     paymentMode,
     cardPrice: paymentMode === 'paid' ? Math.max(1, Math.round(Number(raw.cardPrice) || 0)) : 0,
+    paymentAlias: paymentMode === 'paid' ? String(raw.paymentAlias || '').trim().slice(0, 80) : '',
+    paymentAccountHolder: paymentMode === 'paid' ? normalizePlayerName(raw.paymentAccountHolder || '').slice(0, 80) : '',
+    paymentProvider: paymentMode === 'paid' ? String(raw.paymentProvider || '').trim().replace(/\s+/g, ' ').slice(0, 80) : '',
+    whatsapp: String(raw.whatsapp || '').trim().slice(0, 40),
     registrationMinutes: Math.max(1, Math.min(120, Math.round(Number(raw.registrationMinutes) || 15))),
     autoStart: raw.autoStart === true,
+    markingMode,
+    maxCardsPerPlayer,
+    cardCount: normalizedGeneratedCount(raw.cardCount || 250),
+    autoSeconds: Math.max(2, Math.min(60, Math.round(Number(raw.autoSeconds) || 6))),
+    linePrizeCount: mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(raw.linePrizeCount) || 1))) : 1,
+    rules: roomRulesFor(mode, raw.rules || {}),
     roomCode: String(raw.roomCode || '').replace(/[^A-Z0-9]/gi, '').slice(0, 12),
     autoOpenedAt: raw.autoOpenedAt ? String(raw.autoOpenedAt) : null,
     autoClosedAt: raw.autoClosedAt ? String(raw.autoClosedAt) : null,
@@ -5928,9 +5942,42 @@ function submitCommunityScore(payload = {}) {
   return communityStatePayload(visitorId);
 }
 
+function scheduledGameRoomPayload(game = {}) {
+  return {
+    mode: Number(game.mode) === 75 ? 75 : 90,
+    cardCount: normalizedGeneratedCount(game.cardCount || 250),
+    autoSeconds: Math.max(2, Math.min(60, Number(game.autoSeconds) || 6)),
+    rules: roomRulesFor(Number(game.mode) === 75 ? 75 : 90, game.rules || {}),
+    linePrizeCount: Number(game.mode) === 90 ? Math.max(1, Math.min(2, Number(game.linePrizeCount) || 1)) : 1,
+    markingMode: game.markingMode === 'manual_only' ? 'manual_only' : 'normal',
+    maxCardsPerPlayer: Math.max(1, Number(game.maxCardsPerPlayer) || (game.markingMode === 'manual_only' ? 2 : 4)),
+    paymentMode: game.paymentMode === 'paid' ? 'paid' : 'free',
+    cardPrice: game.paymentMode === 'paid' ? Math.max(1, Number(game.cardPrice) || 0) : 0,
+    paymentAlias: game.paymentMode === 'paid' ? String(game.paymentAlias || '').trim() : '',
+    paymentAccountHolder: game.paymentMode === 'paid' ? String(game.paymentAccountHolder || '').trim() : '',
+    paymentProvider: game.paymentMode === 'paid' ? String(game.paymentProvider || '').trim() : '',
+    whatsapp: String(game.whatsapp || platform.community?.whatsappNumber || '').trim(),
+    communityScheduleId: String(game.id || '')
+  };
+}
+
+function createRoomFromCommunitySchedule(game) {
+  if (!game) throw new Error('La partida programada ya no existe.');
+  if (ownerWorkspace.state?.active) throw new Error('Hay otra partida activa. Cerrala antes de crear esta sala.');
+  return workspaceContext.run(ownerWorkspace, () => createSimpleRoom(scheduledGameRoomPayload(game)));
+}
+
 function updateCommunitySchedule(payload = {}) {
   const action = String(payload.action || 'save').toLowerCase();
   const games = communityScheduledGames();
+  if (action === 'create-room') {
+    const id = String(payload.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+    const game = games.find(item => item.id === id);
+    if (!game) throw new Error('La partida programada ya no existe.');
+    if (game.roomCode) throw new Error(`Esta programación ya está asociada a la sala ${game.roomCode}.`);
+    createRoomFromCommunitySchedule(game);
+    return communityAdminPayload();
+  }
   if (action === 'delete') {
     const id = String(payload.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
     const index = games.findIndex(item => item.id === id);
@@ -5960,22 +6007,45 @@ function updateCommunitySchedule(payload = {}) {
   const id = String(payload.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
   const existing = id ? games.find(item => item.id === id) : null;
   if (id && !existing) throw new Error('La partida programada ya no existe.');
-  if (existing?.roomCode) throw new Error('Esa programación ya fue usada para preparar una sala. Creá una nueva si necesitás otro horario.');
+  if (existing?.roomCode) throw new Error('Esa programación ya tiene una sala creada. Creá una nueva si necesitás otro horario.');
   const starts = new Date(payload.startsAt || '');
   if (!Number.isFinite(starts.getTime())) throw new Error('Elegí una fecha y hora válidas.');
   if (starts.getTime() < Date.now() - 5 * 60 * 1000) throw new Error('La fecha programada no puede estar en el pasado.');
+  const mode = Number(payload.mode) === 75 ? 75 : 90;
   const paymentMode = payload.paymentMode === 'paid' ? 'paid' : 'free';
   const cardPrice = paymentMode === 'paid' ? Math.max(1, Math.round(Number(payload.cardPrice) || 0)) : 0;
+  const paymentAlias = paymentMode === 'paid' ? String(payload.paymentAlias || '').trim().slice(0, 80) : '';
+  const paymentAccountHolder = paymentMode === 'paid' ? normalizePlayerName(payload.paymentAccountHolder || '').slice(0, 80) : '';
+  const paymentProvider = paymentMode === 'paid' ? String(payload.paymentProvider || '').trim().replace(/\s+/g, ' ').slice(0, 80) : '';
+  const whatsapp = String(payload.whatsapp || '').trim().slice(0, 40);
   if (paymentMode === 'paid' && !cardPrice) throw new Error('Ingresá el precio por cartón.');
+  if (paymentMode === 'paid' && !paymentAlias) throw new Error('Ingresá el alias de transferencia.');
+  if (paymentMode === 'paid' && !paymentAccountHolder) throw new Error('Ingresá el titular de la cuenta receptora.');
+  if (paymentMode === 'paid' && !paymentProvider) throw new Error('Ingresá la billetera o banco receptor.');
+  if (paymentMode === 'paid' && !whatsapp && !String(platform.community?.whatsappNumber || '').trim()) throw new Error('Configurá un WhatsApp de contacto en esta partida o en Comunidad.');
   const registrationMinutes = Math.max(1, Math.min(120, Math.round(Number(payload.registrationMinutes) || 15)));
+  const markingMode = payload.markingMode === 'manual_only' ? 'manual_only' : 'normal';
+  const maxCardsPerPlayer = markingMode === 'manual_only'
+    ? Math.max(1, Math.min(2, Math.round(Number(payload.maxCardsPerPlayer) || 2)))
+    : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Math.round(Number(payload.maxCardsPerPlayer) || 4)));
   const next = {
     id: existing?.id || randomId('agenda'),
     startsAt: starts.toISOString(),
-    mode: Number(payload.mode) === 75 ? 75 : 90,
+    mode,
     paymentMode,
     cardPrice,
+    paymentAlias,
+    paymentAccountHolder,
+    paymentProvider,
+    whatsapp,
     registrationMinutes,
     autoStart: payload.autoStart === true,
+    markingMode,
+    maxCardsPerPlayer,
+    cardCount: normalizedGeneratedCount(payload.cardCount || 250),
+    autoSeconds: Math.max(2, Math.min(60, Math.round(Number(payload.autoSeconds) || 6))),
+    linePrizeCount: mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1,
+    rules: roomRulesFor(mode, payload.rules || {}),
     roomCode: '',
     autoOpenedAt: null,
     autoClosedAt: null,
@@ -5994,7 +6064,54 @@ function updateCommunitySchedule(payload = {}) {
 
 function processCommunityScheduleAutomation() {
   const workspace = ownerWorkspace;
-  const room = workspace.state;
+  const now = Date.now();
+  let room = workspace.state;
+
+  // Una programación AUTO completa puede crear su propia sala al abrir las inscripciones.
+  // No pisa jamás una sala existente: con una sola sala operativa, espera a que quede libre.
+  if (!room?.active) {
+    const due = communityScheduledGames()
+      .filter(game => game.autoStart === true && !game.roomCode && !game.autoStartedAt)
+      .sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt)))
+      .find(game => {
+        const startsMs = new Date(game.startsAt).getTime();
+        if (!Number.isFinite(startsMs)) return false;
+        const registrationMinutes = Math.max(1, Math.min(120, Number(game.registrationMinutes) || 15));
+        return now >= startsMs - registrationMinutes * 60_000;
+      });
+    if (due) {
+      try {
+        createRoomFromCommunitySchedule(due);
+        room = workspace.state;
+      } catch (error) {
+        due.autoStartError = String(error?.message || 'No se pudo crear automáticamente la sala.').slice(0, 300);
+        due.updatedAt = nowIso();
+        savePlatform();
+        return false;
+      }
+    }
+  } else {
+    // Si llegó la apertura de otra programación mientras una sala sigue activa, lo informa
+    // pero vuelve a intentarlo automáticamente cuando la sala actual se cierre.
+    const blocked = communityScheduledGames()
+      .filter(game => game.autoStart === true && !game.roomCode && !game.autoStartedAt)
+      .sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt)))
+      .find(game => {
+        const startsMs = new Date(game.startsAt).getTime();
+        const registrationMinutes = Math.max(1, Math.min(120, Number(game.registrationMinutes) || 15));
+        return Number.isFinite(startsMs) && now >= startsMs - registrationMinutes * 60_000;
+      });
+    if (blocked) {
+      const message = 'Hay otra partida activa. La sala automática se creará cuando quede libre.';
+      if (blocked.autoStartError !== message) {
+        blocked.autoStartError = message;
+        blocked.updatedAt = nowIso();
+        savePlatform();
+      }
+    }
+  }
+
+  room = workspace.state;
   if (!room?.active || !room.game || room.status !== 'waiting') return false;
   const scheduleId = String(room.roomSettings?.communityScheduleId || '');
   if (!scheduleId) return false;
@@ -6004,7 +6121,6 @@ function processCommunityScheduleAutomation() {
   if (!Number.isFinite(startsMs)) return false;
   const registrationMinutes = Math.max(1, Math.min(120, Number(game.registrationMinutes) || 15));
   const opensMs = startsMs - registrationMinutes * 60_000;
-  const now = Date.now();
   let changedState = false;
   let changedPlatform = false;
 

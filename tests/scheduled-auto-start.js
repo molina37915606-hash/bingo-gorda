@@ -10,8 +10,11 @@ const adminHtml=fs.readFileSync(path.join(root,'admin.html'),'utf8');
 const adminJs=fs.readFileSync(path.join(root,'js/admin.js'),'utf8');
 assert(adminHtml.includes('id="communityScheduleRegistrationMinutes"'),'Admin debe configurar minutos de inscripción.');
 assert(adminHtml.includes('id="communityScheduleAutoStart"'),'Admin debe poder activar el inicio automático.');
+assert(adminHtml.includes('id="communitySchedulePrizeOptions"'),'Admin debe configurar los premios antes de programar.');
+assert(adminHtml.includes('id="communityScheduleCardCount"')&&adminHtml.includes('id="communityScheduleInterval"'),'Programación debe guardar cartones generados e intervalo.');
 assert(adminJs.includes("action:'set-auto'"),'Admin debe poder cancelar/reactivar la automatización.');
 assert(serverSrc.includes('processCommunityScheduleAutomation'),'Servidor debe procesar la agenda aunque Admin no esté mirando la pantalla.');
+assert(serverSrc.includes('createRoomFromCommunitySchedule'),'La automatización debe crear la sala sin PREPARAR manualmente.');
 assert(serverSrc.includes('scheduled_join_opened')&&serverSrc.includes('scheduled_join_closed')&&serverSrc.includes('scheduled_start_blocked'),'La automatización debe dejar trazabilidad.');
 
 const port=57100+Math.floor(Math.random()*180),base=`http://127.0.0.1:${port}`;
@@ -24,32 +27,33 @@ async function generalJoin(roomCode,name){const r=await fetch(base+'/jugador/ent
 (async()=>{try{
   await waitServer();
   const login=await req('/api/admin/login',{method:'POST',body:{}}),token=login.token;
-  const startsAt=new Date(Date.now()+4200).toISOString();
-  let community=await req('/api/admin/community/schedule',{method:'POST',token,body:{action:'save',startsAt,registrationMinutes:1,autoStart:true,mode:75,paymentMode:'free'}});
+  const startsAt=new Date(Date.now()+4400).toISOString();
+  let community=await req('/api/admin/community/schedule',{method:'POST',token,body:{action:'save',startsAt,registrationMinutes:1,autoStart:true,mode:75,paymentMode:'free',markingMode:'normal',maxCardsPerPlayer:2,cardCount:100,autoSeconds:60,linePrizeCount:1,rules:{line:true,corners:true,doubleLine:true,tripleLine:false,bingo:true}}});
   const schedule=community.scheduledGames[0];
-  assert.equal(schedule.registrationMinutes,1);
-  assert.equal(schedule.autoStart,true);
+  assert.equal(schedule.registrationMinutes,1);assert.equal(schedule.autoStart,true);assert.equal(schedule.cardCount,100);assert.equal(schedule.maxCardsPerPlayer,2);assert.equal(schedule.rules.corners,true);assert.equal(schedule.rules.doubleLine,true);
 
-  let room=await req('/api/admin/create-simple-room',{method:'POST',token,body:{mode:75,cardCount:60,autoSeconds:60,rules:{line:true,corners:true,bingo:true},markingMode:'normal',maxCardsPerPlayer:4,paymentMode:'free',communityScheduleId:schedule.id}});
-  assert.equal(room.roomSettings.joinOpen,false,'Sala preparada debe empezar cerrada hasta que actúe la agenda.');
-
-  // El horario de apertura (1 minuto antes) ya quedó alcanzado; el servidor debe abrir solo.
-  for(let i=0;i<30 && !room.roomSettings.joinOpen;i++){await wait(100);room=await req('/api/admin/state',{token})}
+  // No se crea sala manualmente: al estar dentro de la ventana de inscripción debe nacer sola.
+  let room=await req('/api/admin/state',{token});
+  for(let i=0;i<40 && (!room.active||!room.roomSettings?.joinOpen);i++){await wait(100);room=await req('/api/admin/state',{token})}
+  assert.equal(room.active,true,'La agenda AUTO debe crear la sala por sí sola.');
+  assert.equal(room.roomSettings.communityScheduleId,schedule.id,'Sala automática debe quedar vinculada a la programación.');
   assert.equal(room.roomSettings.joinOpen,true,'La agenda debe abrir inscripciones sin intervención del Admin.');
+  assert.equal(room.game.mode,75);assert.equal(room.game.cards.length,100);assert.equal(room.roomSettings.maxCardsPerPlayer,2);assert.equal(room.game.rules.corners,true);assert.equal(room.game.rules.doubleLine,true);
   await generalJoin(room.roomCode,'Automática Uno');
   await generalJoin(room.roomCode,'Automática Dos');
 
   // Al llegar la hora, debe cerrar y comenzar sola. La autoasignación resuelve cartones pendientes.
-  for(let i=0;i<80 && room.status==='waiting';i++){await wait(100);room=await req('/api/admin/state',{token})}
+  for(let i=0;i<90 && room.status==='waiting';i++){await wait(100);room=await req('/api/admin/state',{token})}
   assert.notEqual(room.status,'waiting','La partida debe abandonar espera al cumplirse el horario.');
   assert.equal(room.roomSettings.joinOpen,false,'Las inscripciones deben quedar cerradas al iniciar.');
   assert(room.players.filter(p=>!p.excludedFromRound).every(p=>p.selectionConfirmed),'Los participantes habilitados deben recibir cartón antes de iniciar.');
   community=await req('/api/admin/community',{token});
   const saved=community.scheduledGames.find(g=>g.id===schedule.id);
+  assert(saved.roomCode,'La sala creada automáticamente debe quedar registrada.');
   assert(saved.autoOpenedAt,'Debe registrar cuándo abrió inscripciones.');
   assert(saved.autoClosedAt,'Debe registrar cuándo cerró inscripciones.');
   assert(saved.autoStartedAt,'Debe registrar el inicio automático.');
   assert.equal(saved.autoStartError,'');
 
-  console.log('PRUEBA FINAL AGENDA AUTOMÁTICA: OK · abre inscripción + cierra + autoasigna + inicia sola');
+  console.log('PRUEBA FINAL AGENDA AUTOMÁTICA COMPLETA: OK · crea sala + abre + cierra + autoasigna + inicia sola');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

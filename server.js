@@ -1026,10 +1026,20 @@ function playerEligibleForRound(player) {
   return true;
 }
 
+function authorizedCardCount(player) {
+  const roomMax = state.roomSettings?.markingMode === 'manual_only'
+    ? 2
+    : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(state.roomSettings?.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
+  const base = state.roomSettings?.paymentMode === 'paid'
+    ? (Number(player?.requestedCardCount) || Number(player?.allowedCardCount) || 1)
+    : (Number(player?.allowedCardCount) || Number(player?.requestedCardCount) || 1);
+  return Math.max(1, Math.min(roomMax, base));
+}
+
 function playerSelectionComplete(player) {
   if (!player?.selectionConfirmed) return false;
   const selectedCount = Array.isArray(player.cardIds) ? player.cardIds.length : 0;
-  const allowedCount = Math.max(1, Number(player.allowedCardCount) || 1);
+  const allowedCount = authorizedCardCount(player);
   if (selectedCount < 1) return false;
   return state.roomSettings?.paymentMode === 'paid'
     ? selectedCount === allowedCount
@@ -1044,9 +1054,9 @@ function registrationSummaryPayload() {
   // conserva su selección; quien todavía no eligió recibirá su cantidad autorizada.
   const confirmedCards = confirmedPlayers.reduce((sum, player) => sum + (player.selectionConfirmed
     ? (player.cardIds || []).length
-    : Math.max(1, Number(player.allowedCardCount) || 1)), 0);
+    : authorizedCardCount(player)), 0);
   const assignedCards = confirmedPlayers.reduce((sum, player) => sum + (player.selectionConfirmed ? (player.cardIds || []).length : 0), 0);
-  const pendingSelectionCards = confirmedPlayers.reduce((sum, player) => sum + (player.selectionConfirmed ? 0 : Math.max(1, Number(player.allowedCardCount) || 1)), 0);
+  const pendingSelectionCards = confirmedPlayers.reduce((sum, player) => sum + (player.selectionConfirmed ? 0 : authorizedCardCount(player)), 0);
   const paymentPendingPlayers = registered.filter(player => state.roomSettings?.paymentMode === 'paid' && player.paymentStatus === 'pending').length;
   const paymentReportedPlayers = registered.filter(player => state.roomSettings?.paymentMode === 'paid' && player.paymentStatus === 'reported').length;
   const paymentConfirmedPlayers = registered.filter(player => state.roomSettings?.paymentMode === 'paid' && player.paymentStatus === 'confirmed').length;
@@ -1111,7 +1121,7 @@ function preflightPayload() {
     totalPlayers: state.players.length,
     eligiblePlayers: eligiblePlayers.length,
     readyPlayers: eligiblePlayers.length - pendingPlayers.length,
-    pendingPlayers: pendingPlayers.map(player => ({ id: player.id, name: playerDisplayName(player), missing: Math.max(0, player.allowedCardCount - player.cardIds.length) })),
+    pendingPlayers: pendingPlayers.map(player => ({ id: player.id, name: playerDisplayName(player), missing: Math.max(0, authorizedCardCount(player) - player.cardIds.length) })),
     pendingMarkingMode: pendingMarkingMode.map(player => ({ id: player.id, name: playerDisplayName(player) })),
     generatedCards: state.game?.cards?.length || 0,
     activeCards,
@@ -1248,7 +1258,7 @@ function autoAssignPendingPlayers(reason = 'timer') {
   for (const player of pendingPlayers) {
     const preferred = (player.reservedCardIds || [])
       .filter(cardId => validUnassigned.has(cardId) && state.cardReservations?.[cardId]?.playerId === player.id && !preferredIds.has(cardId))
-      .slice(0, player.allowedCardCount);
+      .slice(0, authorizedCardCount(player));
     preferred.forEach(cardId => preferredIds.add(cardId));
     preferredByPlayer.set(player.id, preferred);
   }
@@ -1257,8 +1267,9 @@ function autoAssignPendingPlayers(reason = 'timer') {
 
   for (const player of pendingPlayers) {
     const preferred = preferredByPlayer.get(player.id) || [];
-    const chosen = diverseCardSelection([...preferred, ...available], player.allowedCardCount, preferred);
-    if (chosen.length < player.allowedCardCount) throw new Error('No quedan cartones suficientemente diferentes para completar la asignación automática.');
+    const requiredCount = authorizedCardCount(player);
+    const chosen = diverseCardSelection([...preferred, ...available], requiredCount, preferred);
+    if (chosen.length < requiredCount) throw new Error('No quedan cartones suficientemente diferentes para completar la asignación automática.');
     available = available.filter(cardId => !chosen.includes(cardId));
     player.cardIds = chosen;
     player.selectionConfirmed = true;
@@ -1589,7 +1600,7 @@ function adminPayload() {
       invitationClaimed: Boolean(player.inviteClaimedAt),
       invitedAt: player.invitedAt || null,
       requestedCardCount: player.requestedCardCount || player.allowedCardCount,
-      allowedCardCount: player.allowedCardCount,
+      allowedCardCount: authorizedCardCount(player),
       paymentStatus: player.paymentStatus || (state.roomSettings?.paymentMode === 'paid' ? 'pending' : 'not_required'),
       paymentConfirmedAt: player.paymentConfirmedAt || null,
       paymentReportedAt: player.paymentReportedAt || null,
@@ -1682,7 +1693,7 @@ function playerPayload(player) {
       slotLabel: player.slotLabel,
       personalPresenter: PRESENTER_ID,
       requestedCardCount: player.requestedCardCount || player.allowedCardCount,
-      allowedCardCount: player.allowedCardCount,
+      allowedCardCount: authorizedCardCount(player),
       paymentStatus: player.paymentStatus || (state.roomSettings?.paymentMode === 'paid' ? 'pending' : 'not_required'),
       paymentConfirmedAt: player.paymentConfirmedAt || null,
       paymentReportedAt: player.paymentReportedAt || null,
@@ -2159,8 +2170,20 @@ function updatePlayerApproval(payload = {}) {
   }
   if (player.selectionConfirmed) throw new Error('El jugador ya confirmó sus cartones.');
   const roomMax = state.roomSettings?.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(state.roomSettings?.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
-  const requestedChange = player.paymentChangeRequestedCount == null ? null : Math.max(1, Math.min(roomMax, Number(player.paymentChangeRequestedCount) || player.allowedCardCount || 1));
-  const wanted = Math.max(1, Math.min(roomMax, Number(payload.applyRequestedChange === true && requestedChange != null ? requestedChange : (payload.allowedCardCount ?? payload.cardCount)) || player.allowedCardCount || 1));
+  const requestedChange = player.paymentChangeRequestedCount == null ? null : Math.max(1, Math.min(roomMax, Number(player.paymentChangeRequestedCount) || player.requestedCardCount || player.allowedCardCount || 1));
+  const paidExact = Math.max(1, Math.min(roomMax, Number(player.requestedCardCount) || Number(player.allowedCardCount) || 1));
+  // En una partida paga, CONFIRMAR PAGO nunca puede ampliar el pedido por un valor
+  // genérico enviado por la interfaz. La cantidad pagada/solicitada es la autoridad.
+  let sourceCount = payload.applyRequestedChange === true && requestedChange != null
+    ? requestedChange
+    : (payload.allowedCardCount ?? payload.cardCount);
+  if (state.roomSettings?.paymentMode === 'paid' && payload.confirmPayment === true && payload.applyRequestedChange !== true) {
+    if (sourceCount != null && Number(sourceCount) > paidExact) throw new Error(`El jugador pidió ${paidExact} cartón${paidExact===1?'':'es'}. No se puede confirmar una cantidad mayor sin modificar antes el pedido.`);
+    // Permitimos que el Admin reduzca explícitamente una cantidad, pero jamás que la
+    // confirmación normal la amplíe. Sin override explícito, se confirma exactamente el pedido.
+    sourceCount = sourceCount != null ? Math.min(paidExact, Number(sourceCount) || paidExact) : paidExact;
+  }
+  const wanted = Math.max(1, Math.min(roomMax, Number(sourceCount) || (state.roomSettings?.paymentMode === 'paid' ? paidExact : player.allowedCardCount) || 1));
   const others = state.players.filter(item => item.id !== player.id).reduce((sum,item)=>sum+Math.max(1,Number(item.allowedCardCount)||1),0);
   if (others + wanted > state.game.cards.length || others + wanted > MAX_ACTIVE_CARDS) throw new Error('No hay suficientes cartones disponibles para autorizar esa cantidad.');
   if (wanted !== player.allowedCardCount) {
@@ -2178,14 +2201,17 @@ function updatePlayerApproval(payload = {}) {
   if (payload.confirmPayment === true) {
     if (state.roomSettings?.paymentMode === 'paid') {
       if (player.paymentChangeRequestedCount != null) throw new Error('Primero resolvé el cambio de cantidad solicitado por el jugador.');
+      // Blindaje definitivo: pago confirmado = exactamente pedido confirmado.
+      player.allowedCardCount = Math.max(1, Math.min(roomMax, wanted));
+      player.requestedCardCount = player.allowedCardCount;
       player.paymentStatus = 'confirmed';
       player.paymentConfirmedAt = nowIso();
     } else player.paymentStatus = 'not_required';
     if (state.status === 'waiting') refreshOffersForPlayer(player, true);
     player.notices ||= [];
-    player.notices.push({ id: randomId('notice'), createdAt: nowIso(), kind: 'payment_confirmed', text: state.roomSettings?.paymentMode === 'paid' ? `Pago confirmado. Ya podés elegir tus ${wanted} cartón${wanted===1?'':'es'}.` : 'Ya podés elegir tus cartones.' });
+    player.notices.push({ id: randomId('notice'), createdAt: nowIso(), kind: 'payment_confirmed', text: state.roomSettings?.paymentMode === 'paid' ? `Pago confirmado. Ya podés elegir tus ${authorizedCardCount(player)} cartón${authorizedCardCount(player)===1?'':'es'}.` : 'Ya podés elegir tus cartones.' });
   }
-  logEvent('player_approval_updated', { playerId: player.id, requested: player.requestedCardCount, authorized: wanted, paymentStatus: player.paymentStatus });
+  logEvent('player_approval_updated', { playerId: player.id, requested: player.requestedCardCount, authorized: authorizedCardCount(player), paymentStatus: player.paymentStatus });
   saveState(); broadcast();
   return adminPayload();
 }
@@ -4107,8 +4133,9 @@ function assignCardsToPlayer(payload) {
   const currentIds = new Set(player.cardIds || []);
   const occupied = new Set(state.players.filter(item => item.id !== player.id && item.selectionConfirmed).flatMap(item => item.cardIds || []));
   let chosen = [];
+  const authorizedCount = authorizedCardCount(player);
   if (requestedNumbers.length) {
-    if (requestedNumbers.length > player.allowedCardCount) throw new Error(`Este acceso admite hasta ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}.`);
+    if (requestedNumbers.length > authorizedCount) throw new Error(`Este acceso admite hasta ${authorizedCount} cartón${authorizedCount === 1 ? '' : 'es'}.`);
     const normalized = [...new Set(requestedNumbers)];
     if (normalized.length !== requestedNumbers.length) throw new Error('Repetiste un número de cartón.');
     for (const number of normalized) {
@@ -4119,8 +4146,8 @@ function assignCardsToPlayer(payload) {
     }
   } else {
     const available = state.game.cards.map(card => card.id).filter(cardId => !occupied.has(cardId));
-    chosen = diverseCardSelection(available, player.allowedCardCount, [...currentIds]);
-    if (chosen.length < player.allowedCardCount) throw new Error('No quedan cartones suficientemente diferentes para completar la asignación.');
+    chosen = diverseCardSelection(available, authorizedCount, [...currentIds]);
+    if (chosen.length < authorizedCount) throw new Error('No quedan cartones suficientemente diferentes para completar la asignación.');
   }
   assertPlayerCardDiversity(chosen);
   releaseReservationsForPlayer(player);
@@ -4436,7 +4463,8 @@ function reserveCard(player, payload) {
     throw new Error('Ese cartón acaba de ser reservado por otro jugador. Elegí otro.');
   }
   const current = new Set(player.reservedCardIds || []);
-  if (!current.has(cardId) && current.size >= player.allowedCardCount) throw new Error(`Solo podés reservar ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}.`);
+  const authorizedCount = authorizedCardCount(player);
+  if (!current.has(cardId) && current.size >= authorizedCount) throw new Error(`Solo podés reservar ${authorizedCount} cartón${authorizedCount === 1 ? '' : 'es'}.`);
   current.add(cardId);
   player.reservedCardIds = [...current];
   state.cardReservations ||= {};
@@ -4480,8 +4508,9 @@ function chooseCards(player, payload) {
   purgeExpiredReservations();
   const selectedName = player.nameSet ? null : validatePlayerName(payload?.name, player.id);
   const selected = [...new Set((payload.cardIds || []).map(String))];
-  if (state.roomSettings?.paymentMode === 'paid' && selected.length !== player.allowedCardCount) throw new Error(`Elegí exactamente ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}, que es la cantidad confirmada.`);
-  if (state.roomSettings?.paymentMode !== 'paid' && (selected.length < 1 || selected.length > player.allowedCardCount)) throw new Error(`Podés elegir entre 1 y ${player.allowedCardCount} cartón${player.allowedCardCount === 1 ? '' : 'es'}.`);
+  const authorizedCount = authorizedCardCount(player);
+  if (state.roomSettings?.paymentMode === 'paid' && selected.length !== authorizedCount) throw new Error(`Elegí exactamente ${authorizedCount} cartón${authorizedCount === 1 ? '' : 'es'}, que es la cantidad confirmada.`);
+  if (state.roomSettings?.paymentMode !== 'paid' && (selected.length < 1 || selected.length > authorizedCount)) throw new Error(`Podés elegir entre 1 y ${authorizedCount} cartón${authorizedCount === 1 ? '' : 'es'}.`);
   const offers = new Set(player.offeredCardIds || []);
   if (!selected.every(cardId => offers.has(cardId) || (player.reservedCardIds || []).includes(cardId))) throw new Error('Una de las opciones ya no está disponible. Actualizamos tus opciones de cartones.');
   for (const cardId of selected) {

@@ -35,7 +35,7 @@ INICIAR SORTEO es independiente de CERRAR INSCRIPCIONES. Durante el estado de pr
 
 ## Comunidad y agenda
 
-El Admin puede programar futuras partidas indicando fecha/hora, modalidad, gratuita/paga y precio por cartón. La agenda no inicia nada automáticamente: sirve para anunciar la próxima partida y luego precargar esos datos al preparar una sala real.
+El Admin puede programar futuras partidas indicando hora de inicio, modalidad, gratuita/paga, precio por cartón, minutos de inscripción y si desea automatización. Una sala previamente PREPARADA puede abrir inscripciones automáticamente (15 minutos antes por defecto), cerrarlas al llegar la hora, autoasignar cartones pendientes e iniciar el sorteo si se cumplen las condiciones. Si faltan jugadores o existe un bloqueo, no fuerza el inicio: registra el motivo y queda bajo control del Admin.
 
 En Comunidad móvil, la tarjeta principal cambia según el estado: próxima partida, inscripciones abiertas, por comenzar o en vivo. Cuando una sala oficial tiene el ingreso general abierto, el botón principal es ENTRAR A JUGAR y lleva directamente al formulario general. Las partidas programadas muestran horario y precio; las gratuitas muestran CARTÓN GRATIS. Demo, WhatsApp y Transmisión usan accesos compactos.
 

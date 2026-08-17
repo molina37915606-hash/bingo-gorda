@@ -553,7 +553,13 @@ function normalizeCommunityScheduledGame(raw = {}) {
     mode,
     paymentMode,
     cardPrice: paymentMode === 'paid' ? Math.max(1, Math.round(Number(raw.cardPrice) || 0)) : 0,
+    registrationMinutes: Math.max(1, Math.min(120, Math.round(Number(raw.registrationMinutes) || 15))),
+    autoStart: raw.autoStart === true,
     roomCode: String(raw.roomCode || '').replace(/[^A-Z0-9]/gi, '').slice(0, 12),
+    autoOpenedAt: raw.autoOpenedAt ? String(raw.autoOpenedAt) : null,
+    autoClosedAt: raw.autoClosedAt ? String(raw.autoClosedAt) : null,
+    autoStartedAt: raw.autoStartedAt ? String(raw.autoStartedAt) : null,
+    autoStartError: String(raw.autoStartError || '').slice(0, 300),
     createdAt: String(raw.createdAt || nowIso()),
     updatedAt: String(raw.updatedAt || nowIso())
   };
@@ -2021,6 +2027,8 @@ function createSimpleRoom(payload = {}) {
       accessKey: '', paymentMode, cardPrice, paymentAlias, paymentAccountHolder, paymentProvider, whatsapp,
       communityScheduleId: communitySchedule?.id || '',
       scheduledAt: communitySchedule?.startsAt || '',
+      scheduledRegistrationMinutes: communitySchedule?.registrationMinutes || 15,
+      scheduledAutoStart: Boolean(communitySchedule?.autoStart),
       maxCardsPerPlayer: roomMaxCards, markingMode,
       claimAutoVerifySeconds: 10,
       presenterVoiceGender: 'female',
@@ -2037,6 +2045,10 @@ function createSimpleRoom(payload = {}) {
     communitySchedule.paymentMode = paymentMode;
     communitySchedule.cardPrice = paymentMode === 'paid' ? cardPrice : 0;
     communitySchedule.roomCode = state.roomCode;
+    communitySchedule.autoOpenedAt = null;
+    communitySchedule.autoClosedAt = null;
+    communitySchedule.autoStartedAt = null;
+    communitySchedule.autoStartError = '';
     communitySchedule.updatedAt = nowIso();
     savePlatform();
   }
@@ -5923,7 +5935,24 @@ function updateCommunitySchedule(payload = {}) {
     const id = String(payload.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
     const index = games.findIndex(item => item.id === id);
     if (index < 0) throw new Error('La partida programada ya no existe.');
+    if (games[index].roomCode && ownerWorkspace.state?.active && String(ownerWorkspace.state.roomCode || '') === games[index].roomCode) {
+      throw new Error('Esa programación está asociada a la sala activa. Cancelá la automatización o cerrá la sala antes de eliminarla.');
+    }
     games.splice(index, 1);
+    savePlatform();
+    return communityAdminPayload();
+  }
+  if (action === 'set-auto') {
+    const id = String(payload.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+    const game = games.find(item => item.id === id);
+    if (!game) throw new Error('La partida programada ya no existe.');
+    game.autoStart = Boolean(payload.enabled);
+    if (game.autoStart) game.autoStartError = '';
+    game.updatedAt = nowIso();
+    if (game.roomCode && ownerWorkspace.state?.active && String(ownerWorkspace.state.roomCode || '') === game.roomCode) {
+      ownerWorkspace.state.roomSettings.scheduledAutoStart = game.autoStart;
+      workspaceContext.run(ownerWorkspace, () => { saveState(); broadcast(); });
+    }
     savePlatform();
     return communityAdminPayload();
   }
@@ -5938,13 +5967,20 @@ function updateCommunitySchedule(payload = {}) {
   const paymentMode = payload.paymentMode === 'paid' ? 'paid' : 'free';
   const cardPrice = paymentMode === 'paid' ? Math.max(1, Math.round(Number(payload.cardPrice) || 0)) : 0;
   if (paymentMode === 'paid' && !cardPrice) throw new Error('Ingresá el precio por cartón.');
+  const registrationMinutes = Math.max(1, Math.min(120, Math.round(Number(payload.registrationMinutes) || 15)));
   const next = {
     id: existing?.id || randomId('agenda'),
     startsAt: starts.toISOString(),
     mode: Number(payload.mode) === 75 ? 75 : 90,
     paymentMode,
     cardPrice,
+    registrationMinutes,
+    autoStart: payload.autoStart === true,
     roomCode: '',
+    autoOpenedAt: null,
+    autoClosedAt: null,
+    autoStartedAt: null,
+    autoStartError: '',
     createdAt: existing?.createdAt || nowIso(),
     updatedAt: nowIso()
   };
@@ -5954,6 +5990,66 @@ function updateCommunitySchedule(payload = {}) {
   if (games.length > 40) games.splice(40);
   savePlatform();
   return communityAdminPayload();
+}
+
+function processCommunityScheduleAutomation() {
+  const workspace = ownerWorkspace;
+  const room = workspace.state;
+  if (!room?.active || !room.game || room.status !== 'waiting') return false;
+  const scheduleId = String(room.roomSettings?.communityScheduleId || '');
+  if (!scheduleId) return false;
+  const game = communityScheduledGames().find(item => item.id === scheduleId);
+  if (!game || !game.autoStart || !game.roomCode || game.roomCode !== String(room.roomCode || '')) return false;
+  const startsMs = new Date(game.startsAt).getTime();
+  if (!Number.isFinite(startsMs)) return false;
+  const registrationMinutes = Math.max(1, Math.min(120, Number(game.registrationMinutes) || 15));
+  const opensMs = startsMs - registrationMinutes * 60_000;
+  const now = Date.now();
+  let changedState = false;
+  let changedPlatform = false;
+
+  if (now >= opensMs && now < startsMs && !game.autoOpenedAt) {
+    const maxPlayers = Math.max(2, Math.min(MAX_PLAYERS, Number(room.roomSettings?.maxOpenPlayers) || MAX_PLAYERS));
+    room.roomSettings.joinOpen = room.players.length < maxPlayers;
+    game.autoOpenedAt = nowIso();
+    game.updatedAt = nowIso();
+    game.autoStartError = '';
+    workspaceContext.run(workspace, () => logEvent('scheduled_join_opened', { scheduleId:game.id, startsAt:game.startsAt, registrationMinutes }));
+    changedState = true;
+    changedPlatform = true;
+  }
+
+  if (now >= startsMs && !game.autoClosedAt) {
+    room.roomSettings.joinOpen = false;
+    game.autoClosedAt = nowIso();
+    game.updatedAt = nowIso();
+    workspaceContext.run(workspace, () => logEvent('scheduled_join_closed', { scheduleId:game.id, startsAt:game.startsAt }));
+    changedState = true;
+    changedPlatform = true;
+  }
+
+  if (changedPlatform) savePlatform();
+  if (changedState) workspaceContext.run(workspace, () => { saveState(); broadcast(); });
+
+  if (now >= startsMs && !game.autoStartedAt && !game.autoStartError && room.status === 'waiting') {
+    try {
+      workspaceContext.run(workspace, () => startRoom({ automaticSchedule:true }));
+      game.autoStartedAt = room.startedAt || nowIso();
+      game.updatedAt = nowIso();
+      savePlatform();
+      return true;
+    } catch (error) {
+      game.autoStartError = String(error?.message || 'No se pudo iniciar automáticamente.').slice(0, 300);
+      game.updatedAt = nowIso();
+      workspaceContext.run(workspace, () => {
+        logEvent('scheduled_start_blocked', { scheduleId:game.id, reason:game.autoStartError });
+        saveState();
+        broadcast();
+      });
+      savePlatform();
+    }
+  }
+  return changedState || changedPlatform;
 }
 
 function updateCommunitySettings(payload = {}) {
@@ -6712,6 +6808,10 @@ setInterval(() => {
     workspaceContext.run(workspace, () => {
       try { processAssignmentDeadline(); }
       catch (error) { console.error(`No se pudo completar la asignación automática en ${workspace.id}:`, error.message); }
+      if (workspace.id === 'owner') {
+        try { processCommunityScheduleAutomation(); }
+        catch (error) { console.error(`No se pudo procesar la agenda automática:`, error.message); }
+      }
       if (workspace.isDemo && state.demo && state.status === 'waiting') {
         const flow = ensureDemoStartFlow();
         if (flow?.phase === 'countdown' && flow.countdownEndsAt) {

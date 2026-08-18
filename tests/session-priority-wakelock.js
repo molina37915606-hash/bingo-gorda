@@ -44,12 +44,33 @@ function cookieValueFromSetCookie(header,name){const m=String(header||'').match(
  assert.equal(realState.roomCode,room.roomCode,'La sesión real debe tener prioridad sobre DEMO');
  assert(!realState.demo?.active,'El estado recibido no debe ser el DEMO');
 
- // 3) Wake Lock: debe estar asociado únicamente a estados activos del jugador y reintentarse al volver a la pestaña.
+ // 3) Regreso automático desde Comunidad durante una partida real activa.
+ await postJson('/api/admin/join-open',{open:false},ah);
+ await postJson('/api/admin/start',{},ah);
+ await wait(180);
+ const activeBefore=await (await fetch(base+'/api/player/state',{headers:{Cookie:both}})).json();
+ assert(['starting','playing','paused','verifying','resuming','finalizing'].includes(activeBefore.status),'La sesión debe estar en un estado de juego activo.');
+ const cardsBefore=(activeBefore.player?.cards||[]).map(c=>c.id||c.number);
+ assert(cardsBefore.length,'El jugador debe conservar cartones antes de salir.');
+ const resumeApi=await (await fetch(base+'/api/community/resume',{headers:{Cookie:both}})).json();
+ assert.equal(resumeApi.resume,true,'Comunidad debe detectar una partida real activa.');
+ assert.equal(resumeApi.url,'/jugar');
+ const communityReturn=await fetch(base+'/comunidad',{headers:{Cookie:both},redirect:'manual'});
+ assert.equal(communityReturn.status,303,'Entrar a Comunidad durante la partida debe volver al juego.');
+ assert.equal(communityReturn.headers.get('location'),'/jugar');
+ const gamePage=await fetch(base+'/jugar',{headers:{Cookie:both},redirect:'manual'});
+ assert.equal(gamePage.status,200,'La misma sesión debe abrir directamente los cartones.');
+ const activeAfter=await (await fetch(base+'/api/player/state',{headers:{Cookie:both}})).json();
+ assert.deepEqual((activeAfter.player?.cards||[]).map(c=>c.id||c.number),cardsBefore,'El regreso automático debe conservar exactamente los mismos cartones.');
+ const explicitOther=await fetch(base+'/comunidad?mesa=otra-sala',{headers:{Cookie:both},redirect:'manual'});
+ assert.equal(explicitOther.status,200,'Un destino explícito de otra mesa no debe ser interceptado automáticamente.');
+
+ // 4) Wake Lock: debe estar asociado únicamente a estados activos del jugador y reintentarse al volver a la pestaña.
  const playerJs=fs.readFileSync(path.join(root,'js','player.js'),'utf8');
  assert(playerJs.includes("navigator.wakeLock.request('screen')"),'Debe solicitar Screen Wake Lock');
  for(const status of ['starting','playing','paused','verifying','resuming','finalizing']) assert(playerJs.includes(`'${status}'`),`Wake Lock debe contemplar ${status}`);
  assert(playerJs.includes("document.visibilityState==='visible'"),'Wake Lock debe respetar visibilidad');
  assert(playerJs.includes('visibilitychange')&&playerJs.includes('syncWakeLock()'),'Debe volver a sincronizar Wake Lock al regresar');
  assert(playerJs.includes('lock.release()'),'Debe liberar Wake Lock al terminar o salir del juego activo');
- console.log('PRUEBA FINAL SESIÓN DEMO→REAL + WAKE LOCK: OK');
+ console.log('PRUEBA FINAL SESIÓN DEMO→REAL + REGRESO COMUNIDAD→CARTONES + WAKE LOCK: OK');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

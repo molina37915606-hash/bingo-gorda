@@ -65,7 +65,7 @@ const profiles = {
       leaderChange: '{name} pasa al frente de la carrera con el cartón {card}. Está a {missing} para {prize}.',
       leaderOneAway: 'Atención con {name}. El cartón {card} queda a una sola bolilla de {prize}.',
       leaderReady: 'Atención. El cartón {card} de {name} ya completa {prize}. Falta el reclamo y la verificación oficial.',
-      gameFinished: 'Partida finalizada. Felicitaciones a los ganadores y gracias por jugar en Bingo de la Gorda.',
+      gameFinished: 'Partida finalizada. Felicitaciones a los ganadores y gracias por jugar en EL BINGO DE LA GORDA.',
       demoIntro: 'Hola, soy Vero. En esta demo jugás contra {names}. Revisá tus cartones y mucha suerte.',
       demoClaim: '{name} reclama {prize}. Verificando.',
       demoWinner: '¡{prize} para {name}! Reclamo válido.',

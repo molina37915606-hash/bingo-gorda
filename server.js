@@ -26,6 +26,7 @@ if (fs.existsSync(LOCAL_ENV_FILE)) {
 }
 
 const ROOT = __dirname;
+const TEST_MODE = process.env.BINGO_TEST_MODE === 'true';
 const DATA_DIR = process.env.BINGO_DATA_DIR ? path.resolve(process.env.BINGO_DATA_DIR) : path.join(ROOT, 'data');
 const OWNER_STATE_FILE = path.join(DATA_DIR, 'sala-online.json');
 const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma.json');
@@ -38,10 +39,12 @@ const COMMUNITY_ROOM_RESERVATION_MS = Math.max(15 * 60 * 1000, Number(process.en
 const COMMUNITY_PUBLIC_OPEN_MS = Math.max(1_000, Number(process.env.BINGO_COMMUNITY_PUBLIC_OPEN_MS || 2 * 60 * 60 * 1000));
 const COMMUNITY_PUBLIC_MAX_AHEAD_MS = 36 * 60 * 60 * 1000;
 const COMMUNITY_PUBLIC_ESTIMATED_GAME_MS = 2 * 60 * 60 * 1000;
+const COMMUNITY_FINISH_GRACE_MS = Math.max(TEST_MODE ? 150 : 15_000, Number(process.env.BINGO_COMMUNITY_FINISH_GRACE_MS || 3 * 60 * 1000));
+const COMMUNITY_ROOM_ACCESS_COOKIE = 'bingo_community_room_access';
+const COMMUNITY_ROOM_ACCESS_TTL_MS = 30 * 60 * 1000;
 const PORT = Number(process.env.PORT || 3210);
 const HOST = '0.0.0.0';
 const ONLINE_MODE = process.env.RENDER === 'true' || process.env.ONLINE_MODE === 'true';
-const TEST_MODE = process.env.BINGO_TEST_MODE === 'true';
 const PUBLIC_URL = String(process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '').replace(/\/+$/, '');
 const CAST_APP_ID = String(process.env.CAST_APP_ID || '').trim();
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
@@ -108,7 +111,7 @@ const DEMO_START_SEQUENCE_MS = 1200;
 const DEMO_READY_COUNTDOWN_MS = Math.max(100, Number(process.env.BINGO_DEMO_READY_COUNTDOWN_MS || (TEST_MODE ? 180 : 5000)));
 const DEMO_RESUME_SEQUENCE_MS = 1400;
 const DEMO_FINAL_SEQUENCE_MS = 2600;
-const APP_PUBLIC_VERSION = 'BINGO DE LA GORDA - Final';
+const APP_PUBLIC_VERSION = 'EL BINGO DE LA GORDA';
 const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bingo'];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
@@ -323,6 +326,8 @@ function blankState() {
     communityHostExpiresAt: null,
     communityCreatorCodeHash: null,
     communityCreatorPlayerId: null,
+    communityAccessKeyHash: null,
+    communityRematch: null,
     createdAt: null,
     startedAt: null,
     endedAt: null,
@@ -348,6 +353,7 @@ function blankState() {
       roomName: '',
       communityPublicId: '',
       communityStartMode: '',
+      communityAccessType: 'public',
       joinOpen: true,
       maxOpenPlayers: 60,
       communityScheduleId: '',
@@ -438,6 +444,12 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.communityHostExpiresAt = parsed.communityHostExpiresAt && Number.isFinite(new Date(parsed.communityHostExpiresAt).getTime()) ? new Date(parsed.communityHostExpiresAt).toISOString() : null;
     merged.communityCreatorCodeHash = /^[a-f0-9]{64}$/i.test(String(parsed.communityCreatorCodeHash || '')) ? String(parsed.communityCreatorCodeHash).toLowerCase() : null;
     merged.communityCreatorPlayerId = parsed.communityCreatorPlayerId ? String(parsed.communityCreatorPlayerId).slice(0, 120) : null;
+    merged.communityAccessKeyHash = /^[a-f0-9]{64}$/i.test(String(parsed.communityAccessKeyHash || '')) ? String(parsed.communityAccessKeyHash).toLowerCase() : null;
+    merged.communityRematch = parsed.communityRematch && typeof parsed.communityRematch === 'object' ? {
+      expiresAt: String(parsed.communityRematch.expiresAt || ''),
+      readyPlayerIds: Array.isArray(parsed.communityRematch.readyPlayerIds) ? [...new Set(parsed.communityRematch.readyPlayerIds.map(String))].slice(0, MAX_PLAYERS) : [],
+      createdAt: String(parsed.communityRematch.createdAt || '')
+    } : null;
     merged.closedReason = String(parsed.closedReason || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 80);
     if (merged.active && !parsed.status) merged.status = merged.game?.drawn?.length ? 'playing' : 'waiting';
     if (!['closed', 'waiting', 'starting', 'playing', 'verifying', 'paused', 'resuming', 'finalizing', 'finished'].includes(merged.status)) merged.status = 'closed';
@@ -464,6 +476,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.roomName = String(merged.roomSettings.roomName || '').trim().replace(/\s+/g, ' ').slice(0, 30);
     merged.roomSettings.communityPublicId = String(merged.roomSettings.communityPublicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
     merged.roomSettings.communityStartMode = ['manual','scheduled'].includes(String(merged.roomSettings.communityStartMode || '')) ? String(merged.roomSettings.communityStartMode) : '';
+    merged.roomSettings.communityAccessType = merged.roomSettings.communityAccessType === 'private' ? 'private' : 'public';
     merged.roomSettings.communityScheduleId = String(merged.roomSettings.communityScheduleId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
     merged.roomSettings.scheduledAt = String(merged.roomSettings.scheduledAt || '');
     merged.roomSettings.scheduledRegistrationMinutes = Math.max(1, Math.min(120, Number(merged.roomSettings.scheduledRegistrationMinutes) || 15));
@@ -641,6 +654,9 @@ function normalizeCommunityPublicRoom(raw = {}) {
     name: String(raw.name || '').trim().replace(/\s+/g, ' ').slice(0, 30),
     creatorName: normalizePlayerName(raw.creatorName || '').slice(0, 20),
     creatorCodeHash: /^[a-f0-9]{64}$/i.test(String(raw.creatorCodeHash || '')) ? String(raw.creatorCodeHash).toLowerCase() : '',
+    accessType: raw.accessType === 'private' ? 'private' : 'public',
+    accessKeyHash: /^[a-f0-9]{64}$/i.test(String(raw.accessKeyHash || '')) ? String(raw.accessKeyHash).toLowerCase() : '',
+    roundNumber: Math.max(1, Math.round(Number(raw.roundNumber) || 1)),
     startMode: raw.startMode === 'scheduled' ? 'scheduled' : 'manual',
     startsAt: startsIso,
     mode, maxPlayers, maxCardsPerPlayer,
@@ -871,6 +887,7 @@ const communityLastSentAt = new Map();
 const communityLastStickerAt = new Map();
 const communityStickerSentAt = new Map();
 const communityReportSentAt = new Map();
+const communityRoomAccessGrants = new Map();
 
 function currentResultFiles() {
   const workspace = currentWorkspace();
@@ -948,6 +965,9 @@ function historyPublicEntry(entry) {
     roomCode: entry.roomCode,
     status: entry.status,
     roomOrigin: entry.roomOrigin || 'official',
+    roomType: entry.roomType || (entry.roomOrigin === 'community' ? 'public' : 'official'),
+    roomName: entry.roomName || '',
+    communityPublicId: entry.communityPublicId || '',
     hostName: entry.hostName || '',
     mode: Number(entry.mode) || null,
     gameNumber: entry.gameNumber || null,
@@ -1904,6 +1924,7 @@ function playerPayload(player) {
     communityRoom: state.roomSettings?.roomOrigin === 'community' ? {
       publicId: state.roomSettings?.communityPublicId || '',
       name: state.roomSettings?.roomName || `Sala ${state.roomCode}`,
+      kind: state.roomSettings?.communityAccessType === 'private' ? 'private' : 'public',
       creatorName: state.roomSettings?.hostName || '',
       isCreator: String(state.communityCreatorPlayerId || '') === String(player.id || ''),
       startMode: state.roomSettings?.communityStartMode || 'manual',
@@ -1913,7 +1934,17 @@ function playerPayload(player) {
       maxPlayers: Math.max(2, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS),
       canStart: state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
       canCancel: ['waiting','starting','playing','verifying','paused','resuming','finalizing'].includes(state.status) && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
-      cancelAction: state.status === 'waiting' ? 'cancel' : 'interrupt'
+      cancelAction: state.status === 'waiting' ? 'cancel' : 'interrupt',
+      roundNumber: Math.max(1, Number(communityRecord?.roundNumber || state.round) || 1),
+      rematch: state.status === 'finished' && state.communityRematch ? {
+        available: new Date(state.communityRematch.expiresAt || 0).getTime() > Date.now(),
+        expiresAt: state.communityRematch.expiresAt || '',
+        remainingMs: Math.max(0, new Date(state.communityRematch.expiresAt || 0).getTime() - Date.now()),
+        ready: (state.communityRematch.readyPlayerIds || []).includes(String(player.id)),
+        readyCount: (state.communityRematch.readyPlayerIds || []).length,
+        isCreator: String(state.communityCreatorPlayerId || '') === String(player.id || ''),
+        canOpen: String(state.communityCreatorPlayerId || '') === String(player.id || '')
+      } : null
     } : null,
     demo: currentWorkspace().isDemo ? {
       active: true,
@@ -2401,6 +2432,7 @@ function createSimpleRoom(payload = {}) {
       roomName: payload.roomOrigin === 'community' ? String(payload.roomName || '').trim().replace(/\s+/g, ' ').slice(0, 30) : '',
       communityPublicId: payload.roomOrigin === 'community' ? String(payload.communityPublicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100) : '',
       communityStartMode: payload.roomOrigin === 'community' && payload.communityStartMode === 'scheduled' ? 'scheduled' : (payload.roomOrigin === 'community' ? 'manual' : ''),
+      communityAccessType: payload.roomOrigin === 'community' && payload.communityAccessType === 'private' ? 'private' : 'public',
       // El acceso normal es exclusivamente mediante invitaciones privadas por jugador.
       joinOpen: false,
       maxOpenPlayers: Math.max(2, Math.min(MAX_PLAYERS, Number(payload.maxOpenPlayers) || MAX_PLAYERS)),
@@ -2440,6 +2472,7 @@ function createSimpleRoom(payload = {}) {
 
 function openJoinPlayer(payload = {}) {
   if (!state.active || !state.game || !['alpha','test'].includes(state.roomSettings?.roomType)) throw new Error('Este enlace no corresponde a una sala abierta.');
+  if (state.roomSettings?.roomOrigin === 'community' && state.roomSettings?.communityAccessType === 'private' && payload.communityAccessGranted !== true) throw new Error('Esta sala es privada. Ingresá desde su invitación y escribí la clave.');
   const deviceId = String(payload.deviceId || '').slice(0, 120);
   if (!deviceId) throw new Error('No se pudo identificar este dispositivo.');
   if (!state.roomSettings.joinOpen || state.status !== 'waiting') throw new Error('El ingreso a esta sala ya está cerrado.');
@@ -4419,6 +4452,9 @@ function archiveCurrentResults() {
     status: 'finished',
     roomCode: state.roomCode,
     roomOrigin: state.roomSettings?.roomOrigin === 'community' ? 'community' : 'official',
+    roomType: state.roomSettings?.roomOrigin === 'community' ? (state.roomSettings?.communityAccessType === 'private' ? 'private' : 'public') : 'official',
+    roomName: state.roomSettings?.roomName || (state.roomSettings?.roomOrigin === 'community' ? '' : 'EL BINGO DE LA GORDA'),
+    communityPublicId: state.roomSettings?.communityPublicId || '',
     hostName: state.roomSettings?.hostName || '',
     workspaceId: currentWorkspace().id,
     gameNumber: state.game.number,
@@ -4471,6 +4507,7 @@ function archiveCurrentResults() {
   currentWorkspace().lastResultMeta = meta;
   state.historyArchiveId = meta.id;
   syncCommunityPublicRecordFromState('finished');
+  prepareCommunityRematchWindow();
   return meta;
 }
 
@@ -4485,6 +4522,9 @@ function archiveCancelledRoom() {
     status: 'cancelled',
     roomCode: state.roomCode,
     roomOrigin: state.roomSettings?.roomOrigin === 'community' ? 'community' : 'official',
+    roomType: state.roomSettings?.roomOrigin === 'community' ? (state.roomSettings?.communityAccessType === 'private' ? 'private' : 'public') : 'official',
+    roomName: state.roomSettings?.roomName || (state.roomSettings?.roomOrigin === 'community' ? '' : 'EL BINGO DE LA GORDA'),
+    communityPublicId: state.roomSettings?.communityPublicId || '',
     hostName: state.roomSettings?.hostName || '',
     workspaceId: currentWorkspace().id,
     gameNumber: state.game?.number || null,
@@ -6022,7 +6062,7 @@ function serveInvitationActivationPage(res, player, inviteToken, activationToken
   const safeName = escapeHtml(playerDisplayName(player));
   const action = `/invitacion/${encodeURIComponent(String(inviteToken || ''))}`;
   const safeActivation = escapeHtml(activationToken);
-  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070914"><meta name="robots" content="noindex,nofollow,noarchive"><title>Entrando · Bingo de la Gorda</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#2c2052,#070914 55%,#02040a);color:#fff;font-family:Segoe UI,Arial,sans-serif;padding:18px;box-sizing:border-box}.box{width:min(460px,100%);background:#11182b;border:1px solid #ffffff24;border-radius:20px;padding:24px;text-align:center;box-shadow:0 20px 70px #0008}.box img{width:92px}.box h1{font-size:24px;margin-bottom:8px}.box p{color:#bac4d8;line-height:1.5}.spinner{width:38px;height:38px;border:4px solid #ffffff22;border-top-color:#ffca2f;border-radius:50%;margin:18px auto;animation:gira .8s linear infinite}.btn{display:inline-block;margin-top:10px;padding:12px 16px;border:0;border-radius:12px;background:#ffca2f;color:#241700;font-weight:900;cursor:pointer}@keyframes gira{to{transform:rotate(360deg)}}</style></head><body><main class="box"><img src="/assets/logo.webp" alt="Bingo de la Gorda"><h1>Entrando a la partida</h1><p>Hola <b>${safeName}</b>. Estamos preparando tu sala privada.</p><div class="spinner" aria-hidden="true"></div><form id="activateInvite" method="post" action="${action}" autocomplete="off"><input type="hidden" name="activationToken" value="${safeActivation}"><noscript><button class="btn" type="submit">ENTRAR A LA PARTIDA</button></noscript></form></main><script>(()=>{const f=document.getElementById('activateInvite');const go=()=>{try{if(f.requestSubmit)f.requestSubmit();else f.submit()}catch{f.submit()}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(go,40),{once:true});else setTimeout(go,40)})();</script></body></html>`;
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070914"><meta name="robots" content="noindex,nofollow,noarchive"><title>Entrando · EL BINGO DE LA GORDA</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#2c2052,#070914 55%,#02040a);color:#fff;font-family:Segoe UI,Arial,sans-serif;padding:18px;box-sizing:border-box}.box{width:min(460px,100%);background:#11182b;border:1px solid #ffffff24;border-radius:20px;padding:24px;text-align:center;box-shadow:0 20px 70px #0008}.box img{width:92px}.box h1{font-size:24px;margin-bottom:8px}.box p{color:#bac4d8;line-height:1.5}.spinner{width:38px;height:38px;border:4px solid #ffffff22;border-top-color:#ffca2f;border-radius:50%;margin:18px auto;animation:gira .8s linear infinite}.btn{display:inline-block;margin-top:10px;padding:12px 16px;border:0;border-radius:12px;background:#ffca2f;color:#241700;font-weight:900;cursor:pointer}@keyframes gira{to{transform:rotate(360deg)}}</style></head><body><main class="box"><img src="/assets/logo.webp" alt="EL BINGO DE LA GORDA"><h1>Entrando a la partida</h1><p>Hola <b>${safeName}</b>. Estamos preparando tu sala privada.</p><div class="spinner" aria-hidden="true"></div><form id="activateInvite" method="post" action="${action}" autocomplete="off"><input type="hidden" name="activationToken" value="${safeActivation}"><noscript><button class="btn" type="submit">ENTRAR A LA PARTIDA</button></noscript></form></main><script>(()=>{const f=document.getElementById('activateInvite');const go=()=>{try{if(f.requestSubmit)f.requestSubmit();else f.submit()}catch{f.submit()}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(go,40),{once:true});else setTimeout(go,40)})();</script></body></html>`;
   res.writeHead(200, {
     'Content-Type':'text/html; charset=utf-8',
     'Content-Length':Buffer.byteLength(html),
@@ -6036,7 +6076,7 @@ function serveInvitationActivationPage(res, player, inviteToken, activationToken
 
 function serveInvitationErrorPage(res, message) {
   const safe = escapeHtml(String(message || 'No se pudo abrir la invitación.'));
-  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070914"><title>Bingo de la Gorda</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#2c2052,#070914 55%,#02040a);color:#fff;font-family:Segoe UI,Arial,sans-serif;padding:18px;box-sizing:border-box}.box{width:min(480px,100%);background:#11182b;border:1px solid #ffffff24;border-radius:20px;padding:24px;text-align:center;box-shadow:0 20px 70px #0008}.box img{width:92px}.box h1{font-size:24px}.box p{color:#bac4d8;line-height:1.5}.btn{display:inline-block;margin-top:10px;padding:12px 16px;border-radius:12px;background:#ffca2f;color:#241700;font-weight:900;text-decoration:none}</style></head><body><main class="box"><img src="/assets/logo.webp" alt="Bingo de la Gorda"><h1>No se pudo abrir la invitación</h1><p>${safe}</p></main></body></html>`;
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070914"><title>EL BINGO DE LA GORDA</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#2c2052,#070914 55%,#02040a);color:#fff;font-family:Segoe UI,Arial,sans-serif;padding:18px;box-sizing:border-box}.box{width:min(480px,100%);background:#11182b;border:1px solid #ffffff24;border-radius:20px;padding:24px;text-align:center;box-shadow:0 20px 70px #0008}.box img{width:92px}.box h1{font-size:24px}.box p{color:#bac4d8;line-height:1.5}.btn{display:inline-block;margin-top:10px;padding:12px 16px;border-radius:12px;background:#ffca2f;color:#241700;font-weight:900;text-decoration:none}</style></head><body><main class="box"><img src="/assets/logo.webp" alt="EL BINGO DE LA GORDA"><h1>No se pudo abrir la invitación</h1><p>${safe}</p></main></body></html>`;
   res.writeHead(200, { 'Content-Type':'text/html; charset=utf-8', 'Cache-Control':'no-store, max-age=0' });
   res.end(html);
 }
@@ -6208,6 +6248,20 @@ function findWorkspaceByPlayerToken(token) {
   return [...workspaces.values()].find(workspace => workspace.state.players?.some(player => player.sessionToken === normalized)) || null;
 }
 
+const COMMUNITY_ACTIVE_RESUME_STATUSES = new Set(['starting','playing','paused','verifying','resuming','finalizing']);
+function activePlayerResume(req) {
+  const token = String(cookieValue(req, PLAYER_SESSION_COOKIE) || '').trim();
+  if (!token) return null;
+  const workspace = findWorkspaceByPlayerToken(token);
+  if (!workspace || workspace.isDemo || !workspace.state?.active || !COMMUNITY_ACTIVE_RESUME_STATUSES.has(String(workspace.state?.status || ''))) return null;
+  const player = workspace.state.players?.find(item => item.sessionToken === token && !item.demoHuman && !item.virtual);
+  if (!player || !player.nameSet || !player.selectionConfirmed || !(player.cardIds || []).length) return null;
+  return { workspace, player, token, status:String(workspace.state.status || ''), roomCode:String(workspace.state.roomCode || '') };
+}
+function communityHasExplicitDestination(url) {
+  return Boolean(String(url?.searchParams?.get('mesa') || '').trim() || String(url?.searchParams?.get('ver') || '').trim() || url?.searchParams?.get('quedar') === '1');
+}
+
 function findWorkspaceByTransfer(requestId, deviceId = '') {
   return [...workspaces.values()].find(workspace => workspace.state.deviceTransferRequests?.some(request => request.id === String(requestId || '') && (!deviceId || request.deviceId === String(deviceId)))) || null;
 }
@@ -6368,6 +6422,49 @@ function communityPrivateRoomAvailability() {
 }
 
 
+function normalizeCommunityRoomAccessKey(value) {
+  const key = String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+  if (key.length < 4) throw new Error('La clave de una sala privada debe tener entre 4 y 12 letras o números.');
+  return key;
+}
+
+function hashCommunityRoomAccessKey(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+}
+
+function verifyCommunityRoomAccessKey(record, value) {
+  if (!record || record.accessType !== 'private' || !record.accessKeyHash) return true;
+  const key = normalizeCommunityRoomAccessKey(value);
+  if (!safeEqual(hashCommunityRoomAccessKey(key), record.accessKeyHash)) throw new Error('Clave incorrecta.');
+  return true;
+}
+
+function createCommunityRoomAccessGrant(record) {
+  const token = randomId('roomgrant');
+  communityRoomAccessGrants.set(token, { publicId: record.id, expiresAt: Date.now() + COMMUNITY_ROOM_ACCESS_TTL_MS });
+  return token;
+}
+
+function communityRoomGrantFromReq(req) {
+  const token = String(cookieValue(req, COMMUNITY_ROOM_ACCESS_COOKIE) || '').trim();
+  const grant = token ? communityRoomAccessGrants.get(token) : null;
+  if (!grant || grant.expiresAt <= Date.now()) { if (token) communityRoomAccessGrants.delete(token); return null; }
+  return grant;
+}
+
+function reqMayAccessPrivateCommunityRoom(req, record) {
+  if (!record || record.accessType !== 'private') return true;
+  const grant = communityRoomGrantFromReq(req);
+  return Boolean(grant && grant.publicId === record.id);
+}
+
+function setCommunityRoomAccessCookie(req, res, token) {
+  const secure = requestIsSecure(req);
+  const attrs = [`${COMMUNITY_ROOM_ACCESS_COOKIE}=${encodeURIComponent(token)}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${Math.round(COMMUNITY_ROOM_ACCESS_TTL_MS/1000)}`];
+  if (secure) attrs.push('Secure');
+  res.setHeader('Set-Cookie', attrs.join('; '));
+}
+
 function normalizeCommunityRoomName(value, creatorName = '') {
   const roomName = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 30);
   return roomName || `Sala de ${normalizeCommunityName(creatorName)}`.slice(0, 30);
@@ -6426,13 +6523,18 @@ function ensurePublicScheduleCapacity(startsMs, exceptId = '') {
 
 function publicRoomPayload(record) {
   if (!record) return null;
-  const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
-  const room = workspace?.state?.active ? workspace.state : null;
+  const candidate = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
+  const workspace = candidate?.state?.active && String(candidate.state.roomSettings?.communityPublicId || '') === String(record.id) ? candidate : null;
+  const room = workspace?.state || null;
   const status = room ? room.status : record.status;
   const waiting = Boolean(room && room.status === 'waiting');
   const joinOpen = Boolean(waiting && room.roomSettings?.joinOpen);
+  const broadcastAlias = room ? normalizeBroadcastAlias(room.roomSettings?.broadcastAlias) : '';
   return {
     id: record.id,
+    kind: record.accessType === 'private' ? 'private' : 'public',
+    accessType: record.accessType === 'private' ? 'private' : 'public',
+    requiresKey: record.accessType === 'private',
     name: record.name,
     creatorName: record.creatorName,
     mode: record.mode,
@@ -6444,12 +6546,15 @@ function publicRoomPayload(record) {
     startMode: record.startMode,
     startsAt: record.startsAt || '',
     opensAt: record.startMode === 'scheduled' && record.startsAt ? new Date(new Date(record.startsAt).getTime() - COMMUNITY_PUBLIC_OPEN_MS).toISOString() : '',
-    roomCode: room?.roomCode || record.roomCode || '',
+    roomCode: record.accessType === 'private' ? '' : (room?.roomCode || record.roomCode || ''),
     status: status || 'scheduled',
     playerCount: room ? (room.players || []).length : 0,
     joinOpen,
-    joinUrl: joinOpen ? `/jugador?sala=${encodeURIComponent(room.roomCode)}&directo=1` : '',
-    shareUrl: communityPublicShareUrl(record.id)
+    joinUrl: joinOpen && record.accessType !== 'private' ? `/jugador?sala=${encodeURIComponent(room.roomCode)}&directo=1` : '',
+    transmissionAvailable: Boolean(room && broadcastAlias),
+    transmissionUrl: room && broadcastAlias && record.accessType !== 'private' ? `/v/${encodeURIComponent(broadcastAlias)}` : '',
+    shareUrl: communityPublicShareUrl(record.id),
+    roundNumber: Math.max(1, Number(record.roundNumber) || 1)
   };
 }
 
@@ -6469,6 +6574,42 @@ function communityPublicRoomsPayload() {
       return rank(a) - rank(b) || String(a.startsAt || '').localeCompare(String(b.startsAt || '')) || String(a.name).localeCompare(String(b.name));
     })
     .slice(0, 30);
+}
+
+function officialLobbyRoomsPayload() {
+  const active = operationalWorkspaces().filter(workspace => workspace.state?.active && workspace.state.roomSettings?.roomOrigin !== 'community' && workspace.state.status !== 'closed');
+  const activeScheduleIds = new Set(active.map(workspace => String(workspace.state.roomSettings?.communityScheduleId || '')).filter(Boolean));
+  const activeCards = active.map(workspace => workspaceContext.run(workspace, () => {
+    state.roomSettings.broadcastAlias ||= freshBroadcastAlias(workspace.id);
+    const scheduledAt = String(state.roomSettings?.scheduledAt || '');
+    const paid = state.roomSettings?.paymentMode === 'paid';
+    const hasPrize = paid || Object.values(state.roomSettings?.prizeAmounts || {}).some(value => Number(value) > 0);
+    return {
+      id: `official-${state.roomCode || workspace.id}`,
+      kind: 'official', accessType: 'official', requiresKey: false,
+      name: 'EL BINGO DE LA GORDA', mode: Number(state.game?.mode) === 75 ? 75 : 90,
+      status: state.status, startsAt: scheduledAt, playerCount: (state.players || []).length,
+      maxPlayers: Math.max(2, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS),
+      joinOpen: state.status === 'waiting' && Boolean(state.roomSettings?.joinOpen),
+      joinUrl: state.status === 'waiting' && state.roomSettings?.joinOpen ? `/jugador?sala=${encodeURIComponent(state.roomCode)}&directo=1` : '',
+      transmissionAvailable: true, transmissionUrl: shortBroadcastUrlFor(workspace) || '', shareUrl: '',
+      paymentMode: paid ? 'paid' : 'free', hasPrize
+    };
+  }));
+  const upcoming = communityScheduledGames().filter(game => !activeScheduleIds.has(String(game.id || '')) && !game.roomCode && new Date(game.startsAt).getTime() > Date.now() - 10 * 60_000).map(game => ({
+    id:`official-scheduled-${game.id}`, kind:'official', accessType:'official', requiresKey:false,
+    name:'EL BINGO DE LA GORDA', mode:Number(game.mode) === 75 ? 75 : 90, status:'scheduled', startsAt:game.startsAt,
+    playerCount:0, maxPlayers:MAX_PLAYERS, joinOpen:false, joinUrl:'', transmissionAvailable:false, transmissionUrl:'', shareUrl:'',
+    paymentMode:game.paymentMode === 'paid' ? 'paid' : 'free', hasPrize: game.paymentMode === 'paid'
+  }));
+  return [...activeCards, ...upcoming];
+}
+
+function communityLobbyRoomsPayload() {
+  const communityRooms = communityPublicRoomsPayload();
+  const rooms = [...officialLobbyRoomsPayload(), ...communityRooms];
+  const rank = item => item.kind === 'official' ? 0 : item.status === 'waiting' ? 1 : item.status === 'scheduled' ? 2 : 3;
+  return rooms.sort((a,b) => rank(a)-rank(b) || String(a.startsAt || '').localeCompare(String(b.startsAt || '')) || String(a.name || '').localeCompare(String(b.name || ''))).slice(0, 40);
 }
 
 function syncCommunityPublicRecordFromState(finalStatus = '') {
@@ -6512,15 +6653,17 @@ function openCommunityPublicRoom(record, { autoJoinCreator = false, deviceId = '
       roomName: record.name,
       communityPublicId: record.id,
       communityStartMode: record.startMode,
+      communityAccessType: record.accessType,
       scheduledAt: record.startsAt || '',
       maxOpenPlayers: record.maxPlayers
     });
     state.communityCreatorCodeHash = record.creatorCodeHash;
+    state.communityAccessKeyHash = record.accessKeyHash || null;
     state.communityHostKeyHash = null;
     state.communityHostExpiresAt = null;
     state.roomSettings.joinOpen = true;
     if (autoJoinCreator) {
-      const joined = openJoinPlayer({ name: record.creatorName, cardCount: record.maxCardsPerPlayer, deviceId: String(deviceId || randomId('device')).slice(0,120) });
+      const joined = openJoinPlayer({ name: record.creatorName, cardCount: record.maxCardsPerPlayer, deviceId: String(deviceId || randomId('device')).slice(0,120), communityAccessGranted:true });
       state.communityCreatorPlayerId = joined.state?.player?.id || null;
       playerSessionToken = joined.token;
     }
@@ -6550,6 +6693,9 @@ function createCommunityPublicRoom(payload = {}) {
   const rules = mode === 90
     ? roomRulesFor(90, { ambocabeza:Boolean(requestedRules.ambocabeza), line:true, bingo:true })
     : roomRulesFor(75, { line:requestedRules.line !== false, corners:Boolean(requestedRules.corners), doubleLine:Boolean(requestedRules.doubleLine), tripleLine:Boolean(requestedRules.tripleLine), bingo:true });
+  const accessType = payload.accessType === 'private' ? 'private' : 'public';
+  const accessKey = accessType === 'private' ? normalizeCommunityRoomAccessKey(payload.accessKey) : '';
+  const accessKeyHash = accessType === 'private' ? hashCommunityRoomAccessKey(accessKey) : '';
   const startMode = payload.startMode === 'scheduled' ? 'scheduled' : 'manual';
   let startsAt = '';
   if (startMode === 'scheduled') {
@@ -6564,7 +6710,7 @@ function createCommunityPublicRoom(payload = {}) {
   const creatorCode = randomCode(7);
   const creatorCodeHash = crypto.createHash('sha256').update(creatorCode).digest('hex');
   const record = normalizeCommunityPublicRoom({
-    id: randomId('public'), name:roomName, creatorName, creatorCodeHash, startMode, startsAt,
+    id: randomId('public'), name:roomName, creatorName, creatorCodeHash, accessType, accessKeyHash, startMode, startsAt,
     mode, maxPlayers, maxCardsPerPlayer, autoSeconds, linePrizeCount, rules,
     status:'scheduled', createdAt:nowIso(), updatedAt:nowIso()
   });
@@ -6648,7 +6794,7 @@ function recoverCommunityCreator(payload = {}) {
     let token = '';
     if (!player) {
       if (state.status !== 'waiting') throw new Error('La partida ya comenzó y el creador no estaba registrado.');
-      const joined = openJoinPlayer({ name:record.creatorName, cardCount:record.maxCardsPerPlayer, deviceId:String(payload.deviceId || randomId('device')).slice(0,120) });
+      const joined = openJoinPlayer({ name:record.creatorName, cardCount:record.maxCardsPerPlayer, deviceId:String(payload.deviceId || randomId('device')).slice(0,120), communityAccessGranted:true });
       token = joined.token;
       player = state.players.find(item => item.sessionToken === token) || null;
       state.communityCreatorPlayerId = player?.id || null;
@@ -6722,6 +6868,108 @@ function processCommunityPublicRoomAutomation() {
   }
   if (platformChanged) savePlatform();
   return platformChanged;
+}
+
+function accessCommunityRoom(req, res, payload = {}) {
+  const publicId = String(payload.publicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0,100);
+  const record = communityPublicRoomById(publicId);
+  if (!record || ['finished','cancelled'].includes(record.status)) throw new Error('Esta sala ya no está disponible.');
+  if (record.accessType === 'private') verifyCommunityRoomAccessKey(record, payload.accessKey);
+  const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
+  if (!workspace?.state?.active || String(workspace.state.roomSettings?.communityPublicId || '') !== record.id) throw new Error(record.status === 'scheduled' ? 'La sala todavía no abrió.' : 'Esta sala ya no está disponible.');
+  const grant = createCommunityRoomAccessGrant(record);
+  setCommunityRoomAccessCookie(req, res, grant);
+  const alias = normalizeBroadcastAlias(workspace.state.roomSettings?.broadcastAlias);
+  return {
+    ok:true, publicId:record.id, accessType:record.accessType,
+    joinUrl: workspace.state.status === 'waiting' && workspace.state.roomSettings?.joinOpen ? `/jugador?sala=${encodeURIComponent(workspace.state.roomCode)}&directo=1` : '',
+    transmissionUrl: alias ? `/v/${encodeURIComponent(alias)}` : ''
+  };
+}
+
+function prepareCommunityRematchWindow() {
+  if (state.roomSettings?.roomOrigin !== 'community' || state.status !== 'finished') return null;
+  state.communityRematch = {
+    expiresAt: new Date(Date.now() + COMMUNITY_FINISH_GRACE_MS).toISOString(),
+    readyPlayerIds: [],
+    createdAt: nowIso()
+  };
+  logEvent('community_rematch_window_opened', { expiresAt:state.communityRematch.expiresAt });
+  return state.communityRematch;
+}
+
+function restartCommunityRoomForRematch(creatorPlayer) {
+  const record = communityPublicRoomById(state.roomSettings?.communityPublicId || '');
+  if (!record) throw new Error('No se encontró esta sala.');
+  const rematch = state.communityRematch;
+  if (!rematch || new Date(rematch.expiresAt || 0).getTime() <= Date.now()) throw new Error('La sala ya está cerrando.');
+  const creatorId = String(state.communityCreatorPlayerId || '');
+  if (String(creatorPlayer?.id || '') !== creatorId) throw new Error('Solo quien creó la sala puede abrir otra partida.');
+  const keepIds = new Set([creatorId, ...(rematch.readyPlayerIds || []).map(String)]);
+  const oldPlayers = (state.players || []).filter(player => keepIds.has(String(player.id))).map(player => ({
+    id:String(player.id), name:playerDisplayName(player), sessionToken:String(player.sessionToken || ''), sessionDeviceId:String(player.sessionDeviceId || player.openJoinDeviceId || ''), allowedCardCount:Math.max(1, Number(player.allowedCardCount) || record.maxCardsPerPlayer)
+  }));
+  const oldChat = deepCopy(state.chat || blankState().chat);
+  const nextRound = Math.max(2, Number(record.roundNumber || state.round || 1) + 1);
+  const creatorCodeHash = record.creatorCodeHash;
+  const accessKeyHash = record.accessKeyHash || '';
+  createSimpleRoom({
+    mode:record.mode, cardCount:normalizedGeneratedCount(Math.max(25, Math.min(100, record.maxPlayers * record.maxCardsPerPlayer + 20))),
+    autoSeconds:record.autoSeconds, rules:record.rules, linePrizeCount:record.linePrizeCount,
+    markingMode:'normal', maxCardsPerPlayer:record.maxCardsPerPlayer, paymentMode:'free', roomOrigin:'community',
+    hostName:record.creatorName, roomName:record.name, communityPublicId:record.id, communityStartMode:'manual', communityAccessType:record.accessType,
+    maxOpenPlayers:record.maxPlayers
+  });
+  state.round = nextRound;
+  state.communityCreatorCodeHash = creatorCodeHash;
+  state.communityAccessKeyHash = accessKeyHash || null;
+  state.chat = oldChat;
+  state.players = [];
+  state.communityCreatorPlayerId = null;
+  for (const old of oldPlayers) {
+    const fresh = emptyRoomPlayer({ name:old.name, allowedCardCount:Math.min(record.maxCardsPerPlayer, old.allowedCardCount), deviceId:old.sessionDeviceId, openJoin:true, paymentStatus:'not_required' });
+    fresh.id = old.id;
+    fresh.sessionToken = old.sessionToken || randomId('session');
+    fresh.sessionDeviceId = old.sessionDeviceId;
+    fresh.openJoinDeviceId = old.sessionDeviceId;
+    fresh.nameSet = true;
+    fresh.slotNumber = state.players.length + 1;
+    fresh.slotLabel = old.name;
+    state.players.push(fresh);
+    refreshOffersForPlayer(fresh, true);
+    if (old.id === creatorId) state.communityCreatorPlayerId = fresh.id;
+  }
+  record.roomCode = state.roomCode;
+  record.workspaceId = currentWorkspace().id;
+  record.status = 'waiting'; record.startMode = 'manual'; record.startsAt = ''; record.startedAt = null; record.endedAt = null; record.roundNumber = nextRound; record.updatedAt = nowIso();
+  state.communityRematch = null;
+  logEvent('community_rematch_opened', { round:nextRound, returningPlayers:state.players.length });
+  savePlatform(); saveState(); broadcast();
+  return state.players.find(player => player.id === creatorId) || state.players[0] || null;
+}
+
+function communityRematchFromPlayer(player) {
+  if (state.roomSettings?.roomOrigin !== 'community' || state.status !== 'finished' || !state.communityRematch) throw new Error('Ahora no se puede abrir otra partida.');
+  if (new Date(state.communityRematch.expiresAt || 0).getTime() <= Date.now()) throw new Error('El tiempo para jugar otra partida terminó.');
+  state.communityRematch.readyPlayerIds ||= [];
+  if (!state.communityRematch.readyPlayerIds.includes(String(player.id))) state.communityRematch.readyPlayerIds.push(String(player.id));
+  if (String(state.communityCreatorPlayerId || '') === String(player.id || '')) {
+    const nextCreator = restartCommunityRoomForRematch(player);
+    return playerPayload(nextCreator);
+  }
+  saveState(); broadcast();
+  return playerPayload(player);
+}
+
+function maybeCloseFinishedCommunityRoom() {
+  if (!state.active || state.status !== 'finished' || state.roomSettings?.roomOrigin !== 'community' || !state.communityRematch) return false;
+  const expires = new Date(state.communityRematch.expiresAt || 0).getTime();
+  if (!Number.isFinite(expires) || Date.now() < expires) return false;
+  const record = communityPublicRoomById(state.roomSettings?.communityPublicId || '');
+  state.closedReason = 'community_finished_timeout';
+  closeRoom();
+  if (record) { record.status='finished'; record.endedAt ||= state.endedAt || nowIso(); record.updatedAt=nowIso(); savePlatform(); }
+  return true;
 }
 
 function createCommunityPrivateRoom(payload = {}) {
@@ -6824,6 +7072,7 @@ function communityStatePayload(visitorId = '') {
     activeGame: communityActiveGamePayload(),
     upcomingGames: communityUpcomingGames(),
     publicRooms: communityPublicRoomsPayload(),
+    lobbyRooms: communityLobbyRoomsPayload(),
     publicRoomAvailability: communityPublicRoomAvailability(),
     privateRooms: communityPrivateRoomAvailability(),
     leaderboards: {
@@ -7425,6 +7674,10 @@ async function handleApi(req, res, url) {
     if (url.pathname.startsWith('/api/master/')) return await handleMasterApi(req, res, url);
     if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso(), version: APP_PUBLIC_VERSION });
     if (url.pathname === '/api/community/state' && req.method === 'GET') return sendJson(res, 200, communityStatePayload(url.searchParams.get('visitorId')));
+    if (url.pathname === '/api/community/resume' && req.method === 'GET') {
+      const resume = activePlayerResume(req);
+      return sendJson(res, 200, resume ? { resume:true, url:'/jugar', status:resume.status, roomCode:resume.roomCode } : { resume:false });
+    }
     if (url.pathname === '/api/community/chat' && req.method === 'POST') {
       if (!consumeRate(req, 'community-chat', 35, 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados mensajes. Esperá un momento.' });
       const message = appendCommunityMessage(req, await readJson(req));
@@ -7452,11 +7705,15 @@ async function handleApi(req, res, url) {
       const { token, ...safeRecovered } = recovered;
       return sendJson(res, 200, safeRecovered);
     }
+    if (url.pathname === '/api/community/room-access' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-room-access', 80, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
+      return sendJson(res, 200, accessCommunityRoom(req, res, await readJson(req)));
+    }
     if (url.pathname === '/api/community/public-room/cancel' && req.method === 'POST') {
       if (!consumeRate(req, 'community-public-room-cancel', 20, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
       return sendJson(res, 200, cancelCommunityPublicRoom(await readJson(req)));
     }
-    if (url.pathname === '/api/community/private-room' && req.method === 'POST') return sendJson(res, 410, { error: 'Ahora las salas creadas por jugadores son públicas.' });
+    if (url.pathname === '/api/community/private-room' && req.method === 'POST') return sendJson(res, 410, { error: 'Usá el creador de salas de Comunidad.' });
     if (url.pathname === '/api/community/host-login' && req.method === 'POST') return sendJson(res, 410, { error: 'El acceso de anfitrión ya no se utiliza.' });
 
     if (url.pathname === '/api/demo/create' && req.method === 'POST') {
@@ -7523,6 +7780,8 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/broadcast/state' && req.method === 'GET') {
       const workspace = findWorkspaceByBroadcastToken(url.searchParams.get('token'));
       if (!workspace) return sendJson(res, 404, { error: 'Enlace de transmisión no válido.' });
+      const record = workspace.state.roomSettings?.roomOrigin === 'community' ? communityPublicRoomById(workspace.state.roomSettings?.communityPublicId || '') : null;
+      if (record?.accessType === 'private' && !reqMayAccessPrivateCommunityRoom(req, record)) return sendJson(res, 401, { error: 'Esta transmisión es privada.' });
       return workspaceContext.run(workspace, () => sendJson(res, 200, broadcastPayload()));
     }
 
@@ -7609,6 +7868,7 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/waiting-game/score' && req.method === 'POST') return sendJson(res, 200, submitWaitingGameScore(player, await readJson(req)));
         if (url.pathname === '/api/player/community-start' && req.method === 'POST') return sendJson(res, 200, startCommunityRoomFromPlayer(player));
         if (url.pathname === '/api/player/community-cancel' && req.method === 'POST') return sendJson(res, 200, cancelCommunityRoomFromPlayer(player));
+        if (url.pathname === '/api/player/community-rematch' && req.method === 'POST') return sendJson(res, 200, communityRematchFromPlayer(player));
         if (url.pathname === '/api/player/chat' && req.method === 'POST') {
           if (!consumeRate(req, `chat-${player.id}`, 30, 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados mensajes. Esperá un momento.' });
           const payload = await readJson(req);
@@ -7737,6 +7997,8 @@ function handleEvents(req, res, url) {
     workspace = findWorkspaceByBroadcastToken(url.searchParams.get('broadcastToken'));
     token = url.searchParams.get('broadcastToken') || '';
     if (!workspace) return sendJson(res, 401, { error: 'Transmisión no válida.' });
+    const record = workspace.state.roomSettings?.roomOrigin === 'community' ? communityPublicRoomById(workspace.state.roomSettings?.communityPublicId || '') : null;
+    if (record?.accessType === 'private' && !reqMayAccessPrivateCommunityRoom(req, record)) return sendJson(res, 401, { error: 'Esta transmisión es privada.' });
   } else return sendJson(res, 400, { error: 'Rol inválido.' });
   if (!workspace) return sendJson(res, 401, { error: 'Acceso inválido.' });
   return workspaceContext.run(workspace, () => {
@@ -7760,6 +8022,13 @@ function handleEvents(req, res, url) {
       if (role === 'player') setTimeout(() => workspaceContext.run(workspace, () => broadcast()), 0);
     }));
   });
+}
+
+function serveCommunityEndedRoomPage(res, record) {
+  const historical = record?.roomCode ? historyEntryByRoomCode(record.roomCode) : null;
+  const winner = historical?.winners?.find(item => item.type === 'bingo') || historical?.winners?.at(-1) || null;
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b0715"><title>${escapeHtml(record?.name || 'Sala')} · EL BINGO DE LA GORDA</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#321a45,#0b0715 55%,#04030a);color:#fff;font-family:Segoe UI,Arial,sans-serif;padding:18px;box-sizing:border-box}.box{width:min(480px,100%);background:#171020;border:1px solid #ffffff22;border-radius:22px;padding:26px;text-align:center;box-shadow:0 22px 70px #0009}.box img{width:92px}.box h1{font-size:25px;margin:10px 0}.box p{color:#c9bfd3;line-height:1.5}.tag{display:inline-block;padding:6px 10px;border-radius:999px;background:#2b1b39;color:#f4d6ff;font-size:11px;font-weight:900}.btn{display:block;margin-top:16px;padding:13px;border-radius:13px;background:#ffd45c;color:#281b00;text-decoration:none;font-weight:1000}</style></head><body><main class="box"><img src="/assets/logo.webp" alt="EL BINGO DE LA GORDA"><span class="tag">PARTIDA FINALIZADA</span><h1>${escapeHtml(record?.name || 'Esta sala')}</h1><p>Esta partida ya terminó.${winner ? `<br><b>Ganó ${escapeHtml(winner.playerName || 'un jugador')}</b> con ${escapeHtml(winner.prizeLabel || 'Bingo')}.` : ''}</p><a class="btn" href="/comunidad">VOLVER A COMUNIDAD</a></main></body></html>`;
+  res.writeHead(200, {'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store, max-age=0','X-Robots-Tag':'noindex, nofollow'}); res.end(html);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -7862,7 +8131,9 @@ const server = http.createServer(async (req, res) => {
       return workspaceContext.run(workspace, () => {
         try {
           const deviceId = randomId('device');
-          const joined = openJoinPlayer({ name:form.name, cardCount:Number(form.cardCount) || 1, deviceId });
+          const record = state.roomSettings?.roomOrigin === 'community' ? communityPublicRoomById(state.roomSettings?.communityPublicId || '') : null;
+          const privateGranted = !record || record.accessType !== 'private' || reqMayAccessPrivateCommunityRoom(req, record);
+          const joined = openJoinPlayer({ name:form.name, cardCount:Number(form.cardCount) || 1, deviceId, communityAccessGranted:privateGranted });
           const roomCode = String(joined.state?.roomCode || state.roomCode || '').trim().toUpperCase();
           setPlayerSessionCookie(req, res, joined.token);
           res.writeHead(303, {
@@ -7970,11 +8241,7 @@ const server = http.createServer(async (req, res) => {
     const publicId = decodeURIComponent(publicRoomMatch[1] || '');
     const record = communityPublicRoomById(publicId);
     if (!record) { res.writeHead(303, { Location:'/comunidad', 'Cache-Control':'no-store' }); return res.end(); }
-    const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
-    if (workspace?.state?.active && workspace.state.status === 'waiting' && workspace.state.roomSettings?.joinOpen) {
-      res.writeHead(303, { Location:`/jugador?sala=${encodeURIComponent(workspace.state.roomCode)}&directo=1`, 'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer' });
-      return res.end();
-    }
+    if (['finished','cancelled'].includes(record.status)) return serveCommunityEndedRoomPage(res, record);
     res.writeHead(303, { Location:`/comunidad?mesa=${encodeURIComponent(record.id)}`, 'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer' });
     return res.end();
   }
@@ -7987,9 +8254,24 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'admin.html'));
   if (url.pathname === '/admin-player-preview' || url.pathname === '/admin-player-preview/') return serveFile(res, path.join(ROOT, 'player.html'));
   if (url.pathname === '/demo' || url.pathname === '/demo/') return serveFile(res, path.join(ROOT, 'demo.html'));
-  if (url.pathname === '/comunidad' || url.pathname === '/comunidad/' || url.pathname === '/comunidad.html') return serveFile(res, path.join(ROOT, 'comunidad.html'));
+  if (url.pathname === '/comunidad' || url.pathname === '/comunidad/' || url.pathname === '/comunidad.html') {
+    // Si este navegador ya pertenece a una partida real en curso, Comunidad funciona como puerta de regreso al cartón.
+    // Un destino explícito (?mesa=... / ?ver=...) se respeta para no secuestrar invitaciones a otra sala.
+    const resume = communityHasExplicitDestination(url) ? null : activePlayerResume(req);
+    if (resume) {
+      res.writeHead(303, { Location:'/jugar', 'Cache-Control':'no-store, max-age=0', 'Referrer-Policy':'no-referrer' });
+      return res.end();
+    }
+    return serveFile(res, path.join(ROOT, 'comunidad.html'));
+  }
   if (/^\/operador\/[^/]+\/?$/.test(url.pathname)) return sendJson(res, 404, { error: 'Los accesos temporales están deshabilitados.' });
-  if (/^\/transmision\/[^/]+\/?$/.test(url.pathname) || /^\/v\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'transmision.html'));
+  if (/^\/transmision\/[^/]+\/?$/.test(url.pathname) || /^\/v\/[^/]+\/?$/.test(url.pathname)) {
+    const token = decodeURIComponent(url.pathname.split('/').filter(Boolean).at(-1) || '');
+    const workspace = findWorkspaceByBroadcastToken(token);
+    const record = workspace?.state?.roomSettings?.roomOrigin === 'community' ? communityPublicRoomById(workspace.state.roomSettings?.communityPublicId || '') : null;
+    if (record?.accessType === 'private' && !reqMayAccessPrivateCommunityRoom(req, record)) { res.writeHead(303, { Location:`/comunidad?mesa=${encodeURIComponent(record.id)}&ver=1`, 'Cache-Control':'no-store' }); return res.end(); }
+    return serveFile(res, path.join(ROOT, 'transmision.html'));
+  }
   if (url.pathname === '/tv' || url.pathname === '/tv/' || url.pathname === '/tv.html' || /^\/tv\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'tv.html'));
   if (url.pathname === '/cast-receiver' || url.pathname === '/cast-receiver/') return serveFile(res, path.join(ROOT, 'cast-receiver.html'));
   if (url.pathname === '/jugador' || url.pathname === '/jugador/') {
@@ -8027,6 +8309,8 @@ const server = http.createServer(async (req, res) => {
       }
       if (currentSession && sessionWorkspace !== workspace) clearPlayerSessionCookie(req, res);
       return workspaceContext.run(workspace, () => {
+        const record = state.roomSettings?.roomOrigin === 'community' ? communityPublicRoomById(state.roomSettings?.communityPublicId || '') : null;
+        if (record?.accessType === 'private' && !reqMayAccessPrivateCommunityRoom(req, record)) { res.writeHead(303, { Location:`/mesa/${encodeURIComponent(record.id)}`, 'Cache-Control':'no-store' }); return res.end(); }
         if (!state.active || state.status !== 'waiting' || !state.roomSettings?.joinOpen) return servePlayerAccessPage(res, { workspace, direct:true, closed:true, error:'El ingreso general está cerrado.' });
         return servePlayerAccessPage(res, { workspace, direct:true });
       });
@@ -8073,6 +8357,8 @@ setInterval(() => {
     workspaceContext.run(workspace, () => {
       try { processAssignmentDeadline(); }
       catch (error) { console.error(`No se pudo completar la asignación automática en ${workspace.id}:`, error.message); }
+      try { maybeCloseFinishedCommunityRoom(); }
+      catch (error) { console.error(`No se pudo cerrar la sala comunitaria finalizada en ${workspace.id}:`, error.message); }
       if (workspace.id === 'owner') {
         try { processCommunityScheduleAutomation(); }
         catch (error) { console.error(`No se pudo procesar la agenda automática:`, error.message); }
@@ -8122,7 +8408,7 @@ for (const workspace of workspaces.values()) workspaceContext.run(workspace, () 
 });
 
 server.listen(PORT, HOST, () => {
-  console.log('\nBINGO DE LA GORDA - Final');
+  console.log('\nEL BINGO DE LA GORDA');
   const base = PUBLIC_URL || `http://localhost:${PORT}`;
   console.log(`Administrador: ${base}/admin`);
   console.log(`Jugadores: ${base}/jugador`);

@@ -1,4 +1,4 @@
-BINGO DE LA GORDA - Final | Paquete para GitHub Web
+EL BINGO DE LA GORDA | Paquete para GitHub Web
 
 1. Descomprimí el ZIP GITHUB.
 2. Entrá a la carpeta descomprimida.

@@ -1,4 +1,4 @@
-# BINGO DE LA GORDA - Final
+# EL BINGO DE LA GORDA
 
 Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de juego del jugador se mantiene como base aprobada. Esta entrega mantiene el motor aprobado, amplía la operación a hasta diez salas activas independientes, conserva el historial acumulativo y permite que los jugadores creen salas públicas gratuitas desde Comunidad.
 
@@ -19,6 +19,7 @@ Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de jueg
 - Link general de partida: se abre/cierra desde Admin; crea una sesión privada distinta para cada jugador.
 - Recuperación: link temporal de un solo uso generado por Admin. Puede utilizarse aunque la partida ya haya comenzado.
 - Un jugador previamente registrado puede abrir su link privado tarde y entrar a la partida en curso con los cartones que el servidor le asignó al inicio.
+- Si ese navegador ya tiene una sesión real en una partida iniciada, abrir Comunidad lo devuelve automáticamente a sus mismos cartones durante `starting`, `playing`, `paused`, `verifying`, `resuming` y `finalizing`. Un link explícito hacia otra mesa se respeta.
 
 ## Partidas pagas
 
@@ -41,15 +42,17 @@ Las partidas programadas oficiales pueden ocupar cualquiera de los lugares opera
 
 Al finalizar, cada partida se archiva en `BINGO_DATA_DIR/historial` con resultados, acta PDF/CSV, participantes, metadatos e integridad. Las canceladas dejan registro administrativo sin generar un acta oficial falsa. `BINGO_DATA_DIR` debe apuntar a almacenamiento persistente real en producción.
 
-## Salas públicas creadas por jugadores
+## Lobby de Comunidad: PÚBLICA / PRIVADA / OFICIAL
 
-Desde Comunidad, un jugador puede crear una sala pública gratuita, ponerle un nombre y elegir Bingo 75/90, máximo de jugadores, 1–2 cartones por persona, velocidad y qué jugadas se disputan. No existen precios, transferencias ni un panel de anfitrión para estas salas.
+Comunidad funciona como lobby de mesas. Las salas **PÚBLICAS** y **PRIVADAS** pueden crearlas los jugadores y son siempre gratuitas; las **OFICIALES** solo se crean desde Admin/Agenda y se distinguen visualmente.
 
-El inicio puede ser manual o programado. En modo manual, quien creó la sala entra como un jugador más y es el único que ve **INICIAR PARTIDA**. En modo programado, se puede elegir un horario hasta 36 horas hacia adelante: si faltan más de 2 horas solo se publica una placa liviana; a 2 horas se abre automáticamente la sala de espera y a la hora indicada el sorteo comienza solo si hay al menos 2 jugadores.
+Al crear una sala, el jugador elige nombre, Bingo 75/90, máximo de jugadores, 1–2 cartones por persona, velocidad, qué jugadas se disputan y si empieza manualmente o queda programada. Una PRIVADA agrega una clave de 4–12 letras/números. Esa misma clave protege tanto el ingreso como la Transmisión y nunca se publica en el lobby. El código secreto del creador es independiente y sirve solo para recuperar su control desde otro dispositivo.
 
-Cada sala tiene un link público estable para invitar. Cualquier jugador que ya esté dentro puede compartirlo por WhatsApp o copiarlo. El creador recibe además un código secreto para recuperar su permiso desde otro dispositivo. El creador puede cancelar una placa futura o una sala en espera; si la partida ya comenzó, puede finalizarla como interrumpida. Una partida interrumpida queda registrada como cancelada en el historial y los demás jugadores reciben el aviso de que la sala fue cancelada por quien la creó. El chat, las bolillas, los jugadores y los reclamos permanecen aislados por sala.
+El inicio programado admite hasta 36 horas. Si faltan más de 2 horas existe solo una placa; a 2 horas se abre la sala de espera y a la hora indicada comienza automáticamente si hay al menos 2 jugadores. Las placas futuras no consumen uno de los diez lugares activos.
 
-Las placas programadas futuras no consumen uno de los diez lugares activos hasta que llega su ventana de apertura. Cuando una partida termina o se cancela, libera su lugar.
+Cualquier jugador dentro de una sala puede invitar por WhatsApp o copiar el link estable. Cada sala conserva chat, jugadores, bolillas, reclamos y Transmisión aislados. El chat general de Comunidad continúa separado del chat de cada sala.
+
+Al finalizar un Bingo, la partida se archiva inmediatamente como una entrada histórica independiente. Durante 3 minutos la sala queda abierta para **JUGAR OTRA PARTIDA**: los jugadores pueden anotarse y el creador puede abrir una nueva ronda manteniendo el mismo nombre, link, clave y chat, pero con cartones, bolillas, reclamos y acta nuevos. Si nadie continúa, la sala se cierra automáticamente y libera el lugar activo.
 
 ## Comunidad y agenda
 

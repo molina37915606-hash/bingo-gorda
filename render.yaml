@@ -1,4 +1,4 @@
-# BINGO DE LA GORDA - Final
+# EL BINGO DE LA GORDA
 # Configuración orientada al Web Service Starter actual. La persistencia requiere un disco montado por separado.
 services:
   - type: web

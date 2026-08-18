@@ -8,9 +8,9 @@ const root=path.join(__dirname,'..');
 const serverSrc=fs.readFileSync(path.join(root,'server.js'),'utf8');
 const adminHtml=fs.readFileSync(path.join(root,'admin.html'),'utf8');
 const adminJs=fs.readFileSync(path.join(root,'js/admin.js'),'utf8');
-assert(serverSrc.includes("OPERATIONAL_WORKSPACE_IDS = ['owner', 'slot2']"),'Debe existir un límite explícito de dos salas operativas.');
+assert(serverSrc.includes("Array.from({ length: 9 }")&&serverSrc.includes('MAX_OPERATIONAL_ROOMS = OPERATIONAL_WORKSPACE_IDS.length'),'Debe existir un límite explícito de diez salas operativas.');
 assert(serverSrc.includes('archiveCurrentResults')&&serverSrc.includes('HISTORY_DIR'),'Los resultados deben archivarse de forma permanente.');
-assert(adminHtml.includes('id="roomSlot1"')&&adminHtml.includes('id="roomSlot2"')&&adminHtml.includes('id="historyBtn"'),'Admin debe mostrar las dos salas y el historial.');
+assert(adminHtml.includes('id="roomSlots"')&&adminHtml.includes('id="historyBtn"'),'Admin debe mostrar dinámicamente las salas y el historial.');
 assert(adminJs.includes('switchWorkspace')&&adminJs.includes('openHistory'),'Admin debe poder cambiar de sala y abrir historial.');
 
 const port=57900+Math.floor(Math.random()*120),base=`http://127.0.0.1:${port}`;
@@ -31,8 +31,8 @@ async function createSimulation(token,mode){await ok('/api/admin/create-ai-simul
   await select(token,'slot2');let b=await createSimulation(token,75);assert.equal(b.status,'playing');const roomB=b.roomCode;assert.notEqual(roomA,roomB,'Cada sala debe tener código propio.');
 
   let manager=await ok('/api/admin/workspaces',{token});
-  assert.equal(manager.rooms.length,2);assert(manager.rooms.every(x=>x.active),'Ambas salas deben estar activas al mismo tiempo.');
-  assert(manager.rooms.every(x=>x.status==='playing'),'Ambas salas deben poder estar jugando al mismo tiempo.');
+  assert.equal(manager.rooms.length,10);assert.equal(manager.rooms.filter(x=>x.active).length,2,'Deben poder coexistir dos salas activas dentro de diez lugares.');
+  assert(manager.rooms.filter(x=>x.active).every(x=>x.status==='playing'),'Ambas salas deben poder estar jugando al mismo tiempo.');
 
   b=await ok('/api/admin/draw',{method:'POST',token,body:{source:'multisala-b'}});const bDrawn=b.game.drawn.length;assert.equal(bDrawn,1);
   await select(token,'owner');a=await ok('/api/admin/state',{token});assert.equal(a.roomCode,roomA);assert.equal(a.game.drawn.length,0,'Una extracción en Sala 2 no debe afectar Sala 1.');
@@ -79,5 +79,5 @@ async function createSimulation(token,mode){await ok('/api/admin/create-ai-simul
   await wait(1300);agenda=await ok('/api/admin/community',{token});const autoSaved1=agenda.scheduledGames.find(x=>x.id===autoOne.id),autoSaved2=agenda.scheduledGames.find(x=>x.id===autoTwo.id);assert(autoSaved1.roomCode&&autoSaved2.roomCode,'Agenda AUTO debe crear las dos salas dentro de sus ventanas de inscripción.');assert.notEqual(autoSaved1.workspaceId,autoSaved2.workspaceId,'Cada programación AUTO debe ocupar un workspace diferente.');
   for(const item of [autoSaved1,autoSaved2]){await select(token,item.workspaceId);const autoRoom=await ok('/api/admin/state',{token});assert.equal(autoRoom.roomCode,item.roomCode);assert.equal(autoRoom.status,'waiting');assert.equal(autoRoom.roomSettings.joinOpen,true);await ok('/api/admin/close',{method:'POST',token,body:{}})}
 
-  console.log('PRUEBA MULTISALA + HISTORIAL: OK · 2 jugando + aislamiento + reinicio + actas + agenda editable + doble AUTO');
+  console.log('PRUEBA MULTISALA + HISTORIAL: OK · 10 lugares + 2 jugando + aislamiento + reinicio + actas + agenda editable + doble AUTO');
 }catch(e){console.error(e);process.exitCode=1}finally{await stopServer();fs.rmSync(dataDir,{recursive:true,force:true})}})();

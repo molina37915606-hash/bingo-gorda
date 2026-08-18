@@ -31,10 +31,13 @@ const OWNER_STATE_FILE = path.join(DATA_DIR, 'sala-online.json');
 const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma.json');
 const WORKSPACES_DIR = path.join(DATA_DIR, 'operadores');
 const HISTORY_DIR = path.join(DATA_DIR, 'historial');
-const OPERATIONAL_WORKSPACE_IDS = ['owner', 'slot2'];
+const OPERATIONAL_WORKSPACE_IDS = ['owner', ...Array.from({ length: 9 }, (_, index) => `slot${index + 2}`)];
 const MAX_OPERATIONAL_ROOMS = OPERATIONAL_WORKSPACE_IDS.length;
 const COMMUNITY_HOST_TTL_MS = 8 * 60 * 60 * 1000;
-const COMMUNITY_ROOM_RESERVATION_MS = Math.max(15 * 60 * 1000, Number(process.env.BINGO_COMMUNITY_RESERVATION_MS || 60 * 60 * 1000));
+const COMMUNITY_ROOM_RESERVATION_MS = Math.max(15 * 60 * 1000, Number(process.env.BINGO_COMMUNITY_RESERVATION_MS || 2 * 60 * 60 * 1000));
+const COMMUNITY_PUBLIC_OPEN_MS = Math.max(1_000, Number(process.env.BINGO_COMMUNITY_PUBLIC_OPEN_MS || 2 * 60 * 60 * 1000));
+const COMMUNITY_PUBLIC_MAX_AHEAD_MS = 36 * 60 * 60 * 1000;
+const COMMUNITY_PUBLIC_ESTIMATED_GAME_MS = 2 * 60 * 60 * 1000;
 const PORT = Number(process.env.PORT || 3210);
 const HOST = '0.0.0.0';
 const ONLINE_MODE = process.env.RENDER === 'true' || process.env.ONLINE_MODE === 'true';
@@ -318,6 +321,8 @@ function blankState() {
     communityHostKeyHash: null,
     communityHostName: '',
     communityHostExpiresAt: null,
+    communityCreatorCodeHash: null,
+    communityCreatorPlayerId: null,
     createdAt: null,
     startedAt: null,
     endedAt: null,
@@ -339,6 +344,9 @@ function blankState() {
       roomType: 'alpha',
       roomOrigin: 'official',
       hostName: '',
+      roomName: '',
+      communityPublicId: '',
+      communityStartMode: '',
       joinOpen: true,
       maxOpenPlayers: 60,
       communityScheduleId: '',
@@ -427,6 +435,8 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.communityHostKeyHash = /^[a-f0-9]{64}$/i.test(String(parsed.communityHostKeyHash || '')) ? String(parsed.communityHostKeyHash).toLowerCase() : null;
     merged.communityHostName = normalizePlayerName(parsed.communityHostName || '').slice(0, 20);
     merged.communityHostExpiresAt = parsed.communityHostExpiresAt && Number.isFinite(new Date(parsed.communityHostExpiresAt).getTime()) ? new Date(parsed.communityHostExpiresAt).toISOString() : null;
+    merged.communityCreatorCodeHash = /^[a-f0-9]{64}$/i.test(String(parsed.communityCreatorCodeHash || '')) ? String(parsed.communityCreatorCodeHash).toLowerCase() : null;
+    merged.communityCreatorPlayerId = parsed.communityCreatorPlayerId ? String(parsed.communityCreatorPlayerId).slice(0, 120) : null;
     if (merged.active && !parsed.status) merged.status = merged.game?.drawn?.length ? 'playing' : 'waiting';
     if (!['closed', 'waiting', 'starting', 'playing', 'verifying', 'paused', 'resuming', 'finalizing', 'finished'].includes(merged.status)) merged.status = 'closed';
     merged.roomSettings.linePrizeCount = Math.max(1, Math.min(2, Number(merged.roomSettings.linePrizeCount) || 1));
@@ -449,6 +459,9 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.roomType = ['test','official','alpha'].includes(merged.roomSettings.roomType) ? merged.roomSettings.roomType : 'alpha';
     merged.roomSettings.roomOrigin = merged.roomSettings.roomOrigin === 'community' ? 'community' : 'official';
     merged.roomSettings.hostName = normalizePlayerName(merged.roomSettings.hostName || '').slice(0, 20);
+    merged.roomSettings.roomName = String(merged.roomSettings.roomName || '').trim().replace(/\s+/g, ' ').slice(0, 30);
+    merged.roomSettings.communityPublicId = String(merged.roomSettings.communityPublicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+    merged.roomSettings.communityStartMode = ['manual','scheduled'].includes(String(merged.roomSettings.communityStartMode || '')) ? String(merged.roomSettings.communityStartMode) : '';
     merged.roomSettings.communityScheduleId = String(merged.roomSettings.communityScheduleId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
     merged.roomSettings.scheduledAt = String(merged.roomSettings.scheduledAt || '');
     merged.roomSettings.scheduledRegistrationMinutes = Math.max(1, Math.min(120, Number(merged.roomSettings.scheduledRegistrationMinutes) || 15));
@@ -561,6 +574,8 @@ function blankCommunity() {
     blockWhatsappLinks: true,
     blockedTerms: [],
     scheduledGames: [],
+    publicRooms: [],
+    publicRoomsEnabled: true,
     privateRoomsEnabled: true,
     privateRoomMaxPlayers: 30,
     privateRoomMaxCardsPerPlayer: 2,
@@ -605,6 +620,45 @@ function normalizeCommunityScheduledGame(raw = {}) {
     createdAt: String(raw.createdAt || nowIso()),
     updatedAt: String(raw.updatedAt || nowIso())
   };
+}
+
+
+function normalizeCommunityPublicRoom(raw = {}) {
+  const startsAt = raw.startsAt ? new Date(raw.startsAt) : null;
+  const startsIso = startsAt && Number.isFinite(startsAt.getTime()) ? startsAt.toISOString() : '';
+  const mode = Number(raw.mode) === 75 ? 75 : 90;
+  const maxPlayers = Math.max(2, Math.min(30, Math.round(Number(raw.maxPlayers) || 20)));
+  const maxCardsPerPlayer = Math.max(1, Math.min(2, Math.round(Number(raw.maxCardsPerPlayer) || 2)));
+  const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(raw.linePrizeCount) || 1))) : 1;
+  const requestedRules = raw.rules && typeof raw.rules === 'object' ? raw.rules : {};
+  const rules = mode === 90
+    ? roomRulesFor(90, { ambocabeza:Boolean(requestedRules.ambocabeza), line:true, bingo:true })
+    : roomRulesFor(75, { line:requestedRules.line !== false, corners:Boolean(requestedRules.corners), doubleLine:Boolean(requestedRules.doubleLine), tripleLine:Boolean(requestedRules.tripleLine), bingo:true });
+  return {
+    id: String(raw.id || randomId('public')).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100),
+    name: String(raw.name || '').trim().replace(/\s+/g, ' ').slice(0, 30),
+    creatorName: normalizePlayerName(raw.creatorName || '').slice(0, 20),
+    creatorCodeHash: /^[a-f0-9]{64}$/i.test(String(raw.creatorCodeHash || '')) ? String(raw.creatorCodeHash).toLowerCase() : '',
+    startMode: raw.startMode === 'scheduled' ? 'scheduled' : 'manual',
+    startsAt: startsIso,
+    mode, maxPlayers, maxCardsPerPlayer,
+    autoSeconds: Math.max(4, Math.min(20, Math.round(Number(raw.autoSeconds) || 8))),
+    linePrizeCount, rules,
+    roomCode: String(raw.roomCode || '').replace(/[^A-Z0-9]/gi, '').slice(0, 12),
+    workspaceId: OPERATIONAL_WORKSPACE_IDS.includes(String(raw.workspaceId || '')) ? String(raw.workspaceId) : '',
+    openedAt: raw.openedAt ? String(raw.openedAt) : null,
+    startedAt: raw.startedAt ? String(raw.startedAt) : null,
+    endedAt: raw.endedAt ? String(raw.endedAt) : null,
+    status: ['scheduled','waiting','playing','finished','cancelled'].includes(String(raw.status || '')) ? String(raw.status) : (raw.roomCode ? 'waiting' : 'scheduled'),
+    createdAt: String(raw.createdAt || nowIso()),
+    updatedAt: String(raw.updatedAt || nowIso())
+  };
+}
+
+function communityPublicRooms() {
+  const community = platform.community ||= blankCommunity();
+  community.publicRooms ||= [];
+  return community.publicRooms;
 }
 
 function communityScheduledGames() {
@@ -695,6 +749,10 @@ function normalizeCommunity(raw = {}) {
     scheduledGames: Array.isArray(raw.scheduledGames)
       ? raw.scheduledGames.map(normalizeCommunityScheduledGame).filter(Boolean).sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt))).slice(0, 40)
       : [],
+    publicRooms: Array.isArray(raw.publicRooms)
+      ? raw.publicRooms.map(normalizeCommunityPublicRoom).filter(Boolean).sort((a,b) => String(a.startsAt || a.createdAt).localeCompare(String(b.startsAt || b.createdAt))).slice(-120)
+      : [],
+    publicRoomsEnabled: raw.publicRoomsEnabled !== false,
     privateRoomsEnabled: raw.privateRoomsEnabled !== false,
     privateRoomMaxPlayers: Math.max(2, Math.min(30, Math.round(Number(raw.privateRoomMaxPlayers) || defaults.privateRoomMaxPlayers))),
     privateRoomMaxCardsPerPlayer: Math.max(1, Math.min(2, Math.round(Number(raw.privateRoomMaxCardsPerPlayer) || defaults.privateRoomMaxCardsPerPlayer))),
@@ -767,7 +825,7 @@ function ensureWorkspace(id = 'owner', operatorId = null, label = 'Administrador
 }
 
 const ownerWorkspace = ensureWorkspace('owner', null, 'Sala 1');
-const secondWorkspace = ensureWorkspace('slot2', null, 'Sala 2');
+for (let index = 1; index < OPERATIONAL_WORKSPACE_IDS.length; index++) ensureWorkspace(OPERATIONAL_WORKSPACE_IDS[index], null, `Sala ${index + 1}`);
 // Los operadores temporales están deshabilitados en LA GORDA - BINGO ONLINE.
 
 function operationalWorkspaces() {
@@ -1808,6 +1866,7 @@ function playerPayload(player) {
   if (state.status === 'waiting') refreshOffersForPlayer(player);
   const cards = state.game.cards.filter(card => player.cardIds.includes(card.id));
   const offers = state.game.cards.filter(card => (player.offeredCardIds || []).includes(card.id));
+  const communityRecord = state.roomSettings?.roomOrigin === 'community' && state.roomSettings?.communityPublicId ? communityPublicRoomById(state.roomSettings.communityPublicId) : null;
   return {
     active: true,
     status: state.status,
@@ -1839,6 +1898,18 @@ function playerPayload(player) {
     publicClaims: publicClaimsPayload(),
     broadcastUrl: shortBroadcastUrlFor(),
     castAppId: CAST_APP_ID || null,
+    communityRoom: state.roomSettings?.roomOrigin === 'community' ? {
+      publicId: state.roomSettings?.communityPublicId || '',
+      name: state.roomSettings?.roomName || `Sala ${state.roomCode}`,
+      creatorName: state.roomSettings?.hostName || '',
+      isCreator: String(state.communityCreatorPlayerId || '') === String(player.id || ''),
+      startMode: state.roomSettings?.communityStartMode || 'manual',
+      startsAt: state.roomSettings?.scheduledAt || communityRecord?.startsAt || '',
+      shareUrl: state.roomSettings?.communityPublicId ? communityPublicShareUrl(state.roomSettings.communityPublicId) : `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode)}&directo=1`,
+      playerCount: (state.players || []).length,
+      maxPlayers: Math.max(2, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS),
+      canStart: state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && String(state.communityCreatorPlayerId || '') === String(player.id || '')
+    } : null,
     demo: currentWorkspace().isDemo ? {
       active: true,
       label: state.demo?.label || 'DEMOSTRACIÓN — SIN VALIDEZ OFICIAL',
@@ -2321,15 +2392,18 @@ function createSimpleRoom(payload = {}) {
       },
       roomType: 'alpha',
       roomOrigin: payload.roomOrigin === 'community' ? 'community' : 'official',
-      hostName: payload.roomOrigin === 'community' ? normalizeCommunityName(payload.hostName || 'Anfitrión') : '',
+      hostName: payload.roomOrigin === 'community' ? normalizeCommunityName(payload.hostName || 'Jugador') : '',
+      roomName: payload.roomOrigin === 'community' ? String(payload.roomName || '').trim().replace(/\s+/g, ' ').slice(0, 30) : '',
+      communityPublicId: payload.roomOrigin === 'community' ? String(payload.communityPublicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100) : '',
+      communityStartMode: payload.roomOrigin === 'community' && payload.communityStartMode === 'scheduled' ? 'scheduled' : (payload.roomOrigin === 'community' ? 'manual' : ''),
       // El acceso normal es exclusivamente mediante invitaciones privadas por jugador.
       joinOpen: false,
       maxOpenPlayers: Math.max(2, Math.min(MAX_PLAYERS, Number(payload.maxOpenPlayers) || MAX_PLAYERS)),
       accessKey: '', paymentMode, cardPrice, paymentAlias, paymentAccountHolder, paymentProvider, whatsapp,
       communityScheduleId: communitySchedule?.id || '',
-      scheduledAt: communitySchedule?.startsAt || '',
-      scheduledRegistrationMinutes: communitySchedule?.registrationMinutes || 15,
-      scheduledAutoStart: Boolean(communitySchedule?.autoStart),
+      scheduledAt: communitySchedule?.startsAt || (payload.scheduledAt ? String(payload.scheduledAt) : ''),
+      scheduledRegistrationMinutes: communitySchedule?.registrationMinutes || (payload.roomOrigin === 'community' && payload.communityStartMode === 'scheduled' ? 120 : 15),
+      scheduledAutoStart: Boolean(communitySchedule?.autoStart || (payload.roomOrigin === 'community' && payload.communityStartMode === 'scheduled')),
       maxCardsPerPlayer: roomMaxCards, markingMode,
       claimAutoVerifySeconds: 10,
       presenterVoiceGender: 'female',
@@ -4178,7 +4252,7 @@ function startRoom(payload = {}) {
   state.status = 'starting'; state.pauseReason = null; state.startedAt = startedAt; state.endedAt = null; state.game.phase = 'READY';
   state.transition = { id: randomId('transition'), type: 'start', startedAt, endsAt: new Date(Date.now() + baseStartSequenceMs + largeRoomNoticeMs).toISOString(), officialTime: new Date().toLocaleTimeString('es-AR', { timeZone: BINGO_TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false }), largeRoomNotice, noticeDurationMs: largeRoomNoticeMs, priorityNotice: largeRoomNotice ? { title: LARGE_ROOM_NOTICE_TITLE, text: LARGE_ROOM_NOTICE_TEXT } : null };
   logEvent('game_start_sequence', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0), largeRoomNotice, forcedSimulationStart });
-  saveState(); broadcast(); scheduleTransition(); return adminPayload();
+  saveState(); broadcast(); syncCommunityPublicRecordFromState('playing'); scheduleTransition(); return adminPayload();
 }
 
 function pauseRoom() {
@@ -4391,6 +4465,7 @@ function archiveCurrentResults() {
   writeAtomic(metaFile, JSON.stringify(meta, null, 2));
   currentWorkspace().lastResultMeta = meta;
   state.historyArchiveId = meta.id;
+  syncCommunityPublicRecordFromState('finished');
   return meta;
 }
 
@@ -4446,6 +4521,7 @@ function archiveCancelledRoom() {
   writeAtomic(path.join(dir, 'resumen.json'), JSON.stringify(summary, null, 2));
   writeAtomic(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
   state.historyArchiveId = meta.id;
+  syncCommunityPublicRecordFromState('cancelled');
   return meta;
 }
 
@@ -6284,6 +6360,317 @@ function communityPrivateRoomAvailability() {
   };
 }
 
+
+function normalizeCommunityRoomName(value, creatorName = '') {
+  const roomName = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 30);
+  return roomName || `Sala de ${normalizeCommunityName(creatorName)}`.slice(0, 30);
+}
+
+function communityPublicRoomById(id) {
+  const safe = String(id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  return communityPublicRooms().find(item => item.id === safe) || null;
+}
+
+function communityPublicShareUrl(id) {
+  const base = PUBLIC_URL || `http://localhost:${PORT}`;
+  return `${base}/mesa/${encodeURIComponent(String(id || ''))}`;
+}
+
+function communityPublicRoomAvailability() {
+  const community = platform.community ||= blankCommunity();
+  const free = operationalWorkspaces().filter(workspace => !workspace.state?.active || workspace.state.status === 'closed').length;
+  const reserved = reservedOfficialScheduleCount();
+  return {
+    enabled: community.publicRoomsEnabled !== false && community.privateRoomsEnabled !== false,
+    available: community.publicRoomsEnabled !== false && community.privateRoomsEnabled !== false && free > reserved,
+    maxPlayers: Math.max(2, Math.min(30, Number(community.privateRoomMaxPlayers) || 30)),
+    maxCardsPerPlayer: Math.max(1, Math.min(2, Number(community.privateRoomMaxCardsPerPlayer) || 2))
+  };
+}
+
+function publicScheduleWindow(record) {
+  const startsMs = new Date(record?.startsAt || 0).getTime();
+  if (!Number.isFinite(startsMs)) return null;
+  return { start: startsMs - COMMUNITY_PUBLIC_OPEN_MS, end: startsMs + COMMUNITY_PUBLIC_ESTIMATED_GAME_MS };
+}
+
+function officialScheduleWindow(game) {
+  const startsMs = new Date(game?.startsAt || 0).getTime();
+  if (!Number.isFinite(startsMs)) return null;
+  const registrationMinutes = Math.max(1, Math.min(120, Number(game.registrationMinutes) || 15));
+  return { start: startsMs - registrationMinutes * 60_000, end: startsMs + COMMUNITY_PUBLIC_ESTIMATED_GAME_MS };
+}
+
+function windowsOverlap(a, b) { return Boolean(a && b && a.start < b.end && b.start < a.end); }
+
+function ensurePublicScheduleCapacity(startsMs, exceptId = '') {
+  const target = { start: startsMs - COMMUNITY_PUBLIC_OPEN_MS, end: startsMs + COMMUNITY_PUBLIC_ESTIMATED_GAME_MS };
+  let planned = 0;
+  for (const official of communityScheduledGames()) {
+    if (official.roomCode || official.autoStartedAt) continue;
+    if (windowsOverlap(target, officialScheduleWindow(official))) planned++;
+  }
+  for (const record of communityPublicRooms()) {
+    if (record.id === exceptId || record.startMode !== 'scheduled' || ['finished','cancelled'].includes(record.status)) continue;
+    if (windowsOverlap(target, publicScheduleWindow(record))) planned++;
+  }
+  if (planned >= MAX_OPERATIONAL_ROOMS) throw new Error('Ese horario no está disponible. Elegí otro.');
+}
+
+function publicRoomPayload(record) {
+  if (!record) return null;
+  const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
+  const room = workspace?.state?.active ? workspace.state : null;
+  const status = room ? room.status : record.status;
+  const waiting = Boolean(room && room.status === 'waiting');
+  const joinOpen = Boolean(waiting && room.roomSettings?.joinOpen);
+  return {
+    id: record.id,
+    name: record.name,
+    creatorName: record.creatorName,
+    mode: record.mode,
+    maxPlayers: record.maxPlayers,
+    maxCardsPerPlayer: record.maxCardsPerPlayer,
+    autoSeconds: record.autoSeconds,
+    linePrizeCount: record.linePrizeCount,
+    rules: record.rules,
+    startMode: record.startMode,
+    startsAt: record.startsAt || '',
+    opensAt: record.startMode === 'scheduled' && record.startsAt ? new Date(new Date(record.startsAt).getTime() - COMMUNITY_PUBLIC_OPEN_MS).toISOString() : '',
+    roomCode: room?.roomCode || record.roomCode || '',
+    status: status || 'scheduled',
+    playerCount: room ? (room.players || []).length : 0,
+    joinOpen,
+    joinUrl: joinOpen ? `/jugador?sala=${encodeURIComponent(room.roomCode)}&directo=1` : '',
+    shareUrl: communityPublicShareUrl(record.id)
+  };
+}
+
+function communityPublicRoomsPayload() {
+  const now = Date.now();
+  return communityPublicRooms()
+    .map(publicRoomPayload)
+    .filter(Boolean)
+    .filter(item => {
+      if (['waiting','starting','playing','verifying','paused','resuming','finalizing'].includes(item.status)) return true;
+      if (item.status !== 'scheduled' || !item.startsAt) return false;
+      const starts = new Date(item.startsAt).getTime();
+      return Number.isFinite(starts) && starts > now - 10 * 60_000;
+    })
+    .sort((a,b) => {
+      const rank = item => item.status === 'waiting' ? 0 : item.status === 'scheduled' ? 1 : 2;
+      return rank(a) - rank(b) || String(a.startsAt || '').localeCompare(String(b.startsAt || '')) || String(a.name).localeCompare(String(b.name));
+    })
+    .slice(0, 30);
+}
+
+function syncCommunityPublicRecordFromState(finalStatus = '') {
+  if (state.roomSettings?.roomOrigin !== 'community' || !state.roomSettings?.communityPublicId) return null;
+  const record = communityPublicRoomById(state.roomSettings.communityPublicId);
+  if (!record) return null;
+  record.roomCode = state.roomCode || record.roomCode;
+  record.workspaceId = currentWorkspace().id;
+  record.openedAt ||= state.createdAt || nowIso();
+  if (state.startedAt) record.startedAt = state.startedAt;
+  if (state.endedAt) record.endedAt = state.endedAt;
+  record.status = finalStatus || (state.status === 'waiting' ? 'waiting' : state.status === 'finished' ? 'finished' : state.status === 'closed' ? 'cancelled' : 'playing');
+  record.updatedAt = nowIso();
+  savePlatform();
+  return record;
+}
+
+function openCommunityPublicRoom(record, { autoJoinCreator = false, deviceId = '' } = {}) {
+  if (!record) throw new Error('La sala ya no existe.');
+  if (record.roomCode) {
+    const existing = (record.workspaceId && workspaces.get(record.workspaceId)) || findWorkspaceByRoomCode(record.roomCode);
+    if (existing?.state?.active) return { workspace: existing, playerSessionToken: '' };
+  }
+  const availability = communityPublicRoomAvailability();
+  if (!availability.available) throw new Error('Ahora no hay salas disponibles. Probá de nuevo en un rato.');
+  const workspace = freeOperationalWorkspace();
+  if (!workspace) throw new Error('Ahora no hay salas disponibles. Probá de nuevo en un rato.');
+  let playerSessionToken = '';
+  workspaceContext.run(workspace, () => {
+    createSimpleRoom({
+      mode: record.mode,
+      cardCount: normalizedGeneratedCount(Math.max(25, Math.min(100, record.maxPlayers * record.maxCardsPerPlayer + 20))),
+      autoSeconds: record.autoSeconds,
+      rules: record.rules,
+      linePrizeCount: record.linePrizeCount,
+      markingMode: 'normal',
+      maxCardsPerPlayer: record.maxCardsPerPlayer,
+      paymentMode: 'free',
+      roomOrigin: 'community',
+      hostName: record.creatorName,
+      roomName: record.name,
+      communityPublicId: record.id,
+      communityStartMode: record.startMode,
+      scheduledAt: record.startsAt || '',
+      maxOpenPlayers: record.maxPlayers
+    });
+    state.communityCreatorCodeHash = record.creatorCodeHash;
+    state.communityHostKeyHash = null;
+    state.communityHostExpiresAt = null;
+    state.roomSettings.joinOpen = true;
+    if (autoJoinCreator) {
+      const joined = openJoinPlayer({ name: record.creatorName, cardCount: record.maxCardsPerPlayer, deviceId: String(deviceId || randomId('device')).slice(0,120) });
+      state.communityCreatorPlayerId = joined.state?.player?.id || null;
+      playerSessionToken = joined.token;
+    }
+    logEvent('community_public_room_opened', { publicRoomId:record.id, name:record.name, startMode:record.startMode, startsAt:record.startsAt || null, maxPlayers:record.maxPlayers });
+    saveState(); broadcast();
+  });
+  record.workspaceId = workspace.id;
+  record.roomCode = workspace.state.roomCode;
+  record.openedAt = nowIso();
+  record.status = 'waiting';
+  record.updatedAt = nowIso();
+  savePlatform();
+  return { workspace, playerSessionToken };
+}
+
+function createCommunityPublicRoom(payload = {}) {
+  const availability = communityPublicRoomAvailability();
+  if (!availability.enabled) throw new Error('Ahora no se pueden crear salas.');
+  const creatorName = normalizeCommunityName(payload.name);
+  const roomName = normalizeCommunityRoomName(payload.roomName, creatorName);
+  const mode = Number(payload.mode) === 75 ? 75 : 90;
+  const maxPlayers = Math.max(2, Math.min(availability.maxPlayers, Math.round(Number(payload.maxPlayers) || Math.min(20, availability.maxPlayers))));
+  const maxCardsPerPlayer = Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
+  const autoSeconds = Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
+  const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1;
+  const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};
+  const rules = mode === 90
+    ? roomRulesFor(90, { ambocabeza:Boolean(requestedRules.ambocabeza), line:true, bingo:true })
+    : roomRulesFor(75, { line:requestedRules.line !== false, corners:Boolean(requestedRules.corners), doubleLine:Boolean(requestedRules.doubleLine), tripleLine:Boolean(requestedRules.tripleLine), bingo:true });
+  const startMode = payload.startMode === 'scheduled' ? 'scheduled' : 'manual';
+  let startsAt = '';
+  if (startMode === 'scheduled') {
+    const starts = new Date(payload.startsAt || '');
+    if (!Number.isFinite(starts.getTime())) throw new Error('Elegí el horario de inicio.');
+    const lead = starts.getTime() - Date.now();
+    if (lead < (TEST_MODE ? 1_000 : 60_000)) throw new Error('Elegí un horario posterior al actual.');
+    if (lead > COMMUNITY_PUBLIC_MAX_AHEAD_MS) throw new Error('Podés programar una sala con hasta 36 horas de anticipación.');
+    ensurePublicScheduleCapacity(starts.getTime());
+    startsAt = starts.toISOString();
+  }
+  const creatorCode = randomCode(7);
+  const creatorCodeHash = crypto.createHash('sha256').update(creatorCode).digest('hex');
+  const record = normalizeCommunityPublicRoom({
+    id: randomId('public'), name:roomName, creatorName, creatorCodeHash, startMode, startsAt,
+    mode, maxPlayers, maxCardsPerPlayer, autoSeconds, linePrizeCount, rules,
+    status:'scheduled', createdAt:nowIso(), updatedAt:nowIso()
+  });
+  communityPublicRooms().push(record);
+  if (communityPublicRooms().length > 120) communityPublicRooms().splice(0, communityPublicRooms().length - 120);
+  let playerSessionToken = '';
+  const shouldOpenNow = startMode === 'manual' || (new Date(startsAt).getTime() - Date.now() <= COMMUNITY_PUBLIC_OPEN_MS);
+  if (shouldOpenNow) {
+    try {
+      const opened = openCommunityPublicRoom(record, { autoJoinCreator:true, deviceId:String(payload.visitorId || '').slice(0,120) });
+      playerSessionToken = opened.playerSessionToken;
+    } catch (error) {
+      const index = communityPublicRooms().findIndex(item => item.id === record.id);
+      if (index >= 0) communityPublicRooms().splice(index, 1);
+      savePlatform();
+      throw error;
+    }
+  } else savePlatform();
+  const publicPayload = publicRoomPayload(record);
+  return {
+    ...publicPayload,
+    creatorCode,
+    creatorCodeHint:'Guardalo para recuperar tu sala desde otro dispositivo.',
+    enterNow:Boolean(playerSessionToken),
+    playerSessionToken
+  };
+}
+
+function recoverCommunityCreator(payload = {}) {
+  const publicId = String(payload.publicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0,100);
+  const roomCode = String(payload.roomCode || '').trim().toUpperCase();
+  const record = publicId ? communityPublicRoomById(publicId) : communityPublicRooms().find(item => String(item.roomCode || '').toUpperCase() === roomCode);
+  if (!record || !record.creatorCodeHash) throw new Error('No se encontró esa sala.');
+  const code = normalizeAccessKey(payload.creatorCode || '');
+  const digest = crypto.createHash('sha256').update(code).digest('hex');
+  if (!safeEqual(digest, record.creatorCodeHash)) throw new Error('Código de creador incorrecto.');
+  const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
+  if (!workspace?.state?.active) {
+    if (record.startMode === 'scheduled' && record.startsAt) {
+      const opensAt = new Date(new Date(record.startsAt).getTime() - COMMUNITY_PUBLIC_OPEN_MS);
+      throw new Error(`La sala todavía no abrió. Podés entrar desde ${opensAt.toLocaleTimeString('es-AR',{timeZone:BINGO_TIMEZONE,hour:'2-digit',minute:'2-digit',hour12:false})}.`);
+    }
+    throw new Error('La sala todavía no está disponible.');
+  }
+  return workspaceContext.run(workspace, () => {
+    if (state.status !== 'waiting') throw new Error('La partida ya comenzó.');
+    let player = state.communityCreatorPlayerId ? state.players.find(item => item.id === state.communityCreatorPlayerId) : null;
+    let token = '';
+    if (!player) {
+      const joined = openJoinPlayer({ name:record.creatorName, cardCount:record.maxCardsPerPlayer, deviceId:String(payload.deviceId || randomId('device')).slice(0,120) });
+      token = joined.token;
+      player = state.players.find(item => item.sessionToken === token) || null;
+      state.communityCreatorPlayerId = player?.id || null;
+    } else {
+      player.sessionToken = randomId('session');
+      player.sessionDeviceId = String(payload.deviceId || randomId('device')).slice(0,120);
+      player.openJoinDeviceId = player.sessionDeviceId;
+      player.lastLoginAt = nowIso();
+      token = player.sessionToken;
+    }
+    saveState(); broadcast();
+    return { token, roomCode:state.roomCode, publicId:record.id, playerName:playerDisplayName(player), enterUrl:'/jugar' };
+  });
+}
+
+function startCommunityRoomFromPlayer(player) {
+  if (state.roomSettings?.roomOrigin !== 'community') throw new Error('Esta partida no es una sala pública.');
+  if (state.roomSettings?.communityStartMode !== 'manual') throw new Error('Esta sala comenzará automáticamente en el horario programado.');
+  if (String(state.communityCreatorPlayerId || '') !== String(player?.id || '')) throw new Error('Solo quien creó la sala puede iniciar la partida.');
+  if (state.status !== 'waiting') return playerPayload(player);
+  if ((state.players || []).length < 2) throw new Error('Se necesitan al menos 2 jugadores para comenzar.');
+  state.roomSettings.joinOpen = false;
+  saveState(); broadcast();
+  startRoom({ communityCreator:true });
+  syncCommunityPublicRecordFromState('playing');
+  return playerPayload(player);
+}
+
+function processCommunityPublicRoomAutomation() {
+  const now = Date.now();
+  let platformChanged = false;
+  for (const record of communityPublicRooms()) {
+    if (record.startMode !== 'scheduled' || !record.startsAt || ['finished','cancelled'].includes(record.status)) continue;
+    const startsMs = new Date(record.startsAt).getTime();
+    if (!Number.isFinite(startsMs)) continue;
+    if (!record.roomCode && now >= startsMs - COMMUNITY_PUBLIC_OPEN_MS) {
+      try { openCommunityPublicRoom(record); platformChanged = true; }
+      catch { /* Se reintenta cada segundo; las oficiales conservan prioridad. */ }
+    }
+    const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
+    if (!workspace?.state?.active || String(workspace.state.roomCode || '') !== String(record.roomCode || '')) continue;
+    workspaceContext.run(workspace, () => {
+      if (now < startsMs || state.status !== 'waiting') return;
+      if ((state.players || []).length < 2) {
+        state.roomSettings.joinOpen = false;
+        record.status = 'cancelled'; record.endedAt = nowIso(); record.updatedAt = nowIso(); platformChanged = true;
+        closeRoom();
+        return;
+      }
+      try {
+        state.roomSettings.joinOpen = false;
+        saveState(); broadcast();
+        startRoom({ automaticSchedule:true, communityPublic:true });
+        record.status = 'playing'; record.startedAt = state.startedAt || nowIso(); record.updatedAt = nowIso(); platformChanged = true;
+      } catch (error) {
+        logEvent('community_public_start_blocked', { publicRoomId:record.id, reason:String(error?.message || '') });
+      }
+    });
+  }
+  if (platformChanged) savePlatform();
+  return platformChanged;
+}
+
 function createCommunityPrivateRoom(payload = {}) {
   const community = platform.community ||= blankCommunity();
   const availability = communityPrivateRoomAvailability();
@@ -6383,6 +6770,8 @@ function communityStatePayload(visitorId = '') {
     },
     activeGame: communityActiveGamePayload(),
     upcomingGames: communityUpcomingGames(),
+    publicRooms: communityPublicRoomsPayload(),
+    publicRoomAvailability: communityPublicRoomAvailability(),
     privateRooms: communityPrivateRoomAvailability(),
     leaderboards: {
       red_black: (community.leaderboards?.red_black || []).slice(0, 8),
@@ -6711,7 +7100,8 @@ function processCommunityScheduleAutomation() {
 
 function updateCommunitySettings(payload = {}) {
   const community = platform.community ||= blankCommunity();
-  if (payload.privateRoomsEnabled !== undefined) community.privateRoomsEnabled = payload.privateRoomsEnabled !== false;
+  if (payload.publicRoomsEnabled !== undefined) community.publicRoomsEnabled = payload.publicRoomsEnabled !== false;
+  if (payload.privateRoomsEnabled !== undefined) { community.privateRoomsEnabled = payload.privateRoomsEnabled !== false; community.publicRoomsEnabled = payload.privateRoomsEnabled !== false; }
   if (payload.privateRoomMaxPlayers !== undefined) community.privateRoomMaxPlayers = Math.max(2, Math.min(30, Math.round(Number(payload.privateRoomMaxPlayers) || 30)));
   if (payload.privateRoomMaxCardsPerPlayer !== undefined) community.privateRoomMaxCardsPerPlayer = Math.max(1, Math.min(2, Math.round(Number(payload.privateRoomMaxCardsPerPlayer) || 2)));
   if (payload.whatsappGroup !== undefined) {
@@ -6819,6 +7209,8 @@ function communityAdminPayload() {
     chatEnabled: community.chatEnabled !== false,
     blockPhoneNumbers: community.blockPhoneNumbers !== false,
     blockWhatsappLinks: community.blockWhatsappLinks !== false,
+    publicRoomsEnabled: community.publicRoomsEnabled !== false && community.privateRoomsEnabled !== false,
+    publicRooms: communityPublicRooms().slice().sort((a,b) => String(a.startsAt || a.createdAt).localeCompare(String(b.startsAt || b.createdAt))).map(item => publicRoomPayload(item)),
     privateRoomsEnabled: community.privateRoomsEnabled !== false,
     privateRoomMaxPlayers: Math.max(2, Math.min(30, Number(community.privateRoomMaxPlayers) || 30)),
     privateRoomMaxCardsPerPlayer: Math.max(1, Math.min(2, Number(community.privateRoomMaxCardsPerPlayer) || 2)),
@@ -6993,14 +7385,22 @@ async function handleApi(req, res, url) {
       if (!consumeRate(req, 'community-score', 80, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados puntajes enviados. Probá más tarde.' });
       return sendJson(res, 200, submitCommunityScore(await readJson(req)));
     }
-    if (url.pathname === '/api/community/private-room' && req.method === 'POST') {
-      if (!consumeRate(req, 'community-private-room', 6, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Se crearon demasiadas salas desde esta conexión. Probá más tarde.' });
-      return sendJson(res, 200, createCommunityPrivateRoom(await readJson(req)));
+    if (url.pathname === '/api/community/public-room' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-public-room', 15, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Se crearon demasiadas salas desde esta conexión. Probá más tarde.' });
+      const created = createCommunityPublicRoom(await readJson(req));
+      if (created.playerSessionToken) setPlayerSessionCookie(req, res, created.playerSessionToken);
+      const { playerSessionToken, ...safeCreated } = created;
+      return sendJson(res, 200, safeCreated);
     }
-    if (url.pathname === '/api/community/host-login' && req.method === 'POST') {
-      if (!consumeRate(req, 'community-host-login', 30, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
-      return sendJson(res, 200, createCommunityHostSession(await readJson(req)));
+    if (url.pathname === '/api/community/creator-recover' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-creator-recover', 20, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
+      const recovered = recoverCommunityCreator(await readJson(req));
+      setPlayerSessionCookie(req, res, recovered.token);
+      const { token, ...safeRecovered } = recovered;
+      return sendJson(res, 200, safeRecovered);
     }
+    if (url.pathname === '/api/community/private-room' && req.method === 'POST') return sendJson(res, 410, { error: 'Ahora las salas creadas por jugadores son públicas.' });
+    if (url.pathname === '/api/community/host-login' && req.method === 'POST') return sendJson(res, 410, { error: 'El acceso de anfitrión ya no se utiliza.' });
 
     if (url.pathname === '/api/demo/create' && req.method === 'POST') {
       if (!consumeRate(req, 'demo-create', 40, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Se crearon muchas demostraciones desde esta conexión. Esperá unos minutos y probá de nuevo.' });
@@ -7150,6 +7550,7 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/automark' && req.method === 'POST') return sendJson(res, 200, setAutoMark(player, await readJson(req)));
         if (url.pathname === '/api/player/claim' && req.method === 'POST') return sendJson(res, 200, createClaim(player, await readJson(req)));
         if (url.pathname === '/api/player/waiting-game/score' && req.method === 'POST') return sendJson(res, 200, submitWaitingGameScore(player, await readJson(req)));
+        if (url.pathname === '/api/player/community-start' && req.method === 'POST') return sendJson(res, 200, startCommunityRoomFromPlayer(player));
         if (url.pathname === '/api/player/chat' && req.method === 'POST') {
           if (!consumeRate(req, `chat-${player.id}`, 30, 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados mensajes. Esperá un momento.' });
           const payload = await readJson(req);
@@ -7506,6 +7907,20 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  const publicRoomMatch = url.pathname.match(/^\/mesa\/([^/]+)\/?$/);
+  if (publicRoomMatch && (req.method === 'GET' || req.method === 'HEAD')) {
+    const publicId = decodeURIComponent(publicRoomMatch[1] || '');
+    const record = communityPublicRoomById(publicId);
+    if (!record) { res.writeHead(303, { Location:'/comunidad', 'Cache-Control':'no-store' }); return res.end(); }
+    const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
+    if (workspace?.state?.active && workspace.state.status === 'waiting' && workspace.state.roomSettings?.joinOpen) {
+      res.writeHead(303, { Location:`/jugador?sala=${encodeURIComponent(workspace.state.roomCode)}&directo=1`, 'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer' });
+      return res.end();
+    }
+    res.writeHead(303, { Location:`/comunidad?mesa=${encodeURIComponent(record.id)}`, 'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer' });
+    return res.end();
+  }
+
   if (url.pathname === '/') {
     res.writeHead(302, { Location: '/admin' });
     return res.end();
@@ -7603,6 +8018,8 @@ setInterval(() => {
       if (workspace.id === 'owner') {
         try { processCommunityScheduleAutomation(); }
         catch (error) { console.error(`No se pudo procesar la agenda automática:`, error.message); }
+        try { processCommunityPublicRoomAutomation(); }
+        catch (error) { console.error(`No se pudieron procesar las salas públicas programadas:`, error.message); }
       }
       if (workspace.isDemo && state.demo && state.status === 'waiting') {
         const flow = ensureDemoStartFlow();

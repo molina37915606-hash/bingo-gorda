@@ -1,6 +1,6 @@
 # BINGO DE LA GORDA - Final
 
-Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de juego del jugador se mantiene como base aprobada. Esta entrega amplía la operación a dos salas simultáneas, agrega historial acumulativo de partidas y permite crear salas privadas gratuitas desde Comunidad sin separar el motor de juego.
+Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de juego del jugador se mantiene como base aprobada. Esta entrega mantiene el motor aprobado, amplía la operación a hasta diez salas activas independientes, conserva el historial acumulativo y permite que los jugadores creen salas públicas gratuitas desde Comunidad.
 
 ## Flujo de una partida
 
@@ -33,25 +33,23 @@ Los datos de transferencia no forman parte de Comunidad, Transmisión, chat ni a
 INICIAR SORTEO es independiente de CERRAR INSCRIPCIONES. Durante el estado de preparación, el jugador ya ve su interfaz real de juego y puede recorrer un tutorial contextual por globos anclados a bolilla, cartones, marcado, RECLAMAR, premios, chat y herramientas. En móvil, cada globo calcula su posición usando el viewport visible para mantenerse dentro de la pantalla. Los premios activos se explican uno por uno y se resaltan temporalmente las casillas involucradas sin modificar el cartón ni sus marcas. El servidor controla el tiempo previo a la primera bolilla para mantener a todos sincronizados.
 
 
-## Dos salas e historial
+## Multisala e historial
 
-El servidor mantiene dos workspaces operativos persistentes (`Sala 1` y `Sala 2`) con estado, jugadores, SSE, temporizadores, reclamos y transmisión independientes. Las dos pueden estar inscribiendo, jugando o en combinaciones distintas. Admin puede cambiar de una a otra sin detener la sala que no está mirando.
+El servidor mantiene hasta diez workspaces operativos persistentes (`Sala 1` a `Sala 10`) con estado, jugadores, SSE, temporizadores, chat, reclamos y transmisión independientes. Pueden estar esperando o jugando al mismo tiempo. Admin puede cambiar de una a otra sin detener las demás.
 
-Las partidas programadas pueden ocupar cualquiera de los dos slots. Una programación ya vinculada a una sala en espera puede modificar hora, minutos de inscripción, intervalo, máximo de cartones por jugador y cantidad de cartones generados. Las reducciones que borrarían cartones asignados/reservados o dejarían jugadores por encima del nuevo máximo se bloquean. Una vez iniciado el sorteo, la configuración crítica queda cerrada.
+Las partidas programadas oficiales pueden ocupar cualquiera de los lugares operativos. Una programación oficial ya vinculada a una sala en espera conserva la edición segura de hora, inscripción, intervalo y cartones. Las partidas oficiales próximas reservan capacidad con prioridad frente a las salas públicas creadas por jugadores.
 
-Al finalizar, la partida se archiva en `BINGO_DATA_DIR/historial` con resultados, acta PDF/CSV, participantes, metadatos e integridad. Las salas canceladas también dejan un registro administrativo, pero no generan un acta oficial falsa. Admin puede consultar y descargar el historial desde el panel.
+Al finalizar, cada partida se archiva en `BINGO_DATA_DIR/historial` con resultados, acta PDF/CSV, participantes, metadatos e integridad. Las canceladas dejan registro administrativo sin generar un acta oficial falsa. `BINGO_DATA_DIR` debe apuntar a almacenamiento persistente real en producción.
 
-`BINGO_DATA_DIR` debe apuntar a un disco persistente real en Render para que ese historial sobreviva a redeploys o reinicios de infraestructura. Definir la variable por sí sola no convierte el filesystem efímero en persistente.
+## Salas públicas creadas por jugadores
 
-## Salas privadas de Comunidad
+Desde Comunidad, un jugador puede crear una sala pública gratuita, ponerle un nombre y elegir Bingo 75/90, máximo de jugadores, 1–2 cartones por persona, velocidad y qué jugadas se disputan. No existen precios, transferencias ni un panel de anfitrión para estas salas.
 
-Comunidad puede habilitar `CREAR SALA` para partidas privadas gratuitas. En celular, los accesos rápidos se mantienen compactos para no desplazar Minijuegos ni el chat. El creador usa un panel táctil corto para elegir Bingo 75/90, máximo de jugadores, hasta 1–2 cartones por jugador e intervalo, sin selectores grandes.
+El inicio puede ser manual o programado. En modo manual, quien creó la sala entra como un jugador más y es el único que ve **INICIAR PARTIDA**. En modo programado, se puede elegir un horario hasta 36 horas hacia adelante: si faltan más de 2 horas solo se publica una placa liviana; a 2 horas se abre automáticamente la sala de espera y a la hora indicada el sorteo comienza solo si hay al menos 2 jugadores.
 
-La misma pantalla permite configurar los premios antes de crear la sala. En Bingo 90 se puede activar AmboCabeza, elegir 1 o 2 premios de Línea y jugar Bingo; en Bingo 75 se mantienen Línea y Bingo y se pueden activar 4 Esquinas, Doble Línea y Triple Línea. Cada premio admite un importe opcional que queda guardado en `roomSettings.prizeAmounts`. Si hay dos líneas en Bingo 90, el importe de Línea se aplica a cada una. Estas salas continúan siendo gratuitas: configurar importes no habilita transferencias, DNI ni formularios de cobro.
+Cada sala tiene un link público estable para invitar. Cualquier jugador que ya esté dentro puede compartirlo por WhatsApp o copiarlo. El creador recibe además un código secreto para recuperar su permiso desde otro dispositivo. El chat, las bolillas, los jugadores y los reclamos permanecen aislados por sala.
 
-Al crearla, el usuario recibe un link de jugadores y un acceso temporal de anfitrión. Ese anfitrión puede administrar únicamente su sala: abrir/cerrar inscripciones, iniciar, pausar/reanudar, moderar el chat y resolver reclamos; no puede ver otras salas, historial global, Agenda ni configuración general.
-
-Las programaciones oficiales próximas reservan capacidad con prioridad. El límite operativo de esta versión sigue siendo dos salas oficiales/comunitarias simultáneas; DEMO continúa siendo un flujo separado.
+Las placas programadas futuras no consumen uno de los diez lugares activos hasta que llega su ventana de apertura. Cuando una partida termina o se cancela, libera su lugar.
 
 ## Comunidad y agenda
 

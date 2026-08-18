@@ -30,6 +30,11 @@ const DATA_DIR = process.env.BINGO_DATA_DIR ? path.resolve(process.env.BINGO_DAT
 const OWNER_STATE_FILE = path.join(DATA_DIR, 'sala-online.json');
 const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma.json');
 const WORKSPACES_DIR = path.join(DATA_DIR, 'operadores');
+const HISTORY_DIR = path.join(DATA_DIR, 'historial');
+const OPERATIONAL_WORKSPACE_IDS = ['owner', 'slot2'];
+const MAX_OPERATIONAL_ROOMS = OPERATIONAL_WORKSPACE_IDS.length;
+const COMMUNITY_HOST_TTL_MS = 8 * 60 * 60 * 1000;
+const COMMUNITY_ROOM_RESERVATION_MS = Math.max(15 * 60 * 1000, Number(process.env.BINGO_COMMUNITY_RESERVATION_MS || 60 * 60 * 1000));
 const PORT = Number(process.env.PORT || 3210);
 const HOST = '0.0.0.0';
 const ONLINE_MODE = process.env.RENDER === 'true' || process.env.ONLINE_MODE === 'true';
@@ -104,6 +109,7 @@ const APP_PUBLIC_VERSION = 'BINGO DE LA GORDA - Final';
 const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bingo'];
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
+fs.mkdirSync(HISTORY_DIR, { recursive: true });
 
 function loadLastResultMeta(metaFile, pdfFile) {
   try {
@@ -309,6 +315,9 @@ function blankState() {
     active: false,
     status: 'closed',
     roomCode: null,
+    communityHostKeyHash: null,
+    communityHostName: '',
+    communityHostExpiresAt: null,
     createdAt: null,
     startedAt: null,
     endedAt: null,
@@ -328,8 +337,14 @@ function blankState() {
       broadcastToken: null,
       broadcastAlias: null,
       roomType: 'alpha',
+      roomOrigin: 'official',
+      hostName: '',
       joinOpen: true,
       maxOpenPlayers: 60,
+      communityScheduleId: '',
+      scheduledAt: '',
+      scheduledRegistrationMinutes: 15,
+      scheduledAutoStart: false,
       accessKey: '',
       paymentMode: 'free',
       cardPrice: 0,
@@ -409,6 +424,9 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       deviceTransferRequests: Array.isArray(parsed.deviceTransferRequests) ? parsed.deviceTransferRequests : [],
       adminContingency: { ...defaults.adminContingency, ...(parsed.adminContingency || {}) }
     };
+    merged.communityHostKeyHash = /^[a-f0-9]{64}$/i.test(String(parsed.communityHostKeyHash || '')) ? String(parsed.communityHostKeyHash).toLowerCase() : null;
+    merged.communityHostName = normalizePlayerName(parsed.communityHostName || '').slice(0, 20);
+    merged.communityHostExpiresAt = parsed.communityHostExpiresAt && Number.isFinite(new Date(parsed.communityHostExpiresAt).getTime()) ? new Date(parsed.communityHostExpiresAt).toISOString() : null;
     if (merged.active && !parsed.status) merged.status = merged.game?.drawn?.length ? 'playing' : 'waiting';
     if (!['closed', 'waiting', 'starting', 'playing', 'verifying', 'paused', 'resuming', 'finalizing', 'finished'].includes(merged.status)) merged.status = 'closed';
     merged.roomSettings.linePrizeCount = Math.max(1, Math.min(2, Number(merged.roomSettings.linePrizeCount) || 1));
@@ -429,6 +447,12 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.broadcastToken = merged.roomSettings.broadcastToken ? String(merged.roomSettings.broadcastToken) : null;
     merged.roomSettings.broadcastAlias = merged.roomSettings.broadcastAlias ? String(merged.roomSettings.broadcastAlias).trim().toLowerCase() : null;
     merged.roomSettings.roomType = ['test','official','alpha'].includes(merged.roomSettings.roomType) ? merged.roomSettings.roomType : 'alpha';
+    merged.roomSettings.roomOrigin = merged.roomSettings.roomOrigin === 'community' ? 'community' : 'official';
+    merged.roomSettings.hostName = normalizePlayerName(merged.roomSettings.hostName || '').slice(0, 20);
+    merged.roomSettings.communityScheduleId = String(merged.roomSettings.communityScheduleId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+    merged.roomSettings.scheduledAt = String(merged.roomSettings.scheduledAt || '');
+    merged.roomSettings.scheduledRegistrationMinutes = Math.max(1, Math.min(120, Number(merged.roomSettings.scheduledRegistrationMinutes) || 15));
+    merged.roomSettings.scheduledAutoStart = Boolean(merged.roomSettings.scheduledAutoStart);
     merged.roomSettings.joinOpen = Boolean(merged.roomSettings.joinOpen);
     merged.roomSettings.maxOpenPlayers = Math.max(2, Math.min(MAX_PLAYERS, Number(merged.roomSettings.maxOpenPlayers) || MAX_PLAYERS));
     merged.roomSettings.accessKey = normalizeAccessKey(merged.roomSettings.accessKey || merged.roomCode || '');
@@ -537,6 +561,9 @@ function blankCommunity() {
     blockWhatsappLinks: true,
     blockedTerms: [],
     scheduledGames: [],
+    privateRoomsEnabled: true,
+    privateRoomMaxPlayers: 30,
+    privateRoomMaxCardsPerPlayer: 2,
     messages: [],
     leaderboards: { red_black: [], higher_lower: [] }
   };
@@ -570,6 +597,7 @@ function normalizeCommunityScheduledGame(raw = {}) {
     linePrizeCount: mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(raw.linePrizeCount) || 1))) : 1,
     rules: roomRulesFor(mode, raw.rules || {}),
     roomCode: String(raw.roomCode || '').replace(/[^A-Z0-9]/gi, '').slice(0, 12),
+    workspaceId: OPERATIONAL_WORKSPACE_IDS.includes(String(raw.workspaceId || '')) ? String(raw.workspaceId) : '',
     autoOpenedAt: raw.autoOpenedAt ? String(raw.autoOpenedAt) : null,
     autoClosedAt: raw.autoClosedAt ? String(raw.autoClosedAt) : null,
     autoStartedAt: raw.autoStartedAt ? String(raw.autoStartedAt) : null,
@@ -667,6 +695,9 @@ function normalizeCommunity(raw = {}) {
     scheduledGames: Array.isArray(raw.scheduledGames)
       ? raw.scheduledGames.map(normalizeCommunityScheduledGame).filter(Boolean).sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt))).slice(0, 40)
       : [],
+    privateRoomsEnabled: raw.privateRoomsEnabled !== false,
+    privateRoomMaxPlayers: Math.max(2, Math.min(30, Math.round(Number(raw.privateRoomMaxPlayers) || defaults.privateRoomMaxPlayers))),
+    privateRoomMaxCardsPerPlayer: Math.max(1, Math.min(2, Math.round(Number(raw.privateRoomMaxCardsPerPlayer) || defaults.privateRoomMaxCardsPerPlayer))),
     messages: Array.isArray(raw.messages) ? raw.messages.slice(-COMMUNITY_CHAT_MAX_MESSAGES).map(message => ({
       ...message,
       reports: Array.isArray(message?.reports) ? message.reports
@@ -735,8 +766,26 @@ function ensureWorkspace(id = 'owner', operatorId = null, label = 'Administrador
   return workspace;
 }
 
-const ownerWorkspace = ensureWorkspace('owner');
+const ownerWorkspace = ensureWorkspace('owner', null, 'Sala 1');
+const secondWorkspace = ensureWorkspace('slot2', null, 'Sala 2');
 // Los operadores temporales están deshabilitados en LA GORDA - BINGO ONLINE.
+
+function operationalWorkspaces() {
+  return OPERATIONAL_WORKSPACE_IDS.map((id, index) => ensureWorkspace(id, null, `Sala ${index + 1}`));
+}
+
+function activeOperationalWorkspaces() {
+  return operationalWorkspaces().filter(workspace => workspace.state?.active && workspace.state.status !== 'closed');
+}
+
+function freeOperationalWorkspace() {
+  return operationalWorkspaces().find(workspace => !workspace.state?.active || workspace.state.status === 'closed') || null;
+}
+
+function workspaceOperationalIndex(workspace = currentWorkspace()) {
+  const index = OPERATIONAL_WORKSPACE_IDS.indexOf(workspace?.id);
+  return index >= 0 ? index + 1 : null;
+}
 
 function currentWorkspace() { return workspaceContext.getStore() || ownerWorkspace; }
 function replaceCurrentState(next) { currentWorkspace().state = next; }
@@ -778,6 +827,109 @@ function publicLastResult() {
     filename: meta.filename || `LA_GORDA_BINGO_ONLINE_Resultados_Sala_${meta.roomCode}.pdf`,
     downloadUrl: `/api/results.pdf?sala=${encodeURIComponent(meta.roomCode)}`
   };
+}
+
+function historySafeId(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120);
+}
+
+function historyDirectories() {
+  try {
+    return fs.readdirSync(HISTORY_DIR, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => path.join(HISTORY_DIR, entry.name));
+  } catch {
+    return [];
+  }
+}
+
+function readHistoryMeta(dir) {
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
+    if (!meta?.roomCode) return null;
+    return { ...meta, archiveDir: dir };
+  } catch {
+    return null;
+  }
+}
+
+function historyEntries() {
+  return historyDirectories()
+    .map(readHistoryMeta)
+    .filter(Boolean)
+    .sort((a, b) => String(b.endedAt || b.cancelledAt || b.savedAt || '').localeCompare(String(a.endedAt || a.cancelledAt || a.savedAt || '')));
+}
+
+function historyEntryByRoomCode(roomCode) {
+  const normalized = String(roomCode || '').trim().toUpperCase();
+  if (!normalized) return null;
+  return historyEntries().find(entry => String(entry.roomCode || '').toUpperCase() === normalized) || null;
+}
+
+function roomCodeExistsAnywhere(roomCode) {
+  const normalized = String(roomCode || '').trim().toUpperCase();
+  if (!normalized) return false;
+  if ([...workspaces.values()].some(workspace => String(workspace.state?.roomCode || '').toUpperCase() === normalized)) return true;
+  return Boolean(historyEntryByRoomCode(normalized));
+}
+
+function uniqueRoomCode(length = 6) {
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const code = randomCode(length);
+    if (!roomCodeExistsAnywhere(code)) return code;
+  }
+  throw new Error('No se pudo generar un código de sala único.');
+}
+
+function historyPublicEntry(entry) {
+  if (!entry) return null;
+  return {
+    id: entry.id,
+    roomCode: entry.roomCode,
+    status: entry.status,
+    roomOrigin: entry.roomOrigin || 'official',
+    hostName: entry.hostName || '',
+    mode: Number(entry.mode) || null,
+    gameNumber: entry.gameNumber || null,
+    round: entry.round || 1,
+    createdAt: entry.createdAt || null,
+    startedAt: entry.startedAt || null,
+    endedAt: entry.endedAt || null,
+    cancelledAt: entry.cancelledAt || null,
+    savedAt: entry.savedAt || null,
+    totalPlayers: Number(entry.totalPlayers) || 0,
+    activeCards: Number(entry.activeCards) || 0,
+    winners: Array.isArray(entry.winners) ? entry.winners : [],
+    integrity: entry.integrity || null,
+    workspaceId: entry.workspaceId || '',
+    files: entry.files || {}
+  };
+}
+
+function historyListPayload() {
+  return historyEntries().map(historyPublicEntry);
+}
+
+function writeAtomic(file, data) {
+  const temp = `${file}.tmp`;
+  fs.writeFileSync(temp, data);
+  fs.renameSync(temp, file);
+}
+
+function archiveFolderForState(status = 'finished') {
+  const stampSource = state.endedAt || state.startedAt || state.createdAt || nowIso();
+  const stamp = new Date(stampSource).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  const room = String(state.roomCode || 'SIN_SALA').toUpperCase();
+  const base = `${stamp}_${historySafeId(room)}_${status}`;
+  return path.join(HISTORY_DIR, base);
+}
+
+function historicalFile(entry, filename) {
+  if (!entry?.archiveDir) return null;
+  const safe = path.basename(String(filename || ''));
+  if (!safe) return null;
+  const file = path.join(entry.archiveDir, safe);
+  return fs.existsSync(file) ? file : null;
 }
 
 function saveState() {
@@ -1915,6 +2067,131 @@ function createGeneratedGame(payload = {}) {
   };
 }
 
+function resizeWaitingRoomCards(targetCount) {
+  if (!state.active || !state.game || state.status !== 'waiting') throw new Error('La cantidad de cartones solo puede cambiar antes de iniciar.');
+  const nextCount = normalizedGeneratedCount(targetCount);
+  const cards = state.game.cards || [];
+  if (nextCount === cards.length) return false;
+
+  const protectedIds = new Set();
+  for (const player of state.players || []) {
+    for (const id of player.cardIds || []) protectedIds.add(String(id));
+    for (const id of player.reservedCardIds || []) protectedIds.add(String(id));
+  }
+
+  if (nextCount < cards.length) {
+    const kept = cards.slice(0, nextCount);
+    const keptIds = new Set(kept.map(card => String(card.id)));
+    const protectedRemoved = [...protectedIds].filter(id => !keptIds.has(id));
+    if (protectedRemoved.length) throw new Error('No se puede reducir a esa cantidad porque eliminaría cartones ya asignados o reservados.');
+    state.game.cards = kept;
+  } else {
+    const desired = generateDiverseCardsServer(nextCount, state.game.mode, state.game.rules);
+    const existingSignatures = new Set(cards.map(cardSignature));
+    const additions = [];
+    for (const candidate of desired) {
+      if (additions.length >= nextCount - cards.length) break;
+      if (existingSignatures.has(cardSignature(candidate))) continue;
+      if (cards.some(existing => sharedCardNumbers(existing, candidate) > (Number(state.game.mode) === 75 ? 12 : 6))) continue;
+      const number = String(cards.length + additions.length + 1).padStart(3, '0');
+      additions.push({ ...candidate, id: randomId('card'), number, name: `Cartón ${number}`, originalName: `Cartón ${number}` });
+      existingSignatures.add(cardSignature(candidate));
+    }
+    if (additions.length !== nextCount - cards.length) throw new Error('No se pudieron generar los cartones adicionales sin repetir combinaciones.');
+    state.game.cards = cards.concat(additions);
+  }
+
+  for (const player of state.players || []) {
+    const valid = new Set(state.game.cards.map(card => String(card.id)));
+    player.offeredCardIds = (player.offeredCardIds || []).filter(id => valid.has(String(id)));
+    player.reservedCardIds = (player.reservedCardIds || []).filter(id => valid.has(String(id)));
+  }
+  state.game.updatedAt = nowIso();
+  refreshAllOffers();
+  logEvent('waiting_room_card_count_changed', { cards: state.game.cards.length });
+  return true;
+}
+
+function syncLinkedScheduleToRoom(game, previous = {}) {
+  if (!game?.roomCode) return false;
+  const workspace = game.workspaceId ? workspaces.get(game.workspaceId) : findWorkspaceByRoomCode(game.roomCode);
+  if (!workspace || !workspace.state?.active || String(workspace.state.roomCode || '') !== String(game.roomCode || '')) return false;
+  return workspaceContext.run(workspace, () => {
+    if (state.status !== 'waiting') throw new Error('La partida ya comenzó. La configuración crítica quedó bloqueada.');
+
+    const previousMode = Number(previous.mode) === 75 ? 75 : 90;
+    const nextMode = Number(game.mode) === 75 ? 75 : 90;
+    const modeChanged = previousMode !== nextMode;
+    const paymentChanged = String(previous.paymentMode || 'free') !== String(game.paymentMode || 'free');
+    if ((modeChanged || paymentChanged) && state.players.length) {
+      throw new Error('No se puede cambiar modalidad o tipo de pago porque ya hay jugadores registrados.');
+    }
+
+    const nextMax = game.markingMode === 'manual_only'
+      ? Math.min(2, Math.max(1, Number(game.maxCardsPerPlayer) || 2))
+      : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(game.maxCardsPerPlayer) || 4));
+    const offenders = (state.players || []).filter(player => Math.max(Number(player.allowedCardCount) || 1, (player.cardIds || []).length) > nextMax);
+    if (offenders.length) throw new Error(`No se puede bajar el máximo a ${nextMax}: ${offenders.length} jugador(es) ya tienen una cantidad mayor.`);
+
+    if (modeChanged) {
+      state.game = createGeneratedGame(scheduledGameRoomPayload(game));
+      state.drawOrder = createSecureDrawOrder(state.game.mode);
+      state.players = [];
+      state.cardReservations = {};
+    } else {
+      resizeWaitingRoomCards(game.cardCount);
+      state.game.rules = roomRulesFor(state.game.mode, game.rules || {});
+      state.game.autoSeconds = Math.max(2, Math.min(60, Number(game.autoSeconds) || 6));
+      for (const card of state.game.cards || []) {
+        card.bets = {
+          ambocabeza: Number(state.game.mode) === 90 && state.game.rules.ambocabeza !== false,
+          line: state.game.rules.line !== false,
+          doubleLine: Number(state.game.mode) === 75 && Boolean(state.game.rules.doubleLine),
+          tripleLine: Number(state.game.mode) === 75 && Boolean(state.game.rules.tripleLine),
+          corners: Number(state.game.mode) === 75 && Boolean(state.game.rules.corners),
+          bingo: state.game.rules.bingo !== false
+        };
+      }
+    }
+    state.roomSettings.markingMode = game.markingMode === 'manual_only' ? 'manual_only' : 'normal';
+    state.roomSettings.maxCardsPerPlayer = nextMax;
+    state.roomSettings.linePrizeCount = Number(state.game.mode) === 90 ? Math.max(1, Math.min(2, Number(game.linePrizeCount) || 1)) : 1;
+    state.roomSettings.paymentMode = game.paymentMode === 'paid' ? 'paid' : 'free';
+    state.roomSettings.cardPrice = game.paymentMode === 'paid' ? Math.max(1, Number(game.cardPrice) || 0) : 0;
+    state.roomSettings.paymentAlias = game.paymentMode === 'paid' ? String(game.paymentAlias || '') : '';
+    state.roomSettings.paymentAccountHolder = game.paymentMode === 'paid' ? String(game.paymentAccountHolder || '') : '';
+    state.roomSettings.paymentProvider = game.paymentMode === 'paid' ? String(game.paymentProvider || '') : '';
+    state.roomSettings.whatsapp = String(game.whatsapp || platform.community?.whatsappNumber || '').trim();
+    state.roomSettings.scheduledAt = game.startsAt;
+    state.roomSettings.scheduledRegistrationMinutes = game.registrationMinutes;
+    state.roomSettings.scheduledAutoStart = Boolean(game.autoStart);
+    state.roomSettings.communityScheduleId = game.id;
+
+    const startsMs = new Date(game.startsAt).getTime();
+    const opensMs = startsMs - Math.max(1, Number(game.registrationMinutes) || 15) * 60_000;
+    const now = Date.now();
+    if (game.autoStart) {
+      if (now < opensMs) {
+        state.roomSettings.joinOpen = false;
+        game.autoOpenedAt = null;
+        game.autoClosedAt = null;
+      } else if (now < startsMs) {
+        state.roomSettings.joinOpen = state.players.length < Math.max(2, Math.min(MAX_PLAYERS, Number(state.roomSettings.maxOpenPlayers) || MAX_PLAYERS));
+        game.autoOpenedAt ||= nowIso();
+        game.autoClosedAt = null;
+      } else {
+        state.roomSettings.joinOpen = false;
+        game.autoClosedAt ||= nowIso();
+      }
+    }
+    refreshAllOffers();
+    logEvent('scheduled_room_updated', { scheduleId: game.id, startsAt: game.startsAt, cards: state.game.cards.length, maxCardsPerPlayer: nextMax });
+    saveState();
+    broadcast();
+    return true;
+  });
+}
+
 function emptyRoomPlayer({ name = '', cardIds = [], allowedCardCount = 1, code = '', deviceId = '', openJoin = false, paymentStatus = null } = {}) {
   const playerId = randomId('player');
   const roomMax = state.roomSettings?.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(state.roomSettings?.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
@@ -2028,16 +2305,18 @@ function createSimpleRoom(payload = {}) {
     ? 2
     : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(payload.maxCardsPerPlayer) || 4));
   replaceCurrentState({
-    ...blankState(), revision: 0, active: true, status: 'waiting', roomCode: randomCode(6), createdAt: nowIso(), updatedAt: nowIso(), round: 1,
+    ...blankState(), revision: 0, active: true, status: 'waiting', roomCode: uniqueRoomCode(6), createdAt: nowIso(), updatedAt: nowIso(), round: 1,
     roomSettings: {
       ...blankState().roomSettings,
       playerAudioAllowed: true, playerAudioDefault: true,
       linePrizeCount: Number(game.mode) === 90 ? Math.max(1, Math.min(2, Number(payload.linePrizeCount) || 1)) : 1,
       allowSamePlayerSecondLine: true, tiePolicy: 'first_claim', gameType: 'real',
       roomType: 'alpha',
+      roomOrigin: payload.roomOrigin === 'community' ? 'community' : 'official',
+      hostName: payload.roomOrigin === 'community' ? normalizeCommunityName(payload.hostName || 'Anfitrión') : '',
       // El acceso normal es exclusivamente mediante invitaciones privadas por jugador.
       joinOpen: false,
-      maxOpenPlayers: MAX_PLAYERS,
+      maxOpenPlayers: Math.max(2, Math.min(MAX_PLAYERS, Number(payload.maxOpenPlayers) || MAX_PLAYERS)),
       accessKey: '', paymentMode, cardPrice, paymentAlias, paymentAccountHolder, paymentProvider, whatsapp,
       communityScheduleId: communitySchedule?.id || '',
       scheduledAt: communitySchedule?.startsAt || '',
@@ -2059,6 +2338,7 @@ function createSimpleRoom(payload = {}) {
     communitySchedule.paymentMode = paymentMode;
     communitySchedule.cardPrice = paymentMode === 'paid' ? cardPrice : 0;
     communitySchedule.roomCode = state.roomCode;
+    communitySchedule.workspaceId = currentWorkspace().id;
     communitySchedule.autoOpenedAt = null;
     communitySchedule.autoClosedAt = null;
     communitySchedule.autoStartedAt = null;
@@ -2066,7 +2346,7 @@ function createSimpleRoom(payload = {}) {
     communitySchedule.updatedAt = nowIso();
     savePlatform();
   }
-  logEvent('functional_room_created', { markingMode, mode: game.mode, cards: game.cards.length, maxCardsPerPlayer: roomMaxCards, paymentMode, communityScheduleId: communitySchedule?.id || null });
+  logEvent('functional_room_created', { markingMode, mode: game.mode, cards: game.cards.length, maxCardsPerPlayer: roomMaxCards, paymentMode, communityScheduleId: communitySchedule?.id || null, roomOrigin: state.roomSettings.roomOrigin, workspaceId: currentWorkspace().id });
   saveState(); broadcast();
   return adminPayload();
 }
@@ -3149,7 +3429,7 @@ function configureRoom(payload) {
     revision: 0,
     active: true,
     status: 'waiting',
-    roomCode: randomCode(5),
+    roomCode: uniqueRoomCode(5),
     createdAt: nowIso(),
     startedAt: null,
     endedAt: null,
@@ -4040,26 +4320,124 @@ function controlAssignmentTimer(payload) {
 function archiveCurrentResults() {
   if (!state.active || !state.game || state.status !== 'finished') throw new Error('No hay un sorteo finalizado para archivar.');
   const pdf = buildResultsPdf();
+  const officialActaPdf = actaPdf();
+  const officialActaCsv = Buffer.from(actaCsv(), 'utf8');
+  const playersCsv = Buffer.from(participantsCsv(), 'utf8');
+  const acta = actaPayload();
   const { pdfFile, metaFile } = currentResultFiles();
-  const pdfTemp = `${pdfFile}.tmp`;
-  const metaTemp = `${metaFile}.tmp`;
-  fs.writeFileSync(pdfTemp, pdf);
+  const savedAt = nowIso();
   const meta = {
     version: APP_PUBLIC_VERSION,
+    id: historySafeId(`${state.endedAt || savedAt}_${state.roomCode}`),
+    status: 'finished',
     roomCode: state.roomCode,
+    roomOrigin: state.roomSettings?.roomOrigin === 'community' ? 'community' : 'official',
+    hostName: state.roomSettings?.hostName || '',
+    workspaceId: currentWorkspace().id,
     gameNumber: state.game.number,
     round: state.round,
+    mode: state.game.mode,
+    createdAt: state.createdAt,
     startedAt: state.startedAt,
     endedAt: state.endedAt,
-    savedAt: nowIso(),
+    savedAt,
+    totalPlayers: acta.totalPlayers,
+    activeCards: acta.activeCards,
+    winners: (acta.winners || []).map(winner => ({
+      type: winner.type,
+      prizeLabel: winner.prizeLabel,
+      playerName: winner.playerName,
+      cardNumber: winner.cardNumber,
+      claimedAt: winner.claimedAt,
+      ballNumber: winner.ballNumber
+    })),
+    integrity: acta.integrity ? {
+      algorithm: acta.integrity.algorithm,
+      commitment: acta.integrity.commitment,
+      sealedAt: acta.integrity.sealedAt,
+      verified: acta.integrity.verified
+    } : null,
     filename: resultsFilename(),
     sha256: crypto.createHash('sha256').update(pdf).digest('hex'),
-    size: pdf.length
+    size: pdf.length,
+    files: {
+      resultsPdf: 'resultados.pdf',
+      actaPdf: 'acta.pdf',
+      actaCsv: 'acta.csv',
+      participantsCsv: 'participantes.csv',
+      actaJson: 'acta.json'
+    }
   };
-  fs.writeFileSync(metaTemp, JSON.stringify(meta, null, 2), 'utf8');
-  fs.renameSync(pdfTemp, pdfFile);
-  fs.renameSync(metaTemp, metaFile);
+
+  const dir = archiveFolderForState('finished');
+  fs.mkdirSync(dir, { recursive: true });
+  writeAtomic(path.join(dir, 'resultados.pdf'), pdf);
+  writeAtomic(path.join(dir, 'acta.pdf'), officialActaPdf);
+  writeAtomic(path.join(dir, 'acta.csv'), officialActaCsv);
+  writeAtomic(path.join(dir, 'participantes.csv'), playersCsv);
+  writeAtomic(path.join(dir, 'acta.json'), JSON.stringify(acta, null, 2));
+  writeAtomic(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
+
+  // Compatibilidad: se conserva el último resultado por workspace.
+  writeAtomic(pdfFile, pdf);
+  writeAtomic(metaFile, JSON.stringify(meta, null, 2));
   currentWorkspace().lastResultMeta = meta;
+  state.historyArchiveId = meta.id;
+  return meta;
+}
+
+function archiveCancelledRoom() {
+  if (!state.active || !state.roomCode) return null;
+  const savedAt = nowIso();
+  const endedAt = state.endedAt || savedAt;
+  state.endedAt = endedAt;
+  const meta = {
+    version: APP_PUBLIC_VERSION,
+    id: historySafeId(`${endedAt}_${state.roomCode}_cancelled`),
+    status: 'cancelled',
+    roomCode: state.roomCode,
+    roomOrigin: state.roomSettings?.roomOrigin === 'community' ? 'community' : 'official',
+    hostName: state.roomSettings?.hostName || '',
+    workspaceId: currentWorkspace().id,
+    gameNumber: state.game?.number || null,
+    round: state.round || 1,
+    mode: state.game?.mode || null,
+    createdAt: state.createdAt,
+    startedAt: state.startedAt,
+    endedAt,
+    cancelledAt: endedAt,
+    savedAt,
+    totalPlayers: Array.isArray(state.players) ? state.players.length : 0,
+    activeCards: Array.isArray(state.players) ? state.players.reduce((sum, player) => sum + (player.cardIds || []).length, 0) : 0,
+    winners: [],
+    integrity: state.game?.integrity?.drawOrderCommitment ? {
+      algorithm: 'SHA-256',
+      commitment: state.game.integrity.drawOrderCommitment,
+      sealedAt: state.game.integrity.sealedAt || null,
+      verified: false
+    } : null,
+    files: { summaryJson: 'resumen.json' }
+  };
+  const dir = archiveFolderForState('cancelled');
+  fs.mkdirSync(dir, { recursive: true });
+  const summary = {
+    roomCode: state.roomCode,
+    status: 'cancelled',
+    roomOrigin: meta.roomOrigin,
+    hostName: meta.hostName,
+    mode: meta.mode,
+    createdAt: state.createdAt,
+    startedAt: state.startedAt,
+    cancelledAt: endedAt,
+    players: (state.players || []).map(player => ({
+      name: playerDisplayName(player),
+      cardCount: (player.cardIds || []).length,
+      allowedCardCount: Number(player.allowedCardCount) || 1
+    }))
+  };
+  writeAtomic(path.join(dir, 'resumen.json'), JSON.stringify(summary, null, 2));
+  writeAtomic(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
+  state.historyArchiveId = meta.id;
   return meta;
 }
 
@@ -4227,9 +4605,10 @@ function closeRoom() {
   clearClaimAutoResume(currentWorkspace());
   clearWorkspaceTransitionTimer();
   logEvent('room_closed');
+  state.endedAt ||= nowIso();
+  if (state.roomCode && state.status !== 'finished' && !state.historyArchiveId) archiveCancelledRoom();
   state.active = false;
   state.status = 'closed';
-  state.endedAt ||= nowIso();
   state.updatedAt = nowIso();
   saveState();
   broadcast();
@@ -5791,41 +6170,60 @@ function communityWhatsappContactUrl() {
 }
 
 function communityActiveGamePayload() {
-  const current = ownerWorkspace.state;
-  if (!current?.active || !current.game || current.status === 'closed' || current.status === 'finished') return null;
-  const roomType = current.roomSettings?.roomType === 'test' ? 'test' : 'official';
-  const canJoin = current.status === 'waiting' && Boolean(current.roomSettings?.joinOpen);
-  current.roomSettings.broadcastToken ||= randomId('live');
-  current.roomSettings.broadcastAlias ||= freshBroadcastAlias(ownerWorkspace.id);
-  const broadcastToken = current.roomSettings.broadcastToken;
-  const schedule = communityScheduledGames().find(item => item.id === String(current.roomSettings?.communityScheduleId || '') || (item.roomCode && item.roomCode === current.roomCode));
-  const paymentMode = current.roomSettings?.paymentMode === 'paid' ? 'paid' : 'free';
-  return {
-    roomCode: current.roomCode,
-    mode: Number(current.game.mode) === 75 ? 75 : 90,
-    status: current.status,
-    playerCount: Array.isArray(current.players) ? current.players.filter(player => player.selectionConfirmed || roomType === 'test' || player.paymentStatus === 'confirmed' || player.paymentStatus === 'not_required').length : 0,
-    roomType,
-    canJoin,
-    joinUrl: canJoin ? (roomType === 'test' ? `/jugador?sala=${encodeURIComponent(current.roomCode)}&prueba=1` : `/jugador?sala=${encodeURIComponent(current.roomCode)}&directo=1`) : '',
-    paymentMode,
-    cardPrice: paymentMode === 'paid' ? Math.max(0, Number(current.roomSettings?.cardPrice) || 0) : 0,
-    scheduledAt: String(current.roomSettings?.scheduledAt || schedule?.startsAt || ''),
-    drawnCount: Array.isArray(current.game?.drawn) ? current.game.drawn.length : 0,
-    transmissionUrl: broadcastToken ? `/v/${encodeURIComponent(current.roomSettings.broadcastAlias)}` : '',
-    transmissionEnabled: Boolean(broadcastToken)
-  };
+  const candidates = operationalWorkspaces()
+    .filter(workspace => {
+      const room = workspace.state;
+      return room?.active && room.game && room.status !== 'closed' && room.status !== 'finished' && room.roomSettings?.roomOrigin !== 'community';
+    })
+    .sort((a, b) => {
+      const rank = workspace => {
+        const room = workspace.state;
+        if (room.status === 'waiting' && room.roomSettings?.joinOpen) return 0;
+        if (room.status === 'waiting' || room.status === 'starting') return 1;
+        return 2;
+      };
+      return rank(a) - rank(b) || String(a.state.roomSettings?.scheduledAt || a.state.createdAt || '').localeCompare(String(b.state.roomSettings?.scheduledAt || b.state.createdAt || ''));
+    });
+  const workspace = candidates[0];
+  if (!workspace) return null;
+  return workspaceContext.run(workspace, () => {
+    const current = state;
+    const roomType = current.roomSettings?.roomType === 'test' ? 'test' : 'official';
+    const canJoin = current.status === 'waiting' && Boolean(current.roomSettings?.joinOpen);
+    current.roomSettings.broadcastToken ||= randomId('live');
+    current.roomSettings.broadcastAlias ||= freshBroadcastAlias(workspace.id);
+    const broadcastToken = current.roomSettings.broadcastToken;
+    const schedule = communityScheduledGames().find(item => item.id === String(current.roomSettings?.communityScheduleId || '') || (item.roomCode && item.roomCode === current.roomCode));
+    const paymentMode = current.roomSettings?.paymentMode === 'paid' ? 'paid' : 'free';
+    return {
+      roomCode: current.roomCode,
+      mode: Number(current.game.mode) === 75 ? 75 : 90,
+      status: current.status,
+      playerCount: Array.isArray(current.players) ? current.players.filter(player => player.selectionConfirmed || roomType === 'test' || player.paymentStatus === 'confirmed' || player.paymentStatus === 'not_required').length : 0,
+      roomType,
+      canJoin,
+      joinUrl: canJoin ? (roomType === 'test' ? `/jugador?sala=${encodeURIComponent(current.roomCode)}&prueba=1` : `/jugador?sala=${encodeURIComponent(current.roomCode)}&directo=1`) : '',
+      paymentMode,
+      cardPrice: paymentMode === 'paid' ? Math.max(0, Number(current.roomSettings?.cardPrice) || 0) : 0,
+      scheduledAt: String(current.roomSettings?.scheduledAt || schedule?.startsAt || ''),
+      drawnCount: Array.isArray(current.game?.drawn) ? current.game.drawn.length : 0,
+      transmissionUrl: broadcastToken ? `/v/${encodeURIComponent(current.roomSettings.broadcastAlias)}` : '',
+      transmissionEnabled: Boolean(broadcastToken)
+    };
+  });
 }
 
 function communityUpcomingGames() {
-  const current = ownerWorkspace.state;
-  const currentRoomCode = current?.active ? String(current.roomCode || '') : '';
+  const activeRoomCodes = new Set(operationalWorkspaces()
+    .filter(workspace => workspace.state?.active)
+    .map(workspace => String(workspace.state.roomCode || ''))
+    .filter(Boolean));
   const cutoff = Date.now() - 3 * 60 * 60 * 1000;
   return communityScheduledGames()
     .filter(item => {
       const time = new Date(item.startsAt).getTime();
       if (!Number.isFinite(time) || time < cutoff) return false;
-      if (currentRoomCode && item.roomCode === currentRoomCode) return false;
+      if (activeRoomCodes.has(String(item.roomCode || ''))) return false;
       return true;
     })
     .sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt)))
@@ -5842,6 +6240,111 @@ function communityUpcomingGames() {
 function pruneCommunityVisitors() {
   const cutoff = Date.now() - COMMUNITY_ONLINE_TTL_MS;
   for (const [id, seenAt] of communityVisitors) if (seenAt < cutoff) communityVisitors.delete(id);
+}
+
+
+function reservedOfficialScheduleCount(now = Date.now()) {
+  const freeCount = operationalWorkspaces().filter(workspace => !workspace.state?.active || workspace.state.status === 'closed').length;
+  if (!freeCount) return 0;
+  const reserved = communityScheduledGames().filter(game => {
+    if (game.roomCode) return false;
+    const startsMs = new Date(game.startsAt).getTime();
+    if (!Number.isFinite(startsMs)) return false;
+    const opensMs = startsMs - Math.max(1, Number(game.registrationMinutes) || 15) * 60_000;
+    return opensMs >= now && opensMs - now <= COMMUNITY_ROOM_RESERVATION_MS;
+  }).length;
+  return Math.min(freeCount, reserved);
+}
+
+function communityPrivateRoomAvailability() {
+  const community = platform.community ||= blankCommunity();
+  const free = operationalWorkspaces().filter(workspace => !workspace.state?.active || workspace.state.status === 'closed').length;
+  const reserved = reservedOfficialScheduleCount();
+  const available = community.privateRoomsEnabled !== false && free > reserved;
+  let reason = '';
+  if (community.privateRoomsEnabled === false) reason = 'La creación de salas privadas está desactivada.';
+  else if (!free) reason = `Las ${MAX_OPERATIONAL_ROOMS} salas están ocupadas.`;
+  else if (free <= reserved) reason = 'Los lugares libres están reservados para próximas partidas oficiales.';
+  return {
+    enabled: community.privateRoomsEnabled !== false,
+    available,
+    freeSlots: free,
+    reservedSlots: reserved,
+    maxPlayers: Math.max(2, Math.min(30, Number(community.privateRoomMaxPlayers) || 30)),
+    maxCardsPerPlayer: Math.max(1, Math.min(2, Number(community.privateRoomMaxCardsPerPlayer) || 2)),
+    reason
+  };
+}
+
+function createCommunityPrivateRoom(payload = {}) {
+  const community = platform.community ||= blankCommunity();
+  const availability = communityPrivateRoomAvailability();
+  if (!availability.enabled) throw new Error('La creación de salas privadas está desactivada.');
+  if (!availability.available) throw new Error(availability.reason || 'No hay lugar para crear otra sala en este momento.');
+  const hostName = normalizeCommunityName(payload.name);
+  const mode = Number(payload.mode) === 75 ? 75 : 90;
+  const maxPlayers = Math.max(2, Math.min(availability.maxPlayers, Math.round(Number(payload.maxPlayers) || Math.min(20, availability.maxPlayers))));
+  const maxCardsPerPlayer = Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
+  const autoSeconds = Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
+  const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1;
+  const cardCount = normalizedGeneratedCount(Math.max(25, Math.min(100, maxPlayers * maxCardsPerPlayer + 20)));
+  const workspace = freeOperationalWorkspace();
+  if (!workspace) throw new Error('No hay una sala disponible.');
+  const hostKey = randomId('host');
+  workspaceContext.run(workspace, () => {
+    const created = createSimpleRoom({
+      mode,
+      cardCount,
+      autoSeconds,
+      rules: roomRulesFor(mode, { line:true, bingo:true }),
+      linePrizeCount,
+      markingMode: 'normal',
+      maxCardsPerPlayer,
+      paymentMode: 'free',
+      roomOrigin: 'community',
+      hostName,
+      maxOpenPlayers: maxPlayers
+    });
+    state.communityHostKeyHash = crypto.createHash('sha256').update(hostKey).digest('hex');
+    state.communityHostName = hostName;
+    state.communityHostExpiresAt = new Date(Date.now() + COMMUNITY_HOST_TTL_MS).toISOString();
+    state.roomSettings.joinOpen = true;
+    logEvent('community_private_room_created', { hostName, maxPlayers, maxCardsPerPlayer });
+    saveState();
+    broadcast();
+  });
+  const roomCode = workspace.state.roomCode;
+  return {
+    roomCode,
+    mode,
+    hostName,
+    maxPlayers,
+    maxCardsPerPlayer,
+    joinUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(roomCode)}&directo=1`,
+    hostUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/admin#communityHost=${encodeURIComponent(roomCode)}.${encodeURIComponent(hostKey)}`,
+    expiresInHours: Math.round(COMMUNITY_HOST_TTL_MS / 3600000)
+  };
+}
+
+function createCommunityHostSession(payload = {}) {
+  const roomCode = String(payload.roomCode || '').trim().toUpperCase();
+  const hostKey = String(payload.hostKey || '').trim();
+  const workspace = findWorkspaceByRoomCode(roomCode);
+  if (!workspace?.state?.active || workspace.state?.roomSettings?.roomOrigin !== 'community' || !workspace.state.communityHostKeyHash) {
+    throw new Error('La sala privada ya no está disponible.');
+  }
+  const expiresAt = new Date(workspace.state.communityHostExpiresAt || 0).getTime();
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) throw new Error('El acceso de anfitrión venció. La sala puede ser administrada por La Gorda.');
+  const digest = crypto.createHash('sha256').update(hostKey).digest('hex');
+  if (!safeEqual(digest, workspace.state.communityHostKeyHash)) throw new Error('El acceso de anfitrión no es válido.');
+  const token = createAdminSession({ workspaceId: workspace.id, role: 'community_host', hardExpiresAt: expiresAt });
+  return {
+    token,
+    role: 'community_host',
+    workspaceId: workspace.id,
+    roomCode: workspace.state.roomCode,
+    hostName: workspace.state.communityHostName || workspace.state.roomSettings?.hostName || 'Anfitrión'
+  };
 }
 
 function communityStatePayload(visitorId = '') {
@@ -5866,6 +6369,7 @@ function communityStatePayload(visitorId = '') {
     },
     activeGame: communityActiveGamePayload(),
     upcomingGames: communityUpcomingGames(),
+    privateRooms: communityPrivateRoomAvailability(),
     leaderboards: {
       red_black: (community.leaderboards?.red_black || []).slice(0, 8),
       higher_lower: (community.leaderboards?.higher_lower || []).slice(0, 8)
@@ -5967,8 +6471,16 @@ function scheduledGameRoomPayload(game = {}) {
 
 function createRoomFromCommunitySchedule(game) {
   if (!game) throw new Error('La partida programada ya no existe.');
-  if (ownerWorkspace.state?.active) throw new Error('Hay otra partida activa. Cerrala antes de crear esta sala.');
-  return workspaceContext.run(ownerWorkspace, () => createSimpleRoom(scheduledGameRoomPayload(game)));
+  let workspace = game.workspaceId ? workspaces.get(game.workspaceId) : null;
+  if (workspace?.state?.active && String(workspace.state.roomCode || '') !== String(game.roomCode || '')) workspace = null;
+  if (!workspace || workspace.state?.active) workspace = freeOperationalWorkspace();
+  if (!workspace) throw new Error(`Ya están ocupadas las ${MAX_OPERATIONAL_ROOMS} salas disponibles.`);
+  const result = workspaceContext.run(workspace, () => createSimpleRoom(scheduledGameRoomPayload(game)));
+  game.workspaceId = workspace.id;
+  game.roomCode = workspace.state.roomCode;
+  game.updatedAt = nowIso();
+  savePlatform();
+  return result;
 }
 
 function updateCommunitySchedule(payload = {}) {
@@ -5986,8 +6498,11 @@ function updateCommunitySchedule(payload = {}) {
     const id = String(payload.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
     const index = games.findIndex(item => item.id === id);
     if (index < 0) throw new Error('La partida programada ya no existe.');
-    if (games[index].roomCode && ownerWorkspace.state?.active && String(ownerWorkspace.state.roomCode || '') === games[index].roomCode) {
-      throw new Error('Esa programación está asociada a la sala activa. Cancelá la automatización o cerrá la sala antes de eliminarla.');
+    if (games[index].roomCode) {
+      const linked = (games[index].workspaceId && workspaces.get(games[index].workspaceId)) || findWorkspaceByRoomCode(games[index].roomCode);
+      if (linked?.state?.active && String(linked.state.roomCode || '') === games[index].roomCode) {
+        throw new Error('Esa programación está asociada a una sala activa. Cerrá esa sala antes de eliminarla.');
+      }
     }
     games.splice(index, 1);
     savePlatform();
@@ -6000,9 +6515,12 @@ function updateCommunitySchedule(payload = {}) {
     game.autoStart = Boolean(payload.enabled);
     if (game.autoStart) game.autoStartError = '';
     game.updatedAt = nowIso();
-    if (game.roomCode && ownerWorkspace.state?.active && String(ownerWorkspace.state.roomCode || '') === game.roomCode) {
-      ownerWorkspace.state.roomSettings.scheduledAutoStart = game.autoStart;
-      workspaceContext.run(ownerWorkspace, () => { saveState(); broadcast(); });
+    if (game.roomCode) {
+      const linked = (game.workspaceId && workspaces.get(game.workspaceId)) || findWorkspaceByRoomCode(game.roomCode);
+      if (linked?.state?.active && String(linked.state.roomCode || '') === game.roomCode) {
+        linked.state.roomSettings.scheduledAutoStart = game.autoStart;
+        workspaceContext.run(linked, () => { saveState(); broadcast(); });
+      }
     }
     savePlatform();
     return communityAdminPayload();
@@ -6011,7 +6529,7 @@ function updateCommunitySchedule(payload = {}) {
   const id = String(payload.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
   const existing = id ? games.find(item => item.id === id) : null;
   if (id && !existing) throw new Error('La partida programada ya no existe.');
-  if (existing?.roomCode) throw new Error('Esa programación ya tiene una sala creada. Creá una nueva si necesitás otro horario.');
+  const previous = existing ? deepCopy(existing) : null;
   const starts = new Date(payload.startsAt || '');
   if (!Number.isFinite(starts.getTime())) throw new Error('Elegí una fecha y hora válidas.');
   if (starts.getTime() < Date.now() - 5 * 60 * 1000) throw new Error('La fecha programada no puede estar en el pasado.');
@@ -6050,16 +6568,26 @@ function updateCommunitySchedule(payload = {}) {
     autoSeconds: Math.max(2, Math.min(60, Math.round(Number(payload.autoSeconds) || 6))),
     linePrizeCount: mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1,
     rules: roomRulesFor(mode, payload.rules || {}),
-    roomCode: '',
-    autoOpenedAt: null,
-    autoClosedAt: null,
-    autoStartedAt: null,
+    roomCode: existing?.roomCode || '',
+    workspaceId: existing?.workspaceId || '',
+    autoOpenedAt: existing?.roomCode ? null : null,
+    autoClosedAt: existing?.roomCode ? null : null,
+    autoStartedAt: existing?.autoStartedAt || null,
     autoStartError: '',
     createdAt: existing?.createdAt || nowIso(),
     updatedAt: nowIso()
   };
-  if (existing) Object.assign(existing, next);
-  else games.push(next);
+  if (existing) {
+    Object.assign(existing, next);
+    if (existing.roomCode) {
+      try {
+        syncLinkedScheduleToRoom(existing, previous || {});
+      } catch (error) {
+        Object.assign(existing, previous || {});
+        throw error;
+      }
+    }
+  } else games.push(next);
   games.sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt)));
   if (games.length > 40) games.splice(40);
   savePlatform();
@@ -6067,113 +6595,111 @@ function updateCommunitySchedule(payload = {}) {
 }
 
 function processCommunityScheduleAutomation() {
-  const workspace = ownerWorkspace;
   const now = Date.now();
-  let room = workspace.state;
+  let changed = false;
 
-  // Una programación AUTO completa puede crear su propia sala al abrir las inscripciones.
-  // No pisa jamás una sala existente: con una sola sala operativa, espera a que quede libre.
-  if (!room?.active) {
-    const due = communityScheduledGames()
-      .filter(game => game.autoStart === true && !game.roomCode && !game.autoStartedAt)
-      .sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt)))
-      .find(game => {
-        const startsMs = new Date(game.startsAt).getTime();
-        if (!Number.isFinite(startsMs)) return false;
-        const registrationMinutes = Math.max(1, Math.min(120, Number(game.registrationMinutes) || 15));
-        return now >= startsMs - registrationMinutes * 60_000;
-      });
-    if (due) {
-      try {
-        createRoomFromCommunitySchedule(due);
-        room = workspace.state;
-      } catch (error) {
-        due.autoStartError = String(error?.message || 'No se pudo crear automáticamente la sala.').slice(0, 300);
+  // 1) Crea automáticamente todas las programaciones que ya llegaron a su
+  // ventana de inscripción, hasta ocupar los dos slots operativos.
+  const dueGames = communityScheduledGames()
+    .filter(game => game.autoStart === true && !game.roomCode && !game.autoStartedAt)
+    .sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt)))
+    .filter(game => {
+      const startsMs = new Date(game.startsAt).getTime();
+      if (!Number.isFinite(startsMs)) return false;
+      const registrationMinutes = Math.max(1, Math.min(120, Number(game.registrationMinutes) || 15));
+      return now >= startsMs - registrationMinutes * 60_000;
+    });
+
+  for (const due of dueGames) {
+    const free = freeOperationalWorkspace();
+    if (!free) {
+      const message = `Ya están ocupadas las ${MAX_OPERATIONAL_ROOMS} salas disponibles. Se reintentará automáticamente cuando quede un slot libre.`;
+      if (due.autoStartError !== message) {
+        due.autoStartError = message;
         due.updatedAt = nowIso();
-        savePlatform();
-        return false;
+        changed = true;
       }
+      continue;
     }
-  } else {
-    // Si llegó la apertura de otra programación mientras una sala sigue activa, lo informa
-    // pero vuelve a intentarlo automáticamente cuando la sala actual se cierre.
-    const blocked = communityScheduledGames()
-      .filter(game => game.autoStart === true && !game.roomCode && !game.autoStartedAt)
-      .sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt)))
-      .find(game => {
-        const startsMs = new Date(game.startsAt).getTime();
-        const registrationMinutes = Math.max(1, Math.min(120, Number(game.registrationMinutes) || 15));
-        return Number.isFinite(startsMs) && now >= startsMs - registrationMinutes * 60_000;
-      });
-    if (blocked) {
-      const message = 'Hay otra partida activa. La sala automática se creará cuando quede libre.';
-      if (blocked.autoStartError !== message) {
-        blocked.autoStartError = message;
-        blocked.updatedAt = nowIso();
-        savePlatform();
-      }
-    }
-  }
-
-  room = workspace.state;
-  if (!room?.active || !room.game || room.status !== 'waiting') return false;
-  const scheduleId = String(room.roomSettings?.communityScheduleId || '');
-  if (!scheduleId) return false;
-  const game = communityScheduledGames().find(item => item.id === scheduleId);
-  if (!game || !game.autoStart || !game.roomCode || game.roomCode !== String(room.roomCode || '')) return false;
-  const startsMs = new Date(game.startsAt).getTime();
-  if (!Number.isFinite(startsMs)) return false;
-  const registrationMinutes = Math.max(1, Math.min(120, Number(game.registrationMinutes) || 15));
-  const opensMs = startsMs - registrationMinutes * 60_000;
-  let changedState = false;
-  let changedPlatform = false;
-
-  if (now >= opensMs && now < startsMs && !game.autoOpenedAt) {
-    const maxPlayers = Math.max(2, Math.min(MAX_PLAYERS, Number(room.roomSettings?.maxOpenPlayers) || MAX_PLAYERS));
-    room.roomSettings.joinOpen = room.players.length < maxPlayers;
-    game.autoOpenedAt = nowIso();
-    game.updatedAt = nowIso();
-    game.autoStartError = '';
-    workspaceContext.run(workspace, () => logEvent('scheduled_join_opened', { scheduleId:game.id, startsAt:game.startsAt, registrationMinutes }));
-    changedState = true;
-    changedPlatform = true;
-  }
-
-  if (now >= startsMs && !game.autoClosedAt) {
-    room.roomSettings.joinOpen = false;
-    game.autoClosedAt = nowIso();
-    game.updatedAt = nowIso();
-    workspaceContext.run(workspace, () => logEvent('scheduled_join_closed', { scheduleId:game.id, startsAt:game.startsAt }));
-    changedState = true;
-    changedPlatform = true;
-  }
-
-  if (changedPlatform) savePlatform();
-  if (changedState) workspaceContext.run(workspace, () => { saveState(); broadcast(); });
-
-  if (now >= startsMs && !game.autoStartedAt && !game.autoStartError && room.status === 'waiting') {
     try {
-      workspaceContext.run(workspace, () => startRoom({ automaticSchedule:true }));
-      game.autoStartedAt = room.startedAt || nowIso();
-      game.updatedAt = nowIso();
-      savePlatform();
-      return true;
+      due.autoStartError = '';
+      createRoomFromCommunitySchedule(due);
+      changed = true;
     } catch (error) {
-      game.autoStartError = String(error?.message || 'No se pudo iniciar automáticamente.').slice(0, 300);
-      game.updatedAt = nowIso();
-      workspaceContext.run(workspace, () => {
-        logEvent('scheduled_start_blocked', { scheduleId:game.id, reason:game.autoStartError });
+      due.autoStartError = String(error?.message || 'No se pudo crear automáticamente la sala.').slice(0, 300);
+      due.updatedAt = nowIso();
+      changed = true;
+    }
+  }
+
+  // 2) Cada sala programada se automatiza dentro de su propio workspace.
+  for (const game of communityScheduledGames()) {
+    if (!game.autoStart || !game.roomCode) continue;
+    const workspace = (game.workspaceId && workspaces.get(game.workspaceId)) || findWorkspaceByRoomCode(game.roomCode);
+    if (!workspace?.state?.active || String(workspace.state.roomCode || '') !== String(game.roomCode || '')) continue;
+
+    workspaceContext.run(workspace, () => {
+      if (!state.game || state.status !== 'waiting') return;
+      const startsMs = new Date(game.startsAt).getTime();
+      if (!Number.isFinite(startsMs)) return;
+      const registrationMinutes = Math.max(1, Math.min(120, Number(game.registrationMinutes) || 15));
+      const opensMs = startsMs - registrationMinutes * 60_000;
+      let changedState = false;
+
+      if (now >= opensMs && now < startsMs && !game.autoOpenedAt) {
+        const maxPlayers = Math.max(2, Math.min(MAX_PLAYERS, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS));
+        state.roomSettings.joinOpen = state.players.length < maxPlayers;
+        game.autoOpenedAt = nowIso();
+        game.autoClosedAt = null;
+        game.updatedAt = nowIso();
+        game.autoStartError = '';
+        logEvent('scheduled_join_opened', { scheduleId:game.id, startsAt:game.startsAt, registrationMinutes, workspaceId:workspace.id });
+        changedState = true;
+        changed = true;
+      }
+
+      if (now >= startsMs && !game.autoClosedAt) {
+        state.roomSettings.joinOpen = false;
+        game.autoClosedAt = nowIso();
+        game.updatedAt = nowIso();
+        logEvent('scheduled_join_closed', { scheduleId:game.id, startsAt:game.startsAt, workspaceId:workspace.id });
+        changedState = true;
+        changed = true;
+      }
+
+      if (changedState) {
         saveState();
         broadcast();
-      });
-      savePlatform();
-    }
+      }
+
+      if (now >= startsMs && !game.autoStartedAt && !game.autoStartError && state.status === 'waiting') {
+        try {
+          startRoom({ automaticSchedule:true });
+          game.autoStartedAt = state.startedAt || nowIso();
+          game.updatedAt = nowIso();
+          game.autoStartError = '';
+          changed = true;
+        } catch (error) {
+          game.autoStartError = String(error?.message || 'No se pudo iniciar automáticamente.').slice(0, 300);
+          game.updatedAt = nowIso();
+          logEvent('scheduled_start_blocked', { scheduleId:game.id, reason:game.autoStartError, workspaceId:workspace.id });
+          saveState();
+          broadcast();
+          changed = true;
+        }
+      }
+    });
   }
-  return changedState || changedPlatform;
+
+  if (changed) savePlatform();
+  return changed;
 }
 
 function updateCommunitySettings(payload = {}) {
   const community = platform.community ||= blankCommunity();
+  if (payload.privateRoomsEnabled !== undefined) community.privateRoomsEnabled = payload.privateRoomsEnabled !== false;
+  if (payload.privateRoomMaxPlayers !== undefined) community.privateRoomMaxPlayers = Math.max(2, Math.min(30, Math.round(Number(payload.privateRoomMaxPlayers) || 30)));
+  if (payload.privateRoomMaxCardsPerPlayer !== undefined) community.privateRoomMaxCardsPerPlayer = Math.max(1, Math.min(2, Math.round(Number(payload.privateRoomMaxCardsPerPlayer) || 2)));
   if (payload.whatsappGroup !== undefined) {
     const value = String(payload.whatsappGroup || '').trim().slice(0, 500);
     if (value && !/^https:\/\/(?:chat\.)?whatsapp\.com\//i.test(value)) throw new Error('Pegá un enlace válido de invitación de WhatsApp.');
@@ -6214,6 +6740,62 @@ function moderateCommunity(payload = {}) {
   return communityAdminPayload();
 }
 
+
+function operationalRoomSummary(workspace) {
+  const room = workspace.state || blankState();
+  const connectedPlayers = [...workspace.sseClients].filter(client => client.role === 'player').length;
+  const adminConnections = [...workspace.sseClients].filter(client => client.role === 'admin').length;
+  return {
+    workspaceId: workspace.id,
+    slot: workspaceOperationalIndex(workspace),
+    label: workspace.label || `Sala ${workspaceOperationalIndex(workspace) || ''}`.trim(),
+    active: Boolean(room.active),
+    status: room.status || 'closed',
+    roomCode: room.roomCode || '',
+    roomOrigin: room.roomSettings?.roomOrigin === 'community' ? 'community' : 'official',
+    hostName: room.roomSettings?.hostName || room.communityHostName || '',
+    mode: Number(room.game?.mode) || null,
+    players: Array.isArray(room.players) ? room.players.length : 0,
+    connectedPlayers,
+    cards: Array.isArray(room.players) ? room.players.reduce((sum, player) => sum + (player.cardIds || []).length, 0) : 0,
+    joinOpen: Boolean(room.roomSettings?.joinOpen),
+    scheduledAt: room.roomSettings?.scheduledAt || '',
+    createdAt: room.createdAt || null,
+    startedAt: room.startedAt || null,
+    adminConnections
+  };
+}
+
+function operationalAdminPayload(session = null) {
+  const memory = process.memoryUsage();
+  return {
+    selectedWorkspaceId: session?.workspaceId || currentWorkspace().id,
+    maxRooms: MAX_OPERATIONAL_ROOMS,
+    rooms: operationalWorkspaces().map(operationalRoomSummary),
+    historyCount: historyEntries().length,
+    diagnostics: {
+      uptimeSeconds: Math.round(process.uptime()),
+      rssMb: Math.round(memory.rss / 1024 / 1024),
+      heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024),
+      heapTotalMb: Math.round(memory.heapTotal / 1024 / 1024),
+      totalSse: [...workspaces.values()].reduce((sum, workspace) => sum + workspace.sseClients.size, 0),
+      dataDirConfigured: Boolean(process.env.BINGO_DATA_DIR),
+      dataDir: DATA_DIR
+    }
+  };
+}
+
+function historyDetailPayload(roomCode) {
+  const entry = historyEntryByRoomCode(roomCode);
+  if (!entry) throw new Error('No se encontró esa partida en el historial.');
+  let acta = null;
+  const actaFile = historicalFile(entry, entry.files?.actaJson || 'acta.json');
+  if (actaFile) {
+    try { acta = JSON.parse(fs.readFileSync(actaFile, 'utf8')); } catch {}
+  }
+  return { ...historyPublicEntry(entry), acta };
+}
+
 function communityAdminPayload() {
   const community = platform.community ||= blankCommunity();
   return {
@@ -6223,6 +6805,10 @@ function communityAdminPayload() {
     chatEnabled: community.chatEnabled !== false,
     blockPhoneNumbers: community.blockPhoneNumbers !== false,
     blockWhatsappLinks: community.blockWhatsappLinks !== false,
+    privateRoomsEnabled: community.privateRoomsEnabled !== false,
+    privateRoomMaxPlayers: Math.max(2, Math.min(30, Number(community.privateRoomMaxPlayers) || 30)),
+    privateRoomMaxCardsPerPlayer: Math.max(1, Math.min(2, Number(community.privateRoomMaxCardsPerPlayer) || 2)),
+    privateRoomAvailability: communityPrivateRoomAvailability(),
     blockedTerms: (community.blockedTerms || []).slice(0, COMMUNITY_FILTER_MAX_TERMS),
     scheduledGames: communityScheduledGames().slice().sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt))).map(item => ({ ...item })),
     messages: (community.messages || []).slice(-COMMUNITY_CHAT_MAX_MESSAGES).map(message => ({ ...message, reportCount: Array.isArray(message.reports) ? message.reports.length : 0 })),
@@ -6261,7 +6847,42 @@ async function handleMasterApi(req, res, url) {
 
 async function dispatchAdminApi(req, res, url, session) {
   currentWorkspace().lastActivityAt = Date.now();
-  if (url.pathname === '/api/admin/state' && req.method === 'GET') return sendJson(res, 200, adminPayload());
+  if (url.pathname === '/api/admin/state' && req.method === 'GET') return sendJson(res, 200, { ...adminPayload(), accessRole: session.role, selectedWorkspaceId: session.workspaceId });
+  if (url.pathname === '/api/admin/workspaces' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'Solo el administrador principal puede cambiar de sala.' });
+    return sendJson(res, 200, operationalAdminPayload(session));
+  }
+  if (url.pathname === '/api/admin/workspace/select' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'Solo el administrador principal puede cambiar de sala.' });
+    const payload = await readJson(req);
+    const workspaceId = String(payload.workspaceId || '');
+    if (!OPERATIONAL_WORKSPACE_IDS.includes(workspaceId)) throw new Error('Sala de administración no válida.');
+    session.workspaceId = workspaceId;
+    session.expiresAt = Date.now() + ADMIN_SESSION_TTL_MS;
+    return sendJson(res, 200, operationalAdminPayload(session));
+  }
+  if (url.pathname === '/api/admin/history' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'El historial completo solo está disponible para el administrador principal.' });
+    const roomCode = String(url.searchParams.get('sala') || '').trim();
+    return sendJson(res, 200, roomCode ? historyDetailPayload(roomCode) : { entries: historyListPayload() });
+  }
+  if (url.pathname === '/api/admin/history/file' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'El historial completo solo está disponible para el administrador principal.' });
+    const entry = historyEntryByRoomCode(url.searchParams.get('sala'));
+    if (!entry) throw new Error('No se encontró esa partida en el historial.');
+    const type = String(url.searchParams.get('type') || 'acta-pdf');
+    const map = {
+      'results-pdf': [entry.files?.resultsPdf, 'application/pdf', `LA_GORDA_Resultados_${entry.roomCode}.pdf`],
+      'acta-pdf': [entry.files?.actaPdf, 'application/pdf', `LA_GORDA_Acta_${entry.roomCode}.pdf`],
+      'acta-csv': [entry.files?.actaCsv, 'text/csv; charset=utf-8', `LA_GORDA_Acta_${entry.roomCode}.csv`],
+      'participants-csv': [entry.files?.participantsCsv, 'text/csv; charset=utf-8', `LA_GORDA_Jugadores_${entry.roomCode}.csv`]
+    };
+    const choice = map[type];
+    if (!choice?.[0]) throw new Error('Ese archivo no está disponible para esta partida.');
+    const file = historicalFile(entry, choice[0]);
+    if (!file) throw new Error('El archivo histórico no está disponible.');
+    return sendBuffer(res, 200, fs.readFileSync(file), choice[1], choice[2]);
+  }
   if (url.pathname === '/api/admin/community' && req.method === 'GET') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Comunidad solo puede configurarla el administrador principal.' });
     return sendJson(res, 200, communityAdminPayload());
@@ -6278,7 +6899,10 @@ async function dispatchAdminApi(req, res, url, session) {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Comunidad solo puede moderarla el administrador principal.' });
     return sendJson(res, 200, moderateCommunity(await readJson(req)));
   }
-  if (url.pathname === '/api/admin/create-simple-room' && req.method === 'POST') return sendJson(res, 200, createSimpleRoom(await readJson(req)));
+  if (url.pathname === '/api/admin/create-simple-room' && req.method === 'POST') {
+    if (session.role === 'community_host') return sendJson(res, 403, { error: 'El anfitrión administra solamente la sala privada que creó.' });
+    return sendJson(res, 200, createSimpleRoom(await readJson(req)));
+  }
   if (url.pathname === '/api/admin/create-ai-simulation' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'La simulación masiva solo está disponible para el administrador principal.' });
     return sendJson(res, 200, createAdminSimulationRoom(await readJson(req)));
@@ -6292,10 +6916,12 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/remove-player' && req.method === 'POST') return sendJson(res, 200, removeRoomPlayer(await readJson(req)));
   if (url.pathname === '/api/admin/join-open' && req.method === 'POST') return sendJson(res, 200, updateJoinOpen(await readJson(req)));
   if (url.pathname === '/api/admin/configure' && req.method === 'POST') {
+    if (session.role === 'community_host') return sendJson(res, 403, { error: 'El anfitrión no puede reemplazar la sala privada.' });
     const payload = await readJson(req);
     return sendJson(res, 200, configureRoom(payload));
   }
   if (url.pathname === '/api/admin/new-room' && req.method === 'POST') {
+    if (session.role === 'community_host') return sendJson(res, 403, { error: 'El anfitrión no puede crear otra sala desde este acceso.' });
     assertOperatorMayStartNewGame(session);
     return sendJson(res, 200, newRoomState());
   }
@@ -6322,8 +6948,14 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/acta.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(actaCsv(), 'utf8'), 'text/csv; charset=utf-8', `LA_GORDA_Acta_${state.roomCode || 'sala'}.csv`);
   if (url.pathname === '/api/admin/participants.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(participantsCsv(), 'utf8'), 'text/csv; charset=utf-8', `LA_GORDA_Jugadores_${state.roomCode || 'sala'}.csv`);
   if (url.pathname === '/api/admin/acta.pdf' && req.method === 'GET') return sendBuffer(res, 200, actaPdf(), 'application/pdf', `LA_GORDA_Acta_${state.roomCode || 'sala'}.pdf`);
-  if (url.pathname === '/api/admin/backup' && req.method === 'GET') return sendJson(res, 200, backupPayload());
-  if (url.pathname === '/api/admin/restore' && req.method === 'POST') return sendJson(res, 200, restoreBackup(await readJson(req)));
+  if (url.pathname === '/api/admin/backup' && req.method === 'GET') {
+    if (session.role === 'community_host') return sendJson(res, 403, { error: 'La copia completa está reservada al administrador principal.' });
+    return sendJson(res, 200, backupPayload());
+  }
+  if (url.pathname === '/api/admin/restore' && req.method === 'POST') {
+    if (session.role === 'community_host') return sendJson(res, 403, { error: 'La restauración está reservada al administrador principal.' });
+    return sendJson(res, 200, restoreBackup(await readJson(req)));
+  }
   if (url.pathname === '/api/admin/close' && req.method === 'POST') { closeRoom(); return sendJson(res, 200, { ok: true }); }
   if (url.pathname === '/api/admin/logout' && req.method === 'POST') { adminSessions.delete(adminTokenFrom(req, url)); return sendJson(res, 200, { ok: true }); }
   return sendJson(res, 404, { error: 'Acción de administrador no encontrada.' });
@@ -6346,6 +6978,14 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/community/score' && req.method === 'POST') {
       if (!consumeRate(req, 'community-score', 80, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados puntajes enviados. Probá más tarde.' });
       return sendJson(res, 200, submitCommunityScore(await readJson(req)));
+    }
+    if (url.pathname === '/api/community/private-room' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-private-room', 6, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Se crearon demasiadas salas desde esta conexión. Probá más tarde.' });
+      return sendJson(res, 200, createCommunityPrivateRoom(await readJson(req)));
+    }
+    if (url.pathname === '/api/community/host-login' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-host-login', 30, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
+      return sendJson(res, 200, createCommunityHostSession(await readJson(req)));
     }
 
     if (url.pathname === '/api/demo/create' && req.method === 'POST') {
@@ -6385,6 +7025,11 @@ async function handleApi(req, res, url) {
       const disposition = url.searchParams.get('preview') === '1' ? 'inline' : 'attachment';
       let workspace = requestedRoom ? findWorkspaceByRoomCode(requestedRoom) : ownerWorkspace;
       if (!workspace && requestedRoom) workspace = [...workspaces.values()].find(item => String(item.lastResultMeta?.roomCode || '').toUpperCase() === requestedRoom) || null;
+      if (!workspace && requestedRoom) {
+        const historical = historyEntryByRoomCode(requestedRoom);
+        const file = historical ? historicalFile(historical, historical.files?.resultsPdf) : null;
+        if (file) return sendBuffer(res, 200, fs.readFileSync(file), 'application/pdf', `LA_GORDA_BINGO_ONLINE_Resultados_Sala_${historical.roomCode}.pdf`, disposition);
+      }
       if (!workspace) throw new Error('No se encontró un resultado finalizado para esa sala.');
       return workspaceContext.run(workspace, () => {
         const meta = currentWorkspace().lastResultMeta;
@@ -6394,6 +7039,11 @@ async function handleApi(req, res, url) {
         }
         if (meta && fs.existsSync(currentWorkspace().resultPdfFile) && (!requestedRoom || String(meta.roomCode).toUpperCase() === requestedRoom)) {
           return sendBuffer(res, 200, fs.readFileSync(currentWorkspace().resultPdfFile), 'application/pdf', meta.filename || 'LA_GORDA_BINGO_ONLINE_Resultados.pdf', disposition);
+        }
+        if (requestedRoom) {
+          const historical = historyEntryByRoomCode(requestedRoom);
+          const file = historical ? historicalFile(historical, historical.files?.resultsPdf) : null;
+          if (file) return sendBuffer(res, 200, fs.readFileSync(file), 'application/pdf', `LA_GORDA_BINGO_ONLINE_Resultados_Sala_${historical.roomCode}.pdf`, disposition);
         }
         throw new Error('No hay un sorteo finalizado disponible.');
       });

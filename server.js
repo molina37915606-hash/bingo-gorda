@@ -647,7 +647,7 @@ function normalizeCommunityPublicRoom(raw = {}) {
   const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(raw.linePrizeCount) || 1))) : 1;
   const requestedRules = raw.rules && typeof raw.rules === 'object' ? raw.rules : {};
   const rules = mode === 90
-    ? roomRulesFor(90, { ambocabeza:Boolean(requestedRules.ambocabeza), line:true, bingo:true })
+    ? roomRulesFor(90, { ambocabeza:Boolean(requestedRules.ambocabeza), line:requestedRules.line !== false, bingo:true })
     : roomRulesFor(75, { line:requestedRules.line !== false, corners:Boolean(requestedRules.corners), doubleLine:Boolean(requestedRules.doubleLine), tripleLine:Boolean(requestedRules.tripleLine), bingo:true });
   return {
     id: String(raw.id || randomId('public')).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100),
@@ -1930,7 +1930,8 @@ function playerPayload(player) {
       startMode: state.roomSettings?.communityStartMode || 'manual',
       startsAt: state.roomSettings?.scheduledAt || communityRecord?.startsAt || '',
       shareUrl: state.roomSettings?.communityPublicId ? communityPublicShareUrl(state.roomSettings.communityPublicId) : `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode)}&directo=1`,
-      playerCount: (state.players || []).length,
+      playerCount: registrationSummaryPayload().registeredPlayers,
+      cardCount: registrationSummaryPayload().playingCards,
       maxPlayers: Math.max(2, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS),
       canStart: state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
       canCancel: ['waiting','starting','playing','verifying','paused','resuming','finalizing'].includes(state.status) && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
@@ -6691,7 +6692,7 @@ function createCommunityPublicRoom(payload = {}) {
   const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1;
   const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};
   const rules = mode === 90
-    ? roomRulesFor(90, { ambocabeza:Boolean(requestedRules.ambocabeza), line:true, bingo:true })
+    ? roomRulesFor(90, { ambocabeza:Boolean(requestedRules.ambocabeza), line:requestedRules.line !== false, bingo:true })
     : roomRulesFor(75, { line:requestedRules.line !== false, corners:Boolean(requestedRules.corners), doubleLine:Boolean(requestedRules.doubleLine), tripleLine:Boolean(requestedRules.tripleLine), bingo:true });
   const accessType = payload.accessType === 'private' ? 'private' : 'public';
   const accessKey = accessType === 'private' ? normalizeCommunityRoomAccessKey(payload.accessKey) : '';
@@ -6985,7 +6986,7 @@ function createCommunityPrivateRoom(payload = {}) {
   const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1;
   const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};
   const rules = mode === 90
-    ? roomRulesFor(90, { ambocabeza: Boolean(requestedRules.ambocabeza), line: true, bingo: true })
+    ? roomRulesFor(90, { ambocabeza: Boolean(requestedRules.ambocabeza), line: requestedRules.line !== false, bingo: true })
     : roomRulesFor(75, { line: requestedRules.line !== false, corners: Boolean(requestedRules.corners), doubleLine: Boolean(requestedRules.doubleLine), tripleLine: Boolean(requestedRules.tripleLine), bingo: true });
   const cardCount = normalizedGeneratedCount(Math.max(25, Math.min(100, maxPlayers * maxCardsPerPlayer + 20)));
   const workspace = freeOperationalWorkspace();

@@ -92,3 +92,9 @@ npm test
 ```
 
 Antes de publicar, configurar las variables de `.env.example`. En producción, `BINGO_DATA_DIR` debe apuntar a almacenamiento persistente.
+## Correcciones 2026-08-18
+
+- Transmisión móvil horizontal: Bingo 90 vuelve a distribuir correctamente los seis cartones destacados; ya no heredan la misma posición de la vista vertical.
+- Salas creadas desde Comunidad: Bingo 90 y 75 permiten jugar **Solo Bingo**, sin obligación de Línea.
+- Sala de espera comunitaria: muestra cantidad de jugadores y total de cartones que jugarán la partida.
+

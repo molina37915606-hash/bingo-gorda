@@ -10,6 +10,7 @@ must(html.includes('@media(max-width:900px) and (orientation:portrait){.orientat
 must(html.includes('@media(max-width:1000px) and (max-height:600px) and (orientation:landscape)'),'Debe existir layout específico de celular horizontal');
 must(html.includes('.drawTicker{display:grid!important;grid-column:4!important'),'Horizontal debe conservar el panel de premio confirmado');
 must(html.includes('.cards.mode90Cards>.featured:nth-child(n+2){display:grid!important}'),'Bingo 90 horizontal debe recuperar los 6 cartones');
+must(html.includes('.cards.mode90Cards>.featured{grid-column:auto!important;grid-row:auto!important}'),'Bingo 90 horizontal debe quitar la posición única heredada de vertical para que los 6 cartones no se superpongan');
 must(html.includes('.cards.mode75Cards>.featured:nth-child(n+2){display:grid!important}'),'Bingo 75 horizontal debe recuperar la carrera completa');
 must(html.includes('grid-template-columns:minmax(0,1fr) clamp(145px,24vw,205px)!important'),'Horizontal debe conservar chat lateral');
 must(html.includes('.presenter{display:grid!important'),'Horizontal debe conservar a Vero');

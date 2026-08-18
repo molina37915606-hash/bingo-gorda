@@ -14,6 +14,8 @@ assert(communityHtml.includes('id="publicRoomName"')&&communityHtml.includes('da
 const creator=communityHtml.slice(communityHtml.indexOf('id="privateRoomOverlay"'),communityHtml.indexOf('id="whatsappOverlay"'));
 assert(creator.includes('¿QUÉ JUGAMOS?')&&creator.includes('CÓDIGO DE CREADOR')&&!creator.includes('ENTRAR COMO ANFITRIÓN'),'El creador debe ser jugador y conservar solo un código de recuperación.');
 assert(!creator.includes('partidas oficiales')&&!creator.includes('slot')&&!creator.includes('workspace')&&!creator.includes('importe')&&!creator.includes('type="number"'),'La pantalla del jugador no debe mostrar términos internos ni montos.');
+assert(creator.includes('id="privateOnlyBingo90"')&&creator.includes('data-private-choice="lines" data-value="0">NINGUNA')&&creator.includes('id="privateOnlyBingo75"'),'Crear sala debe permitir Solo Bingo tanto en 90 como en 75.');
+assert(playerJs.includes('community.cardCount')&&playerJs.includes('🎫'),'La sala de espera debe mostrar jugadores y cartones totales.');
 assert(communityJs.includes('/api/community/public-room')&&communityJs.includes('/api/community/creator-recover')&&communityJs.includes('36*60*60*1000'),'Comunidad debe crear y recuperar salas públicas programables hasta 36 horas.');
 assert(playerJs.includes('/api/player/community-start')&&playerJs.includes('📲 INVITAR')&&playerJs.includes('¿CREASTE ESTA SALA?'),'La sala de espera debe permitir invitar y solo el creador recuperar/iniciar.');
 assert(serverSrc.includes("Array.from({ length: 9 }")&&serverSrc.includes('COMMUNITY_PUBLIC_MAX_AHEAD_MS = 36 * 60 * 60 * 1000'),'Servidor debe limitar a diez salas y 36 horas de programación.');
@@ -37,6 +39,7 @@ async function ok(pathname,opt={}){const out=await raw(pathname,opt);assert(out.
   assert(creatorCookie,'Crear una sala manual debe iniciar sesión al creador como jugador.');
   let creatorState=await ok('/api/player/state',{cookie:creatorCookie});assert.equal(creatorState.communityRoom.name,'Bingo de los vecinos');assert.equal(creatorState.communityRoom.isCreator,true);assert.equal(creatorState.communityRoom.canStart,true);assert.equal(creatorState.roomSettings.paymentMode,'free');
   const other=await ok('/api/player/open-join',{method:'POST',body:{roomCode:created.roomCode,name:'Pedro',cardCount:1,deviceId:'pedro-device'}});assert(other.token);
+  creatorState=await ok('/api/player/state',{cookie:creatorCookie});assert.equal(creatorState.communityRoom.playerCount,2);assert.equal(creatorState.communityRoom.cardCount,3,'La espera debe informar 2 cartones del creador + 1 del segundo jugador.');
   let denied=await raw('/api/player/community-start',{method:'POST',playerToken:other.token,body:{}});assert.equal(denied.r.status,400,'Un jugador común no debe iniciar una sala manual.');
   let started=await ok('/api/player/community-start',{method:'POST',cookie:creatorCookie,body:{}});assert(['starting','playing'].includes(started.status),'El creador debe poder iniciar la partida.');
   await wait(180);creatorState=await ok('/api/player/state',{cookie:creatorCookie});assert.equal(creatorState.status,'playing');
@@ -45,6 +48,10 @@ async function ok(pathname,opt={}){const out=await raw(pathname,opt);assert(out.
   // Código de creador: recuperación desde otro dispositivo en otra sala manual.
   createResp=await raw('/api/community/public-room',{method:'POST',body:{visitorId:'nora-device',name:'Nora',roomName:'Sala de Nora',mode:75,maxPlayers:10,maxCardsPerPlayer:1,autoSeconds:10,rules:{line:false,corners:true,doubleLine:true,tripleLine:true,bingo:true},startMode:'manual'}});assert(createResp.r.ok);const room2=createResp.d;
   const recovered=await raw('/api/community/creator-recover',{method:'POST',body:{publicId:room2.id,creatorCode:room2.creatorCode,deviceId:'otro-dispositivo'}});assert(recovered.r.ok,JSON.stringify(recovered.d));const recoveryCookie=playerCookie(recovered.r.headers);assert(recoveryCookie,'Recuperar creador debe emitir una sesión de jugador.');const recoveredState=await ok('/api/player/state',{cookie:recoveryCookie});assert.equal(recoveredState.communityRoom.isCreator,true,'El código secreto debe recuperar el permiso de iniciar.');
+
+  // Bingo 90 sin Línea: debe quedar realmente Solo Bingo en el motor.
+  const soloResp=await raw('/api/community/public-room',{method:'POST',body:{visitorId:'solo-device',name:'Solo',roomName:'Solo Bingo 90',mode:90,maxPlayers:5,maxCardsPerPlayer:1,autoSeconds:10,linePrizeCount:1,rules:{ambocabeza:false,line:false,bingo:true},startMode:'manual'}});assert(soloResp.r.ok,JSON.stringify(soloResp.d));
+  const soloCookie=playerCookie(soloResp.r.headers);const soloState=await ok('/api/player/state',{cookie:soloCookie});assert.equal(soloState.prizeStatus.line.total,0,'Bingo 90 debe conservar Línea desactivada en el motor.');assert.equal(soloState.prizeStatus.bingo.total,1);const soloCommunity=await ok('/api/community/state?visitorId=solo-check');const soloLobby=soloCommunity.publicRooms.find(x=>x.id===soloResp.d.id);assert(soloLobby&&soloLobby.rules.line===false,'El lobby debe conservar la configuración Solo Bingo.');
 
   // Programada: más allá de la ventana solo es una placa; el mismo link permanece estable.
   const startsAt=new Date(Date.now()+12000).toISOString();

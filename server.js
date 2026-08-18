@@ -2311,6 +2311,14 @@ function createSimpleRoom(payload = {}) {
       playerAudioAllowed: true, playerAudioDefault: true,
       linePrizeCount: Number(game.mode) === 90 ? Math.max(1, Math.min(2, Number(payload.linePrizeCount) || 1)) : 1,
       allowSamePlayerSecondLine: true, tiePolicy: 'first_claim', gameType: 'real',
+      prizeAmounts: {
+        ambo: Math.max(0, Math.min(1_000_000_000, Number(payload.prizeAmounts?.ambo) || 0)),
+        line: Math.max(0, Math.min(1_000_000_000, Number(payload.prizeAmounts?.line) || 0)),
+        doubleLine: Math.max(0, Math.min(1_000_000_000, Number(payload.prizeAmounts?.doubleLine) || 0)),
+        tripleLine: Math.max(0, Math.min(1_000_000_000, Number(payload.prizeAmounts?.tripleLine) || 0)),
+        corners: Math.max(0, Math.min(1_000_000_000, Number(payload.prizeAmounts?.corners) || 0)),
+        bingo: Math.max(0, Math.min(1_000_000_000, Number(payload.prizeAmounts?.bingo) || 0))
+      },
       roomType: 'alpha',
       roomOrigin: payload.roomOrigin === 'community' ? 'community' : 'official',
       hostName: payload.roomOrigin === 'community' ? normalizeCommunityName(payload.hostName || 'Anfitrión') : '',
@@ -6287,6 +6295,10 @@ function createCommunityPrivateRoom(payload = {}) {
   const maxCardsPerPlayer = Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
   const autoSeconds = Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
   const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1;
+  const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};
+  const rules = mode === 90
+    ? roomRulesFor(90, { ambocabeza: Boolean(requestedRules.ambocabeza), line: true, bingo: true })
+    : roomRulesFor(75, { line: requestedRules.line !== false, corners: Boolean(requestedRules.corners), doubleLine: Boolean(requestedRules.doubleLine), tripleLine: Boolean(requestedRules.tripleLine), bingo: true });
   const cardCount = normalizedGeneratedCount(Math.max(25, Math.min(100, maxPlayers * maxCardsPerPlayer + 20)));
   const workspace = freeOperationalWorkspace();
   if (!workspace) throw new Error('No hay una sala disponible.');
@@ -6296,7 +6308,7 @@ function createCommunityPrivateRoom(payload = {}) {
       mode,
       cardCount,
       autoSeconds,
-      rules: roomRulesFor(mode, { line:true, bingo:true }),
+      rules,
       linePrizeCount,
       markingMode: 'normal',
       maxCardsPerPlayer,
@@ -6320,6 +6332,8 @@ function createCommunityPrivateRoom(payload = {}) {
     hostName,
     maxPlayers,
     maxCardsPerPlayer,
+    linePrizeCount,
+    rules,
     joinUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(roomCode)}&directo=1`,
     hostUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/admin#communityHost=${encodeURIComponent(roomCode)}.${encodeURIComponent(hostKey)}`,
     expiresInHours: Math.round(COMMUNITY_HOST_TTL_MS / 3600000)

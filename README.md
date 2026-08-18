@@ -45,7 +45,11 @@ Al finalizar, la partida se archiva en `BINGO_DATA_DIR/historial` con resultados
 
 ## Salas privadas de Comunidad
 
-Comunidad puede habilitar `CREAR SALA` para partidas privadas gratuitas. El creador elige Bingo 75/90, máximo de jugadores, hasta 1–2 cartones por jugador e intervalo. Recibe un link de jugadores y un acceso temporal de anfitrión. Ese anfitrión puede administrar únicamente su sala: abrir/cerrar inscripciones, iniciar, pausar/reanudar, moderar el chat y resolver reclamos; no puede ver otras salas, historial global, Agenda ni configuración general.
+Comunidad puede habilitar `CREAR SALA` para partidas privadas gratuitas. En celular, los accesos rápidos se mantienen compactos para no desplazar Minijuegos ni el chat. El creador usa un panel táctil corto para elegir Bingo 75/90, máximo de jugadores, hasta 1–2 cartones por jugador e intervalo, sin selectores grandes.
+
+La misma pantalla permite configurar los premios antes de crear la sala. En Bingo 90 se puede activar AmboCabeza, elegir 1 o 2 premios de Línea y jugar Bingo; en Bingo 75 se mantienen Línea y Bingo y se pueden activar 4 Esquinas, Doble Línea y Triple Línea. Cada premio admite un importe opcional que queda guardado en `roomSettings.prizeAmounts`. Si hay dos líneas en Bingo 90, el importe de Línea se aplica a cada una. Estas salas continúan siendo gratuitas: configurar importes no habilita transferencias, DNI ni formularios de cobro.
+
+Al crearla, el usuario recibe un link de jugadores y un acceso temporal de anfitrión. Ese anfitrión puede administrar únicamente su sala: abrir/cerrar inscripciones, iniciar, pausar/reanudar, moderar el chat y resolver reclamos; no puede ver otras salas, historial global, Agenda ni configuración general.
 
 Las programaciones oficiales próximas reservan capacidad con prioridad. El límite operativo de esta versión sigue siendo dos salas oficiales/comunitarias simultáneas; DEMO continúa siendo un flujo separado.
 

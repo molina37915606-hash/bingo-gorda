@@ -47,7 +47,7 @@ Desde Comunidad, un jugador puede crear una sala pública gratuita, ponerle un n
 
 El inicio puede ser manual o programado. En modo manual, quien creó la sala entra como un jugador más y es el único que ve **INICIAR PARTIDA**. En modo programado, se puede elegir un horario hasta 36 horas hacia adelante: si faltan más de 2 horas solo se publica una placa liviana; a 2 horas se abre automáticamente la sala de espera y a la hora indicada el sorteo comienza solo si hay al menos 2 jugadores.
 
-Cada sala tiene un link público estable para invitar. Cualquier jugador que ya esté dentro puede compartirlo por WhatsApp o copiarlo. El creador recibe además un código secreto para recuperar su permiso desde otro dispositivo. El chat, las bolillas, los jugadores y los reclamos permanecen aislados por sala.
+Cada sala tiene un link público estable para invitar. Cualquier jugador que ya esté dentro puede compartirlo por WhatsApp o copiarlo. El creador recibe además un código secreto para recuperar su permiso desde otro dispositivo. El creador puede cancelar una placa futura o una sala en espera; si la partida ya comenzó, puede finalizarla como interrumpida. Una partida interrumpida queda registrada como cancelada en el historial y los demás jugadores reciben el aviso de que la sala fue cancelada por quien la creó. El chat, las bolillas, los jugadores y los reclamos permanecen aislados por sala.
 
 Las placas programadas futuras no consumen uno de los diez lugares activos hasta que llega su ventana de apertura. Cuando una partida termina o se cancela, libera su lugar.
 

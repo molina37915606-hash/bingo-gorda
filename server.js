@@ -326,6 +326,7 @@ function blankState() {
     createdAt: null,
     startedAt: null,
     endedAt: null,
+    closedReason: '',
     updatedAt: nowIso(),
     round: 1,
     roomSettings: {
@@ -437,6 +438,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.communityHostExpiresAt = parsed.communityHostExpiresAt && Number.isFinite(new Date(parsed.communityHostExpiresAt).getTime()) ? new Date(parsed.communityHostExpiresAt).toISOString() : null;
     merged.communityCreatorCodeHash = /^[a-f0-9]{64}$/i.test(String(parsed.communityCreatorCodeHash || '')) ? String(parsed.communityCreatorCodeHash).toLowerCase() : null;
     merged.communityCreatorPlayerId = parsed.communityCreatorPlayerId ? String(parsed.communityCreatorPlayerId).slice(0, 120) : null;
+    merged.closedReason = String(parsed.closedReason || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 80);
     if (merged.active && !parsed.status) merged.status = merged.game?.drawn?.length ? 'playing' : 'waiting';
     if (!['closed', 'waiting', 'starting', 'playing', 'verifying', 'paused', 'resuming', 'finalizing', 'finished'].includes(merged.status)) merged.status = 'closed';
     merged.roomSettings.linePrizeCount = Math.max(1, Math.min(2, Number(merged.roomSettings.linePrizeCount) || 1));
@@ -954,6 +956,7 @@ function historyPublicEntry(entry) {
     startedAt: entry.startedAt || null,
     endedAt: entry.endedAt || null,
     cancelledAt: entry.cancelledAt || null,
+    cancelReason: entry.cancelReason || '',
     savedAt: entry.savedAt || null,
     totalPlayers: Number(entry.totalPlayers) || 0,
     activeCards: Number(entry.activeCards) || 0,
@@ -1862,7 +1865,7 @@ function adminPayload() {
 }
 
 function playerPayload(player) {
-  if (!state.active || !state.game || !player) return { active: false };
+  if (!state.active || !state.game || !player) return { active: false, closedReason: String(state.closedReason || '') };
   if (state.status === 'waiting') refreshOffersForPlayer(player);
   const cards = state.game.cards.filter(card => player.cardIds.includes(card.id));
   const offers = state.game.cards.filter(card => (player.offeredCardIds || []).includes(card.id));
@@ -1908,7 +1911,9 @@ function playerPayload(player) {
       shareUrl: state.roomSettings?.communityPublicId ? communityPublicShareUrl(state.roomSettings.communityPublicId) : `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode)}&directo=1`,
       playerCount: (state.players || []).length,
       maxPlayers: Math.max(2, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS),
-      canStart: state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && String(state.communityCreatorPlayerId || '') === String(player.id || '')
+      canStart: state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
+      canCancel: ['waiting','starting','playing','verifying','paused','resuming','finalizing'].includes(state.status) && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
+      cancelAction: state.status === 'waiting' ? 'cancel' : 'interrupt'
     } : null,
     demo: currentWorkspace().isDemo ? {
       active: true,
@@ -4493,6 +4498,7 @@ function archiveCancelledRoom() {
     totalPlayers: Array.isArray(state.players) ? state.players.length : 0,
     activeCards: Array.isArray(state.players) ? state.players.reduce((sum, player) => sum + (player.cardIds || []).length, 0) : 0,
     winners: [],
+    cancelReason: String(state.closedReason || 'closed').slice(0, 80),
     integrity: state.game?.integrity?.drawOrderCommitment ? {
       algorithm: 'SHA-256',
       commitment: state.game.integrity.drawOrderCommitment,
@@ -4512,6 +4518,7 @@ function archiveCancelledRoom() {
     createdAt: state.createdAt,
     startedAt: state.startedAt,
     cancelledAt: endedAt,
+    cancelReason: String(state.closedReason || 'closed').slice(0, 80),
     players: (state.players || []).map(player => ({
       name: playerDisplayName(player),
       cardCount: (player.cardIds || []).length,
@@ -6586,27 +6593,61 @@ function createCommunityPublicRoom(payload = {}) {
   };
 }
 
+function verifyCommunityCreatorCode(record, creatorCode) {
+  if (!record || !record.creatorCodeHash) throw new Error('No se encontró esa sala.');
+  const code = normalizeAccessKey(creatorCode || '');
+  const digest = crypto.createHash('sha256').update(code).digest('hex');
+  if (!safeEqual(digest, record.creatorCodeHash)) throw new Error('Código de creador incorrecto.');
+  return code;
+}
+
+function cancelCommunityPublicRoom(payload = {}) {
+  const publicId = String(payload.publicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0,100);
+  const record = communityPublicRoomById(publicId);
+  verifyCommunityCreatorCode(record, payload.creatorCode);
+  if (['finished','cancelled'].includes(record.status)) throw new Error('Esta sala ya terminó.');
+  const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
+  if (workspace?.state?.active && String(workspace.state.roomSettings?.communityPublicId || '') === record.id) {
+    return workspaceContext.run(workspace, () => {
+      if (state.status === 'finished') throw new Error('Esta partida ya terminó.');
+      const wasStarted = Boolean(state.startedAt) || state.status !== 'waiting';
+      state.closedReason = 'creator_cancelled';
+      state.roomSettings.joinOpen = false;
+      logEvent('community_public_room_cancelled_by_creator', { publicRoomId:record.id, wasStarted });
+      closeRoom();
+      record.status = 'cancelled';
+      record.endedAt = state.endedAt || nowIso();
+      record.updatedAt = nowIso();
+      savePlatform();
+      return { ok:true, publicId:record.id, status:'cancelled', wasStarted, message:wasStarted?'Partida finalizada.':'Sala cancelada.' };
+    });
+  }
+  record.status = 'cancelled';
+  record.endedAt = nowIso();
+  record.updatedAt = record.endedAt;
+  record.roomCode = '';
+  record.workspaceId = '';
+  savePlatform();
+  return { ok:true, publicId:record.id, status:'cancelled', wasStarted:false, message:'Sala cancelada.' };
+}
+
 function recoverCommunityCreator(payload = {}) {
   const publicId = String(payload.publicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0,100);
   const roomCode = String(payload.roomCode || '').trim().toUpperCase();
   const record = publicId ? communityPublicRoomById(publicId) : communityPublicRooms().find(item => String(item.roomCode || '').toUpperCase() === roomCode);
-  if (!record || !record.creatorCodeHash) throw new Error('No se encontró esa sala.');
-  const code = normalizeAccessKey(payload.creatorCode || '');
-  const digest = crypto.createHash('sha256').update(code).digest('hex');
-  if (!safeEqual(digest, record.creatorCodeHash)) throw new Error('Código de creador incorrecto.');
+  verifyCommunityCreatorCode(record, payload.creatorCode);
   const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
   if (!workspace?.state?.active) {
-    if (record.startMode === 'scheduled' && record.startsAt) {
-      const opensAt = new Date(new Date(record.startsAt).getTime() - COMMUNITY_PUBLIC_OPEN_MS);
-      throw new Error(`La sala todavía no abrió. Podés entrar desde ${opensAt.toLocaleTimeString('es-AR',{timeZone:BINGO_TIMEZONE,hour:'2-digit',minute:'2-digit',hour12:false})}.`);
+    if (record.startMode === 'scheduled' && record.startsAt && record.status === 'scheduled') {
+      return { token:'', pending:true, publicId:record.id, roomCode:'', enterUrl:communityPublicShareUrl(record.id) };
     }
     throw new Error('La sala todavía no está disponible.');
   }
   return workspaceContext.run(workspace, () => {
-    if (state.status !== 'waiting') throw new Error('La partida ya comenzó.');
     let player = state.communityCreatorPlayerId ? state.players.find(item => item.id === state.communityCreatorPlayerId) : null;
     let token = '';
     if (!player) {
+      if (state.status !== 'waiting') throw new Error('La partida ya comenzó y el creador no estaba registrado.');
       const joined = openJoinPlayer({ name:record.creatorName, cardCount:record.maxCardsPerPlayer, deviceId:String(payload.deviceId || randomId('device')).slice(0,120) });
       token = joined.token;
       player = state.players.find(item => item.sessionToken === token) || null;
@@ -6634,6 +6675,18 @@ function startCommunityRoomFromPlayer(player) {
   startRoom({ communityCreator:true });
   syncCommunityPublicRecordFromState('playing');
   return playerPayload(player);
+}
+
+function cancelCommunityRoomFromPlayer(player) {
+  if (state.roomSettings?.roomOrigin !== 'community') throw new Error('Esta partida no es una sala pública.');
+  if (String(state.communityCreatorPlayerId || '') !== String(player?.id || '')) throw new Error('Solo quien creó la sala puede cancelarla.');
+  if (!state.active || state.status === 'finished') throw new Error('Esta partida ya terminó.');
+  const wasStarted = Boolean(state.startedAt) || state.status !== 'waiting';
+  state.closedReason = 'creator_cancelled';
+  state.roomSettings.joinOpen = false;
+  logEvent('community_public_room_cancelled_by_creator', { publicRoomId:state.roomSettings?.communityPublicId || '', wasStarted });
+  closeRoom();
+  return { active:false, closedReason:'creator_cancelled', cancelled:true, wasStarted };
 }
 
 function processCommunityPublicRoomAutomation() {
@@ -7395,9 +7448,13 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/community/creator-recover' && req.method === 'POST') {
       if (!consumeRate(req, 'community-creator-recover', 20, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
       const recovered = recoverCommunityCreator(await readJson(req));
-      setPlayerSessionCookie(req, res, recovered.token);
+      if (recovered.token) setPlayerSessionCookie(req, res, recovered.token);
       const { token, ...safeRecovered } = recovered;
       return sendJson(res, 200, safeRecovered);
+    }
+    if (url.pathname === '/api/community/public-room/cancel' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-public-room-cancel', 20, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
+      return sendJson(res, 200, cancelCommunityPublicRoom(await readJson(req)));
     }
     if (url.pathname === '/api/community/private-room' && req.method === 'POST') return sendJson(res, 410, { error: 'Ahora las salas creadas por jugadores son públicas.' });
     if (url.pathname === '/api/community/host-login' && req.method === 'POST') return sendJson(res, 410, { error: 'El acceso de anfitrión ya no se utiliza.' });
@@ -7551,6 +7608,7 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/claim' && req.method === 'POST') return sendJson(res, 200, createClaim(player, await readJson(req)));
         if (url.pathname === '/api/player/waiting-game/score' && req.method === 'POST') return sendJson(res, 200, submitWaitingGameScore(player, await readJson(req)));
         if (url.pathname === '/api/player/community-start' && req.method === 'POST') return sendJson(res, 200, startCommunityRoomFromPlayer(player));
+        if (url.pathname === '/api/player/community-cancel' && req.method === 'POST') return sendJson(res, 200, cancelCommunityRoomFromPlayer(player));
         if (url.pathname === '/api/player/chat' && req.method === 'POST') {
           if (!consumeRate(req, `chat-${player.id}`, 30, 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados mensajes. Esperá un momento.' });
           const payload = await readJson(req);

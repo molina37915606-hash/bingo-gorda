@@ -2,6 +2,10 @@
 
 Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de juego del jugador se mantiene como base aprobada. Esta entrega mantiene el motor aprobado, amplía la operación a hasta diez salas activas independientes, conserva el historial acumulativo y permite que los jugadores creen salas públicas gratuitas desde Comunidad.
 
+## Accesos visuales de Comunidad
+
+Los accesos principales de Comunidad usan iconografía propia de EL BINGO DE LA GORDA: DEMO con bot y cartones, CREAR SALA con mesa/bolillero y WHATSAPP con La Gorda. En móvil se presentan en una fila compacta de tres tarjetas táctiles; en pantallas mayores se amplían sin cambiar sus destinos ni lógica. Los recursos están optimizados como WebP transparentes y no modifican el motor del juego.
+
 ## Flujo de una partida
 
 1. El Admin crea una partida gratuita o paga.
@@ -94,6 +98,7 @@ npm test
 Antes de publicar, configurar las variables de `.env.example`. En producción, `BINGO_DATA_DIR` debe apuntar a almacenamiento persistente.
 ## Correcciones 2026-08-18
 
+- Sala de espera comunitaria: solo quien creó la sala ve el detalle por jugador (nombre, cartones confirmados y estado Listo/Eligiendo). El inicio manual espera a que todos confirmen sus cartones.
 - Transmisión móvil horizontal: Bingo 90 vuelve a distribuir correctamente los seis cartones destacados; ya no heredan la misma posición de la vista vertical.
 - Salas creadas desde Comunidad: Bingo 90 y 75 permiten jugar **Solo Bingo**, sin obligación de Línea.
 - Sala de espera comunitaria: muestra cantidad de jugadores y total de cartones que jugarán la partida.

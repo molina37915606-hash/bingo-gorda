@@ -19,7 +19,7 @@ assert(adminJs.includes("this.req('/api/admin/community')"),'Admin debe leer la 
 assert(adminJs.includes("'/api/admin/community/settings'"),'Admin debe poder guardar la Comunidad.');
 assert(adminJs.includes("'/api/admin/community/moderate'"),'Admin debe poder moderar la Comunidad.');
 assert(communityHtml.includes('href="/demo"'),'Comunidad debe ofrecer acceso permanente al DEMO.');
-assert(communityHtml.includes('JUGAR DEMO'),'El botón de DEMO debe ser claro.');
+assert(communityHtml.includes('<strong>DEMO</strong>')&&communityHtml.includes('Probá el bingo'),'El acceso DEMO debe ser claro y conservar su ayuda breve.');
 assert(serverSrc.includes("url.pathname === '/api/admin/community'"),'Servidor debe exponer Comunidad al admin principal.');
 
 const port=53800+Math.floor(Math.random()*100);

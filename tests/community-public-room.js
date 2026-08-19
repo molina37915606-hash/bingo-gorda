@@ -16,6 +16,7 @@ assert(creator.includes('¿QUÉ JUGAMOS?')&&creator.includes('CÓDIGO DE CREADOR
 assert(!creator.includes('partidas oficiales')&&!creator.includes('slot')&&!creator.includes('workspace')&&!creator.includes('importe')&&!creator.includes('type="number"'),'La pantalla del jugador no debe mostrar términos internos ni montos.');
 assert(creator.includes('id="privateOnlyBingo90"')&&creator.includes('data-private-choice="lines" data-value="0">NINGUNA')&&creator.includes('id="privateOnlyBingo75"'),'Crear sala debe permitir Solo Bingo tanto en 90 como en 75.');
 assert(playerJs.includes('community.cardCount')&&playerJs.includes('🎫'),'La sala de espera debe mostrar jugadores y cartones totales.');
+assert(playerJs.includes('creatorRoster')&&playerJs.includes('community.creatorPlayers')&&playerJs.includes('ESPERANDO CARTONES'),'Solo el creador debe ver el detalle de jugadores/cartones y esperar a que terminen de elegir.');
 assert(communityJs.includes('/api/community/public-room')&&communityJs.includes('/api/community/creator-recover')&&communityJs.includes('36*60*60*1000'),'Comunidad debe crear y recuperar salas públicas programables hasta 36 horas.');
 assert(playerJs.includes('/api/player/community-start')&&playerJs.includes('📲 INVITAR')&&playerJs.includes('¿CREASTE ESTA SALA?'),'La sala de espera debe permitir invitar y solo el creador recuperar/iniciar.');
 assert(serverSrc.includes("Array.from({ length: 9 }")&&serverSrc.includes('COMMUNITY_PUBLIC_MAX_AHEAD_MS = 36 * 60 * 60 * 1000'),'Servidor debe limitar a diez salas y 36 horas de programación.');
@@ -37,10 +38,18 @@ async function ok(pathname,opt={}){const out=await raw(pathname,opt);assert(out.
   assert(createResp.r.ok,JSON.stringify(createResp.d));const created=createResp.d,creatorCookie=playerCookie(createResp.r.headers);
   assert(created.id&&created.roomCode&&created.shareUrl.includes('/mesa/')&&created.creatorCode&&created.enterNow===true,'Sala manual debe abrir y devolver link/código de creador.');
   assert(creatorCookie,'Crear una sala manual debe iniciar sesión al creador como jugador.');
-  let creatorState=await ok('/api/player/state',{cookie:creatorCookie});assert.equal(creatorState.communityRoom.name,'Bingo de los vecinos');assert.equal(creatorState.communityRoom.isCreator,true);assert.equal(creatorState.communityRoom.canStart,true);assert.equal(creatorState.roomSettings.paymentMode,'free');
+  let creatorState=await ok('/api/player/state',{cookie:creatorCookie});assert.equal(creatorState.communityRoom.name,'Bingo de los vecinos');assert.equal(creatorState.communityRoom.isCreator,true);assert.equal(creatorState.communityRoom.canStart,false,'El creador no debe iniciar mientras todavía elige sus propios cartones.');assert.equal(creatorState.roomSettings.paymentMode,'free');
   const other=await ok('/api/player/open-join',{method:'POST',body:{roomCode:created.roomCode,name:'Pedro',cardCount:1,deviceId:'pedro-device'}});assert(other.token);
-  creatorState=await ok('/api/player/state',{cookie:creatorCookie});assert.equal(creatorState.communityRoom.playerCount,2);assert.equal(creatorState.communityRoom.cardCount,3,'La espera debe informar 2 cartones del creador + 1 del segundo jugador.');
+  creatorState=await ok('/api/player/state',{cookie:creatorCookie});assert.equal(creatorState.communityRoom.playerCount,2);assert.equal(creatorState.communityRoom.cardCount,3,'La espera debe informar la cantidad total prevista de cartones.');
+  assert(Array.isArray(creatorState.communityRoom.creatorPlayers)&&creatorState.communityRoom.creatorPlayers.length===2,'El creador debe ver a los dos jugadores de la sala.');
+  assert(creatorState.communityRoom.creatorPlayers.some(x=>x.name==='Marta'&&!x.ready&&x.expectedCardCount===2),'El creador debe ver que Marta todavía elige hasta 2 cartones.');
+  assert(creatorState.communityRoom.creatorPlayers.some(x=>x.name==='Pedro'&&!x.ready&&x.expectedCardCount===1),'El creador debe ver que Pedro todavía elige su cartón.');
+  const otherWaiting=await ok('/api/player/state',{playerToken:other.token});assert.equal(otherWaiting.communityRoom.creatorPlayers,null,'Un jugador común no debe recibir la lista privada de control del creador.');
   let denied=await raw('/api/player/community-start',{method:'POST',playerToken:other.token,body:{}});assert.equal(denied.r.status,400,'Un jugador común no debe iniciar una sala manual.');
+  let pendingStart=await raw('/api/player/community-start',{method:'POST',cookie:creatorCookie,body:{}});assert.equal(pendingStart.r.status,400,'El creador no debe iniciar mientras alguien está eligiendo cartones.');assert(/eligiendo/i.test(pendingStart.d.error||''));
+  const creatorForChoose=await ok('/api/player/state',{cookie:creatorCookie});const creatorOffers=creatorForChoose.player.offeredCards.slice(0,2).map(x=>x.id);assert.equal(creatorOffers.length,2);await ok('/api/player/choose',{method:'POST',cookie:creatorCookie,body:{cardIds:creatorOffers}});
+  const otherForChoose=await ok('/api/player/state',{playerToken:other.token});const otherOffers=otherForChoose.player.offeredCards.slice(0,1).map(x=>x.id);assert.equal(otherOffers.length,1);await ok('/api/player/choose',{method:'POST',playerToken:other.token,body:{cardIds:otherOffers}});
+  creatorState=await ok('/api/player/state',{cookie:creatorCookie});assert.equal(creatorState.communityRoom.canStart,true,'Cuando todos confirmaron cartones, el creador debe poder iniciar.');assert.equal(creatorState.communityRoom.pendingSelectionPlayers,0);assert.deepEqual(creatorState.communityRoom.creatorPlayers.map(x=>[x.name,x.cardCount,x.ready]),[['Marta',2,true],['Pedro',1,true]],'El creador debe ver nombre y cantidad exacta de cartones de cada jugador.');
   let started=await ok('/api/player/community-start',{method:'POST',cookie:creatorCookie,body:{}});assert(['starting','playing'].includes(started.status),'El creador debe poder iniciar la partida.');
   await wait(180);creatorState=await ok('/api/player/state',{cookie:creatorCookie});assert.equal(creatorState.status,'playing');
   const late=await raw('/api/player/open-join',{method:'POST',body:{roomCode:created.roomCode,name:'Tarde',cardCount:1,deviceId:'late-device'}});assert.equal(late.r.status,400,'Una persona nueva no debe entrar después del inicio.');
@@ -66,5 +75,5 @@ async function ok(pathname,opt={}){const out=await raw(pathname,opt);assert(out.
   // Más de 36 horas debe rechazarse.
   const tooFar=await raw('/api/community/public-room',{method:'POST',body:{visitorId:'far',name:'Lejos',roomName:'Muy lejos',mode:90,startMode:'scheduled',startsAt:new Date(Date.now()+37*60*60_000).toISOString()}});assert.equal(tooFar.r.status,400);assert(/36 horas/i.test(tooFar.d.error||''));
 
-  console.log('PRUEBA SALAS PÚBLICAS COMUNIDAD: OK · creador jugador + inicio manual + recuperación + placa programada + apertura/inicio automático + 36 h');
+  console.log('PRUEBA SALAS PÚBLICAS COMUNIDAD: OK · control del creador por jugador/cartones + inicio seguro + recuperación + placa programada + apertura/inicio automático + 36 h');
 }catch(e){console.error(e);process.exitCode=1}finally{await stop();fs.rmSync(dataDir,{recursive:true,force:true})}})();

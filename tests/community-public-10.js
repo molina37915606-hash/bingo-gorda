@@ -23,6 +23,8 @@ async function ok(pathname,opt={}){const x=await raw(pathname,opt);assert(x.r.ok
     assert(response.r.ok,`No pudo crear sala ${i+1}: ${JSON.stringify(response.d)}`);
     const creatorCookie=cookie(response.r.headers);assert(creatorCookie);
     const joined=await ok('/api/player/open-join',{method:'POST',body:{roomCode:response.d.roomCode,name:guestNames[i],cardCount:1,deviceId:`guest-${i}`}});
+    const creatorWaiting=await ok('/api/player/state',{cookie:creatorCookie});const creatorCard=creatorWaiting.player.offeredCards[0]?.id;assert(creatorCard);await ok('/api/player/choose',{method:'POST',cookie:creatorCookie,body:{cardIds:[creatorCard]}});
+    const guestWaiting=await ok('/api/player/state',{playerToken:joined.token});const guestCard=guestWaiting.player.offeredCards[0]?.id;assert(guestCard);await ok('/api/player/choose',{method:'POST',playerToken:joined.token,body:{cardIds:[guestCard]}});
     rooms.push({...response.d,creatorCookie,guestToken:joined.token});
   }
   const overflow=await raw('/api/community/public-room',{method:'POST',body:{visitorId:'creator-11',name:'Once',roomName:'Mesa 11',mode:90,maxPlayers:5,maxCardsPerPlayer:1,startMode:'manual'}});assert.equal(overflow.r.status,400,'La sala activa número 11 debe rechazarse.');

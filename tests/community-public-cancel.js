@@ -46,6 +46,8 @@ async function ok(pathname,opt={}){const x=await raw(pathname,opt);assert(x.r.ok
   // Partida iniciada: el creador puede finalizarla y queda en historial como cancelada/interrumpida.
   response=await raw('/api/community/public-room',{method:'POST',body:{visitorId:'creator-play',name:'Nora',roomName:'Partida interrumpida',mode:90,maxPlayers:10,maxCardsPerPlayer:1,autoSeconds:20,startMode:'manual'}});assert(response.r.ok);const playing=response.d,playingCreatorCookie=cookie(response.r.headers);
   const playingGuest=await ok('/api/player/open-join',{method:'POST',body:{roomCode:playing.roomCode,name:'Beto',cardCount:1,deviceId:'guest-play'}});
+  const creatorWaiting=await ok('/api/player/state',{cookie:playingCreatorCookie});await ok('/api/player/choose',{method:'POST',cookie:playingCreatorCookie,body:{cardIds:[creatorWaiting.player.offeredCards[0].id]}});
+  const guestWaiting=await ok('/api/player/state',{playerToken:playingGuest.token});await ok('/api/player/choose',{method:'POST',playerToken:playingGuest.token,body:{cardIds:[guestWaiting.player.offeredCards[0].id]}});
   await ok('/api/player/community-start',{method:'POST',cookie:playingCreatorCookie,body:{}});await wait(180);
   let st=await ok('/api/player/state',{cookie:playingCreatorCookie});assert.equal(st.status,'playing');assert.equal(st.communityRoom.canCancel,true);assert.equal(st.communityRoom.cancelAction,'interrupt');
   const interrupted=await ok('/api/player/community-cancel',{method:'POST',cookie:playingCreatorCookie,body:{}});assert.equal(interrupted.wasStarted,true);assert.equal(interrupted.closedReason,'creator_cancelled');

@@ -54,6 +54,8 @@ async function finishCurrent(adminToken){let st=await ok('/api/admin/state',{adm
 
   // El chat de la sala se mantiene entre rondas, pero cada partida se archiva separada.
   await ok('/api/player/chat',{method:'POST',cookie:guestCookie,body:{text:'mensaje-que-sigue-en-la-sala'}});
+  let creatorWaiting=await ok('/api/player/state',{cookie:creatorCookie});await ok('/api/player/choose',{method:'POST',cookie:creatorCookie,body:{cardIds:[creatorWaiting.player.offeredCards[0].id]}});
+  let guestWaiting=await ok('/api/player/state',{cookie:guestCookie});await ok('/api/player/choose',{method:'POST',cookie:guestCookie,body:{cardIds:[guestWaiting.player.offeredCards[0].id]}});
   await ok('/api/player/community-start',{method:'POST',cookie:creatorCookie,body:{}});await wait(120);
   await adminSelect(admin,privateRoomCode);await finishCurrent(admin);
   let guestState=await ok('/api/player/state',{cookie:guestCookie}),creatorState2=await ok('/api/player/state',{cookie:creatorCookie});assert.equal(guestState.status,'finished');assert(guestState.communityRoom.rematch.available);assert.equal(guestState.communityRoom.rematch.isCreator,false);assert.equal(creatorState2.communityRoom.rematch.isCreator,true);
@@ -62,7 +64,9 @@ async function finishCurrent(adminToken){let st=await ok('/api/admin/state',{adm
   const sameLink=await raw(`/mesa/${created.id}`,{redirect:'manual'});assert.equal(sameLink.r.status,303);assert((sameLink.r.headers.get('location')||'').includes(`/comunidad?mesa=${created.id}`),'El link de invitación debe seguir siendo el mismo entre partidas.');
   let history=await ok('/api/admin/history',{adminToken:admin});let rounds=history.entries.filter(x=>x.communityPublicId===created.id&&x.status==='finished');assert.equal(rounds.length,1);assert.equal(rounds[0].roomType,'private');assert.equal(rounds[0].roomName,'Cumple de Ana');
 
-  // Segunda partida: si nadie abre otra, cierra sola tras la ventana final y libera el slot.
+  // Segunda partida: vuelven a elegir cartones; si nadie abre otra, cierra sola tras la ventana final y libera el slot.
+  creatorWaiting=await ok('/api/player/state',{cookie:creatorCookie});await ok('/api/player/choose',{method:'POST',cookie:creatorCookie,body:{cardIds:[creatorWaiting.player.offeredCards[0].id]}});
+  guestWaiting=await ok('/api/player/state',{cookie:guestCookie});await ok('/api/player/choose',{method:'POST',cookie:guestCookie,body:{cardIds:[guestWaiting.player.offeredCards[0].id]}});
   await ok('/api/player/community-start',{method:'POST',cookie:creatorCookie,body:{}});await wait(120);const round2Code=(await ok('/api/player/state',{cookie:creatorCookie})).roomCode;await adminSelect(admin,round2Code);await finishCurrent(admin);await wait(1500);
   const manager=await ok('/api/admin/workspaces',{adminToken:admin});const closed=manager.rooms.find(x=>x.workspaceId!==undefined&&x.roomCode===round2Code);assert(!closed||!closed.active,'La sala comunitaria terminada debe liberar el workspace automáticamente.');
   const ended=await raw(`/mesa/${created.id}`,{redirect:'manual'});assert.equal(ended.r.status,200,'El mismo link debe mostrar que la partida terminó después del cierre.');assert(String(ended.d).includes('Esta partida ya terminó'));

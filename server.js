@@ -1884,6 +1884,20 @@ function adminPayload() {
   };
 }
 
+function communityCreatorPlayersPayload(viewer) {
+  if (state.roomSettings?.roomOrigin !== 'community') return null;
+  if (String(state.communityCreatorPlayerId || '') !== String(viewer?.id || '')) return null;
+  return (state.players || [])
+    .filter(item => item?.nameSet && !item.virtual)
+    .map(item => ({
+      name: playerDisplayName(item),
+      cardCount: item.selectionConfirmed ? (item.cardIds || []).length : 0,
+      expectedCardCount: authorizedCardCount(item),
+      ready: Boolean(item.selectionConfirmed),
+      status: item.selectionConfirmed ? 'ready' : 'choosing'
+    }));
+}
+
 function playerPayload(player) {
   if (!state.active || !state.game || !player) return { active: false, closedReason: String(state.closedReason || '') };
   if (state.status === 'waiting') refreshOffersForPlayer(player);
@@ -1933,7 +1947,10 @@ function playerPayload(player) {
       playerCount: registrationSummaryPayload().registeredPlayers,
       cardCount: registrationSummaryPayload().playingCards,
       maxPlayers: Math.max(2, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS),
-      canStart: state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
+      creatorPlayers: communityCreatorPlayersPayload(player),
+      pendingSelectionPlayers: state.players.filter(item => item?.nameSet && !item.virtual && !item.selectionConfirmed).length,
+      isManualCreator: state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
+      canStart: state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && String(state.communityCreatorPlayerId || '') === String(player.id || '') && !state.players.some(item => item?.nameSet && !item.virtual && !item.selectionConfirmed),
       canCancel: ['waiting','starting','playing','verifying','paused','resuming','finalizing'].includes(state.status) && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
       cancelAction: state.status === 'waiting' ? 'cancel' : 'interrupt',
       roundNumber: Math.max(1, Number(communityRecord?.roundNumber || state.round) || 1),
@@ -6817,6 +6834,13 @@ function startCommunityRoomFromPlayer(player) {
   if (String(state.communityCreatorPlayerId || '') !== String(player?.id || '')) throw new Error('Solo quien creó la sala puede iniciar la partida.');
   if (state.status !== 'waiting') return playerPayload(player);
   if ((state.players || []).length < 2) throw new Error('Se necesitan al menos 2 jugadores para comenzar.');
+  const preparingPlayers = (state.players || []).filter(item => item?.nameSet && !item.virtual && !item.selectionConfirmed);
+  if (preparingPlayers.length) {
+    const firstName = playerDisplayName(preparingPlayers[0]);
+    throw new Error(preparingPlayers.length === 1
+      ? `${firstName} todavía está eligiendo sus cartones.`
+      : `${preparingPlayers.length} jugadores todavía están eligiendo sus cartones.`);
+  }
   state.roomSettings.joinOpen = false;
   saveState(); broadcast();
   startRoom({ communityCreator:true });

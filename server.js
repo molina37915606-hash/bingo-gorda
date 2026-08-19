@@ -2473,7 +2473,7 @@ function buildCardLotPdf(lot) {
   const logoPath = path.join(ROOT, 'assets', 'logo-pdf.jpg');
   const logo = fs.readFileSync(logoPath);
   const rgb = hex => hexRgb(hex).map(value => value.toFixed(3)).join(' ');
-  const colors = { ink:'#21192A', muted:'#8A8291', purple:'#6D238C', pink:'#D83A84', gold:'#E0A71A', line:'#CFC8D4', pale:'#F8F6F9', empty:'#ECE8EF', hatch:'#C9C2CD', white:'#FFFFFF' };
+  const colors = { ink:'#21192A', muted:'#8A8291', purple:'#6D238C', pink:'#D83A84', gold:'#E0A71A', line:'#CFC8D4', pale:'#F8F6F9', empty:'#ECE8EF', white:'#FFFFFF' };
   const pageStreams = [];
 
   for (const series of publicLot.series) {
@@ -2487,16 +2487,6 @@ function buildCardLotPdf(lot) {
     const line = (x1,y1,x2,y2,color=colors.line,width=.6) => commands.push(`${rgb(color)} RG ${width} w ${x1.toFixed(2)} ${topY(y1).toFixed(2)} m ${x2.toFixed(2)} ${topY(y2).toFixed(2)} l S`);
     const emptyCell = (x, y, width, height) => {
       rect(x, y, width, height, colors.empty, colors.line, .55);
-      const spacing = Math.max(8, Math.min(12, Math.min(width, height) * .32));
-      commands.push(`q ${x.toFixed(2)} ${topY(y,height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re W n`);
-      for (let offset = -height; offset < width + height; offset += spacing) {
-        const x1 = x + offset;
-        const y1 = y + height;
-        const x2 = x + offset + height;
-        const y2 = y;
-        commands.push(`${rgb(colors.hatch)} RG .28 w ${x1.toFixed(2)} ${topY(y1).toFixed(2)} m ${x2.toFixed(2)} ${topY(y2).toFixed(2)} l S`);
-      }
-      commands.push('Q');
     };
     const text = (value, x, y, size = 10, options = {}) => {
       const font = options.bold ? 'F2' : 'F1';

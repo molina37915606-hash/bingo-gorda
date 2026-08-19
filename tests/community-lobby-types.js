@@ -13,6 +13,10 @@ assert(communityHtml.includes('Públicas, privadas y oficiales')&&communityHtml.
 assert(communityJs.includes("kind==='official'")&&communityJs.includes("kind==='private'")&&communityJs.includes('/api/community/room-access'),'El lobby debe diferenciar oficial/privada y proteger el acceso.');
 assert(playerJs.includes('/api/player/community-rematch')&&playerJs.includes('JUGAR OTRA PARTIDA')&&playerJs.includes('QUIERO JUGAR OTRA'),'La pantalla final comunitaria debe permitir otra partida en la misma sala.');
 assert(serverSrc.includes('COMMUNITY_FINISH_GRACE_MS')&&serverSrc.includes('maybeCloseFinishedCommunityRoom')&&serverSrc.includes("roomType: state.roomSettings?.roomOrigin === 'community'"),'Servidor debe cerrar la sala tras la ventana final y conservar tipo en historial.');
+assert(communityHtml.includes('cardsToolBtn')&&communityHtml.includes('bolilleroToolBtn')&&communityHtml.includes('bolilleroOverlay'),'Comunidad debe incluir Cartones y Bolillero sin crear otra página.');
+const toolsJs=fs.readFileSync(path.join(root,'js/community-tools.js'),'utf8');
+assert(toolsJs.includes('/api/community/cards/generate')&&toolsJs.includes('/api/community/cards/validate')&&toolsJs.includes('SACAR BOLILLA'),'Bolillero debe generar/cargar lotes y validar cantos.');
+assert(serverSrc.includes('buildCardLotPdf')&&serverSrc.includes('CARD_LOTS_DIR')&&serverSrc.includes('/api/community/cards/pdf'),'Servidor debe persistir lotes y producir los PDF imprimibles.');
 
 const port=58610+Math.floor(Math.random()*70),base=`http://127.0.0.1:${port}`;
 const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'el-bingo-lobby-'));
@@ -31,6 +35,15 @@ async function finishCurrent(adminToken){let st=await ok('/api/admin/state',{adm
 (async()=>{try{
   spawnServer();await ready();
   const admin=(await ok('/api/admin/login',{method:'POST',body:{}})).token;
+
+  // Herramientas públicas: lote persistente + PDF real + web configurable.
+  let toolsState=await ok('/api/community/state?visitorId=tools-test');assert(toolsState.tools&&toolsState.tools.cardsPrintSite);
+  const lot90=await ok('/api/community/cards/generate',{method:'POST',body:{mode:90,seriesCount:1}});assert(/^LG-[A-Z0-9]{6}$/.test(lot90.code));assert.equal(lot90.totalCards,6);assert.equal(lot90.series[0].cards.length,6);assert(lot90.series[0].cards.every(card=>card.grid.length===3&&card.grid.flat().filter(Number.isFinite).length===15));
+  const lot90Loaded=await ok(`/api/community/cards/lot?lot=${lot90.code}`);assert.equal(lot90Loaded.code,lot90.code);
+  const testCard90=lot90Loaded.series[0].cards[0],all90=testCard90.grid.flat().filter(Number.isFinite);const bingoCheck=await ok('/api/community/cards/validate',{method:'POST',body:{lot:lot90.code,seriesNumber:1,cardNumber:1,type:'bingo',drawn:all90}});assert.equal(bingoCheck.valid,true,'El Bolillero debe validar con el mismo motor los cartones impresos.');
+  const pdfResponse=await fetch(base+lot90.downloadUrl);assert(pdfResponse.ok);assert((pdfResponse.headers.get('content-type')||'').includes('application/pdf'));const pdfBuffer=Buffer.from(await pdfResponse.arrayBuffer());assert(pdfBuffer.subarray(0,4).toString()==='%PDF');
+  const lot75=await ok('/api/community/cards/generate',{method:'POST',body:{mode:75,seriesCount:1}});assert.equal(lot75.totalCards,6);assert(lot75.series[0].cards.every(card=>card.grid.length===5&&card.grid[2][2]==='LIBRE'&&card.grid.flat().filter(Number.isFinite).length===24));
+  await ok('/api/admin/community/settings',{method:'POST',adminToken:admin,body:{cardsPrintSite:'ejemplo.com/bingo'}});const branded=await ok('/api/community/cards/generate',{method:'POST',body:{mode:90,seriesCount:1}});assert.equal(branded.site,'ejemplo.com/bingo');
 
   // Una sala creada por Admin debe aparecer como OFICIAL, nunca como pública/privada de jugador.
   const official=await ok('/api/admin/create-simple-room',{method:'POST',adminToken:admin,body:{mode:90,cardCount:40,autoSeconds:30,rules:{line:true,bingo:true},linePrizeCount:1,paymentMode:'free',maxCardsPerPlayer:2}});

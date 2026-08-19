@@ -32,6 +32,7 @@ const OWNER_STATE_FILE = path.join(DATA_DIR, 'sala-online.json');
 const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma.json');
 const WORKSPACES_DIR = path.join(DATA_DIR, 'operadores');
 const HISTORY_DIR = path.join(DATA_DIR, 'historial');
+const CARD_LOTS_DIR = path.join(DATA_DIR, 'cartones');
 const OPERATIONAL_WORKSPACE_IDS = ['owner', ...Array.from({ length: 9 }, (_, index) => `slot${index + 2}`)];
 const MAX_OPERATIONAL_ROOMS = OPERATIONAL_WORKSPACE_IDS.length;
 const COMMUNITY_HOST_TTL_MS = 8 * 60 * 60 * 1000;
@@ -116,6 +117,7 @@ const PRIZE_TYPES = ['ambo', 'line', 'doubleLine', 'tripleLine', 'corners', 'bin
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
 fs.mkdirSync(HISTORY_DIR, { recursive: true });
+fs.mkdirSync(CARD_LOTS_DIR, { recursive: true });
 
 function loadLastResultMeta(metaFile, pdfFile) {
   try {
@@ -594,6 +596,7 @@ function blankCommunity() {
     privateRoomsEnabled: true,
     privateRoomMaxPlayers: 30,
     privateRoomMaxCardsPerPlayer: 4,
+    cardsPrintSite: String(process.env.BINGO_PRINT_SITE || 'bingo-gorda.onrender.com/comunidad').trim().slice(0, 160),
     messages: [],
     leaderboards: { red_black: [], higher_lower: [] }
   };
@@ -774,6 +777,7 @@ function normalizeCommunity(raw = {}) {
     privateRoomsEnabled: raw.privateRoomsEnabled !== false,
     privateRoomMaxPlayers: Math.max(2, Math.min(30, Math.round(Number(raw.privateRoomMaxPlayers) || defaults.privateRoomMaxPlayers))),
     privateRoomMaxCardsPerPlayer: Number(raw.privateRoomMaxCardsPerPlayer) === 2 ? 4 : Math.max(1, Math.min(4, Math.round(Number(raw.privateRoomMaxCardsPerPlayer) || defaults.privateRoomMaxCardsPerPlayer))),
+    cardsPrintSite: String(raw.cardsPrintSite ?? defaults.cardsPrintSite).trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').slice(0, 160),
     messages: Array.isArray(raw.messages) ? raw.messages.slice(-COMMUNITY_CHAT_MAX_MESSAGES).map(message => ({
       ...message,
       reports: Array.isArray(message?.reports) ? message.reports
@@ -2158,6 +2162,299 @@ function generateDiverseCardsServer(count, mode, rules, maxSharedOverride = null
   }
   if (cards.length !== count) throw new Error(`No se pudieron generar cartones suficientemente diferentes: ${cards.length}/${count} tras ${attempts} intentos (máximo compartido ${maxShared}).`);
   return cards;
+}
+
+
+function safeCardLotCode(value) {
+  const code = String(value || '').trim().toUpperCase();
+  return /^LG-[A-Z0-9]{6}$/.test(code) ? code : '';
+}
+
+function cardLotPath(code) {
+  const safe = safeCardLotCode(code);
+  if (!safe) return '';
+  return path.join(CARD_LOTS_DIR, `${safe}.json`);
+}
+
+function randomCardLotCode() {
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    let suffix = '';
+    const bytes = crypto.randomBytes(6);
+    for (let index = 0; index < 6; index++) suffix += alphabet[bytes[index] % alphabet.length];
+    const code = `LG-${suffix}`;
+    if (!fs.existsSync(cardLotPath(code))) return code;
+  }
+  throw new Error('No se pudo crear un código de lote único.');
+}
+
+function printableSiteLabel() {
+  const configured = String(platform.community?.cardsPrintSite || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  return configured || 'bingo-gorda.onrender.com/comunidad';
+}
+
+function publicCardLot(lot) {
+  return {
+    version: Number(lot.version) || 1,
+    code: lot.code,
+    mode: Number(lot.mode) === 75 ? 75 : 90,
+    seriesCount: Number(lot.seriesCount) || 1,
+    cardsPerSeries: 6,
+    totalCards: Number(lot.totalCards) || 6,
+    createdAt: lot.createdAt,
+    site: lot.site || printableSiteLabel(),
+    series: Array.isArray(lot.series) ? lot.series.map(series => ({
+      number: Number(series.number) || 1,
+      cards: Array.isArray(series.cards) ? series.cards.map(card => ({
+        seriesNumber: Number(card.seriesNumber) || Number(series.number) || 1,
+        cardNumber: Number(card.cardNumber) || 1,
+        globalNumber: Number(card.globalNumber) || 1,
+        mode: Number(card.mode) === 75 ? 75 : 90,
+        grid: Array.isArray(card.grid) ? card.grid : []
+      })) : []
+    })) : []
+  };
+}
+
+function loadCardLot(code) {
+  const file = cardLotPath(code);
+  if (!file || !fs.existsSync(file)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!safeCardLotCode(parsed.code) || !Array.isArray(parsed.series)) return null;
+    return publicCardLot(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function createPrintableCardLot(payload = {}) {
+  const mode = Number(payload.mode) === 75 ? 75 : 90;
+  const seriesCount = Math.max(1, Math.min(10, Math.round(Number(payload.seriesCount) || 1)));
+  const totalCards = seriesCount * 6;
+  const rules = mode === 75
+    ? roomRulesFor(75, { line:true, corners:true, doubleLine:true, tripleLine:true, bingo:true })
+    : roomRulesFor(90, { ambocabeza:true, line:true, bingo:true });
+  const generated = generateDiverseCardsServer(totalCards, mode, rules, mode === 75 ? 13 : 8);
+  const code = randomCardLotCode();
+  const series = Array.from({ length: seriesCount }, (_, seriesIndex) => ({
+    number: seriesIndex + 1,
+    cards: generated.slice(seriesIndex * 6, seriesIndex * 6 + 6).map((card, cardIndex) => ({
+      seriesNumber: seriesIndex + 1,
+      cardNumber: cardIndex + 1,
+      globalNumber: seriesIndex * 6 + cardIndex + 1,
+      mode,
+      grid: card.grid
+    }))
+  }));
+  const lot = {
+    version: 1,
+    code,
+    mode,
+    seriesCount,
+    cardsPerSeries: 6,
+    totalCards,
+    createdAt: nowIso(),
+    site: printableSiteLabel(),
+    series
+  };
+  const file = cardLotPath(code);
+  const temp = `${file}.tmp`;
+  fs.writeFileSync(temp, JSON.stringify(lot, null, 2), 'utf8');
+  fs.renameSync(temp, file);
+  return publicCardLot(lot);
+}
+
+function validateCardLotClaim(payload = {}) {
+  const lot = loadCardLot(payload.lot);
+  if (!lot) throw new Error('No encontramos ese lote de cartones.');
+  const seriesNumber = Math.max(1, Math.round(Number(payload.seriesNumber) || 0));
+  const cardNumber = Math.max(1, Math.round(Number(payload.cardNumber) || 0));
+  const cardData = (lot.series.find(item => Number(item.number) === seriesNumber)?.cards || []).find(item => Number(item.cardNumber) === cardNumber);
+  if (!cardData) throw new Error('Ese cartón no pertenece al lote indicado.');
+  const type = String(payload.type || '');
+  const allowed = lot.mode === 75 ? ['line','doubleLine','tripleLine','corners','bingo'] : ['ambo','line','secondLine','bingo'];
+  if (!allowed.includes(type)) throw new Error('La jugada a validar no corresponde a este Bingo.');
+  const drawn = uniqueNumbers(Array.isArray(payload.drawn) ? payload.drawn : []).filter(number => number >= 1 && number <= lot.mode);
+  const card = { mode:lot.mode, grid:cardData.grid };
+  const analysis = analyzeCard(card, drawn);
+  const consumed = new Set(Array.isArray(payload.consumedLineKeys) ? payload.consumedLineKeys.map(String) : []);
+  let valid = false;
+  let lineKey = '';
+  if (type === 'ambo') valid = analysis.hasAmbo;
+  else if (type === 'line' || type === 'secondLine') {
+    const detail = (analysis.completeLines || []).find(item => !consumed.has(String(item.key)));
+    valid = Boolean(detail);
+    lineKey = detail?.key || '';
+  } else if (type === 'doubleLine') valid = analysis.hasDoubleLine;
+  else if (type === 'tripleLine') valid = analysis.hasTripleLine;
+  else if (type === 'corners') valid = analysis.hasCorners;
+  else if (type === 'bingo') valid = analysis.hasBingo;
+  const missingNumbers = type === 'bingo'
+    ? cardNumbers(card).filter(number => !drawn.includes(number)).slice(0, 12)
+    : type === 'corners'
+      ? [card.grid?.[0]?.[0],card.grid?.[0]?.[4],card.grid?.[4]?.[0],card.grid?.[4]?.[4]].filter(Number.isFinite).filter(number => !drawn.includes(number))
+      : [];
+  return { valid, type, lineKey, missingNumbers, seriesNumber, cardNumber, lot:lot.code };
+}
+
+function pdfStarCommands(cx, cy, outerRadius, innerRadius, rgb, color, topY) {
+  const points = [];
+  for (let index = 0; index < 10; index++) {
+    const angle = -Math.PI / 2 + index * Math.PI / 5;
+    const radius = index % 2 === 0 ? outerRadius : innerRadius;
+    points.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius]);
+  }
+  const [first, ...rest] = points;
+  const pathCommands = [`${first[0].toFixed(2)} ${topY(first[1]).toFixed(2)} m`];
+  rest.forEach(point => pathCommands.push(`${point[0].toFixed(2)} ${topY(point[1]).toFixed(2)} l`));
+  pathCommands.push('h f');
+  return `${rgb(color)} rg ${pathCommands.join(' ')}`;
+}
+
+function buildCardLotPdf(lot) {
+  const publicLot = publicCardLot(lot);
+  const mode = publicLot.mode;
+  const PAGE_W = mode === 90 ? 842 : 595;
+  const PAGE_H = mode === 90 ? 595 : 842;
+  const logoPath = path.join(ROOT, 'assets', 'logo-pdf.jpg');
+  const logo = fs.readFileSync(logoPath);
+  const rgb = hex => hexRgb(hex).map(value => value.toFixed(3)).join(' ');
+  const colors = { ink:'#21192A', muted:'#8A8291', purple:'#6D238C', pink:'#D83A84', gold:'#E0A71A', line:'#CFC8D4', pale:'#F8F6F9', white:'#FFFFFF' };
+  const pageStreams = [];
+
+  for (const series of publicLot.series) {
+    const commands = [];
+    const topY = (y, height = 0) => PAGE_H - y - height;
+    const rect = (x, y, width, height, fill = null, stroke = null, lineWidth = 1) => {
+      if (fill) commands.push(`${rgb(fill)} rg`);
+      if (stroke) commands.push(`${rgb(stroke)} RG ${lineWidth} w`);
+      commands.push(`${x.toFixed(2)} ${topY(y, height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);
+    };
+    const line = (x1,y1,x2,y2,color=colors.line,width=.6) => commands.push(`${rgb(color)} RG ${width} w ${x1.toFixed(2)} ${topY(y1).toFixed(2)} m ${x2.toFixed(2)} ${topY(y2).toFixed(2)} l S`);
+    const text = (value, x, y, size = 10, options = {}) => {
+      const font = options.bold ? 'F2' : 'F1';
+      const color = options.color || colors.ink;
+      const maxWidth = options.maxWidth || null;
+      const shown = maxWidth ? fitPdfText(value, maxWidth, size) : pdfLatin(value);
+      let tx = x;
+      const width = pdfTextWidth(shown, size);
+      if (options.align === 'center') tx = x - width / 2;
+      if (options.align === 'right') tx = x - width;
+      commands.push(`BT /${font} ${size.toFixed(2)} Tf ${rgb(color)} rg 1 0 0 1 ${tx.toFixed(2)} ${(PAGE_H - y - size).toFixed(2)} Tm (${pdfEscape(shown)}) Tj ET`);
+    };
+    const image = (x,y,width,height) => commands.push(`q ${width.toFixed(2)} 0 0 ${height.toFixed(2)} ${x.toFixed(2)} ${topY(y,height).toFixed(2)} cm /Logo Do Q`);
+    const marginX = mode === 90 ? 18 : 16;
+    const marginTop = 12;
+    const footerH = 25;
+    const gapX = 9;
+    const gapY = 7;
+    const cardW = (PAGE_W - marginX * 2 - gapX) / 2;
+    const cardH = (PAGE_H - marginTop - footerH - gapY * 2) / 3;
+
+    rect(0, 0, PAGE_W, PAGE_H, '#FFFFFF');
+    (series.cards || []).forEach((card, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = marginX + col * (cardW + gapX);
+      const y = marginTop + row * (cardH + gapY);
+      rect(x, y, cardW, cardH, '#FFFFFF', colors.line, .8);
+      rect(x, y, cardW, 3.5, index % 2 ? colors.pink : colors.purple);
+      const logoSize = mode === 90 ? 27 : 25;
+      image(x + 7, y + 7, logoSize, logoSize);
+      text(`BINGO ${mode}`, x + 39, y + 7, mode === 90 ? 10 : 9, { bold:true, color:colors.purple });
+      text(`Lote ${publicLot.code} · Serie ${String(series.number).padStart(2,'0')}`, x + 39, y + 20, 5.4, { color:colors.muted, maxWidth:cardW * .45 });
+      text(`CARTÓN ${String(card.cardNumber).padStart(2,'0')}`, x + cardW - 7, y + 7, mode === 90 ? 12 : 10.5, { bold:true, color:colors.pink, align:'right' });
+
+      if (mode === 90) {
+        const gx = x + 7;
+        const gy = y + 39;
+        const gw = cardW - 14;
+        const gh = cardH - 47;
+        const cw = gw / 9;
+        const ch = gh / 3;
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 9; c++) {
+            const value = card.grid?.[r]?.[c];
+            const cx = gx + c * cw;
+            const cy = gy + r * ch;
+            rect(cx, cy, cw, ch, value == null ? '#FBFAFC' : '#FFFFFF', colors.line, .55);
+            if (Number.isFinite(value)) text(String(value), cx + cw / 2, cy + ch * .24, Math.min(18, ch * .48), { bold:true, align:'center', color:colors.ink });
+          }
+        }
+      } else {
+        const gx = x + 8;
+        const gy = y + 38;
+        const gw = cardW - 16;
+        const headerH = 17;
+        const gh = cardH - 47;
+        const cw = gw / 5;
+        const ch = (gh - headerH) / 5;
+        'BINGO'.split('').forEach((letter, c) => {
+          const cx = gx + c * cw;
+          rect(cx, gy, cw, headerH, c === 4 ? '#FBEAF3' : '#F3ECF7', colors.line, .55);
+          text(letter, cx + cw / 2, gy + 3.3, 9.5, { bold:true, align:'center', color:c === 4 ? colors.pink : colors.purple });
+        });
+        for (let r = 0; r < 5; r++) {
+          for (let c = 0; c < 5; c++) {
+            const value = card.grid?.[r]?.[c];
+            const cx = gx + c * cw;
+            const cy = gy + headerH + r * ch;
+            const free = value === 'LIBRE';
+            rect(cx, cy, cw, ch, free ? '#FFF8DF' : '#FFFFFF', free ? colors.gold : colors.line, free ? .9 : .55);
+            if (free) {
+              commands.push(pdfStarCommands(cx + cw / 2, cy + ch / 2, Math.min(cw,ch) * .26, Math.min(cw,ch) * .12, rgb, colors.gold, topY));
+            } else if (Number.isFinite(value)) {
+              text(String(value), cx + cw / 2, cy + ch * .23, Math.min(16, ch * .45), { bold:true, align:'center', color:colors.ink });
+            }
+          }
+        }
+      }
+    });
+    line(marginX, PAGE_H - footerH + 5, PAGE_W - marginX, PAGE_H - footerH + 5, '#E5E0E8', .5);
+    text(publicLot.site || printableSiteLabel(), PAGE_W / 2, PAGE_H - 15, 7, { color:colors.muted, align:'center', maxWidth:PAGE_W - 80 });
+    pageStreams.push(commands.join('\n'));
+  }
+
+  const objects = [];
+  const addObject = body => { objects.push(body); return objects.length; };
+  const catalogId = addObject('');
+  const pagesId = addObject('');
+  const fontRegularId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  const fontBoldId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  const imageId = addObject(Buffer.concat([
+    Buffer.from(`<< /Type /XObject /Subtype /Image /Width 360 /Height 360 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logo.length} >>\nstream\n`, 'latin1'),
+    logo,
+    Buffer.from('\nendstream', 'latin1')
+  ]));
+  const pageIds = [];
+  for (const stream of pageStreams) {
+    const contentBuffer = Buffer.from(stream, 'latin1');
+    const contentId = addObject(Buffer.concat([
+      Buffer.from(`<< /Length ${contentBuffer.length} >>\nstream\n`, 'latin1'), contentBuffer, Buffer.from('\nendstream', 'latin1')
+    ]));
+    const pageId = addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> /XObject << /Logo ${imageId} 0 R >> >> /Contents ${contentId} 0 R >>`);
+    pageIds.push(pageId);
+  }
+  objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
+  objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
+  const parts = [Buffer.from('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n', 'latin1')];
+  const offsets = [0];
+  let length = parts[0].length;
+  objects.forEach((body, index) => {
+    offsets.push(length);
+    const head = Buffer.from(`${index + 1} 0 obj\n`, 'latin1');
+    const content = Buffer.isBuffer(body) ? body : Buffer.from(body, 'latin1');
+    const tail = Buffer.from('\nendobj\n', 'latin1');
+    parts.push(head, content, tail);
+    length += head.length + content.length + tail.length;
+  });
+  const xrefOffset = length;
+  let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let index = 1; index <= objects.length; index++) xref += `${String(offsets[index]).padStart(10, '0')} 00000 n \n`;
+  xref += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  parts.push(Buffer.from(xref, 'latin1'));
+  return Buffer.concat(parts);
 }
 
 
@@ -7106,6 +7403,7 @@ function communityStatePayload(visitorId = '') {
     lobbyRooms: communityLobbyRoomsPayload(),
     publicRoomAvailability: communityPublicRoomAvailability(),
     privateRooms: communityPrivateRoomAvailability(),
+    tools: { cardsPrintSite: printableSiteLabel() },
     leaderboards: {
       red_black: (community.leaderboards?.red_black || []).slice(0, 8),
       higher_lower: (community.leaderboards?.higher_lower || []).slice(0, 8)
@@ -7437,6 +7735,11 @@ function updateCommunitySettings(payload = {}) {
   if (payload.privateRoomsEnabled !== undefined) { community.privateRoomsEnabled = payload.privateRoomsEnabled !== false; community.publicRoomsEnabled = payload.privateRoomsEnabled !== false; }
   if (payload.privateRoomMaxPlayers !== undefined) community.privateRoomMaxPlayers = Math.max(2, Math.min(30, Math.round(Number(payload.privateRoomMaxPlayers) || 30)));
   if (payload.privateRoomMaxCardsPerPlayer !== undefined) community.privateRoomMaxCardsPerPlayer = Math.max(1, Math.min(4, Math.round(Number(payload.privateRoomMaxCardsPerPlayer) || 4)));
+  if (payload.cardsPrintSite !== undefined) {
+    const value = String(payload.cardsPrintSite || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').slice(0, 160);
+    if (value && !/^[a-z0-9.-]+(?::\d+)?(?:\/[^\s]*)?$/i.test(value)) throw new Error('Escribí una dirección web válida para los cartones.');
+    community.cardsPrintSite = value || 'bingo-gorda.onrender.com/comunidad';
+  }
   if (payload.whatsappGroup !== undefined) {
     const value = String(payload.whatsappGroup || '').trim().slice(0, 500);
     if (value && !/^https:\/\/(?:chat\.)?whatsapp\.com\//i.test(value)) throw new Error('Pegá un enlace válido de invitación de WhatsApp.');
@@ -7548,6 +7851,7 @@ function communityAdminPayload() {
     privateRoomMaxPlayers: Math.max(2, Math.min(30, Number(community.privateRoomMaxPlayers) || 30)),
     privateRoomMaxCardsPerPlayer: Math.max(1, Math.min(4, Number(community.privateRoomMaxCardsPerPlayer) || 4)),
     privateRoomAvailability: communityPrivateRoomAvailability(),
+    cardsPrintSite: printableSiteLabel(),
     blockedTerms: (community.blockedTerms || []).slice(0, COMMUNITY_FILTER_MAX_TERMS),
     scheduledGames: communityScheduledGames().slice().sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt))).map(item => ({ ...item })),
     messages: (community.messages || []).slice(-COMMUNITY_CHAT_MAX_MESSAGES).map(message => ({ ...message, reportCount: Array.isArray(message.reports) ? message.reports.length : 0 })),
@@ -7721,6 +8025,25 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/community/score' && req.method === 'POST') {
       if (!consumeRate(req, 'community-score', 80, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados puntajes enviados. Probá más tarde.' });
       return sendJson(res, 200, submitCommunityScore(await readJson(req)));
+    }
+    if (url.pathname === '/api/community/cards/generate' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-card-lot', 30, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Generaste muchos lotes en poco tiempo. Probá más tarde.' });
+      const lot = createPrintableCardLot(await readJson(req));
+      return sendJson(res, 200, { ...lot, downloadUrl:`/api/community/cards/pdf?lot=${encodeURIComponent(lot.code)}` });
+    }
+    if (url.pathname === '/api/community/cards/lot' && req.method === 'GET') {
+      const lot = loadCardLot(url.searchParams.get('lot'));
+      if (!lot) return sendJson(res, 404, { error: 'No encontramos ese lote de cartones.' });
+      return sendJson(res, 200, lot);
+    }
+    if (url.pathname === '/api/community/cards/validate' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-card-validate', 180, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiadas validaciones. Esperá un momento.' });
+      return sendJson(res, 200, validateCardLotClaim(await readJson(req)));
+    }
+    if (url.pathname === '/api/community/cards/pdf' && req.method === 'GET') {
+      const lot = loadCardLot(url.searchParams.get('lot'));
+      if (!lot) return sendJson(res, 404, { error: 'No encontramos ese lote de cartones.' });
+      return sendBuffer(res, 200, buildCardLotPdf(lot), 'application/pdf', `EL_BINGO_DE_LA_GORDA_${lot.mode}_Lote_${lot.code}.pdf`);
     }
     if (url.pathname === '/api/community/public-room' && req.method === 'POST') {
       if (!consumeRate(req, 'community-public-room', 15, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Se crearon demasiadas salas desde esta conexión. Probá más tarde.' });

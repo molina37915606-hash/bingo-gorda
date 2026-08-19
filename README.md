@@ -103,3 +103,15 @@ Antes de publicar, configurar las variables de `.env.example`. En producción, `
 - Salas creadas desde Comunidad: Bingo 90 y 75 permiten jugar **Solo Bingo**, sin obligación de Línea.
 - Sala de espera comunitaria: muestra cantidad de jugadores y total de cartones que jugarán la partida.
 
+
+## Herramientas de Comunidad · Cartones PDF + Bolillero (2026-08-19)
+
+Comunidad incorpora dos accesos compactos en la barra superior: **CARTONES** y **BOLILLERO**.
+
+**Cartones PDF** genera de 1 a 10 series de 6 cartones por hoja. Bingo 90 usa A4 horizontal y Bingo 75 A4 vertical. Cada generación crea un lote único `LG-XXXXXX`; cada cartón queda identificado por lote, serie y número. El PDF usa el logo de EL BINGO DE LA GORDA en cada cartón, mantiene lote/serie discretos y deja la dirección web una sola vez al pie de la hoja. La dirección impresa se configura desde Admin > Comunidad.
+
+Los lotes se guardan en `BINGO_DATA_DIR/cartones`, por lo que en producción requieren almacenamiento persistente si se quiere volver a cargarlos después de un redeploy/reinicio de infraestructura.
+
+**Bolillero** es una herramienta independiente para jugar presencialmente en casa desde computadora o celular. Funciona sin cargar cartones o puede cargar un lote completo, una serie o un cartón generado por la plataforma. Incluye Vero, bolilla actual grande, últimas salidas, tablero completo, revisión del orden de salida, extracción manual/automática, pausa, voz/silencio, pantalla completa, anular última bolilla y recuperación local de la partida.
+
+En Bingo 75 permite configurar Línea, Doble Línea, Triple Línea, 4 Esquinas y/o Bingo. En Bingo 90 permite AmboCabeza, Línea, 2° Línea y/o Bingo. Al cantar un premio, el Bolillero pausa; sin cartones cargados la validación es manual y, con lote cargado, consulta al mismo motor de reglas del servidor para comprobar el cartón impreso.

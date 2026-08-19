@@ -309,7 +309,8 @@
     $('bolModeLabel').textContent = `BINGO ${bol.mode}`;
     $('bolStateLabel').textContent = bol.finished ? 'FINALIZADO' : bol.paused ? 'PAUSADO' : bol.drawMode === 'automatic' ? 'AUTOMÁTICO' : 'MANUAL';
     $('bolCurrent').textContent = current;
-    $('bolOrderLabel').textContent = bol.drawn.length ? `${viewedIndex + 1} de ${bol.drawn.length}${isReview?' · REVISANDO':''}` : 'Todavía no salió ninguna bolilla';
+    const totalBalls = Number(bol.mode) === 75 ? 75 : 90;
+    $('bolOrderLabel').textContent = bol.drawn.length ? `Bolilla ${viewedIndex + 1} de ${totalBalls}${isReview?' · REVISANDO':''}` : `Bolilla 0 de ${totalBalls}`;
     $('bolBackNow').classList.toggle('hidden', !isReview);
     $('bolLastBalls').innerHTML = bol.drawn.slice(-8).reverse().map((n,index)=>`<span class="bolLast ${index===0&&!isReview?'current':''}">${n}</span>`).join('') || '<small>Esperando primera bolilla…</small>';
     renderBoard();
@@ -321,7 +322,9 @@
     $('bolDrawBtn').textContent = bol.finished ? 'PARTIDA FINALIZADA' : bol.drawMode === 'automatic' ? 'SORTEO AUTOMÁTICO' : 'SACAR BOLILLA';
     $('bolPauseBtn').textContent = bol.paused ? '▶ REANUDAR' : '⏸ PAUSA';
     $('bolPauseBtn').classList.toggle('manualHidden', bol.drawMode !== 'automatic');
-    $('bolSoundBtn').textContent = bol.sound ? '🔊' : '🔇';
+    $('bolSoundBtn').classList.toggle('muted', !bol.sound);
+    $('bolSoundBtn').setAttribute('aria-label', bol.sound ? 'Silenciar bolillas' : 'Activar voz de bolillas');
+    $('bolSoundBtn').title = bol.sound ? 'Silenciar bolillas' : 'Activar voz de bolillas';
     document.querySelectorAll('[data-bol-claim]').forEach(btn => btn.onclick = () => announcePrize(btn.dataset.bolClaim));
   }
 

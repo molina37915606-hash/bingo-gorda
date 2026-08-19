@@ -33,6 +33,7 @@ const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma.json');
 const WORKSPACES_DIR = path.join(DATA_DIR, 'operadores');
 const HISTORY_DIR = path.join(DATA_DIR, 'historial');
 const CARD_LOTS_DIR = path.join(DATA_DIR, 'cartones');
+const COMMUNITY_BANNERS_DIR = path.join(DATA_DIR, 'community-banners');
 const OPERATIONAL_WORKSPACE_IDS = ['owner', ...Array.from({ length: 9 }, (_, index) => `slot${index + 2}`)];
 const MAX_OPERATIONAL_ROOMS = OPERATIONAL_WORKSPACE_IDS.length;
 const COMMUNITY_HOST_TTL_MS = 8 * 60 * 60 * 1000;
@@ -118,6 +119,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
 fs.mkdirSync(HISTORY_DIR, { recursive: true });
 fs.mkdirSync(CARD_LOTS_DIR, { recursive: true });
+fs.mkdirSync(COMMUNITY_BANNERS_DIR, { recursive: true });
 
 function loadLastResultMeta(metaFile, pdfFile) {
   try {
@@ -594,6 +596,7 @@ function blankCommunity() {
     supportCustomWallet: '',
     supportTitle: 'COLABORÁ PARA SEGUIR CRECIENDO',
     supportMessage: 'Tu aporte nos ayuda a mejorar y mantener El Bingo de la Gorda.',
+    banners: [1,2,3].map(slot => ({ slot, enabled:false, destinationType:'none', target:'', alt:'', imageExt:'', updatedAt:'' })),
     chatEnabled: true,
     blockPhoneNumbers: true,
     blockWhatsappLinks: true,
@@ -764,6 +767,122 @@ function validateCommunityMessageContent(text, community) {
   }
 }
 
+
+function normalizeCommunityBanner(raw = {}, slot = 1) {
+  const safeSlot = Math.max(1, Math.min(3, Math.round(Number(slot) || 1)));
+  const destinationType = ['none','url','whatsapp','phone'].includes(String(raw.destinationType || '')) ? String(raw.destinationType) : 'none';
+  const imageExt = ['jpg','png','webp'].includes(String(raw.imageExt || '').toLowerCase()) ? String(raw.imageExt).toLowerCase() : '';
+  return {
+    slot: safeSlot,
+    enabled: raw.enabled === true,
+    destinationType,
+    target: String(raw.target || '').trim().slice(0, 500),
+    alt: String(raw.alt || '').trim().replace(/\s+/g, ' ').slice(0, 120),
+    imageExt,
+    updatedAt: raw.updatedAt ? String(raw.updatedAt) : ''
+  };
+}
+
+function communityBannerFilePath(banner = {}) {
+  const slot = Math.max(1, Math.min(3, Math.round(Number(banner.slot) || 1)));
+  const ext = ['jpg','png','webp'].includes(String(banner.imageExt || '').toLowerCase()) ? String(banner.imageExt).toLowerCase() : '';
+  return ext ? path.join(COMMUNITY_BANNERS_DIR, `banner-${slot}.${ext}`) : '';
+}
+
+function communityBannerActionUrl(banner = {}) {
+  const type = String(banner.destinationType || 'none');
+  const raw = String(banner.target || '').trim();
+  if (type === 'none' || !raw) return '';
+  if (type === 'url') {
+    try { const parsed = new URL(raw); return ['http:','https:'].includes(parsed.protocol) ? parsed.toString() : ''; }
+    catch { return ''; }
+  }
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length < 7 || digits.length > 15) return '';
+  if (type === 'whatsapp') return `https://wa.me/${digits}`;
+  if (type === 'phone') return `tel:${raw.startsWith('+') ? '+' : ''}${digits}`;
+  return '';
+}
+
+function validateCommunityBannerTarget(type, value) {
+  const target = String(value || '').trim().slice(0, 500);
+  if (type === 'none') return '';
+  if (type === 'url') {
+    try {
+      const parsed = new URL(target);
+      if (!['http:','https:'].includes(parsed.protocol)) throw new Error();
+      return parsed.toString();
+    } catch { throw new Error('El enlace del banner debe empezar con http:// o https://.'); }
+  }
+  const digits = target.replace(/\D/g, '');
+  if (digits.length < 7 || digits.length > 15) throw new Error(type === 'whatsapp' ? 'Ingresá un número de WhatsApp válido, con código de país.' : 'Ingresá un número de teléfono válido.');
+  return target;
+}
+
+function communityBannersAdminPayload() {
+  const community = platform.community ||= blankCommunity();
+  const source = Array.isArray(community.banners) ? community.banners : blankCommunity().banners;
+  return [1,2,3].map(slot => {
+    const banner = normalizeCommunityBanner(source.find(item => Number(item?.slot) === slot) || {}, slot);
+    const file = communityBannerFilePath(banner);
+    const hasImage = Boolean(file && fs.existsSync(file));
+    return {
+      ...banner,
+      hasImage,
+      imageUrl: hasImage ? `/community-banner/${slot}?v=${encodeURIComponent(banner.updatedAt || '1')}` : '',
+      actionUrl: communityBannerActionUrl(banner)
+    };
+  });
+}
+
+function communityBannersPublicPayload() {
+  return communityBannersAdminPayload()
+    .filter(banner => banner.enabled && banner.hasImage)
+    .map(({ slot, alt, imageUrl, actionUrl, destinationType }) => ({ slot, alt, imageUrl, actionUrl, destinationType }));
+}
+
+function removeCommunityBannerFiles(slot) {
+  for (const ext of ['jpg','png','webp']) {
+    const file = path.join(COMMUNITY_BANNERS_DIR, `banner-${slot}.${ext}`);
+    try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch {}
+  }
+}
+
+function updateCommunityBannerImage(payload = {}) {
+  const slot = Math.max(1, Math.min(3, Math.round(Number(payload.slot) || 0)));
+  if (!slot || slot < 1 || slot > 3) throw new Error('Banner no válido.');
+  const community = platform.community ||= blankCommunity();
+  community.banners = [1,2,3].map(index => normalizeCommunityBanner((community.banners || []).find(item => Number(item?.slot) === index) || {}, index));
+  const banner = community.banners.find(item => item.slot === slot);
+  const action = String(payload.action || 'upload').toLowerCase();
+  if (action === 'remove') {
+    removeCommunityBannerFiles(slot);
+    banner.imageExt = '';
+    banner.updatedAt = nowIso();
+    savePlatform();
+    return communityAdminPayload();
+  }
+  const match = String(payload.imageData || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) throw new Error('Usá una imagen JPG, PNG o WebP.');
+  const mime = match[1];
+  const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer.length || buffer.length > 1_500_000) throw new Error('El banner debe pesar como máximo 1,5 MB.');
+  const isJpg = buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const isPng = buffer.length > 8 && buffer.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]));
+  const isWebp = buffer.length > 12 && buffer.subarray(0,4).toString('ascii') === 'RIFF' && buffer.subarray(8,12).toString('ascii') === 'WEBP';
+  const ext = mime === 'image/jpeg' && isJpg ? 'jpg' : mime === 'image/png' && isPng ? 'png' : mime === 'image/webp' && isWebp ? 'webp' : '';
+  if (!ext) throw new Error('El archivo no coincide con un formato de imagen permitido.');
+  removeCommunityBannerFiles(slot);
+  const file = path.join(COMMUNITY_BANNERS_DIR, `banner-${slot}.${ext}`);
+  const temp = `${file}.tmp`;
+  fs.writeFileSync(temp, buffer);
+  fs.renameSync(temp, file);
+  banner.imageExt = ext;
+  banner.updatedAt = nowIso();
+  savePlatform();
+  return communityAdminPayload();
+}
+
 function normalizeCommunity(raw = {}) {
   const defaults = blankCommunity();
   return {
@@ -777,6 +896,7 @@ function normalizeCommunity(raw = {}) {
     supportCustomWallet: String(raw.supportCustomWallet || '').trim().replace(/\s+/g, ' ').slice(0, 80),
     supportTitle: String(raw.supportTitle || defaults.supportTitle).trim().replace(/\s+/g, ' ').slice(0, 80),
     supportMessage: String(raw.supportMessage || defaults.supportMessage).trim().replace(/\s+/g, ' ').slice(0, 180),
+    banners: [1,2,3].map(slot => normalizeCommunityBanner((Array.isArray(raw.banners) ? raw.banners : []).find(item => Number(item?.slot) === slot) || {}, slot)),
     chatEnabled: raw.chatEnabled !== false,
     blockPhoneNumbers: raw.blockPhoneNumbers !== false,
     blockWhatsappLinks: raw.blockWhatsappLinks !== false,
@@ -7614,6 +7734,7 @@ function communityStatePayload(visitorId = '') {
       number: communityWhatsappNumber()
     },
     support: communitySupportPayload(),
+    banners: communityBannersPublicPayload(),
     activeGame: communityActiveGamePayload(),
     upcomingGames: communityUpcomingGames(),
     publicRooms: communityPublicRoomsPayload(),
@@ -7983,6 +8104,20 @@ function updateCommunitySettings(payload = {}) {
     const support = communitySupportPayload();
     if (!support.enabled) throw new Error('Completá alias, titular y billetera para activar la colaboración.');
   }
+  if (Array.isArray(payload.banners)) {
+    const current = [1,2,3].map(slot => normalizeCommunityBanner((community.banners || []).find(item => Number(item?.slot) === slot) || {}, slot));
+    for (const incoming of payload.banners.slice(0,3)) {
+      const slot = Math.max(1, Math.min(3, Math.round(Number(incoming?.slot) || 0)));
+      const banner = current.find(item => item.slot === slot);
+      if (!banner) continue;
+      const type = ['none','url','whatsapp','phone'].includes(String(incoming.destinationType || '')) ? String(incoming.destinationType) : 'none';
+      banner.enabled = incoming.enabled === true;
+      banner.destinationType = type;
+      banner.target = validateCommunityBannerTarget(type, incoming.target);
+      banner.alt = String(incoming.alt || '').trim().replace(/\s+/g,' ').slice(0,120);
+    }
+    community.banners = current;
+  }
   if (payload.chatEnabled !== undefined) community.chatEnabled = Boolean(payload.chatEnabled);
   if (payload.blockPhoneNumbers !== undefined) community.blockPhoneNumbers = Boolean(payload.blockPhoneNumbers);
   if (payload.blockWhatsappLinks !== undefined) community.blockWhatsappLinks = Boolean(payload.blockWhatsappLinks);
@@ -8088,6 +8223,7 @@ function communityAdminPayload() {
     supportTitle: community.supportTitle || blankCommunity().supportTitle,
     supportMessage: community.supportMessage || blankCommunity().supportMessage,
     support: communitySupportPayload(),
+    banners: communityBannersAdminPayload(),
     chatEnabled: community.chatEnabled !== false,
     blockPhoneNumbers: community.blockPhoneNumbers !== false,
     blockWhatsappLinks: community.blockWhatsappLinks !== false,
@@ -8179,6 +8315,10 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/community/settings' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Comunidad solo puede configurarla el administrador principal.' });
     return sendJson(res, 200, updateCommunitySettings(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/community/banner' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'Los banners solo puede configurarlos el administrador principal.' });
+    return sendJson(res, 200, updateCommunityBannerImage(await readJson(req, 2_600_000)));
   }
   if (url.pathname === '/api/admin/community/schedule' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Agenda solo puede configurarla el administrador principal.' });
@@ -8834,6 +8974,24 @@ const server = http.createServer(async (req, res) => {
       }
       return sendJson(res, 405, { error: 'La selección de la DEMO se realiza desde la interfaz unificada.' });
     });
+  }
+
+  const communityBannerMatch = url.pathname.match(/^\/community-banner\/(1|2|3)\/?$/);
+  if (communityBannerMatch && (req.method === 'GET' || req.method === 'HEAD')) {
+    const slot = Number(communityBannerMatch[1]);
+    const banner = communityBannersAdminPayload().find(item => item.slot === slot);
+    if (!banner?.hasImage) return sendJson(res, 404, { error: 'Banner no disponible.' });
+    const file = communityBannerFilePath(banner);
+    const stat = fs.statSync(file);
+    res.writeHead(200, {
+      'Content-Type': MIME_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
+      'Content-Length': stat.size,
+      'Cache-Control': 'public, max-age=300',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'same-origin'
+    });
+    if (req.method === 'HEAD') return res.end();
+    return fs.createReadStream(file).pipe(res);
   }
 
   const publicRoomMatch = url.pathname.match(/^\/mesa\/([^/]+)\/?$/);

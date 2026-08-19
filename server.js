@@ -1950,7 +1950,7 @@ function playerPayload(player) {
       creatorPlayers: communityCreatorPlayersPayload(player),
       pendingSelectionPlayers: state.players.filter(item => item?.nameSet && !item.virtual && !item.selectionConfirmed).length,
       isManualCreator: state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
-      canStart: state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && String(state.communityCreatorPlayerId || '') === String(player.id || '') && !state.players.some(item => item?.nameSet && !item.virtual && !item.selectionConfirmed),
+      canStart: state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && String(state.communityCreatorPlayerId || '') === String(player.id || '') && registrationSummaryPayload().registeredPlayers >= 2,
       canCancel: ['waiting','starting','playing','verifying','paused','resuming','finalizing'].includes(state.status) && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
       cancelAction: state.status === 'waiting' ? 'cancel' : 'interrupt',
       roundNumber: Math.max(1, Number(communityRecord?.roundNumber || state.round) || 1),
@@ -4275,7 +4275,16 @@ function startRoom(payload = {}) {
   // Al iniciar, ningún salón grande debe quedar esperando a que cada persona elija.
   // Gratis: todo jugador ingresado es elegible. Paga: solo quienes tienen pago confirmado.
   const hasPendingEligibleSelections = state.players.some(player => playerEligibleForRound(player) && !playerSelectionComplete(player));
-  if (hasPendingEligibleSelections) autoAssignPendingPlayers(forcedSimulationStart ? 'simulation_start' : 'admin_start');
+  if (hasPendingEligibleSelections) {
+    const assignmentReason = forcedSimulationStart
+      ? 'simulation_start'
+      : payload?.communityCreator
+        ? 'community_creator_start'
+        : payload?.automaticSchedule
+          ? 'scheduled_start'
+          : 'admin_start';
+    autoAssignPendingPlayers(assignmentReason);
+  }
 
   for (const player of state.players) {
     const eligible = playerEligibleForRound(player);
@@ -6834,13 +6843,10 @@ function startCommunityRoomFromPlayer(player) {
   if (String(state.communityCreatorPlayerId || '') !== String(player?.id || '')) throw new Error('Solo quien creó la sala puede iniciar la partida.');
   if (state.status !== 'waiting') return playerPayload(player);
   if ((state.players || []).length < 2) throw new Error('Se necesitan al menos 2 jugadores para comenzar.');
-  const preparingPlayers = (state.players || []).filter(item => item?.nameSet && !item.virtual && !item.selectionConfirmed);
-  if (preparingPlayers.length) {
-    const firstName = playerDisplayName(preparingPlayers[0]);
-    throw new Error(preparingPlayers.length === 1
-      ? `${firstName} todavía está eligiendo sus cartones.`
-      : `${preparingPlayers.length} jugadores todavía están eligiendo sus cartones.`);
-  }
+  // Quien ya ingresó a la sala y definió su cantidad de cartones no debe frenar
+  // a los demás: startRoom() completa automáticamente cualquier selección pendiente
+  // con la cantidad autorizada. Los accesos sin nombre/cantidad confirmada no son
+  // elegibles para la ronda y quedan fuera por playerEligibleForRound().
   state.roomSettings.joinOpen = false;
   saveState(); broadcast();
   startRoom({ communityCreator:true });

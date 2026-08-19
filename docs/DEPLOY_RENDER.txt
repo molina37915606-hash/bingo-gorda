@@ -1,14 +1,19 @@
-BINGO DE LA GORDA - Beta · RENDER FREE
+EL BINGO DE LA GORDA · RENDER STARTER / PRUEBAS
 
-El archivo render.yaml permite desplegar la Beta para DEMOSTRACIONES Y PRUEBAS.
+Esta versión soporta hasta diez salas operativas simultáneas, placas públicas programadas y un historial acumulativo.
 
-IMPORTANTE:
-El plan gratuito puede usar almacenamiento efímero. Si el servicio reinicia o se vuelve a desplegar, los archivos guardados en BINGO_DATA_DIR pueden perderse.
-
-NO usar esta configuración para una partida paga real sin agregar almacenamiento persistente o migrar la persistencia a una base externa.
+IMPORTANTE SOBRE PERSISTENCIA:
+Render usa filesystem efímero si no se adjunta un disco persistente. Para conservar agenda, estados e historial frente a redeploys/reinicios de infraestructura, adjuntá un Persistent Disk al Web Service y configurá BINGO_DATA_DIR para apuntar al directorio montado de ese disco. Usar BINGO_DATA_DIR=./data sin un disco montado NO garantiza persistencia.
 
 Variables mínimas:
 - ONLINE_MODE=true
 - MASTER_ADMIN_PASSWORD=una clave privada larga
 - BINGO_TIMEZONE=America/Argentina/Buenos_Aires
 - BINGO_CLAIM_AUTO_VERIFY_MS=10000
+- BINGO_DATA_DIR=/RUTA/DEL/DISCO/MONTADO
+
+Opcional:
+- BINGO_COMMUNITY_RESERVATION_MS=3600000
+  Ventana en milisegundos durante la cual una próxima partida oficial reserva capacidad frente a salas públicas creadas por jugadores.
+
+El límite lógico es 10 salas, pero Render Starter no implica garantía de 10 salas grandes llenas. Antes de abrirlas al público, hacer pruebas progresivas de carga y revisar CPU, RAM, SSE, chat, reclamos y reconexión.

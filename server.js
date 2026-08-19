@@ -593,7 +593,7 @@ function blankCommunity() {
     publicRoomsEnabled: true,
     privateRoomsEnabled: true,
     privateRoomMaxPlayers: 30,
-    privateRoomMaxCardsPerPlayer: 2,
+    privateRoomMaxCardsPerPlayer: 4,
     messages: [],
     leaderboards: { red_black: [], higher_lower: [] }
   };
@@ -643,7 +643,7 @@ function normalizeCommunityPublicRoom(raw = {}) {
   const startsIso = startsAt && Number.isFinite(startsAt.getTime()) ? startsAt.toISOString() : '';
   const mode = Number(raw.mode) === 75 ? 75 : 90;
   const maxPlayers = Math.max(2, Math.min(30, Math.round(Number(raw.maxPlayers) || 20)));
-  const maxCardsPerPlayer = Math.max(1, Math.min(2, Math.round(Number(raw.maxCardsPerPlayer) || 2)));
+  const maxCardsPerPlayer = Math.max(1, Math.min(4, Math.round(Number(raw.maxCardsPerPlayer) || 2)));
   const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(raw.linePrizeCount) || 1))) : 1;
   const requestedRules = raw.rules && typeof raw.rules === 'object' ? raw.rules : {};
   const rules = mode === 90
@@ -773,7 +773,7 @@ function normalizeCommunity(raw = {}) {
     publicRoomsEnabled: raw.publicRoomsEnabled !== false,
     privateRoomsEnabled: raw.privateRoomsEnabled !== false,
     privateRoomMaxPlayers: Math.max(2, Math.min(30, Math.round(Number(raw.privateRoomMaxPlayers) || defaults.privateRoomMaxPlayers))),
-    privateRoomMaxCardsPerPlayer: Math.max(1, Math.min(2, Math.round(Number(raw.privateRoomMaxCardsPerPlayer) || defaults.privateRoomMaxCardsPerPlayer))),
+    privateRoomMaxCardsPerPlayer: Number(raw.privateRoomMaxCardsPerPlayer) === 2 ? 4 : Math.max(1, Math.min(4, Math.round(Number(raw.privateRoomMaxCardsPerPlayer) || defaults.privateRoomMaxCardsPerPlayer))),
     messages: Array.isArray(raw.messages) ? raw.messages.slice(-COMMUNITY_CHAT_MAX_MESSAGES).map(message => ({
       ...message,
       reports: Array.isArray(message?.reports) ? message.reports
@@ -6434,7 +6434,7 @@ function communityPrivateRoomAvailability() {
     freeSlots: free,
     reservedSlots: reserved,
     maxPlayers: Math.max(2, Math.min(30, Number(community.privateRoomMaxPlayers) || 30)),
-    maxCardsPerPlayer: Math.max(1, Math.min(2, Number(community.privateRoomMaxCardsPerPlayer) || 2)),
+    maxCardsPerPlayer: Math.max(1, Math.min(4, Number(community.privateRoomMaxCardsPerPlayer) || 4)),
     reason
   };
 }
@@ -6506,7 +6506,7 @@ function communityPublicRoomAvailability() {
     enabled: community.publicRoomsEnabled !== false && community.privateRoomsEnabled !== false,
     available: community.publicRoomsEnabled !== false && community.privateRoomsEnabled !== false && free > reserved,
     maxPlayers: Math.max(2, Math.min(30, Number(community.privateRoomMaxPlayers) || 30)),
-    maxCardsPerPlayer: Math.max(1, Math.min(2, Number(community.privateRoomMaxCardsPerPlayer) || 2))
+    maxCardsPerPlayer: Math.max(1, Math.min(4, Number(community.privateRoomMaxCardsPerPlayer) || 4))
   };
 }
 
@@ -7430,7 +7430,7 @@ function updateCommunitySettings(payload = {}) {
   if (payload.publicRoomsEnabled !== undefined) community.publicRoomsEnabled = payload.publicRoomsEnabled !== false;
   if (payload.privateRoomsEnabled !== undefined) { community.privateRoomsEnabled = payload.privateRoomsEnabled !== false; community.publicRoomsEnabled = payload.privateRoomsEnabled !== false; }
   if (payload.privateRoomMaxPlayers !== undefined) community.privateRoomMaxPlayers = Math.max(2, Math.min(30, Math.round(Number(payload.privateRoomMaxPlayers) || 30)));
-  if (payload.privateRoomMaxCardsPerPlayer !== undefined) community.privateRoomMaxCardsPerPlayer = Math.max(1, Math.min(2, Math.round(Number(payload.privateRoomMaxCardsPerPlayer) || 2)));
+  if (payload.privateRoomMaxCardsPerPlayer !== undefined) community.privateRoomMaxCardsPerPlayer = Math.max(1, Math.min(4, Math.round(Number(payload.privateRoomMaxCardsPerPlayer) || 4)));
   if (payload.whatsappGroup !== undefined) {
     const value = String(payload.whatsappGroup || '').trim().slice(0, 500);
     if (value && !/^https:\/\/(?:chat\.)?whatsapp\.com\//i.test(value)) throw new Error('Pegá un enlace válido de invitación de WhatsApp.');
@@ -7540,7 +7540,7 @@ function communityAdminPayload() {
     publicRooms: communityPublicRooms().slice().sort((a,b) => String(a.startsAt || a.createdAt).localeCompare(String(b.startsAt || b.createdAt))).map(item => publicRoomPayload(item)),
     privateRoomsEnabled: community.privateRoomsEnabled !== false,
     privateRoomMaxPlayers: Math.max(2, Math.min(30, Number(community.privateRoomMaxPlayers) || 30)),
-    privateRoomMaxCardsPerPlayer: Math.max(1, Math.min(2, Number(community.privateRoomMaxCardsPerPlayer) || 2)),
+    privateRoomMaxCardsPerPlayer: Math.max(1, Math.min(4, Number(community.privateRoomMaxCardsPerPlayer) || 4)),
     privateRoomAvailability: communityPrivateRoomAvailability(),
     blockedTerms: (community.blockedTerms || []).slice(0, COMMUNITY_FILTER_MAX_TERMS),
     scheduledGames: communityScheduledGames().slice().sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt))).map(item => ({ ...item })),

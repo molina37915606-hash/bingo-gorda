@@ -6570,7 +6570,16 @@ function clearPlayerSessionCookie(req, res) {
 function playerTokenFrom(req, url) {
   const explicit = String(req.headers['x-player-token'] || url.searchParams.get('token') || '');
   if (explicit) return explicit;
-  // La partida real tiene prioridad. DEMO queda como fallback únicamente en sus rutas.
+  const demoContext = url.searchParams.get('demo') === '1';
+  if (demoContext) {
+    // Una pantalla DEMO debe permanecer aislada de cualquier sesión real que exista en el navegador.
+    // Si la DEMO venció, no hacemos fallback a una partida real: devolvemos su token y la API responderá 401.
+    const demoToken = cookieValue(req, DEMO_SESSION_COOKIE);
+    const demoWorkspace = demoToken ? findWorkspaceByPlayerToken(demoToken) : null;
+    if (demoWorkspace?.isDemo) return demoToken;
+    return demoToken || '';
+  }
+  // Fuera de DEMO preservamos la regla actual: la partida real tiene prioridad absoluta.
   const playerToken = cookieValue(req, PLAYER_SESSION_COOKIE);
   if (playerToken && findWorkspaceByPlayerToken(playerToken)) return playerToken;
   const demoToken = cookieValue(req, DEMO_SESSION_COOKIE);

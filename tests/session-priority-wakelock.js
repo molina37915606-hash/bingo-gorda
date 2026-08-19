@@ -43,6 +43,15 @@ function cookieValueFromSetCookie(header,name){const m=String(header||'').match(
  const realState=await realStateRes.json();
  assert.equal(realState.roomCode,room.roomCode,'La sesión real debe tener prioridad sobre DEMO');
  assert(!realState.demo?.active,'El estado recibido no debe ser el DEMO');
+ // En una URL marcada explícitamente como DEMO ocurre lo inverso: debe usarse solo bingo_demo_session.
+ const isolatedDemoRes=await fetch(base+'/api/player/state?demo=1',{headers:{Cookie:both}});assert(isolatedDemoRes.ok);
+ const isolatedDemo=await isolatedDemoRes.json();
+ assert(isolatedDemo.demo?.active,'La ruta DEMO debe conservar su propia sesión aunque exista una sesión real válida.');
+ assert.notEqual(isolatedDemo.roomCode,room.roomCode,'DEMO no debe mezclarse con la sala real.');
+ // Y una cookie DEMO inválida no puede caer silenciosamente en la partida real cuando demo=1.
+ const invalidDemo=`bingo_demo_session=demo_invalida; bingo_player_session=${encodeURIComponent(playerToken)}`;
+ const invalidDemoRes=await fetch(base+'/api/player/state?demo=1',{headers:{Cookie:invalidDemo}});
+ assert.equal(invalidDemoRes.status,401,'Una DEMO vencida debe fallar como DEMO, no abrir la partida real.');
 
  // 3) Regreso automático desde Comunidad durante una partida real activa.
  await postJson('/api/admin/join-open',{open:false},ah);

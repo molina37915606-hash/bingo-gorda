@@ -2364,7 +2364,12 @@ function buildCardLotPdf(lot) {
       image(x + 7, y + 7, logoSize, logoSize);
       text(`BINGO ${mode}`, x + 39, y + 7, mode === 90 ? 10 : 9, { bold:true, color:colors.purple });
       text(`Lote ${publicLot.code} · Serie ${String(series.number).padStart(2,'0')}`, x + 39, y + 20, 5.4, { color:colors.muted, maxWidth:cardW * .45 });
-      text(`CARTÓN ${String(card.cardNumber).padStart(2,'0')}`, x + cardW - 7, y + 7, mode === 90 ? 12 : 10.5, { bold:true, color:colors.pink, align:'right' });
+      const badgeSize = mode === 90 ? 31 : 28;
+      const badgeX = x + cardW - 7 - badgeSize;
+      const badgeY = y + 7;
+      rect(badgeX, badgeY, badgeSize, badgeSize, '#FBEAF3', colors.pink, 1.15);
+      const badgeFont = mode === 90 ? 13 : 12;
+      text(String(card.cardNumber).padStart(2,'0'), badgeX + badgeSize / 2, badgeY + (badgeSize - badgeFont) / 2 - .6, badgeFont, { bold:true, color:colors.pink, align:'center' });
 
       if (mode === 90) {
         const gx = x + 7;
@@ -2438,6 +2443,9 @@ function buildCardLotPdf(lot) {
   }
   objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
   objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
+  const embeddedLot = Buffer.from(JSON.stringify(publicLot), 'utf8').toString('base64url');
+  const embeddedMarker = Buffer.from(`LA_GORDA_CARD_LOT_V1\n${embeddedLot}\nLA_GORDA_CARD_LOT_END`, 'latin1');
+  addObject(Buffer.concat([Buffer.from(`<< /Length ${embeddedMarker.length} >>\nstream\n`, 'latin1'), embeddedMarker, Buffer.from('\nendstream', 'latin1')]));
   const parts = [Buffer.from('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n', 'latin1')];
   const offsets = [0];
   let length = parts[0].length;

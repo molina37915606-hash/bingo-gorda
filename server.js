@@ -1903,7 +1903,7 @@ function communityCreatorPlayersPayload(viewer) {
 }
 
 function playerPayload(player) {
-  if (!state.active || !state.game || !player) return { active: false, closedReason: String(state.closedReason || '') };
+  if (!state.active || !state.game || !player) return { active: false, closedReason: String(state.closedReason || ''), returnToCommunity: !currentWorkspace().isDemo };
   if (state.status === 'waiting') refreshOffersForPlayer(player);
   const cards = state.game.cards.filter(card => player.cardIds.includes(card.id));
   const offers = state.game.cards.filter(card => (player.offeredCardIds || []).includes(card.id));
@@ -7182,7 +7182,7 @@ function cancelCommunityRoomFromPlayer(player) {
   state.roomSettings.joinOpen = false;
   logEvent('community_public_room_cancelled_by_creator', { publicRoomId:state.roomSettings?.communityPublicId || '', wasStarted });
   closeRoom();
-  return { active:false, closedReason:'creator_cancelled', cancelled:true, wasStarted };
+  return { active:false, closedReason:'creator_cancelled', returnToCommunity:true, cancelled:true, wasStarted };
 }
 
 function processCommunityPublicRoomAutomation() {
@@ -8700,7 +8700,8 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/jugador/salir' || url.pathname === '/jugador/salir/') {
     clearPlayerSessionCookie(req, res);
-    res.writeHead(303, { Location:'/jugador', 'Cache-Control':'no-store, max-age=0' });
+    const destination = url.searchParams.get('comunidad') === '1' ? '/comunidad' : '/jugador';
+    res.writeHead(303, { Location:destination, 'Cache-Control':'no-store, max-age=0' });
     return res.end();
   }
   if (url.pathname === '/jugar' || url.pathname === '/jugar/') {

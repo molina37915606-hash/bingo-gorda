@@ -40,8 +40,8 @@ async function ok(pathname,opt={}){const x=await raw(pathname,opt);assert(x.r.ok
   const guest=await ok('/api/player/open-join',{method:'POST',body:{roomCode:waiting.roomCode,name:'Pedro',cardCount:1,deviceId:'guest-wait'}});
   const guestDenied=await raw('/api/player/community-cancel',{method:'POST',playerToken:guest.token,body:{}});assert.equal(guestDenied.r.status,400,'Un jugador común no puede cancelar la sala.');
   const creatorState=await ok('/api/player/state',{cookie:creatorCookie});assert.equal(creatorState.communityRoom.canCancel,true);assert.equal(creatorState.communityRoom.cancelAction,'cancel');
-  const cancelledWaiting=await ok('/api/player/community-cancel',{method:'POST',cookie:creatorCookie,body:{}});assert.equal(cancelledWaiting.active,false);assert.equal(cancelledWaiting.closedReason,'creator_cancelled');
-  const guestClosed=await ok('/api/player/state',{playerToken:guest.token});assert.equal(guestClosed.active,false);assert.equal(guestClosed.closedReason,'creator_cancelled','Los demás jugadores deben saber que la sala fue cancelada por el creador.');
+  const cancelledWaiting=await ok('/api/player/community-cancel',{method:'POST',cookie:creatorCookie,body:{}});assert.equal(cancelledWaiting.active,false);assert.equal(cancelledWaiting.closedReason,'creator_cancelled');assert.equal(cancelledWaiting.returnToCommunity,true,'Al cerrarse una sala real el jugador debe volver a Comunidad.');
+  const guestClosed=await ok('/api/player/state',{playerToken:guest.token});assert.equal(guestClosed.active,false);assert.equal(guestClosed.closedReason,'creator_cancelled','Los demás jugadores deben saber que la sala fue cancelada por el creador.');assert.equal(guestClosed.returnToCommunity,true,'Los demás jugadores deben ser enviados a Comunidad cuando la sala se cierre.');
 
   // Partida iniciada: el creador puede finalizarla y queda en historial como cancelada/interrumpida.
   response=await raw('/api/community/public-room',{method:'POST',body:{visitorId:'creator-play',name:'Nora',roomName:'Partida interrumpida',mode:90,maxPlayers:10,maxCardsPerPlayer:1,autoSeconds:20,startMode:'manual'}});assert(response.r.ok);const playing=response.d,playingCreatorCookie=cookie(response.r.headers);
@@ -51,7 +51,7 @@ async function ok(pathname,opt={}){const x=await raw(pathname,opt);assert(x.r.ok
   await ok('/api/player/community-start',{method:'POST',cookie:playingCreatorCookie,body:{}});await wait(180);
   let st=await ok('/api/player/state',{cookie:playingCreatorCookie});assert.equal(st.status,'playing');assert.equal(st.communityRoom.canCancel,true);assert.equal(st.communityRoom.cancelAction,'interrupt');
   const interrupted=await ok('/api/player/community-cancel',{method:'POST',cookie:playingCreatorCookie,body:{}});assert.equal(interrupted.wasStarted,true);assert.equal(interrupted.closedReason,'creator_cancelled');
-  st=await ok('/api/player/state',{playerToken:playingGuest.token});assert.equal(st.active,false);assert.equal(st.closedReason,'creator_cancelled');
+  st=await ok('/api/player/state',{playerToken:playingGuest.token});assert.equal(st.active,false);assert.equal(st.closedReason,'creator_cancelled');assert.equal(st.returnToCommunity,true);
   const admin=(await ok('/api/admin/login',{method:'POST',body:{}})).token;
   const history=await ok('/api/admin/history',{adminToken:admin});const entry=history.entries.find(x=>x.roomCode===playing.roomCode);assert(entry,'La partida interrumpida debe quedar en historial.');assert.equal(entry.status,'cancelled');assert.equal(entry.cancelReason,'creator_cancelled');assert(entry.startedAt,'El historial debe indicar que la partida había comenzado.');
 

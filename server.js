@@ -584,8 +584,16 @@ function loadState(stateFile = OWNER_STATE_FILE) {
 
 function blankCommunity() {
   return {
-    whatsappGroup: String(process.env.COMMUNITY_WHATSAPP_GROUP || '').trim().slice(0, 500),
-    whatsappNumber: String(process.env.COMMUNITY_WHATSAPP_NUMBER || '').trim().slice(0, 60),
+    whatsappGroup: String(process.env.COMMUNITY_WHATSAPP_GROUP || 'https://chat.whatsapp.com/HauYXd3oUzUIXIcl0YKOlk?s=cl&p=a&ilr=0').trim().slice(0, 500),
+    whatsappNumber: String(process.env.COMMUNITY_WHATSAPP_NUMBER || '3757624388').trim().slice(0, 60),
+    supportEnabled: true,
+    supportRecipient: 'veronica',
+    supportWallet: 'mercadopago',
+    supportCustomAlias: '',
+    supportCustomHolder: '',
+    supportCustomWallet: '',
+    supportTitle: 'COLABORÁ PARA SEGUIR CRECIENDO',
+    supportMessage: 'Tu aporte nos ayuda a mejorar y mantener El Bingo de la Gorda.',
     chatEnabled: true,
     blockPhoneNumbers: true,
     blockWhatsappLinks: true,
@@ -759,8 +767,16 @@ function validateCommunityMessageContent(text, community) {
 function normalizeCommunity(raw = {}) {
   const defaults = blankCommunity();
   return {
-    whatsappGroup: String(raw.whatsappGroup ?? defaults.whatsappGroup).trim().slice(0, 500),
-    whatsappNumber: String(raw.whatsappNumber ?? defaults.whatsappNumber).trim().slice(0, 60),
+    whatsappGroup: String(raw.whatsappGroup || defaults.whatsappGroup).trim().slice(0, 500),
+    whatsappNumber: String(raw.whatsappNumber || defaults.whatsappNumber).trim().slice(0, 60),
+    supportEnabled: raw.supportEnabled !== false,
+    supportRecipient: ['veronica','facundo','other'].includes(String(raw.supportRecipient || '')) ? String(raw.supportRecipient) : defaults.supportRecipient,
+    supportWallet: ['mercadopago','uala','bna','macro','other'].includes(String(raw.supportWallet || '')) ? String(raw.supportWallet) : defaults.supportWallet,
+    supportCustomAlias: String(raw.supportCustomAlias || '').trim().slice(0, 80),
+    supportCustomHolder: String(raw.supportCustomHolder || '').trim().replace(/\s+/g, ' ').slice(0, 80),
+    supportCustomWallet: String(raw.supportCustomWallet || '').trim().replace(/\s+/g, ' ').slice(0, 80),
+    supportTitle: String(raw.supportTitle || defaults.supportTitle).trim().replace(/\s+/g, ' ').slice(0, 80),
+    supportMessage: String(raw.supportMessage || defaults.supportMessage).trim().replace(/\s+/g, ' ').slice(0, 180),
     chatEnabled: raw.chatEnabled !== false,
     blockPhoneNumbers: raw.blockPhoneNumbers !== false,
     blockWhatsappLinks: raw.blockWhatsappLinks !== false,
@@ -1828,6 +1844,7 @@ function adminPayload() {
     updatedAt: state.updatedAt,
     round: state.round,
     roomSettings: state.roomSettings,
+    support: communitySupportPayload(),
     waitingGame: waitingGamePayload(),
     markingPolicy: markingPolicyPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), mutedPlayerIds: state.chat?.mutedPlayerIds || [] },
@@ -1918,6 +1935,7 @@ function playerPayload(player) {
     startedAt: state.startedAt,
     endedAt: state.endedAt || null,
     roomSettings: state.roomSettings,
+    support: communitySupportPayload(),
     waitingGame: waitingGamePayload(),
     markingPolicy: markingPolicyPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), muted: (state.chat?.mutedPlayerIds || []).includes(player.id) },
@@ -6797,6 +6815,31 @@ function normalizeCommunityName(value) {
   return name;
 }
 
+function communitySupportPayload() {
+  const community = platform.community ||= blankCommunity();
+  const profiles = {
+    veronica: { alias:'vero.k25', holder:'VERONICA ANDREA KURIS' },
+    facundo: { alias:'facu..moli', holder:'FACUNDO MIGUEL MOLINA' }
+  };
+  const wallets = { mercadopago:'Mercado Pago', uala:'Ualá', bna:'BNA', macro:'Macro' };
+  const recipient = ['veronica','facundo','other'].includes(String(community.supportRecipient || '')) ? String(community.supportRecipient) : 'veronica';
+  const walletKey = ['mercadopago','uala','bna','macro','other'].includes(String(community.supportWallet || '')) ? String(community.supportWallet) : 'mercadopago';
+  const profile = profiles[recipient] || null;
+  const alias = String(profile?.alias || community.supportCustomAlias || '').trim().slice(0, 80);
+  const holder = String(profile?.holder || community.supportCustomHolder || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+  const wallet = String(wallets[walletKey] || community.supportCustomWallet || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+  return {
+    enabled: community.supportEnabled !== false && Boolean(alias && holder && wallet),
+    title: String(community.supportTitle || 'COLABORÁ PARA SEGUIR CRECIENDO').trim().slice(0, 80),
+    message: String(community.supportMessage || 'Tu aporte nos ayuda a mejorar y mantener El Bingo de la Gorda.').trim().slice(0, 180),
+    recipient,
+    walletKey,
+    alias,
+    holder,
+    wallet
+  };
+}
+
 function communityWhatsappGroupUrl() {
   const value = String(platform.community?.whatsappGroup || '').trim();
   return /^https:\/\/(?:chat\.)?whatsapp\.com\//i.test(value) ? value : '';
@@ -7570,6 +7613,7 @@ function communityStatePayload(visitorId = '') {
       contactUrl: communityWhatsappContactUrl(),
       number: communityWhatsappNumber()
     },
+    support: communitySupportPayload(),
     activeGame: communityActiveGamePayload(),
     upcomingGames: communityUpcomingGames(),
     publicRooms: communityPublicRoomsPayload(),
@@ -7916,9 +7960,29 @@ function updateCommunitySettings(payload = {}) {
   if (payload.whatsappGroup !== undefined) {
     const value = String(payload.whatsappGroup || '').trim().slice(0, 500);
     if (value && !/^https:\/\/(?:chat\.)?whatsapp\.com\//i.test(value)) throw new Error('Pegá un enlace válido de invitación de WhatsApp.');
-    community.whatsappGroup = value;
+    community.whatsappGroup = value || blankCommunity().whatsappGroup;
   }
-  if (payload.whatsappNumber !== undefined) community.whatsappNumber = String(payload.whatsappNumber || '').trim().slice(0, 60);
+  if (payload.whatsappNumber !== undefined) community.whatsappNumber = String(payload.whatsappNumber || '').trim().slice(0, 60) || blankCommunity().whatsappNumber;
+  if (payload.supportEnabled !== undefined) community.supportEnabled = Boolean(payload.supportEnabled);
+  if (payload.supportRecipient !== undefined) {
+    const value = String(payload.supportRecipient || '');
+    if (!['veronica','facundo','other'].includes(value)) throw new Error('Elegí quién recibe la colaboración.');
+    community.supportRecipient = value;
+  }
+  if (payload.supportWallet !== undefined) {
+    const value = String(payload.supportWallet || '');
+    if (!['mercadopago','uala','bna','macro','other'].includes(value)) throw new Error('Elegí una billetera válida.');
+    community.supportWallet = value;
+  }
+  if (payload.supportCustomAlias !== undefined) community.supportCustomAlias = String(payload.supportCustomAlias || '').trim().slice(0,80);
+  if (payload.supportCustomHolder !== undefined) community.supportCustomHolder = String(payload.supportCustomHolder || '').trim().replace(/\s+/g,' ').slice(0,80);
+  if (payload.supportCustomWallet !== undefined) community.supportCustomWallet = String(payload.supportCustomWallet || '').trim().replace(/\s+/g,' ').slice(0,80);
+  if (payload.supportTitle !== undefined) community.supportTitle = String(payload.supportTitle || '').trim().replace(/\s+/g,' ').slice(0,80) || blankCommunity().supportTitle;
+  if (payload.supportMessage !== undefined) community.supportMessage = String(payload.supportMessage || '').trim().replace(/\s+/g,' ').slice(0,180) || blankCommunity().supportMessage;
+  if (community.supportEnabled !== false) {
+    const support = communitySupportPayload();
+    if (!support.enabled) throw new Error('Completá alias, titular y billetera para activar la colaboración.');
+  }
   if (payload.chatEnabled !== undefined) community.chatEnabled = Boolean(payload.chatEnabled);
   if (payload.blockPhoneNumbers !== undefined) community.blockPhoneNumbers = Boolean(payload.blockPhoneNumbers);
   if (payload.blockWhatsappLinks !== undefined) community.blockWhatsappLinks = Boolean(payload.blockWhatsappLinks);
@@ -8013,8 +8077,17 @@ function communityAdminPayload() {
   const community = platform.community ||= blankCommunity();
   return {
     communityUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/comunidad`,
-    whatsappGroup: community.whatsappGroup || '',
-    whatsappNumber: community.whatsappNumber || '',
+    whatsappGroup: community.whatsappGroup || blankCommunity().whatsappGroup,
+    whatsappNumber: community.whatsappNumber || blankCommunity().whatsappNumber,
+    supportEnabled: community.supportEnabled !== false,
+    supportRecipient: community.supportRecipient || 'veronica',
+    supportWallet: community.supportWallet || 'mercadopago',
+    supportCustomAlias: community.supportCustomAlias || '',
+    supportCustomHolder: community.supportCustomHolder || '',
+    supportCustomWallet: community.supportCustomWallet || '',
+    supportTitle: community.supportTitle || blankCommunity().supportTitle,
+    supportMessage: community.supportMessage || blankCommunity().supportMessage,
+    support: communitySupportPayload(),
     chatEnabled: community.chatEnabled !== false,
     blockPhoneNumbers: community.blockPhoneNumbers !== false,
     blockWhatsappLinks: community.blockWhatsappLinks !== false,

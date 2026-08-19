@@ -50,6 +50,8 @@ async function join(roomCode,name){const r=await fetch(base+'/jugador/entrar',{m
   await post('/api/admin/resolve',{claimId:claim.id,resolution:'confirmed'},ah);
   winner=await get('/api/player/state',{Cookie:winnerCookie});
   assert.equal(winner.player.confirmedPrizes.length,1,'El ganador debe recibir sus premios confirmados en su payload privado');
+  assert.equal(winner.support?.enabled,true,'La colaboración debe estar disponible en el cierre de una partida real.');
+  assert.equal(winner.support?.alias,'vero.k25');
   assert.equal(winner.player.confirmedPrizes[0].cardNumber,winner.player.cards[0].number);
   const denied=await postFail('/api/player/prize-payout',{alias:'ana.cobro',accountHolder:'Ana Jugadora',provider:'Mercado Pago'},{Cookie:otherCookie});
   assert(/premio confirmado/i.test(denied.error),'Un no ganador no debe poder guardar datos de cobro');
@@ -68,6 +70,7 @@ async function join(roomCode,name){const r=await fetch(base+'/jugador/entrar',{m
   assert(playerJs.includes('WHATSAPP · COORDINAR COBRO'));
   assert(playerJs.includes('GUARDAR DATOS DE COBRO'));
   assert(playerJs.includes('/api/player/prize-payout'));
+  assert(playerJs.includes('finalSupportCard')&&playerJs.includes('COPIAR ALIAS'),'La pantalla final debe incluir colaboración voluntaria sin bloquear el flujo.');
   assert(adminJs.includes('COBRO DE GANADORES')&&adminJs.includes('data-copy-payout'));
   assert(adminHtml.includes('WHATSAPP DE CONTACTO Y PREMIOS'));
   console.log('PRUEBA FINAL COBRO DE GANADORES: OK');

@@ -94,7 +94,31 @@ class AdminApp {
 
   communityBannerInput(slot,kind){return $(`communityBanner${slot}${kind}`)}
   communityBannerDestinationHint(slot){const type=this.communityBannerInput(slot,'Type')?.value||'none',input=this.communityBannerInput(slot,'Target');if(!input)return;if(type==='url')input.placeholder='https://www.ejemplo.com';else if(type==='whatsapp')input.placeholder='Ej.: 5493757624388';else if(type==='phone')input.placeholder='Ej.: +54 3757 624388';else input.placeholder='No hace falta completar';input.disabled=type==='none'}
-  async selectCommunityBannerFile(slot,file){if(!file)return;const input=this.communityBannerInput(slot,'File');try{if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw new Error('Usá JPG, PNG o WebP.');if(file.size>1500000)throw new Error('La imagen debe pesar como máximo 1,5 MB.');const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error('No se pudo leer la imagen.'));reader.readAsDataURL(file)});const dimensions=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve({width:img.naturalWidth,height:img.naturalHeight});img.onerror=()=>reject(new Error('No se pudo abrir la imagen.'));img.src=dataUrl});if(dimensions.width!==1200||dimensions.height!==500)throw new Error(`El banner debe medir exactamente 1200 × 500 px. Esta imagen mide ${dimensions.width} × ${dimensions.height}.`);this.communityBannerFiles[slot]=dataUrl;const preview=this.communityBannerInput(slot,'Preview');if(preview)preview.innerHTML=`<img src="${dataUrl}" alt="Vista previa">`;this.toast(`Banner ${slot} listo para guardar.`)}catch(e){if(input)input.value='';delete this.communityBannerFiles[slot];this.toast(e.message)}}
+  async prepareCommunityBannerImage(file){
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw new Error('Usá JPG, PNG o WebP.');
+    if(file.size>8_000_000)throw new Error('La imagen original debe pesar como máximo 8 MB.');
+    const objectUrl=URL.createObjectURL(file);
+    try{
+      const img=await new Promise((resolve,reject)=>{const el=new Image();el.onload=()=>resolve(el);el.onerror=()=>reject(new Error('No se pudo abrir la imagen.'));el.src=objectUrl});
+      const sourceW=Number(img.naturalWidth)||0,sourceH=Number(img.naturalHeight)||0;
+      if(!sourceW||!sourceH)throw new Error('No se pudieron leer las medidas de la imagen.');
+      const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=500;
+      const ctx=canvas.getContext('2d',{alpha:false});if(!ctx)throw new Error('Este navegador no pudo preparar la imagen.');
+      ctx.fillStyle='#160b1e';ctx.fillRect(0,0,1200,500);
+      const cover=Math.max(1200/sourceW,500/sourceH),coverW=sourceW*cover,coverH=sourceH*cover;
+      ctx.save();ctx.filter='blur(28px) brightness(.58) saturate(.92)';ctx.globalAlpha=.9;ctx.drawImage(img,(1200-coverW)/2-32,(500-coverH)/2-32,coverW+64,coverH+64);ctx.restore();
+      ctx.fillStyle='rgba(12,5,18,.18)';ctx.fillRect(0,0,1200,500);
+      const contain=Math.min(1200/sourceW,500/sourceH),drawW=Math.max(1,Math.round(sourceW*contain)),drawH=Math.max(1,Math.round(sourceH*contain));
+      ctx.drawImage(img,Math.round((1200-drawW)/2),Math.round((500-drawH)/2),drawW,drawH);
+      const byteSize=dataUrl=>{const comma=dataUrl.indexOf(',');return comma<0?0:Math.ceil((dataUrl.length-comma-1)*3/4)};
+      let dataUrl='';
+      for(const quality of [.86,.78,.68,.58]){dataUrl=canvas.toDataURL('image/webp',quality);if(!dataUrl.startsWith('data:image/webp'))break;if(byteSize(dataUrl)<=1_700_000)break}
+      if(!dataUrl.startsWith('data:image/webp')||byteSize(dataUrl)>1_700_000){for(const quality of [.86,.76,.64,.54]){dataUrl=canvas.toDataURL('image/jpeg',quality);if(byteSize(dataUrl)<=1_700_000)break}}
+      if(!/^data:image\/(?:webp|jpeg);base64,/.test(dataUrl)||byteSize(dataUrl)>1_900_000)throw new Error('No se pudo optimizar la imagen. Probá con otro JPG, PNG o WebP.');
+      return {dataUrl,width:sourceW,height:sourceH,outputBytes:byteSize(dataUrl)};
+    }finally{URL.revokeObjectURL(objectUrl)}
+  }
+  async selectCommunityBannerFile(slot,file){if(!file)return;const input=this.communityBannerInput(slot,'File'),preview=this.communityBannerInput(slot,'Preview');try{if(preview)preview.textContent='PREPARANDO IMAGEN…';const prepared=await this.prepareCommunityBannerImage(file);this.communityBannerFiles[slot]=prepared.dataUrl;if(preview)preview.innerHTML=`<img src="${prepared.dataUrl}" alt="Vista previa">`;const kb=Math.max(1,Math.round(prepared.outputBytes/1024));this.toast(`Banner ${slot} adaptado de ${prepared.width} × ${prepared.height} a 1200 × 500 · ${kb} KB.`)}catch(e){if(input)input.value='';delete this.communityBannerFiles[slot];if(preview)preview.textContent='SIN IMAGEN';this.toast(e.message)}}
   renderCommunityBanners(data=this.communityAdminData||{}){const banners=Array.isArray(data.banners)?data.banners:[];for(let slot=1;slot<=3;slot++){const banner=banners.find(item=>Number(item.slot)===slot)||{};this.communityBannerInput(slot,'Enabled').checked=banner.enabled===true;this.communityBannerInput(slot,'Type').value=['none','url','whatsapp','phone'].includes(banner.destinationType)?banner.destinationType:'none';this.communityBannerInput(slot,'Target').value=banner.target||'';this.communityBannerInput(slot,'Alt').value=banner.alt||'';const preview=this.communityBannerInput(slot,'Preview');if(preview&&!this.communityBannerFiles[slot])preview.innerHTML=banner.imageUrl?`<img src="${esc(banner.imageUrl)}" alt="Vista previa banner ${slot}">`:'SIN IMAGEN';this.communityBannerDestinationHint(slot)}}
   async removeCommunityBanner(slot){if(!confirm(`¿Quitar la imagen del banner ${slot}?`))return;try{this.communityAdminData=await this.req('/api/admin/community/banner',{method:'POST',body:JSON.stringify({action:'remove',slot})});delete this.communityBannerFiles[slot];const file=this.communityBannerInput(slot,'File');if(file)file.value='';this.renderCommunityBanners(this.communityAdminData);this.toast('Imagen eliminada.')}catch(e){this.toast(e.message)}}
   communityBannersFromForm(){return [1,2,3].map(slot=>({slot,enabled:this.communityBannerInput(slot,'Enabled').checked,destinationType:this.communityBannerInput(slot,'Type').value,target:this.communityBannerInput(slot,'Target').value.trim(),alt:this.communityBannerInput(slot,'Alt').value.trim()}))}

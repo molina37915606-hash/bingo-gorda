@@ -9,6 +9,17 @@ const communityHtml=fs.readFileSync(path.join(root,'comunidad.html'),'utf8');
 const communityJs=fs.readFileSync(path.join(root,'js/community.js'),'utf8');
 const playerJs=fs.readFileSync(path.join(root,'js/player.js'),'utf8');
 const serverSrc=fs.readFileSync(path.join(root,'server.js'),'utf8');
+const ranges90=[[1,9],[10,19],[20,29],[30,39],[40,49],[50,59],[60,69],[70,79],[80,90]];
+function assertStandard90Card(card,label='cartón 90'){
+  const grid=card.grid;assert(Array.isArray(grid)&&grid.length===3&&grid.every(row=>Array.isArray(row)&&row.length===9),`${label}: debe ser 3x9`);
+  const all=[];
+  grid.forEach((row,index)=>{const nums=row.filter(Number.isFinite);assert.equal(nums.length,5,`${label}: fila ${index+1} debe tener 5 números`);all.push(...nums)});
+  assert.equal(all.length,15,`${label}: debe tener 15 números`);assert.equal(new Set(all).size,15,`${label}: no debe repetir números`);
+  for(let col=0;col<9;col++){const vals=grid.map(row=>row[col]).filter(Number.isFinite);assert(vals.length>=1&&vals.length<=2,`${label}: columna ${col+1} debe tener 1 o 2 números`);const [lo,hi]=ranges90[col];assert(vals.every(v=>Number.isInteger(v)&&v>=lo&&v<=hi),`${label}: rango incorrecto en columna ${col+1}`);assert.deepEqual(vals,[...vals].sort((a,b)=>a-b),`${label}: columna ${col+1} debe crecer de arriba hacia abajo`)}
+}
+function assertStandard90Series(series){
+  assert.equal(series.cards.length,6,`Serie ${series.number}: debe contener 6 cartones`);const nums=[];series.cards.forEach((card,index)=>{assertStandard90Card(card,`Serie ${series.number} cartón ${index+1}`);nums.push(...card.grid.flat().filter(Number.isFinite))});assert.equal(nums.length,90);assert.deepEqual([...nums].sort((a,b)=>a-b),Array.from({length:90},(_,i)=>i+1),`Serie ${series.number}: debe contener 1..90 exactamente una vez`);
+}
 assert(communityHtml.includes('Públicas, privadas y oficiales')&&communityHtml.includes('🔒 PRIVADA')&&communityHtml.includes('PÚBLICA'),'Comunidad debe presentar el lobby por tipos.');
 assert(communityJs.includes("kind==='official'")&&communityJs.includes("kind==='private'")&&communityJs.includes('/api/community/room-access'),'El lobby debe diferenciar oficial/privada y proteger el acceso.');
 assert(playerJs.includes('/api/player/community-rematch')&&playerJs.includes('JUGAR OTRA PARTIDA')&&playerJs.includes('QUIERO JUGAR OTRA'),'La pantalla final comunitaria debe permitir otra partida en la misma sala.');
@@ -16,7 +27,7 @@ assert(serverSrc.includes('COMMUNITY_FINISH_GRACE_MS')&&serverSrc.includes('mayb
 assert(communityHtml.includes('cardsToolBtn')&&communityHtml.includes('bolilleroToolBtn')&&communityHtml.includes('bolilleroOverlay'),'Comunidad debe incluir Cartones y Bolillero sin crear otra página.');
 const toolsJs=fs.readFileSync(path.join(root,'js/community-tools.js'),'utf8');
 assert(toolsJs.includes('/api/community/cards/generate')&&toolsJs.includes('LA_GORDA_CARD_LOT_V1')&&toolsJs.includes('analyzeLoadedCard')&&toolsJs.includes('loadedCardRaceRows')&&toolsJs.includes('progressForPrize')&&toolsJs.includes('SACAR BOLILLA'),'Bolillero debe generar, cargar PDF autocontenido, controlar los cartones y validar premios localmente.');
-assert(serverSrc.includes('buildCardLotPdf')&&serverSrc.includes('CARD_LOTS_DIR')&&serverSrc.includes('/api/community/cards/pdf')&&serverSrc.includes('emptyCell(cx, cy, cw, ch)'),'Servidor debe persistir lotes y producir PDF con casillas vacías diferenciadas para impresión.');
+assert(serverSrc.includes('buildCardLotPdf')&&serverSrc.includes('CARD_LOTS_DIR')&&serverSrc.includes('/api/community/cards/pdf')&&serverSrc.includes('emptyCell(cx, cy, cw, ch)')&&serverSrc.includes('generateCard90StripServer'),'Servidor debe persistir lotes, producir PDF legible y generar series estándar de Bingo 90.');
 assert(communityHtml.includes('bolNearPanel')&&communityHtml.includes('claimCandidatesWrap')&&communityHtml.includes('bolCardPreviewOverlay'),'Bolillero debe mostrar cercanos, candidatos al canto y vista previa de cartones cargados.');
 
 const port=58610+Math.floor(Math.random()*70),base=`http://127.0.0.1:${port}`;
@@ -39,7 +50,7 @@ async function finishCurrent(adminToken){let st=await ok('/api/admin/state',{adm
 
   // Herramientas públicas: lote persistente + PDF real + web configurable.
   let toolsState=await ok('/api/community/state?visitorId=tools-test');assert(toolsState.tools&&toolsState.tools.cardsPrintSite);
-  const lot90=await ok('/api/community/cards/generate',{method:'POST',body:{mode:90,seriesCount:1}});assert(/^LG-[A-Z0-9]{6}$/.test(lot90.code));assert.equal(lot90.totalCards,6);assert.equal(lot90.series[0].cards.length,6);assert(lot90.series[0].cards.every(card=>card.grid.length===3&&card.grid.flat().filter(Number.isFinite).length===15));
+  const lot90=await ok('/api/community/cards/generate',{method:'POST',body:{mode:90,seriesCount:3}});assert(/^LG-[A-Z0-9]{6}$/.test(lot90.code));assert.equal(lot90.totalCards,18);assert.equal(lot90.series.length,3);lot90.series.forEach(assertStandard90Series);
   const lot90Loaded=await ok(`/api/community/cards/lot?lot=${lot90.code}`);assert.equal(lot90Loaded.code,lot90.code);
   const testCard90=lot90Loaded.series[0].cards[0],all90=testCard90.grid.flat().filter(Number.isFinite);const bingoCheck=await ok('/api/community/cards/validate',{method:'POST',body:{lot:lot90.code,seriesNumber:1,cardNumber:1,type:'bingo',drawn:all90}});assert.equal(bingoCheck.valid,true,'El Bolillero debe validar con el mismo motor los cartones impresos.');
   const pdfResponse=await fetch(base+lot90.downloadUrl);assert(pdfResponse.ok);assert((pdfResponse.headers.get('content-type')||'').includes('application/pdf'));const pdfBuffer=Buffer.from(await pdfResponse.arrayBuffer());assert(pdfBuffer.subarray(0,4).toString()==='%PDF');assert(pdfBuffer.includes(Buffer.from('LA_GORDA_CARD_LOT_V1')),'El PDF debe llevar sus cartones embebidos para poder cargarse sin depender del lote del servidor.');const embeddedPdf=pdfBuffer.toString('latin1').match(/LA_GORDA_CARD_LOT_V1\n([A-Za-z0-9_-]+)\nLA_GORDA_CARD_LOT_END/);assert(embeddedPdf);const embeddedLot=JSON.parse(Buffer.from(embeddedPdf[1],'base64url').toString('utf8'));assert.equal(embeddedLot.code,lot90.code);assert.equal(embeddedLot.series[0].cards.length,6);

@@ -2109,24 +2109,160 @@ function broadcast() {
 
 
 
-function generateCard90Server() {
-  const ranges = [[1,9],[10,19],[20,29],[30,39],[40,49],[50,59],[60,69],[70,79],[80,90]];
-  for (let attempt = 0; attempt < 5000; attempt++) {
-    const grid = Array.from({ length: 3 }, () => Array(9).fill(null));
-    const counts = Array(9).fill(0);
-    for (let row = 0; row < 3; row++) {
-      for (const col of shuffle(Array.from({ length: 9 }, (_, index) => index)).slice(0, 5)) { grid[row][col] = 0; counts[col] += 1; }
+const CARD90_RANGES = [[1,9],[10,19],[20,29],[30,39],[40,49],[50,59],[60,69],[70,79],[80,90]];
+
+function card90FiveColumnChoices() {
+  const choices = [];
+  for (let mask = 0; mask < (1 << 9); mask++) {
+    const columns = [];
+    for (let col = 0; col < 9; col++) if (mask & (1 << col)) columns.push(col);
+    if (columns.length === 5) choices.push(columns);
+  }
+  return choices;
+}
+
+function generateCard90Pattern(columnCounts) {
+  const counts = Array.isArray(columnCounts) ? columnCounts.map(Number) : [];
+  if (counts.length !== 9 || counts.some(count => count < 1 || count > 2) || counts.reduce((sum, count) => sum + count, 0) !== 15) {
+    throw new Error('Patrón inválido para cartón de 90 bolas.');
+  }
+  const choices = card90FiveColumnChoices();
+  const firstRows = shuffle([...choices]);
+  for (const first of firstRows) {
+    const firstSet = new Set(first);
+    if (counts.some((count, col) => (firstSet.has(col) ? 1 : 0) > count)) continue;
+    const secondRows = shuffle([...choices]);
+    for (const second of secondRows) {
+      const secondSet = new Set(second);
+      const third = [];
+      let valid = true;
+      for (let col = 0; col < 9; col++) {
+        const used = (firstSet.has(col) ? 1 : 0) + (secondSet.has(col) ? 1 : 0);
+        const remaining = counts[col] - used;
+        if (remaining < 0 || remaining > 1) { valid = false; break; }
+        if (remaining === 1) third.push(col);
+      }
+      if (!valid || third.length !== 5) continue;
+      const rows = [first, second, third];
+      return rows.map(columns => {
+        const set = new Set(columns);
+        return Array.from({ length: 9 }, (_, col) => set.has(col));
+      });
     }
-    if (!counts.every(Boolean)) continue;
+  }
+  throw new Error('No se pudo distribuir un cartón de 90 bolas con 5 números por fila.');
+}
+
+function validCard90Grid(grid) {
+  if (!Array.isArray(grid) || grid.length !== 3 || grid.some(row => !Array.isArray(row) || row.length !== 9)) return false;
+  const numbers = [];
+  for (const row of grid) {
+    const rowNumbers = row.filter(Number.isFinite);
+    if (rowNumbers.length !== 5) return false;
+    numbers.push(...rowNumbers);
+  }
+  if (numbers.length !== 15 || new Set(numbers).size !== 15) return false;
+  for (let col = 0; col < 9; col++) {
+    const [minimum, maximum] = CARD90_RANGES[col];
+    const values = [];
+    for (let row = 0; row < 3; row++) {
+      const value = grid[row][col];
+      if (value === null || value === undefined || value === '') continue;
+      if (!Number.isInteger(value) || value < minimum || value > maximum) return false;
+      values.push(value);
+    }
+    if (values.length < 1 || values.length > 2) return false;
+    if (values.length === 2 && values[0] >= values[1]) return false;
+  }
+  return true;
+}
+
+function generateCard90Server() {
+  // Un cartón estándar tiene 15 números: 9 columnas aportan uno como base y
+  // exactamente 6 columnas aportan un segundo número. Nunca hay columnas vacías
+  // ni columnas llenas con tres números.
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const columnCounts = Array(9).fill(1);
+    for (const col of shuffle(Array.from({ length: 9 }, (_, index) => index)).slice(0, 6)) columnCounts[col] = 2;
+    const pattern = generateCard90Pattern(columnCounts);
+    const grid = Array.from({ length: 3 }, () => Array(9).fill(null));
     for (let col = 0; col < 9; col++) {
-      const rows = [0,1,2].filter(row => grid[row][col] === 0);
-      const [minimum, maximum] = ranges[col];
-      const values = shuffle(Array.from({ length: maximum - minimum + 1 }, (_, index) => minimum + index)).slice(0, rows.length).sort((a,b) => a-b);
+      const rows = [0,1,2].filter(row => pattern[row][col]);
+      const [minimum, maximum] = CARD90_RANGES[col];
+      const values = shuffle(Array.from({ length: maximum - minimum + 1 }, (_, index) => minimum + index))
+        .slice(0, rows.length)
+        .sort((a,b) => a-b);
       rows.forEach((row, index) => { grid[row][col] = values[index]; });
     }
-    return grid;
+    if (validCard90Grid(grid)) return grid;
   }
-  throw new Error('No se pudo generar un cartón de 90 bolas.');
+  throw new Error('No se pudo generar un cartón estándar de 90 bolas.');
+}
+
+function generateCard90StripColumnCounts() {
+  // En una serie de 6, cada cartón aporta al menos un número por columna (6 en total).
+  // Los números restantes que necesita cada columna son 3,4,4,4,4,4,4,4,5 para
+  // completar exactamente los rangos 1-9, 10-19, ..., 80-90.
+  const targets = CARD90_RANGES.map(([minimum, maximum]) => (maximum - minimum + 1) - 6);
+  const subsets = [];
+  const build = (start, chosen) => {
+    if (chosen.length === 6) { subsets.push([...chosen]); return; }
+    for (let col = start; col < 9; col++) {
+      chosen.push(col); build(col + 1, chosen); chosen.pop();
+    }
+  };
+  build(0, []);
+  const remaining = [...targets];
+  const selectedByCard = [];
+  const choose = cardIndex => {
+    if (cardIndex === 6) return remaining.every(value => value === 0);
+    const cardsLeftAfter = 5 - cardIndex;
+    for (const subset of shuffle([...subsets])) {
+      if (subset.some(col => remaining[col] <= 0)) continue;
+      subset.forEach(col => { remaining[col] -= 1; });
+      const feasible = remaining.every(value => value >= 0 && value <= cardsLeftAfter)
+        && remaining.reduce((sum, value) => sum + value, 0) === cardsLeftAfter * 6;
+      if (feasible) {
+        selectedByCard.push(subset);
+        if (choose(cardIndex + 1)) return true;
+        selectedByCard.pop();
+      }
+      subset.forEach(col => { remaining[col] += 1; });
+    }
+    return false;
+  };
+  if (!choose(0)) throw new Error('No se pudo distribuir una serie estándar de 6 cartones de 90 bolas.');
+  return selectedByCard.map(extraColumns => {
+    const counts = Array(9).fill(1);
+    extraColumns.forEach(col => { counts[col] = 2; });
+    return counts;
+  });
+}
+
+function generateCard90StripServer() {
+  // Una serie/hoja estándar de 6 cartones contiene 6 × 15 = 90 posiciones numéricas.
+  // Las llenamos con 1..90 exactamente una vez, respetando columna y orden vertical.
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const columnCountsByCard = generateCard90StripColumnCounts();
+    const patterns = columnCountsByCard.map(generateCard90Pattern);
+    const grids = Array.from({ length: 6 }, () => Array.from({ length: 3 }, () => Array(9).fill(null)));
+    for (let col = 0; col < 9; col++) {
+      const [minimum, maximum] = CARD90_RANGES[col];
+      const values = shuffle(Array.from({ length: maximum - minimum + 1 }, (_, index) => minimum + index));
+      let cursor = 0;
+      for (const cardIndex of shuffle([0,1,2,3,4,5])) {
+        const rows = [0,1,2].filter(row => patterns[cardIndex][row][col]);
+        const selected = values.slice(cursor, cursor + rows.length).sort((a,b) => a-b);
+        cursor += rows.length;
+        rows.forEach((row, index) => { grids[cardIndex][row][col] = selected[index]; });
+      }
+      if (cursor !== values.length) throw new Error('Distribución incompleta en serie de 90 bolas.');
+    }
+    const allNumbers = grids.flat(2).filter(Number.isFinite).sort((a,b) => a-b);
+    const completeStrip = allNumbers.length === 90 && allNumbers.every((value, index) => value === index + 1);
+    if (completeStrip && grids.every(validCard90Grid)) return grids;
+  }
+  throw new Error('No se pudo generar una serie estándar de 6 cartones de 90 bolas.');
 }
 
 function generateCard75Server() {
@@ -2232,21 +2368,38 @@ function createPrintableCardLot(payload = {}) {
   const mode = Number(payload.mode) === 75 ? 75 : 90;
   const seriesCount = Math.max(1, Math.min(10, Math.round(Number(payload.seriesCount) || 1)));
   const totalCards = seriesCount * 6;
-  const rules = mode === 75
-    ? roomRulesFor(75, { line:true, corners:true, doubleLine:true, tripleLine:true, bingo:true })
-    : roomRulesFor(90, { ambocabeza:true, line:true, bingo:true });
-  const generated = generateDiverseCardsServer(totalCards, mode, rules, mode === 75 ? 13 : 8);
   const code = randomCardLotCode();
-  const series = Array.from({ length: seriesCount }, (_, seriesIndex) => ({
-    number: seriesIndex + 1,
-    cards: generated.slice(seriesIndex * 6, seriesIndex * 6 + 6).map((card, cardIndex) => ({
-      seriesNumber: seriesIndex + 1,
-      cardNumber: cardIndex + 1,
-      globalNumber: seriesIndex * 6 + cardIndex + 1,
-      mode,
-      grid: card.grid
-    }))
-  }));
+  let series;
+  if (mode === 90) {
+    // En Bingo 90 cada serie impresa es una tira estándar de 6 cartones: entre los
+    // seis aparecen todos los números del 1 al 90 una única vez.
+    series = Array.from({ length: seriesCount }, (_, seriesIndex) => {
+      const strip = generateCard90StripServer();
+      return {
+        number: seriesIndex + 1,
+        cards: strip.map((grid, cardIndex) => ({
+          seriesNumber: seriesIndex + 1,
+          cardNumber: cardIndex + 1,
+          globalNumber: seriesIndex * 6 + cardIndex + 1,
+          mode,
+          grid
+        }))
+      };
+    });
+  } else {
+    const rules = roomRulesFor(75, { line:true, corners:true, doubleLine:true, tripleLine:true, bingo:true });
+    const generated = generateDiverseCardsServer(totalCards, mode, rules, 13);
+    series = Array.from({ length: seriesCount }, (_, seriesIndex) => ({
+      number: seriesIndex + 1,
+      cards: generated.slice(seriesIndex * 6, seriesIndex * 6 + 6).map((card, cardIndex) => ({
+        seriesNumber: seriesIndex + 1,
+        cardNumber: cardIndex + 1,
+        globalNumber: seriesIndex * 6 + cardIndex + 1,
+        mode,
+        grid: card.grid
+      }))
+    }));
+  }
   const lot = {
     version: 1,
     code,
@@ -3637,9 +3790,8 @@ function validateCardStructure(card, expectedMode) {
     }
     for (let col = 0; col < 9; col++) {
       const column = card.grid.map(row => row[col]).filter(Number.isFinite);
-      if (!column.length) throw new Error(`La columna ${col + 1} del cartón ${label} está vacía.`);
-      const minimum = col === 0 ? 1 : col * 10;
-      const maximum = col === 8 ? 90 : col * 10 + 9;
+      if (column.length < 1 || column.length > 2) throw new Error(`La columna ${col + 1} del cartón ${label} debe contener 1 o 2 números.`);
+      const [minimum, maximum] = CARD90_RANGES[col];
       if (column.some(number => number < minimum || number > maximum)) throw new Error(`El cartón ${label} tiene un número fuera de rango en la columna ${col + 1}.`);
       if (column.some((number, index) => index > 0 && number <= column[index - 1])) throw new Error(`La columna ${col + 1} del cartón ${label} no está ordenada.`);
     }

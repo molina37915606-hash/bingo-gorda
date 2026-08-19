@@ -15,8 +15,9 @@ assert(playerJs.includes('/api/player/community-rematch')&&playerJs.includes('JU
 assert(serverSrc.includes('COMMUNITY_FINISH_GRACE_MS')&&serverSrc.includes('maybeCloseFinishedCommunityRoom')&&serverSrc.includes("roomType: state.roomSettings?.roomOrigin === 'community'"),'Servidor debe cerrar la sala tras la ventana final y conservar tipo en historial.');
 assert(communityHtml.includes('cardsToolBtn')&&communityHtml.includes('bolilleroToolBtn')&&communityHtml.includes('bolilleroOverlay'),'Comunidad debe incluir Cartones y Bolillero sin crear otra página.');
 const toolsJs=fs.readFileSync(path.join(root,'js/community-tools.js'),'utf8');
-assert(toolsJs.includes('/api/community/cards/generate')&&toolsJs.includes('LA_GORDA_CARD_LOT_V1')&&toolsJs.includes('analyzeLoadedCard')&&toolsJs.includes('SACAR BOLILLA'),'Bolillero debe generar, cargar PDF autocontenido y validar cartones localmente.');
-assert(serverSrc.includes('buildCardLotPdf')&&serverSrc.includes('CARD_LOTS_DIR')&&serverSrc.includes('/api/community/cards/pdf'),'Servidor debe persistir lotes y producir los PDF imprimibles.');
+assert(toolsJs.includes('/api/community/cards/generate')&&toolsJs.includes('LA_GORDA_CARD_LOT_V1')&&toolsJs.includes('analyzeLoadedCard')&&toolsJs.includes('loadedCardRaceRows')&&toolsJs.includes('progressForPrize')&&toolsJs.includes('SACAR BOLILLA'),'Bolillero debe generar, cargar PDF autocontenido, controlar los cartones y validar premios localmente.');
+assert(serverSrc.includes('buildCardLotPdf')&&serverSrc.includes('CARD_LOTS_DIR')&&serverSrc.includes('/api/community/cards/pdf')&&serverSrc.includes('emptyCell(cx, cy, cw, ch)'),'Servidor debe persistir lotes y producir PDF con casillas vacías diferenciadas para impresión.');
+assert(communityHtml.includes('bolNearPanel')&&communityHtml.includes('claimCandidatesWrap')&&communityHtml.includes('bolCardPreviewOverlay'),'Bolillero debe mostrar cercanos, candidatos al canto y vista previa de cartones cargados.');
 
 const port=58610+Math.floor(Math.random()*70),base=`http://127.0.0.1:${port}`;
 const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'el-bingo-lobby-'));

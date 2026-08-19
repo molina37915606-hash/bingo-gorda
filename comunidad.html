@@ -231,7 +231,28 @@ html.bolScreenOpen,body.bolScreenOpen{overflow:hidden!important}.bolilleroOverla
   .bolReview{margin-top:2px;}
 }
 
-</style></head><body>
+</style>
+<style id="bol-mobile-board-fix-1250">
+@media(max-width:850px){
+  .bolBoardWrap.mobileOpen{height:100dvh;max-height:100dvh;overflow:hidden!important;padding:max(10px,env(safe-area-inset-top)) 10px max(10px,env(safe-area-inset-bottom));grid-template-rows:auto auto minmax(0,1fr);}
+  .bolBoardContent{min-height:0!important;overflow:hidden!important;padding:0!important;display:flex!important;align-items:flex-start!important;justify-content:center!important;}
+  .bolBoardContent.mode90{--bol-mobile-cell:min(46px,calc((100vw - 74px)/10),calc((100dvh - 160px)/9));}
+  .bolBoardContent.mode75{--bol-mobile-cell:min(46px,calc((100vw - 74px)/10),calc((100dvh - 160px)/8));}
+  .bolNumberGrid,.bolExitGrid{width:100%!important;height:auto!important;display:grid!important;grid-template-columns:repeat(10,var(--bol-mobile-cell))!important;grid-template-rows:repeat(9,var(--bol-mobile-cell))!important;grid-auto-rows:unset!important;gap:4px!important;justify-content:space-between!important;align-content:start!important;justify-items:center!important;align-items:center!important;overflow:hidden!important;padding:4px 0 0!important;}
+  .bolBoardContent.mode75 .bolNumberGrid,.bolBoardContent.mode75 .bolExitGrid{grid-template-rows:repeat(8,var(--bol-mobile-cell))!important;}
+  .bolNum,.bolExit{width:var(--bol-mobile-cell)!important;height:var(--bol-mobile-cell)!important;min-width:0!important;min-height:0!important;max-width:none!important;max-height:none!important;aspect-ratio:1/1!important;border-radius:8px!important;}
+  .bolNum{font-size:clamp(8px,2.8vw,12px)!important;border-width:1px!important;}
+  .bolExit{position:relative!important;display:grid!important;place-items:center!important;grid-template-rows:1fr!important;padding:0!important;border-width:1px!important;}
+  .bolExit small{position:absolute!important;top:2px!important;left:3px!important;font-size:clamp(5px,1.55vw,7px)!important;line-height:1!important;}
+  .bolExit b{font-size:clamp(9px,3.1vw,14px)!important;line-height:1!important;align-self:center!important;}
+}
+@media(max-width:360px){
+  .bolBoardContent.mode90{--bol-mobile-cell:min(42px,calc((100vw - 62px)/10),calc((100dvh - 150px)/9));}
+  .bolBoardContent.mode75{--bol-mobile-cell:min(42px,calc((100vw - 62px)/10),calc((100dvh - 150px)/8));}
+  .bolNumberGrid,.bolExitGrid{gap:3px!important;}
+}
+</style>
+</head><body>
 <div class="page" id="page">
 <header class="topbar"><div class="brand"><img src="/assets/logo.webp" alt="LA GORDA"><div class="brandText"><strong>EL BINGO DE LA GORDA</strong><small>Mesas · Chat · Partidas</small></div></div><div class="topbarRight"><div class="communityTools"><button id="cardsToolBtn" class="toolPill cards" type="button"><span class="toolIcon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="2"></rect><path d="M8 8h8M8 12h8M8 16h5"></path></svg></span><b>CARTONES</b></button><button id="bolilleroToolBtn" class="toolPill" type="button"><span class="toolIcon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="M9.5 9.4c.6-1 1.5-1.5 2.7-1.5 1.6 0 2.8.9 2.8 2.2 0 1-.6 1.7-1.6 2.2 1.2.4 1.9 1.2 1.9 2.4 0 1.5-1.3 2.6-3.2 2.6-1.5 0-2.6-.6-3.2-1.7"></path></svg></span><b>BOLILLERO</b></button></div><div class="presence"><i></i><span id="onlineText">EN LÍNEA</span></div></div></header>
 <div class="desktopGrid"><main class="leftCol">

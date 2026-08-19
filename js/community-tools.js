@@ -275,17 +275,25 @@
   function prizeLabel(type) {
     return ({ ambo:'AMBOCABEZA', line:'LÍNEA', secondLine:'2° LÍNEA', doubleLine:'DOBLE LÍNEA', tripleLine:'TRIPLE LÍNEA', corners:'4 ESQUINAS', bingo:'BINGO' })[type] || type.toUpperCase();
   }
+  function prizeDisplayLabel(type) {
+    return ({ ambo:'AMBO', line:'LÍNEA', secondLine:'2ª LÍNEA', doubleLine:'DOBLE LÍNEA', tripleLine:'TRIPLE LÍNEA', corners:'4 ESQUINAS', bingo:'BINGO' })[type] || prizeLabel(type);
+  }
+  function fitAnnouncementLabel(label) {
+    const target = $('bolAnnouncementText');
+    target.classList.remove('medium','long');
+    if (label.length >= 12) target.classList.add('long');
+    else if (label.length >= 8) target.classList.add('medium');
+  }
   function enabledPrizeTypes() {
     const order = bol.mode === 75 ? ['line','doubleLine','tripleLine','corners','bingo'] : ['ambo','line','secondLine','bingo'];
     return order.filter(type => bol.rules[type]);
   }
   function ballClass(number) { return bol.drawn.includes(number) ? 'drawn' : ''; }
   function boardMarkup() {
-    if (boardView === 'exit') {
-      if (!bol.drawn.length) return '<div class="bolBoardEmpty">Todavía no salió ninguna bolilla.</div>';
-      return `<div class="bolExitGrid">${bol.drawn.map((number,index)=>`<div class="bolExit"><small>${index+1}°</small><b>${number}</b></div>`).join('')}</div>`;
-    }
     const max = bol.mode === 75 ? 75 : 90;
+    if (boardView === 'exit') {
+      return `<div class="bolExitGrid">${Array.from({length:max},(_,index)=>{const number=bol.drawn[index];return number==null?'<div class="bolExit empty"><small>—</small><b>—</b></div>':`<div class="bolExit"><small>${index+1}°</small><b>${number}</b></div>`}).join('')}</div>`;
+    }
     return `<div class="bolNumberGrid">${Array.from({length:max},(_,i)=>i+1).map(number=>`<span class="bolNum ${ballClass(number)}">${number}</span>`).join('')}</div>`;
   }
   function setBoardView(next) {
@@ -334,10 +342,12 @@
     announcementType = type;
     announcementResumeAuto = bol.drawMode === 'automatic' && !bol.paused;
     if (announcementResumeAuto) { bol.paused = true; saveBol(); syncAutoTimer(); renderBolillero(); }
-    $('bolAnnouncementText').textContent = prizeLabel(type);
+    const announcementLabel = prizeDisplayLabel(type);
+    $('bolAnnouncementText').textContent = announcementLabel;
+    fitAnnouncementLabel(announcementLabel);
     $('bolAnnouncementCheck').classList.toggle('hidden', bol.loadedCards.length === 0);
     show('bolAnnouncement');
-    speak(prizeLabel(type));
+    speak(announcementLabel);
     if (!bol.loadedCards.length) announcementTimer = setTimeout(() => closeAnnouncement(true), 1700);
   }
   function closeAnnouncement(resume = true) {
@@ -541,7 +551,7 @@
   function openClaim(type) {
     claimType = type;
     bol.paused = true; saveBol(); syncAutoTimer(); renderBolillero();
-    $('claimTitle').textContent = `${prizeLabel(type)} CANTADO`;
+    $('claimTitle').textContent = `${prizeDisplayLabel(type)} CANTADO`;
     $('claimHint').textContent = bol.loadedCards.length ? 'Elegí el cartón para comprobarlo.' : 'Revisá el cartón y confirmá si el canto es válido.';
     $('claimManualActions').classList.toggle('hidden', bol.loadedCards.length > 0);
     $('claimLoadedActions').classList.toggle('hidden', bol.loadedCards.length === 0);
@@ -583,7 +593,7 @@
       speak('No es válido');
       return;
     }
-    $('claimResult').innerHTML = `<b class="valid">✓ ${prizeLabel(claimType)} VÁLIDO</b><span>${loadedCardLabel(card)}</span>`;
+    $('claimResult').innerHTML = `<b class="valid">✓ ${prizeDisplayLabel(claimType)} VÁLIDO</b><span>${loadedCardLabel(card)}</span>`;
     confirmPrizeValid(card, progress.lineKey || '');
   }
   function confirmPrizeValid(card, detail) {
@@ -601,6 +611,11 @@
   }
 
   function bind() {
+    const fullscreenRoot = $('bolilleroOverlay');
+    for (const modalId of ['bolClaimOverlay','bolCardPreviewOverlay']) {
+      const modal = $(modalId);
+      if (fullscreenRoot && modal && modal.parentElement !== fullscreenRoot) fullscreenRoot.appendChild(modal);
+    }
     $('cardsToolBtn')?.addEventListener('click', openCards);
     $('bolilleroToolBtn')?.addEventListener('click', () => openBolillero());
     $('closeCardsBtn')?.addEventListener('click', closeCards);

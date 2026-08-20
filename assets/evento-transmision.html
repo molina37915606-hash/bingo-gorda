@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#08050e">
+<title>Evento · Transmisión LAB</title>
+<style>
+:root{--bg:#08050e;--panel:#130c19;--panel2:#1c1124;--line:#ffffff1c;--text:#fff8e8;--muted:#b9aebe;--gold:#f2c95d;--vio:#8d247f;--green:#48d68c}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}
+body{background:radial-gradient(circle at 22% -5%,#5f1c6566,transparent 32%),linear-gradient(145deg,#100715,#060409 72%)}
+.hidden{display:none!important}
+.app{width:100vw;height:100vh;padding:8px;display:grid;grid-template-rows:9% minmax(0,1fr) 11% 28%;gap:7px}
+.app.pos-top{grid-template-rows:9% 11% minmax(0,1fr) 28%}
+.app.pos-hidden{grid-template-rows:9% minmax(0,1fr) 0 28%}
+.top{grid-row:1;display:grid;grid-template-columns:minmax(220px,26%) minmax(0,1fr) minmax(180px,20%);align-items:center;gap:12px;padding:7px 14px;border:1px solid var(--line);border-radius:15px;background:#120c19e8;overflow:hidden}
+.brand{min-width:0;display:flex;align-items:center;gap:9px}.brand img{width:48px;height:48px;object-fit:contain}.brandText{min-width:0}.brandText b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:clamp(14px,1.4vw,23px)}.brandText small{display:block;margin-top:3px;color:var(--muted);font-size:clamp(8px,.7vw,11px)}
+.topText{min-width:0;text-align:center;font-size:clamp(18px,2.1vw,36px);font-weight:1000;color:#ffe590;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.02em}
+.live{text-align:right}.live strong{display:block;color:var(--green);font-size:clamp(11px,1vw,16px)}.live span{display:block;color:var(--muted);font-size:clamp(8px,.7vw,11px);margin-top:3px}
+.stage{grid-row:2;min-height:0;display:grid;grid-template-columns:27% minmax(0,1fr);gap:7px}
+.app.pos-top .stage{grid-row:3}
+.left{min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;align-items:center;justify-items:center;gap:4px;padding:10px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#1b1024,#0d0912);overflow:hidden}
+.prize{font-size:clamp(9px,.85vw,13px);font-weight:1000;color:var(--gold);letter-spacing:.12em;text-align:center}
+.ball{width:min(72%,260px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;align-content:center;background:radial-gradient(circle at 31% 25%,#fff9db 0 6%,#c257b4 17%,#822274 54%,#2a0a31 100%);border:6px solid var(--gold);box-shadow:0 14px 40px #0008,0 0 35px #a437963b;font-size:clamp(62px,9vw,150px);font-weight:1000;line-height:.85;text-shadow:0 5px 14px #0008}
+.ball small{font-size:clamp(18px,2vw,34px);letter-spacing:.12em}
+.count{font-size:clamp(10px,.9vw,14px);font-weight:850;color:#d5c9da}
+.recent{display:flex;gap:5px;max-width:100%;overflow:hidden}.recent i{flex:0 0 auto;width:clamp(30px,3vw,46px);height:clamp(30px,3vw,46px);border-radius:50%;display:grid;place-items:center;background:#25162e;border:1px solid #ffffff20;font-style:normal;font-size:clamp(9px,.9vw,14px);font-weight:1000}.recent i:first-child{background:#6f176a;border-color:#e089d5}
+.boardWrap{min-height:0;padding:8px;border:1px solid var(--line);border-radius:16px;background:#0e0913;display:grid;overflow:hidden}
+.board{min-height:0;display:grid;gap:4px;grid-auto-rows:minmax(0,1fr)}.board.m75{grid-template-columns:repeat(15,minmax(0,1fr))}.board.m90{grid-template-columns:repeat(18,minmax(0,1fr))}
+.num{min-width:0;min-height:0;display:grid;place-items:center;border:1px solid #ffffff18;border-radius:7px;background:#19101f;color:#d9cfdd;font-weight:950;font-size:clamp(10px,1.05vw,18px)}.num.hit{background:linear-gradient(145deg,#a33293,#66165f);border-color:#e88bdd;color:#fff;box-shadow:inset 0 1px #ffffff30}.num.last{background:linear-gradient(145deg,#ffe797,#e8b932);border-color:#fff1a8;color:#251700;box-shadow:0 0 18px #f2c95d50}
+.sponsors{grid-row:3;min-height:0;display:flex;align-items:center;justify-content:center;gap:10px;padding:4px 10px;border:1px solid var(--line);border-radius:14px;background:#0c0810;overflow:hidden}.app.pos-top .sponsors{grid-row:2}.app.pos-hidden .sponsors{display:none}
+.sponsors img{height:100%;max-width:65%;object-fit:contain}.sponsorName{max-width:25%;font-weight:900;color:#e8dfe9;font-size:clamp(9px,.8vw,13px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dots{display:flex;gap:4px}.dots i{width:5px;height:5px;border-radius:50%;background:#ffffff30}.dots i.on{width:15px;border-radius:8px;background:var(--gold)}
+.closest{grid-row:4;min-height:0;display:grid;grid-template-rows:25px minmax(0,1fr);gap:4px;padding:6px;border:1px solid var(--line);border-radius:16px;background:#0d0911;overflow:hidden}
+.closestHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 4px}.closestHead strong{font-size:clamp(9px,.85vw,13px);letter-spacing:.06em}.closestHead span{font-size:clamp(8px,.75vw,11px);color:var(--gold);font-weight:1000}
+.cards{min-height:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}
+.card{min-width:0;min-height:0;padding:5px;border:1px solid #ffffff18;border-radius:9px;background:#17101e;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:3px;overflow:hidden}.card.leader{border-color:#f2c95d77;background:#201428}.cardHead{min-width:0;display:flex;justify-content:space-between;gap:4px}.cardHead b{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:clamp(7px,.62vw,10px)}.cardHead span{white-space:nowrap;color:var(--muted);font-size:clamp(6px,.52vw,9px)}
+.mini{min-height:0;display:grid;gap:1px}.mini.m75{grid-template-columns:repeat(5,1fr)}.mini.m90{grid-template-columns:repeat(9,1fr)}.mini i{min-width:0;min-height:0;display:grid;place-items:center;background:#f4eff5;color:#25162a;font-style:normal;font-weight:950;font-size:clamp(5px,.48vw,8px)}.mini i.blank{background:#26182d;color:transparent}.mini i.hit{background:#f1cb58;color:#251600}
+.missing{font-size:clamp(6px,.55vw,9px);font-weight:1000;color:#f2d77d}.empty{display:grid;place-items:center;color:#665d6b}
+.scene{position:fixed;inset:0;z-index:20;display:none;place-items:center;background:#07040df2;padding:24px}.scene.show{display:grid}.sceneBox{text-align:center;max-width:1000px}.sceneLogo{width:min(180px,20vw);max-height:180px;object-fit:contain}.scene small{display:block;color:var(--gold);font-size:clamp(14px,1.4vw,22px);font-weight:1000;letter-spacing:.15em}.scene h1{margin:10px 0 6px;font-size:clamp(54px,8vw,138px);line-height:.9}.scene p{margin:0;color:#d8cfdd;font-size:clamp(16px,2vw,32px);font-weight:850}
+.error{position:fixed;inset:0;display:grid;place-items:center;text-align:center;padding:30px;color:#ff9aa9;font-size:20px;font-weight:850}
+@media(max-width:900px),(orientation:portrait){.top{grid-template-columns:1fr auto}.topText{grid-column:1/-1;grid-row:2;font-size:18px}.live{grid-column:2;grid-row:1}.app{grid-template-rows:auto minmax(0,1fr) 9% 32%;}.stage{grid-template-columns:35% 65%}.cards{grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr)}.board{gap:2px}.num{border-radius:4px}.brandText b{font-size:14px}}
+</style>
+</head>
+<body>
+<main id="app" class="app pos-bottom hidden">
+  <header class="top">
+    <div class="brand"><img id="logo" src="/assets/logo.webp" alt=""><div class="brandText"><b id="eventTitle">EVENTO</b><small id="eventMeta">Transmisión oficial</small></div></div>
+    <div id="topText" class="topText">EVENTO EN VIVO</div>
+    <div class="live"><strong id="status">● EN VIVO</strong><span id="sync">CONECTANDO…</span></div>
+  </header>
+  <section class="stage">
+    <aside class="left">
+      <div id="prize" class="prize">JUGANDO POR LÍNEA</div>
+      <div id="ball" class="ball">—</div>
+      <div id="count" class="count">0 bolillas</div>
+      <div id="recent" class="recent"></div>
+    </aside>
+    <section class="boardWrap"><div id="board" class="board m90"></div></section>
+  </section>
+  <section id="sponsors" class="sponsors"><span class="sponsorName">SPONSORS</span></section>
+  <section class="closest">
+    <div class="closestHead"><strong>6 CARTONES MÁS CERCA DEL PREMIO</strong><span id="target">LÍNEA</span></div>
+    <div id="cards" class="cards"></div>
+  </section>
+</main>
+<section id="scene" class="scene"><div class="sceneBox"><img id="sceneLogo" class="sceneLogo hidden" alt=""><small id="sceneKicker">EVENTO</small><h1 id="sceneTitle">PAUSA</h1><p id="sceneText"></p></div></section>
+<div id="error" class="error hidden"></div>
+<script>
+(() => {
+'use strict';
+
+const $=id=>document.getElementById(id);
+const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'}[ch]));
+const DB_NAME='lgEventoLab',DB_STORE='kv',SPONSOR_KEY='sponsors';
+let payload={},state=null,lot=null,cards=[],assignments={},sponsorList=[],sponsorIndex=0,sponsorTimer=null,sponsorSig='',lastStateAt=0;
+
+function decodePayload(raw){
+  const text=String(raw||'').replace(/-/g,'+').replace(/_/g,'/');
+  const bin=atob(text+'='.repeat((4-text.length%4)%4));
+  const bytes=Uint8Array.from(bin,ch=>ch.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+try{payload=decodePayload(location.hash.slice(1))}catch{payload={}}
+
+function openDb(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(DB_NAME,1);
+    req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains(DB_STORE))req.result.createObjectStore(DB_STORE,{keyPath:'key'})};
+    req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
+  });
+}
+async function dbGet(key){
+  try{
+    const db=await openDb();
+    return await new Promise((resolve,reject)=>{
+      const req=db.transaction(DB_STORE,'readonly').objectStore(DB_STORE).get(key);
+      req.onsuccess=()=>resolve(req.result?.value);req.onerror=()=>reject(req.error);
+    });
+  }catch{return null}
+}
+
+function flattenLot(data){
+  return (data?.series||[]).flatMap(series=>(series.cards||[]).map(card=>({...card,globalNumber:Number(card.globalNumber)||0,mode:Number(card.mode)||Number(data.mode)||90}))).sort((a,b)=>a.globalNumber-b.globalNumber);
+}
+async function loadLot(){
+  if(!payload.lotCode) return;
+  try{
+    const response=await fetch(`/api/community/cards/lot?lot=${encodeURIComponent(payload.lotCode)}`,{cache:'no-store'});
+    const data=await response.json();
+    if(response.ok){lot=data;cards=flattenLot(data)}
+  }catch{}
+}
+
+function cardNumbers(card){return (card?.grid||[]).flat().filter(Number.isFinite)}
+function lineMissing(card,set){
+  const rows=(card?.grid||[]).map(row=>row.filter(Number.isFinite));
+  return rows.length?Math.min(...rows.map(row=>row.filter(n=>!set.has(n)).length)):999;
+}
+function bingoMissing(card,set){return cardNumbers(card).filter(n=>!set.has(n)).length}
+function ownerOf(card){return assignments[String(Number(card.globalNumber))]?.name||''}
+function refreshAssignments(){
+  if(!payload.lotCode)return;
+  try{
+    const local=JSON.parse(localStorage.getItem(`evento_lab_assignments:${payload.lotCode}`)||'{}');
+    if(local&&Object.keys(local).length)assignments=local;
+  }catch{}
+}
+function nearest(drawn){
+  const set=new Set((drawn||[]).map(Number));
+  const assigned=cards.filter(card=>ownerOf(card));
+  if(assigned.length){
+    const lineDone=assigned.some(card=>lineMissing(card,set)===0);
+    const target=lineDone?'BINGO':'LÍNEA';
+    const ranked=assigned.map(card=>{
+      const line=lineMissing(card,set),bingo=bingoMissing(card,set);
+      return {card,name:ownerOf(card),line,bingo,score:lineDone?bingo:line};
+    }).sort((a,b)=>a.score-b.score||a.bingo-b.bingo||Number(a.card.globalNumber)-Number(b.card.globalNumber)).slice(0,6);
+    return {target,ranked,set};
+  }
+  const fallback=(state?.highlightedCards||[]).slice(0,6).map(item=>({
+    card:{globalNumber:item.cardNumber,grid:item.grid,mode:item.mode},
+    name:item.playerName||'Jugador',
+    score:Number(item.raceMissing)||0
+  }));
+  return {target:'PREMIO',ranked:fallback,set};
+}
+
+function bingoLetter(number){return 'BINGO'[Math.min(4,Math.floor((Number(number)-1)/15))]}
+function ballMarkup(number,mode){
+  if(number==null) return '—';
+  return Number(mode)===75?`<small>${bingoLetter(number)}</small>${Number(number)}`:String(Number(number));
+}
+function renderBoard(s){
+  const mode=Number(s.game?.mode)===75?75:90,total=mode===75?75:90,drawn=new Set((s.game?.drawn||[]).map(Number)),last=Number(s.game?.lastBall);
+  const board=$('board');board.className=`board m${mode}`;
+  board.innerHTML=Array.from({length:total},(_,i)=>{
+    const n=i+1;
+    return `<span class="num ${drawn.has(n)?'hit':''} ${n===last?'last':''}">${n}</span>`;
+  }).join('');
+}
+function miniCard(item,set,index){
+  const card=item.card||{},mode=Number(card.mode)===75?75:90;
+  const cells=(card.grid||[]).flat().map(value=>{
+    if(!Number.isFinite(value))return'<i class="blank">·</i>';
+    return `<i class="${set.has(value)?'hit':''}">${value}</i>`;
+  }).join('');
+  const missing=item.score===0?'LISTO':`FALTA${item.score===1?'':'N'} ${item.score}`;
+  return `<article class="card ${index===0?'leader':''}"><div class="cardHead"><b>${esc(item.name||'Jugador')}</b><span>#${String(card.globalNumber||'').padStart(3,'0')}</span></div><div class="mini m${mode}">${cells}</div><div class="missing">${missing}</div></article>`;
+}
+function renderCards(s){
+  const info=nearest(s.game?.drawn||[]);
+  $('target').textContent=info.target;
+  $('prize').textContent=`JUGANDO POR ${info.target}`;
+  const html=info.ranked.map((item,index)=>miniCard(item,info.set,index));
+  while(html.length<6)html.push('<article class="card empty">—</article>');
+  $('cards').innerHTML=html.join('');
+}
+function statusText(status){
+  return status==='playing'?'● EN VIVO':status==='paused'?'● PAUSADO':status==='waiting'?'● PREPARANDO':status==='finished'?'● FINALIZADO':'● EN VIVO';
+}
+function currentPosition(){
+  const local=localStorage.getItem('evento_lab_sponsor_position');
+  const value=local||payload.sponsorPosition||state?.eventDesign?.sponsorPosition||'bottom';
+  return ['top','bottom','hidden'].includes(value)?value:'bottom';
+}
+function renderScene(s){
+  const raw=String(s?.eventDesign?.scene||'game');
+  const scene=s.status==='waiting'&&raw==='game'?'waiting':s.status==='finished'&&raw==='game'?'final':raw;
+  const host=$('scene');
+  if(scene==='game'){host.classList.remove('show');return}
+  const labels={
+    waiting:['PRÓXIMAMENTE','COMENZAMOS EN BREVE',payload.title||s.roomSettings?.eventTitle||'EVENTO'],
+    pause:['PAUSA','PAUSA DEL EVENTO','Volvemos en unos instantes'],
+    line:['PREMIO','¡LÍNEA!','Premio confirmado'],
+    bingo:['PREMIO MAYOR','¡BINGO!','Premio confirmado'],
+    final:['FINAL','GRACIAS POR PARTICIPAR',payload.title||s.roomSettings?.eventTitle||'EVENTO']
+  };
+  const [k,t,sub]=labels[scene]||labels.pause;
+  $('sceneKicker').textContent=k;$('sceneTitle').textContent=t;$('sceneText').textContent=sub;
+  const logo=s?.eventDesign?.assets?.logo;
+  if(logo?.hasAsset&&logo.url){$('sceneLogo').src=logo.url;$('sceneLogo').classList.remove('hidden')}else $('sceneLogo').classList.add('hidden');
+  host.classList.add('show');
+}
+function render(s){
+  state=s;lastStateAt=Date.now();refreshAssignments();
+  if(!s?.active)return fail('La sala no está activa.');
+  $('app').classList.remove('hidden');$('error').classList.add('hidden');
+  const mode=Number(s.game?.mode)===75?75:90,drawn=s.game?.drawn||[],last=s.game?.lastBall;
+  const title=payload.title||s.roomSettings?.eventTitle||'EVENTO';
+  $('eventTitle').textContent=title;
+  $('eventMeta').textContent=`Bingo ${mode} · ${drawn.length} bolillas`;
+  $('topText').textContent=localStorage.getItem('evento_lab_top_text')||payload.topText||title;
+  $('status').textContent=statusText(s.status);
+  $('sync').textContent='SINCRONIZADO';
+  $('ball').innerHTML=ballMarkup(last,mode);
+  $('count').textContent=`Bolilla ${drawn.length} de ${mode}`;
+  $('recent').innerHTML=drawn.slice(-7).reverse().map(n=>`<i>${Number(mode)===75?`${bingoLetter(n)} ${n}`:n}</i>`).join('');
+  const logo=s.eventDesign?.assets?.logo;
+  $('logo').src=logo?.hasAsset&&logo.url?logo.url:'/assets/logo.webp';
+  const position=currentPosition();
+  $('app').classList.remove('pos-top','pos-bottom','pos-hidden');$('app').classList.add(`pos-${position}`);
+  renderBoard(s);renderCards(s);renderSponsors();renderScene(s);
+}
+function fail(message){$('error').textContent=message;$('error').classList.remove('hidden')}
+
+function serverSponsors(){
+  return (state?.eventSponsors||[]).filter(item=>item?.imageUrl).map(item=>({id:`server-${item.slot}`,enabled:true,label:item.label||'',image:item.imageUrl}));
+}
+async function loadSponsors(){
+  const local=await dbGet(SPONSOR_KEY);
+  sponsorList=Array.isArray(local)&&local.some(item=>item?.image)?local.filter(item=>item.enabled!==false&&item.image):serverSponsors();
+  renderSponsors(true);
+}
+function renderSponsors(force=false){
+  const host=$('sponsors');if(!host)return;
+  const list=sponsorList.filter(item=>item.enabled!==false&&item.image);
+  const sig=JSON.stringify(list.map(item=>[item.id,item.label,item.image]));
+  if(!list.length){host.innerHTML='<span class="sponsorName">SPONSORS</span>';clearInterval(sponsorTimer);sponsorTimer=null;sponsorSig='';return}
+  if(force||sig!==sponsorSig){
+    sponsorSig=sig;sponsorIndex=0;clearInterval(sponsorTimer);sponsorTimer=null;
+    if(list.length>1)sponsorTimer=setInterval(()=>{sponsorIndex=(sponsorIndex+1)%Math.max(1,sponsorList.length);paintSponsor()},10000);
+  }
+  paintSponsor();
+}
+function paintSponsor(){
+  const host=$('sponsors');const list=sponsorList.filter(item=>item.enabled!==false&&item.image);if(!host||!list.length)return;
+  sponsorIndex=((sponsorIndex%list.length)+list.length)%list.length;const item=list[sponsorIndex];
+  host.innerHTML=`<img src="${esc(item.image)}" alt="${esc(item.label||'Sponsor')}">${item.label?`<span class="sponsorName">${esc(item.label)}</span>`:''}<span class="dots">${list.length>1?list.map((_,i)=>`<i class="${i===sponsorIndex?'on':''}"></i>`).join(''):''}</span>`;
+}
+async function refresh(){
+  if(!payload.alias)throw new Error('Falta el código de transmisión.');
+  const response=await fetch(`/api/broadcast/state?token=${encodeURIComponent(payload.alias)}`,{cache:'no-store'});
+  const data=await response.json();
+  if(!response.ok)throw new Error(data.error||'Transmisión no válida.');
+  render(data);
+}
+function connect(){
+  const es=new EventSource(`/api/events?role=broadcast&broadcastToken=${encodeURIComponent(payload.alias)}`);
+  es.addEventListener('state',event=>{try{render(JSON.parse(event.data))}catch{}});
+  es.onerror=()=>{$('sync').textContent='RECONECTANDO…';setTimeout(()=>refresh().catch(()=>{}),1200)};
+}
+
+assignments=payload.assignments&&typeof payload.assignments==='object'?payload.assignments:{};
+Promise.all([loadLot(),loadSponsors()]).then(()=>refresh()).then(connect).catch(error=>fail(error.message));
+setInterval(()=>{if(state&&Date.now()-lastStateAt>7000)refresh().catch(()=>{$('sync').textContent='RECONECTANDO…'})},4500);
+setInterval(loadSponsors,5000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){loadSponsors();refresh().catch(()=>{})}});
+})();
+</script>
+</body>
+</html>

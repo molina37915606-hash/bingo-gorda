@@ -70,7 +70,7 @@ body{background:radial-gradient(circle at 22% -5%,#5f1c6566,transparent 32%),lin
 'use strict';
 
 const $=id=>document.getElementById(id);
-const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'}[ch]));
+const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
 const DB_NAME='lgEventoLab',DB_STORE='kv',SPONSOR_KEY='sponsors';
 let payload={},state=null,lot=null,cards=[],assignments={},sponsorList=[],sponsorIndex=0,sponsorTimer=null,sponsorSig='',lastStateAt=0;
 
@@ -229,7 +229,7 @@ function serverSponsors(){
 async function loadSponsors(){
   const local=await dbGet(SPONSOR_KEY);
   sponsorList=Array.isArray(local)&&local.some(item=>item?.image)?local.filter(item=>item.enabled!==false&&item.image):serverSponsors();
-  renderSponsors(true);
+  renderSponsors(false);
 }
 function renderSponsors(force=false){
   const host=$('sponsors');if(!host)return;

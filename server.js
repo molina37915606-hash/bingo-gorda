@@ -34,6 +34,7 @@ const WORKSPACES_DIR = path.join(DATA_DIR, 'operadores');
 const HISTORY_DIR = path.join(DATA_DIR, 'historial');
 const CARD_LOTS_DIR = path.join(DATA_DIR, 'cartones');
 const COMMUNITY_BANNERS_DIR = path.join(DATA_DIR, 'community-banners');
+const EVENT_BANNERS_DIR = path.join(DATA_DIR, 'event-banners');
 const OPERATIONAL_WORKSPACE_IDS = ['owner', ...Array.from({ length: 9 }, (_, index) => `slot${index + 2}`)];
 const MAX_OPERATIONAL_ROOMS = OPERATIONAL_WORKSPACE_IDS.length;
 const COMMUNITY_HOST_TTL_MS = 8 * 60 * 60 * 1000;
@@ -120,6 +121,7 @@ fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
 fs.mkdirSync(HISTORY_DIR, { recursive: true });
 fs.mkdirSync(CARD_LOTS_DIR, { recursive: true });
 fs.mkdirSync(COMMUNITY_BANNERS_DIR, { recursive: true });
+fs.mkdirSync(EVENT_BANNERS_DIR, { recursive: true });
 
 function loadLastResultMeta(metaFile, pdfFile) {
   try {
@@ -364,6 +366,10 @@ function blankState() {
       scheduledAt: '',
       scheduledRegistrationMinutes: 15,
       scheduledAutoStart: false,
+      eventMode: false,
+      eventId: '',
+      eventTitle: '',
+      eventLotCode: '',
       accessKey: '',
       paymentMode: 'free',
       cardPrice: 0,
@@ -391,6 +397,7 @@ function blankState() {
     pauseReason: null,
     deviceTransferRequests: [],
     testEvent: null,
+    eventPaperClaim: null,
     drawOrder: [],
     claimSequence: 0,
     claimWindow: null,
@@ -485,6 +492,11 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.scheduledAt = String(merged.roomSettings.scheduledAt || '');
     merged.roomSettings.scheduledRegistrationMinutes = Math.max(1, Math.min(120, Number(merged.roomSettings.scheduledRegistrationMinutes) || 15));
     merged.roomSettings.scheduledAutoStart = Boolean(merged.roomSettings.scheduledAutoStart);
+    merged.roomSettings.eventMode = Boolean(merged.roomSettings.eventMode);
+    merged.roomSettings.eventId = String(merged.roomSettings.eventId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+    merged.roomSettings.eventTitle = String(merged.roomSettings.eventTitle || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+    merged.roomSettings.eventLotCode = safeCardLotCode(merged.roomSettings.eventLotCode || '');
+    merged.eventPaperClaim = parsed.eventPaperClaim && typeof parsed.eventPaperClaim === 'object' ? { ...parsed.eventPaperClaim } : null;
     merged.roomSettings.joinOpen = Boolean(merged.roomSettings.joinOpen);
     merged.roomSettings.maxOpenPlayers = Math.max(2, Math.min(MAX_PLAYERS, Number(merged.roomSettings.maxOpenPlayers) || MAX_PLAYERS));
     merged.roomSettings.accessKey = normalizeAccessKey(merged.roomSettings.accessKey || merged.roomCode || '');
@@ -602,6 +614,7 @@ function blankCommunity() {
     blockWhatsappLinks: true,
     blockedTerms: [],
     scheduledGames: [],
+    eventMode: null,
     publicRooms: [],
     publicRoomsEnabled: true,
     privateRoomsEnabled: true,
@@ -649,6 +662,89 @@ function normalizeCommunityScheduledGame(raw = {}) {
     createdAt: String(raw.createdAt || nowIso()),
     updatedAt: String(raw.updatedAt || nowIso())
   };
+}
+
+
+function normalizeCommunityEvent(raw = {}) {
+  if (!raw || typeof raw !== 'object' || !raw.id) return null;
+  const starts = new Date(raw.startsAt || '');
+  const startsAt = Number.isFinite(starts.getTime()) ? starts.toISOString() : '';
+  const mode = Number(raw.mode) === 75 ? 75 : 90;
+  const requestedCards = Math.max(6, Math.min(240, Math.round(Number(raw.cardCount) || 120)));
+  const cardCount = Math.max(6, Math.min(240, Math.ceil(requestedCards / 6) * 6));
+  return {
+    id: String(raw.id || randomId('event')).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100),
+    title: String(raw.title || 'BINGO ESPECIAL').trim().replace(/\s+/g, ' ').slice(0, 80) || 'BINGO ESPECIAL',
+    startsAt,
+    mode,
+    maxPeople: Math.max(2, Math.min(100, Math.round(Number(raw.maxPeople) || 100))),
+    cardCount,
+    autoSeconds: Math.max(4, Math.min(20, Math.round(Number(raw.autoSeconds) || 8))),
+    lotCode: safeCardLotCode(raw.lotCode || ''),
+    published: raw.published === true,
+    roomCode: String(raw.roomCode || '').replace(/[^A-Z0-9]/gi, '').slice(0, 12),
+    workspaceId: OPERATIONAL_WORKSPACE_IDS.includes(String(raw.workspaceId || '')) ? String(raw.workspaceId) : '',
+    claimSequence: Math.max(0, Math.round(Number(raw.claimSequence) || 0)),
+    sponsors: [1,2,3].map(slot => normalizeEventSponsor((Array.isArray(raw.sponsors) ? raw.sponsors : []).find(item => Number(item?.slot) === slot) || {}, slot)),
+    claims: Array.isArray(raw.claims) ? raw.claims.slice(-250).map(item => ({
+      id: String(item?.id || randomId('eventclaim')).slice(0,120),
+      token: String(item?.token || '').slice(0,160),
+      visitorId: String(item?.visitorId || '').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,80),
+      type: item?.type === 'line' ? 'line' : 'bingo',
+      sequence: Math.max(1, Math.round(Number(item?.sequence) || 1)),
+      touchedAt: String(item?.touchedAt || ''),
+      touchedAtMs: Math.max(0, Number(item?.touchedAtMs) || 0),
+      drawnCount: Math.max(0, Math.round(Number(item?.drawnCount) || 0)),
+      lastBall: Number.isFinite(Number(item?.lastBall)) ? Number(item.lastBall) : null,
+      drawn: uniqueNumbers(Array.isArray(item?.drawn) ? item.drawn : []).filter(n => n >= 1 && n <= mode),
+      cardNumber: Math.max(0, Math.round(Number(item?.cardNumber) || 0)),
+      status: ['awaiting_card','valid','invalid','expired','reviewed'].includes(String(item?.status || '')) ? String(item.status) : 'awaiting_card',
+      submittedAt: item?.submittedAt ? String(item.submittedAt) : null,
+      reviewedAt: item?.reviewedAt ? String(item.reviewedAt) : null
+    })) : [],
+    createdAt: String(raw.createdAt || nowIso()),
+    updatedAt: String(raw.updatedAt || nowIso())
+  };
+}
+
+function communityEvent() {
+  const community = platform.community ||= blankCommunity();
+  community.eventMode = normalizeCommunityEvent(community.eventMode || null);
+  return community.eventMode;
+}
+
+function eventWorkspace(event = communityEvent()) {
+  if (!event) return null;
+  const direct = event.workspaceId ? workspaces.get(event.workspaceId) : null;
+  if (direct?.state?.active && direct.state.roomSettings?.eventMode && String(direct.state.roomSettings?.eventId || '') === String(event.id)) return direct;
+  if (event.roomCode) {
+    const byCode = findWorkspaceByRoomCode(event.roomCode);
+    if (byCode?.state?.active && byCode.state.roomSettings?.eventMode && String(byCode.state.roomSettings?.eventId || '') === String(event.id)) return byCode;
+  }
+  return null;
+}
+
+function eventLotCardByGlobalNumber(lot, number) {
+  const wanted = Math.max(1, Math.round(Number(number) || 0));
+  for (const series of lot?.series || []) {
+    const found = (series.cards || []).find(card => Number(card.globalNumber) === wanted);
+    if (found) return found;
+  }
+  return null;
+}
+
+function eventGameCardsFromLot(lot) {
+  const rules = roomRulesFor(lot.mode, { line:true, bingo:true });
+  return (lot.series || []).flatMap(series => (series.cards || []).map(card => ({
+    id: `event-${lot.code}-${String(card.globalNumber).padStart(3,'0')}`,
+    number: String(card.globalNumber).padStart(3,'0'),
+    name: `Cartón ${String(card.globalNumber).padStart(3,'0')}`,
+    originalName: `Cartón ${String(card.globalNumber).padStart(3,'0')}`,
+    mode: lot.mode,
+    source: 'event',
+    grid: card.grid,
+    bets: { ambocabeza:false, line:true, doubleLine:false, tripleLine:false, corners:false, bingo:true }
+  })));
 }
 
 
@@ -883,6 +979,104 @@ function updateCommunityBannerImage(payload = {}) {
   return communityAdminPayload();
 }
 
+
+function normalizeEventSponsor(raw = {}, slot = 1) {
+  const safeSlot = Math.max(1, Math.min(3, Math.round(Number(slot) || 1)));
+  const imageExt = ['jpg','png','webp'].includes(String(raw.imageExt || '').toLowerCase()) ? String(raw.imageExt).toLowerCase() : '';
+  return {
+    slot: safeSlot,
+    enabled: raw.enabled === true,
+    label: String(raw.label || '').trim().replace(/\s+/g, ' ').slice(0, 80),
+    imageExt,
+    updatedAt: raw.updatedAt ? String(raw.updatedAt) : ''
+  };
+}
+
+function eventSponsorFilePath(event = {}, sponsor = {}) {
+  const eventId = String(event?.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const slot = Math.max(1, Math.min(3, Math.round(Number(sponsor.slot) || 1)));
+  const ext = ['jpg','png','webp'].includes(String(sponsor.imageExt || '').toLowerCase()) ? String(sponsor.imageExt).toLowerCase() : '';
+  return eventId && ext ? path.join(EVENT_BANNERS_DIR, `${eventId}-banner-${slot}.${ext}`) : '';
+}
+
+function eventSponsorsAdminPayload(event = communityEvent()) {
+  if (!event) return [];
+  const source = Array.isArray(event.sponsors) ? event.sponsors : [];
+  return [1,2,3].map(slot => {
+    const sponsor = normalizeEventSponsor(source.find(item => Number(item?.slot) === slot) || {}, slot);
+    const file = eventSponsorFilePath(event, sponsor);
+    const hasImage = Boolean(file && fs.existsSync(file));
+    return {
+      ...sponsor,
+      hasImage,
+      imageUrl: hasImage ? `/event-banner/${encodeURIComponent(event.id)}/${slot}?v=${encodeURIComponent(sponsor.updatedAt || '1')}` : ''
+    };
+  });
+}
+
+function eventSponsorsPublicPayload(event = communityEvent()) {
+  if (!event) return [];
+  return eventSponsorsAdminPayload(event)
+    .filter(sponsor => sponsor.enabled && sponsor.hasImage)
+    .map(({ slot, label, imageUrl }) => ({ slot, label, imageUrl }));
+}
+
+function removeEventSponsorFiles(eventId, slot) {
+  const safeEventId = String(eventId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  const safeSlot = Math.max(1, Math.min(3, Math.round(Number(slot) || 1)));
+  if (!safeEventId) return;
+  for (const ext of ['jpg','png','webp']) {
+    const file = path.join(EVENT_BANNERS_DIR, `${safeEventId}-banner-${safeSlot}.${ext}`);
+    try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch {}
+  }
+}
+
+function removeAllEventSponsorFiles(eventId) {
+  for (const slot of [1,2,3]) removeEventSponsorFiles(eventId, slot);
+}
+
+function updateCommunityEventBannerImage(payload = {}) {
+  const event = communityEvent();
+  if (!event) throw new Error('Primero guardá el evento.');
+  const slot = Math.max(1, Math.min(3, Math.round(Number(payload.slot) || 0)));
+  if (!slot || slot < 1 || slot > 3) throw new Error('Banner de evento no válido.');
+  event.sponsors = [1,2,3].map(index => normalizeEventSponsor((event.sponsors || []).find(item => Number(item?.slot) === index) || {}, index));
+  const sponsor = event.sponsors.find(item => item.slot === slot);
+  const action = String(payload.action || 'upload').toLowerCase();
+  if (action === 'remove') {
+    removeEventSponsorFiles(event.id, slot);
+    sponsor.imageExt = '';
+    sponsor.updatedAt = nowIso();
+    event.updatedAt = nowIso();
+    savePlatform();
+    const workspace = eventWorkspace(event);
+    if (workspace?.state?.active) workspaceContext.run(workspace, () => broadcast());
+    return communityAdminPayload();
+  }
+  const match = String(payload.imageData || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) throw new Error('Usá una imagen JPG, PNG o WebP.');
+  const mime = match[1];
+  const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer.length || buffer.length > 2_000_000) throw new Error('La imagen procesada del banner supera el tamaño permitido.');
+  const isJpg = buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const isPng = buffer.length > 8 && buffer.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]));
+  const isWebp = buffer.length > 12 && buffer.subarray(0,4).toString('ascii') === 'RIFF' && buffer.subarray(8,12).toString('ascii') === 'WEBP';
+  const ext = mime === 'image/jpeg' && isJpg ? 'jpg' : mime === 'image/png' && isPng ? 'png' : mime === 'image/webp' && isWebp ? 'webp' : '';
+  if (!ext) throw new Error('El archivo no coincide con un formato de imagen permitido.');
+  removeEventSponsorFiles(event.id, slot);
+  const file = path.join(EVENT_BANNERS_DIR, `${event.id}-banner-${slot}.${ext}`);
+  const temp = `${file}.tmp`;
+  fs.writeFileSync(temp, buffer);
+  fs.renameSync(temp, file);
+  sponsor.imageExt = ext;
+  sponsor.updatedAt = nowIso();
+  event.updatedAt = nowIso();
+  savePlatform();
+  const workspace = eventWorkspace(event);
+  if (workspace?.state?.active) workspaceContext.run(workspace, () => broadcast());
+  return communityAdminPayload();
+}
+
 function normalizeCommunity(raw = {}) {
   const defaults = blankCommunity();
   return {
@@ -906,6 +1100,7 @@ function normalizeCommunity(raw = {}) {
     scheduledGames: Array.isArray(raw.scheduledGames)
       ? raw.scheduledGames.map(normalizeCommunityScheduledGame).filter(Boolean).sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt))).slice(0, 40)
       : [],
+    eventMode: normalizeCommunityEvent(raw.eventMode || null),
     publicRooms: Array.isArray(raw.publicRooms)
       ? raw.publicRooms.map(normalizeCommunityPublicRoom).filter(Boolean).sort((a,b) => String(a.startsAt || a.createdAt).localeCompare(String(b.startsAt || b.createdAt))).slice(-120)
       : [],
@@ -1473,6 +1668,7 @@ function startPlanPayload() {
   const pendingSelection = eligible.filter(player => !playerSelectionComplete(player));
   const pendingMarkingMode = eligible.filter(player => !player.markingModeChosen);
   const connectedEligible = eligible.filter(player => player.virtual || connected.has(player.id));
+  const eventMode = Boolean(state.roomSettings?.eventMode);
   return {
     eligiblePlayers: eligible.length,
     connectedEligiblePlayers: connectedEligible.length,
@@ -1481,8 +1677,8 @@ function startPlanPayload() {
     pendingMarkingModePlayers: pendingMarkingMode.length,
     pendingPaymentPlayers: pendingPayment.length,
     pendingPayment: pendingPayment.map(player => ({ id:player.id, name:playerDisplayName(player), requestedCardCount:player.requestedCardCount || player.allowedCardCount })),
-    canStart: eligible.length >= (TEST_MODE ? 1 : 2),
-    canStartFromAdmin: eligible.length >= (TEST_MODE ? 1 : 2) || Boolean(state.roomSettings?.adminSimulation)
+    canStart: eventMode || eligible.length >= (TEST_MODE ? 1 : 2),
+    canStartFromAdmin: eventMode || eligible.length >= (TEST_MODE ? 1 : 2) || Boolean(state.roomSettings?.adminSimulation)
   };
 }
 
@@ -1500,10 +1696,11 @@ function preflightPayload() {
   const eligiblePlayers = state.players.filter(playerEligibleForRound);
   const pendingPlayers = eligiblePlayers.filter(player => !(player.nameSet && playerSelectionComplete(player)));
   const pendingMarkingMode = eligiblePlayers.filter(player => player.selectionConfirmed && !player.markingModeChosen);
-  const activeCards = ids.length;
+  const eventMode = Boolean(state.roomSettings?.eventMode);
+  const activeCards = eventMode ? (state.game?.cards?.length || 0) : ids.length;
   const availableCards = Math.max(0, (state.game?.cards?.length || 0) - new Set(ids).size);
   const errors = [];
-  if (eligiblePlayers.length < (TEST_MODE ? 1 : 2)) errors.push('Se necesitan al menos 2 jugadores habilitados para iniciar.');
+  if (!eventMode && eligiblePlayers.length < (TEST_MODE ? 1 : 2)) errors.push('Se necesitan al menos 2 jugadores habilitados para iniciar.');
   if (pendingPlayers.length) errors.push(`${pendingPlayers.length} jugador${pendingPlayers.length === 1 ? '' : 'es'} todavía no confirmó${pendingPlayers.length === 1 ? '' : 'aron'} sus cartones.`);
   if (pendingMarkingMode.length) errors.push(`${pendingMarkingMode.length} jugador${pendingMarkingMode.length === 1 ? '' : 'es'} todavía no ${pendingMarkingMode.length === 1 ? 'eligió' : 'eligieron'} Manual o Automarcado.`);
   if (duplicates.length) errors.push(`Hay ${duplicates.length} cartón${duplicates.length === 1 ? '' : 'es'} duplicado${duplicates.length === 1 ? '' : 's'}.`);
@@ -1892,6 +2089,7 @@ function broadcastPayload() {
     finalShowcase: finalShowcasePayload(),
     resultsReady: state.status === 'finished',
     highlightedCards: highlightedBroadcastCards(),
+    eventSponsors: state.roomSettings?.eventMode && String(communityEvent()?.id || '') === String(state.roomSettings?.eventId || '') ? eventSponsorsPublicPayload(communityEvent()) : [],
     broadcastUrl: shortBroadcastUrlFor(),
     castAppId: CAST_APP_ID || null,
     updatedAt: state.updatedAt
@@ -1975,6 +2173,8 @@ function adminPayload() {
     transition: state.transition,
     deviceTransferRequests: (state.deviceTransferRequests || []).filter(request => request.status === 'pending'),
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
+    eventPaperClaim: state.eventPaperClaim && typeof state.eventPaperClaim === 'object' ? { ...state.eventPaperClaim } : null,
+    eventSponsors: state.roomSettings?.eventMode && String(communityEvent()?.id || '') === String(state.roomSettings?.eventId || '') ? eventSponsorsPublicPayload(communityEvent()) : [],
     accessContext: currentAccessContext(),
     broadcastUrl: shortBroadcastUrlFor(),
     broadcastLongUrl: state.roomSettings?.broadcastToken ? `${PUBLIC_URL || `http://localhost:${PORT}`}/transmision/${encodeURIComponent(state.roomSettings.broadcastToken)}` : null,
@@ -2504,7 +2704,7 @@ function loadCardLot(code) {
 
 function createPrintableCardLot(payload = {}) {
   const mode = Number(payload.mode) === 75 ? 75 : 90;
-  const seriesCount = Math.max(1, Math.min(10, Math.round(Number(payload.seriesCount) || 1)));
+  const seriesCount = Math.max(1, Math.min(40, Math.round(Number(payload.seriesCount) || 1)));
   const totalCards = seriesCount * 6;
   const code = randomCardLotCode();
   let series;
@@ -2603,8 +2803,10 @@ function pdfStarCommands(cx, cy, outerRadius, innerRadius, rgb, color, topY) {
   return `${rgb(color)} rg ${pathCommands.join(' ')}`;
 }
 
-function buildCardLotPdf(lot) {
+function buildCardLotPdf(lot, options = {}) {
   const publicLot = publicCardLot(lot);
+  const eventTitle = String(options.eventTitle || '').trim().replace(/\s+/g,' ').slice(0,80);
+  const useGlobalNumber = options.useGlobalNumber === true;
   const mode = publicLot.mode;
   const PAGE_W = mode === 90 ? 842 : 595;
   const PAGE_H = mode === 90 ? 595 : 842;
@@ -2656,14 +2858,15 @@ function buildCardLotPdf(lot) {
       rect(x, y, cardW, 3.5, index % 2 ? colors.pink : colors.purple);
       const logoSize = mode === 90 ? 27 : 25;
       image(x + 7, y + 7, logoSize, logoSize);
-      text(`BINGO ${mode}`, x + 39, y + 7, mode === 90 ? 10 : 9, { bold:true, color:colors.purple });
-      text(`Lote ${publicLot.code} · Serie ${String(series.number).padStart(2,'0')}`, x + 39, y + 20, 5.4, { color:colors.muted, maxWidth:cardW * .45 });
-      const badgeSize = mode === 90 ? 31 : 28;
+      text(eventTitle || `BINGO ${mode}`, x + 39, y + 7, mode === 90 ? 9.2 : 8.4, { bold:true, color:colors.purple, maxWidth:cardW * .55 });
+      text(`Bingo ${mode} · Lote ${publicLot.code} · Serie ${String(series.number).padStart(2,'0')}`, x + 39, y + 20, 5.2, { color:colors.muted, maxWidth:cardW * .55 });
+      const badgeSize = useGlobalNumber ? (mode === 90 ? 42 : 38) : (mode === 90 ? 31 : 28);
       const badgeX = x + cardW - 7 - badgeSize;
       const badgeY = y + 7;
       rect(badgeX, badgeY, badgeSize, badgeSize, '#FBEAF3', colors.pink, 1.15);
-      const badgeFont = mode === 90 ? 13 : 12;
-      text(String(card.cardNumber).padStart(2,'0'), badgeX + badgeSize / 2, badgeY + (badgeSize - badgeFont) / 2 - .6, badgeFont, { bold:true, color:colors.pink, align:'center' });
+      const badgeFont = useGlobalNumber ? (mode === 90 ? 16 : 14) : (mode === 90 ? 13 : 12);
+      const badgeNumber = useGlobalNumber ? String(card.globalNumber).padStart(3,'0') : String(card.cardNumber).padStart(2,'0');
+      text(badgeNumber, badgeX + badgeSize / 2, badgeY + (badgeSize - badgeFont) / 2 - .6, badgeFont, { bold:true, color:colors.pink, align:'center' });
 
       if (mode === 90) {
         const gx = x + 7;
@@ -4865,10 +5068,11 @@ function startRoom(payload = {}) {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'waiting') return adminPayload();
   const forcedSimulationStart = Boolean(state.roomSettings?.adminSimulation && payload?.force === true);
+  const eventModeStart = Boolean(state.roomSettings?.eventMode);
   const planBefore = startPlanPayload();
   if (!forcedSimulationStart && state.roomSettings?.joinOpen) throw new Error('Primero cerrá las inscripciones. Cerrarlas no inicia el sorteo.');
   if (!forcedSimulationStart && state.roomSettings?.paymentMode === 'paid' && planBefore.pendingPaymentPlayers > 0) throw new Error('Hay pagos pendientes. Confirmalos o quitá esos jugadores antes de iniciar.');
-  if (!forcedSimulationStart && planBefore.eligiblePlayers < (TEST_MODE ? 1 : 2)) throw new Error('Se necesitan al menos 2 jugadores habilitados para iniciar el sorteo.');
+  if (!forcedSimulationStart && !eventModeStart && planBefore.eligiblePlayers < (TEST_MODE ? 1 : 2)) throw new Error('Se necesitan al menos 2 jugadores habilitados para iniciar el sorteo.');
   if (state.roomSettings) state.roomSettings.joinOpen = false;
 
   // Al iniciar, ningún salón grande debe quedar esperando a que cada persona elija.
@@ -5201,13 +5405,14 @@ function archiveCancelledRoom() {
 function finishRoom(payload = {}) {
   const workspace = currentWorkspace();
   const forceSimulation = Boolean(payload.forceSimulation) && Boolean(state.roomSettings?.adminSimulation || workspace.isDemo || state.demo);
+  const forceEvent = Boolean(payload.forceEvent) && Boolean(state.roomSettings?.eventMode);
   clearAutomaticDrawTimer(workspace);
   clearClaimAutoResume(workspace);
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status === 'finished') return adminPayload();
   if (!['playing', 'paused', 'verifying', 'finalizing'].includes(state.status)) throw new Error('El sorteo todavía no comenzó.');
 
-  if (forceSimulation) {
+  if (forceSimulation || forceEvent) {
     clearWorkspaceTransitionTimer(workspace);
     clearDemoAutomationTimers(workspace);
     clearDemoStartTimer(workspace);
@@ -5215,17 +5420,18 @@ function finishRoom(payload = {}) {
     for (const claim of state.claims.filter(item => item.status === 'pending')) {
       claim.status = 'rejected';
       claim.resolvedAt = nowIso();
-      claim.resolutionReason = 'simulation_finished_by_admin';
-      claim.adminNote = 'Simulación finalizada manualmente por el administrador.';
-      addClaimNotice(claim, 'rejected', `${claim.prizeLabel || prizeLabelFor(claim.type)} cancelado: la demostración fue finalizada.`);
+      claim.resolutionReason = forceEvent ? 'event_finished_by_admin' : 'simulation_finished_by_admin';
+      claim.adminNote = forceEvent ? 'Evento finalizado manualmente por el administrador.' : 'Simulación finalizada manualmente por el administrador.';
+      addClaimNotice(claim, 'rejected', `${claim.prizeLabel || prizeLabelFor(claim.type)} cancelado: ${forceEvent ? 'el evento' : 'la demostración'} fue finalizado.`);
     }
     state.claimWindow = null;
     state.transition = null;
     state.status = 'finished';
     state.pauseReason = null;
+    if (forceEvent) { state.eventPaperClaim = null; clearEventClaimSettlementTimer(workspace); }
     state.endedAt = nowIso();
     state.game.phase = 'ROUND_END';
-    logEvent('simulation_finished_by_admin', { round: state.round, balls: state.game.drawn.length });
+    logEvent(forceEvent ? 'event_finished_by_admin' : 'simulation_finished_by_admin', { round: state.round, balls: state.game.drawn.length });
     archiveCurrentResults();
     saveState();
     broadcast();
@@ -6688,7 +6894,7 @@ function serveInvitationActivationPage(res, player, inviteToken, activationToken
   const safeName = escapeHtml(playerDisplayName(player));
   const action = `/invitacion/${encodeURIComponent(String(inviteToken || ''))}`;
   const safeActivation = escapeHtml(activationToken);
-  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070914"><meta name="robots" content="noindex,nofollow,noarchive"><title>Entrando · EL BINGO DE LA GORDA</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#2c2052,#070914 55%,#02040a);color:#fff;font-family:Segoe UI,Arial,sans-serif;padding:18px;box-sizing:border-box}.box{width:min(460px,100%);background:#11182b;border:1px solid #ffffff24;border-radius:20px;padding:24px;text-align:center;box-shadow:0 20px 70px #0008}.box img{width:92px}.box h1{font-size:24px;margin-bottom:8px}.box p{color:#bac4d8;line-height:1.5}.spinner{width:38px;height:38px;border:4px solid #ffffff22;border-top-color:#ffca2f;border-radius:50%;margin:18px auto;animation:gira .8s linear infinite}.btn{display:inline-block;margin-top:10px;padding:12px 16px;border:0;border-radius:12px;background:#ffca2f;color:#241700;font-weight:900;cursor:pointer}@keyframes gira{to{transform:rotate(360deg)}}</style></head><body><main class="box"><img src="/assets/logo.webp" alt="EL BINGO DE LA GORDA"><h1>Entrando a la partida</h1><p>Hola <b>${safeName}</b>. Estamos preparando tu sala privada.</p><div class="spinner" aria-hidden="true"></div><form id="activateInvite" method="post" action="${action}" autocomplete="off"><input type="hidden" name="activationToken" value="${safeActivation}"><noscript><button class="btn" type="submit">ENTRAR A LA PARTIDA</button></noscript></form></main><script>(()=>{const f=document.getElementById('activateInvite');const go=()=>{try{if(f.requestSubmit)f.requestSubmit();else f.submit()}catch{f.submit()}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(go,40),{once:true});else setTimeout(go,40)})();</script></body></html>`;
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070914"><meta name="robots" content="noindex,nofollow,noarchive"><title>Entrando · EL BINGO DE LA GORDA</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#2c2052,#070914 55%,#02040a);color:#fff;font-family:Segoe UI,Arial,sans-serif;padding:18px;box-sizing:border-box}.box{width:min(460px,100%);background:#11182b;border:1px solid #ffffff24;border-radius:20px;padding:24px;text-align:center;box-shadow:0 20px 70px #0008}.box img{width:92px}.box h1{font-size:24px;margin-bottom:8px}.box p{color:#bac4d8;line-height:1.5}.spinner{width:38px;height:38px;border:4px solid #ffffff22;border-top-color:#ffca2f;border-radius:50%;margin:18px auto;animation:gira .8s linear infinite}.btn{display:inline-block;margin-top:10px;padding:12px 16px;border:0;border-radius:12px;background:#ffca2f;color:#241700;font-weight:900;cursor:pointer}@keyframes gira{to{transform:rotate(360deg)}}</style></head><body><main class="box"><img src="/assets/logo.webp" alt="EL BINGO DE LA GORDA" title="Volver a Comunidad" style="cursor:pointer" onclick="location.href='/comunidad?quedar=1'"><h1>Entrando a la partida</h1><p>Hola <b>${safeName}</b>. Estamos preparando tu sala privada.</p><div class="spinner" aria-hidden="true"></div><form id="activateInvite" method="post" action="${action}" autocomplete="off"><input type="hidden" name="activationToken" value="${safeActivation}"><noscript><button class="btn" type="submit">ENTRAR A LA PARTIDA</button></noscript></form></main><script>(()=>{const f=document.getElementById('activateInvite');const go=()=>{try{if(f.requestSubmit)f.requestSubmit();else f.submit()}catch{f.submit()}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(go,40),{once:true});else setTimeout(go,40)})();</script></body></html>`;
   res.writeHead(200, {
     'Content-Type':'text/html; charset=utf-8',
     'Content-Length':Buffer.byteLength(html),
@@ -6983,6 +7189,7 @@ function communityActiveGamePayload() {
     .sort((a, b) => {
       const rank = workspace => {
         const room = workspace.state;
+        if (room.roomSettings?.eventMode && ['playing','paused','resuming','verifying','finalizing'].includes(room.status)) return -1;
         if (room.status === 'waiting' && room.roomSettings?.joinOpen) return 0;
         if (room.status === 'waiting' || room.status === 'starting') return 1;
         return 2;
@@ -7002,6 +7209,8 @@ function communityActiveGamePayload() {
     const paymentMode = current.roomSettings?.paymentMode === 'paid' ? 'paid' : 'free';
     return {
       roomCode: current.roomCode,
+      name: current.roomSettings?.eventMode ? (current.roomSettings?.eventTitle || 'EVENTO OFICIAL') : 'EL BINGO DE LA GORDA',
+      eventMode: Boolean(current.roomSettings?.eventMode),
       mode: Number(current.game.mode) === 75 ? 75 : 90,
       status: current.status,
       playerCount: Array.isArray(current.players) ? current.players.filter(player => player.selectionConfirmed || roomType === 'test' || player.paymentStatus === 'confirmed' || player.paymentStatus === 'not_required').length : 0,
@@ -7244,12 +7453,15 @@ function officialLobbyRoomsPayload() {
     const scheduledAt = String(state.roomSettings?.scheduledAt || '');
     const paid = state.roomSettings?.paymentMode === 'paid';
     const hasPrize = paid || Object.values(state.roomSettings?.prizeAmounts || {}).some(value => Number(value) > 0);
+    const eventMode = Boolean(state.roomSettings?.eventMode), eventInfo = eventMode ? communityEvent() : null;
     return {
       id: `official-${state.roomCode || workspace.id}`,
       kind: 'official', accessType: 'official', requiresKey: false,
-      name: 'EL BINGO DE LA GORDA', mode: Number(state.game?.mode) === 75 ? 75 : 90,
+      name: eventMode ? (state.roomSettings?.eventTitle || 'EVENTO OFICIAL') : 'EL BINGO DE LA GORDA', mode: Number(state.game?.mode) === 75 ? 75 : 90,
       status: state.status, startsAt: scheduledAt, playerCount: (state.players || []).length,
-      maxPlayers: Math.max(2, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS),
+      maxPlayers: eventMode ? Math.max(2, Number(eventInfo?.maxPeople) || 100) : Math.max(2, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS),
+      cardCount: eventMode ? (state.game?.cards?.length || Number(eventInfo?.cardCount) || 0) : 0,
+      eventMode,
       joinOpen: state.status === 'waiting' && Boolean(state.roomSettings?.joinOpen),
       joinUrl: state.status === 'waiting' && state.roomSettings?.joinOpen ? `/jugador?sala=${encodeURIComponent(state.roomCode)}&directo=1` : '',
       transmissionAvailable: true, transmissionUrl: shortBroadcastUrlFor(workspace) || '', shareUrl: '',
@@ -7262,7 +7474,13 @@ function officialLobbyRoomsPayload() {
     playerCount:0, maxPlayers:MAX_PLAYERS, joinOpen:false, joinUrl:'', transmissionAvailable:false, transmissionUrl:'', shareUrl:'',
     paymentMode:game.paymentMode === 'paid' ? 'paid' : 'free', hasPrize: game.paymentMode === 'paid'
   }));
-  return [...activeCards, ...upcoming];
+  const event = communityEvent();
+  const eventWorkspaceNow = eventWorkspace(event);
+  const eventUpcoming = event?.published && !eventWorkspaceNow && event.startsAt && new Date(event.startsAt).getTime() > Date.now() - 3 * 60 * 60 * 1000 ? [{
+    id:`official-event-${event.id}`, kind:'official', accessType:'official', requiresKey:false, name:event.title, mode:event.mode, status:'scheduled', startsAt:event.startsAt,
+    playerCount:0, maxPlayers:event.maxPeople, cardCount:event.cardCount, joinOpen:false, joinUrl:'', transmissionAvailable:false, transmissionUrl:'', shareUrl:'', paymentMode:'paid', hasPrize:true, eventMode:true
+  }] : [];
+  return [...activeCards, ...eventUpcoming, ...upcoming];
 }
 
 function communityLobbyRoomsPayload() {
@@ -7735,6 +7953,7 @@ function communityStatePayload(visitorId = '') {
     },
     support: communitySupportPayload(),
     banners: communityBannersPublicPayload(),
+    event: eventPublicPayload(),
     activeGame: communityActiveGamePayload(),
     upcomingGames: communityUpcomingGames(),
     publicRooms: communityPublicRoomsPayload(),
@@ -8067,6 +8286,331 @@ function processCommunityScheduleAutomation() {
   return changed;
 }
 
+
+const eventClaimSettlementTimers = new Map();
+function clearEventClaimSettlementTimer(workspace) {
+  const key = workspace?.id || '';
+  const timer = key ? eventClaimSettlementTimers.get(key) : null;
+  if (timer) clearTimeout(timer);
+  if (key) eventClaimSettlementTimers.delete(key);
+}
+function expireStaleCommunityEventClaims(event, atMs = Date.now()) {
+  let changed = false;
+  for (const claim of event?.claims || []) {
+    if (claim.status !== 'awaiting_card') continue;
+    if (atMs - Number(claim.touchedAtMs || 0) < 90_000) continue;
+    claim.status = 'expired';
+    claim.submittedAt ||= new Date(atMs).toISOString();
+    changed = true;
+  }
+  return changed;
+}
+function refreshEventPaperClaim(event, workspace) {
+  if (!event || !workspace?.state?.active) return;
+  clearEventClaimSettlementTimer(workspace);
+  const expired = expireStaleCommunityEventClaims(event);
+  let shouldSavePlatform = expired;
+  workspaceContext.run(workspace, () => {
+    if (!['playing','paused','verifying','resuming'].includes(state.status)) {
+      if (state.eventPaperClaim) { state.eventPaperClaim = null; saveState(); broadcast(); }
+      return;
+    }
+    const validClaims = (event.claims || []).filter(item => item.status === 'valid').sort((a,b) => Number(a.sequence)-Number(b.sequence));
+    const first = validClaims[0] || null;
+    if (!first) {
+      if (state.eventPaperClaim) { state.eventPaperClaim = null; saveState(); broadcast(); }
+      return;
+    }
+    const now = Date.now();
+    const earlierPending = (event.claims || []).filter(item => item.status === 'awaiting_card' && Number(item.sequence) < Number(first.sequence) && now - Number(item.touchedAtMs || 0) < 90_000).sort((a,b) => Number(a.sequence)-Number(b.sequence));
+    const expiries = earlierPending.map(item => Number(item.touchedAtMs || 0) + 90_000).filter(Number.isFinite);
+    state.eventPaperClaim = {
+      id:first.id, sequence:first.sequence, type:first.type, cardNumber:first.cardNumber,
+      touchedAt:first.touchedAt, touchedAtMs:first.touchedAtMs, drawnCount:first.drawnCount, lastBall:first.lastBall,
+      waitingEarlierCount:earlierPending.length,
+      waitingEarlierSequences:earlierPending.map(item => Number(item.sequence) || 0),
+      waitingUntil:expiries.length ? new Date(Math.min(...expiries)).toISOString() : null
+    };
+    saveState(); broadcast();
+    if (expiries.length) {
+      const delay = Math.max(25, Math.min(...expiries) - Date.now() + 30);
+      const key = workspace.id;
+      const timer = setTimeout(() => {
+        eventClaimSettlementTimers.delete(key);
+        const currentEvent = communityEvent();
+        const currentWorkspaceForEvent = eventWorkspace(currentEvent);
+        if (!currentEvent || !currentWorkspaceForEvent) return;
+        if (expireStaleCommunityEventClaims(currentEvent)) {
+          currentEvent.updatedAt = nowIso();
+          savePlatform();
+        }
+        refreshEventPaperClaim(currentEvent, currentWorkspaceForEvent);
+      }, delay);
+      timer.unref?.();
+      eventClaimSettlementTimers.set(key, timer);
+    }
+  });
+  if (shouldSavePlatform) { event.updatedAt = nowIso(); savePlatform(); }
+}
+
+
+function eventPublicPayload() {
+  const event = communityEvent();
+  if (!event || !event.published) return null;
+  const workspace = eventWorkspace(event);
+  const room = workspace?.state || null;
+  const transmissionUrl = room?.roomSettings?.broadcastAlias ? `/v/${encodeURIComponent(room.roomSettings.broadcastAlias)}` : '';
+  const status = room?.status || 'scheduled';
+  return {
+    id: event.id,
+    title: event.title,
+    startsAt: event.startsAt,
+    mode: event.mode,
+    cardCount: event.cardCount,
+    maxPeople: event.maxPeople,
+    status,
+    roomCode: room?.roomCode || event.roomCode || '',
+    drawnCount: Array.isArray(room?.game?.drawn) ? room.game.drawn.length : 0,
+    transmissionUrl,
+    transmissionAvailable: Boolean(transmissionUrl),
+    claimEnabled: status === 'playing',
+    claimPendingReview: Boolean(room?.eventPaperClaim)
+  };
+}
+
+function eventAdminPayload() {
+  const event = communityEvent();
+  if (!event) return null;
+  const lot = event.lotCode ? loadCardLot(event.lotCode) : null;
+  const workspace = eventWorkspace(event);
+  const room = workspace?.state || null;
+  return {
+    ...event,
+    lotReady: Boolean(lot),
+    lotTotalCards: Number(lot?.totalCards) || 0,
+    pdfUrl: lot ? `/api/admin/community/event/pdf` : '',
+    sponsors: eventSponsorsAdminPayload(event),
+    roomStatus: room?.status || '',
+    roomCode: room?.roomCode || event.roomCode || '',
+    workspaceId: workspace?.id || event.workspaceId || '',
+    transmissionUrl: room?.roomSettings?.broadcastAlias ? `/v/${encodeURIComponent(room.roomSettings.broadcastAlias)}` : '',
+    claims: (event.claims || []).slice().sort((a,b) => Number(a.sequence)-Number(b.sequence)).slice(-100)
+  };
+}
+
+function saveCommunityEvent(payload = {}) {
+  const community = platform.community ||= blankCommunity();
+  const action = String(payload.action || 'save').toLowerCase();
+  let event = communityEvent();
+  if (action === 'save') {
+    const existing = event || {};
+    const raw = {
+      ...existing,
+      id: existing.id || randomId('event'),
+      title: payload.title ?? existing.title ?? 'BINGO ESPECIAL',
+      startsAt: payload.startsAt ?? existing.startsAt ?? '',
+      mode: payload.mode ?? existing.mode ?? 90,
+      maxPeople: payload.maxPeople ?? existing.maxPeople ?? 100,
+      cardCount: payload.cardCount ?? existing.cardCount ?? 120,
+      autoSeconds: payload.autoSeconds ?? existing.autoSeconds ?? 8,
+      updatedAt: nowIso(),
+      createdAt: existing.createdAt || nowIso()
+    };
+    const next = normalizeCommunityEvent(raw);
+    if (!next?.startsAt) throw new Error('Elegí la fecha y hora del evento.');
+    if (existing.roomCode && (Number(existing.mode) !== Number(next.mode) || Number(existing.cardCount) !== Number(next.cardCount))) throw new Error('El evento ya tiene una sala preparada. No cambies modalidad o cantidad de cartones.');
+    if (existing.lotCode && (Number(existing.mode) !== Number(next.mode) || Number(existing.cardCount) !== Number(next.cardCount))) {
+      next.lotCode = '';
+      next.published = false;
+    }
+    community.eventMode = next;
+    const linkedWorkspace = eventWorkspace(next);
+    if (linkedWorkspace?.state?.active && linkedWorkspace.state.status === 'waiting') {
+      workspaceContext.run(linkedWorkspace, () => {
+        state.roomSettings.eventTitle = next.title;
+        state.roomSettings.scheduledAt = next.startsAt;
+        state.game.autoSeconds = next.autoSeconds;
+        saveState(); broadcast();
+      });
+    }
+    savePlatform();
+    return communityAdminPayload();
+  }
+  if (!event) throw new Error('Primero configurá el evento.');
+  if (action === 'save-sponsors') {
+    const incoming = Array.isArray(payload.sponsors) ? payload.sponsors.slice(0,3) : [];
+    event.sponsors = [1,2,3].map(slot => normalizeEventSponsor((event.sponsors || []).find(item => Number(item?.slot) === slot) || {}, slot));
+    for (const item of incoming) {
+      const slot = Math.max(1, Math.min(3, Math.round(Number(item?.slot) || 0)));
+      const sponsor = event.sponsors.find(entry => entry.slot === slot);
+      if (!sponsor) continue;
+      sponsor.enabled = item.enabled === true;
+      sponsor.label = String(item.label || '').trim().replace(/\s+/g, ' ').slice(0,80);
+    }
+    event.updatedAt = nowIso();
+    savePlatform();
+    const workspace = eventWorkspace(event);
+    if (workspace?.state?.active) workspaceContext.run(workspace, () => broadcast());
+    return communityAdminPayload();
+  }
+  if (action === 'generate-lot') {
+    if (event.roomCode) throw new Error('La sala del evento ya fue preparada.');
+    const lot = createPrintableCardLot({ mode:event.mode, seriesCount:event.cardCount / 6 });
+    event.lotCode = lot.code;
+    event.cardCount = lot.totalCards;
+    event.updatedAt = nowIso();
+    event.claims = [];
+    event.claimSequence = 0;
+    savePlatform();
+    return communityAdminPayload();
+  }
+  if (action === 'publish') {
+    if (!event.lotCode || !loadCardLot(event.lotCode)) throw new Error('Primero generá el lote de cartones del evento.');
+    if (!event.startsAt) throw new Error('Elegí la fecha y hora del evento.');
+    event.published = true;
+    event.updatedAt = nowIso();
+    savePlatform();
+    return communityAdminPayload();
+  }
+  if (action === 'unpublish') {
+    event.published = false;
+    event.updatedAt = nowIso();
+    savePlatform();
+    return communityAdminPayload();
+  }
+  if (action === 'create-room') {
+    const lot = event.lotCode ? loadCardLot(event.lotCode) : null;
+    if (!lot) throw new Error('Primero generá el lote de cartones del evento.');
+    let workspace = eventWorkspace(event);
+    if (!workspace) workspace = freeOperationalWorkspace();
+    if (!workspace) throw new Error('Ahora no hay una sala operativa libre para preparar el evento.');
+    clearEventClaimSettlementTimer(workspace);
+    workspaceContext.run(workspace, () => {
+      createSimpleRoom({
+        mode:event.mode, cardCount:Math.min(250,event.cardCount), autoSeconds:event.autoSeconds,
+        rules:{line:true,bingo:true}, linePrizeCount:1, markingMode:'normal', maxCardsPerPlayer:4,
+        paymentMode:'free', scheduledAt:event.startsAt, maxOpenPlayers:MAX_PLAYERS
+      });
+      state.game.cards = eventGameCardsFromLot(lot);
+      state.game.rules = roomRulesFor(event.mode, { line:true, bingo:true });
+      state.roomSettings.joinOpen = false;
+      state.roomSettings.eventMode = true;
+      state.roomSettings.eventId = event.id;
+      state.roomSettings.eventTitle = event.title;
+      state.roomSettings.eventLotCode = event.lotCode;
+      state.roomSettings.scheduledAt = event.startsAt;
+      state.roomSettings.maxOpenPlayers = MAX_PLAYERS;
+      state.eventPaperClaim = null;
+      logEvent('event_room_created', { eventId:event.id, title:event.title, lotCode:event.lotCode, cards:state.game.cards.length });
+      saveState();
+      broadcast();
+    });
+    event.roomCode = workspace.state.roomCode;
+    event.workspaceId = workspace.id;
+    event.published = true;
+    event.updatedAt = nowIso();
+    savePlatform();
+    return communityAdminPayload();
+  }
+  if (action === 'review-claim') {
+    const id = String(payload.claimId || '');
+    const claim = (event.claims || []).find(item => item.id === id);
+    if (!claim) throw new Error('Ese cante ya no está disponible.');
+    claim.status = 'reviewed';
+    claim.reviewedAt = nowIso();
+    const workspace = eventWorkspace(event);
+    if (workspace) {
+      workspaceContext.run(workspace, () => {
+        if (state.eventPaperClaim?.id === claim.id) state.eventPaperClaim = null;
+        saveState(); broadcast();
+      });
+      refreshEventPaperClaim(event, workspace);
+    }
+    event.updatedAt = nowIso();
+    savePlatform();
+    return communityAdminPayload();
+  }
+  if (action === 'reset') {
+    if (eventWorkspace(event)?.state?.active) throw new Error('Primero finalizá o cerrá la sala del evento.');
+    removeAllEventSponsorFiles(event.id);
+    community.eventMode = null;
+    savePlatform();
+    return communityAdminPayload();
+  }
+  throw new Error('Acción de evento no válida.');
+}
+
+function startCommunityEventClaim(payload = {}) {
+  const event = communityEvent();
+  if (!event?.published) throw new Error('No hay un evento oficial disponible para cantar.');
+  const workspace = eventWorkspace(event);
+  if (!workspace?.state?.active || workspace.state.status !== 'playing') throw new Error('El cante se habilita cuando la partida está en juego.');
+  const visitorId = String(payload.visitorId || '').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,80);
+  if (!visitorId) throw new Error('No pudimos identificar este dispositivo. Recargá la Comunidad.');
+  const type = payload.type === 'line' ? 'line' : payload.type === 'bingo' ? 'bingo' : '';
+  if (!type) throw new Error('Elegí LÍNEA o BINGO.');
+  if (expireStaleCommunityEventClaims(event)) { event.updatedAt = nowIso(); savePlatform(); }
+  const pending = (event.claims || []).find(item => item.visitorId === visitorId && item.status === 'awaiting_card' && Date.now() - Number(item.touchedAtMs || 0) < 90_000);
+  if (pending?.type === type) return { claimId:pending.id, token:pending.token, type:pending.type, sequence:pending.sequence, touchedAt:pending.touchedAt, expiresInSeconds:Math.max(1,Math.ceil((90_000-(Date.now()-pending.touchedAtMs))/1000)) };
+  if (pending) { pending.status = 'expired'; pending.submittedAt = nowIso(); }
+  let claim;
+  workspaceContext.run(workspace, () => {
+    const touchedAtMs = Date.now();
+    const drawn = [...(state.game?.drawn || [])];
+    event.claimSequence = Math.max(0, Number(event.claimSequence)||0) + 1;
+    claim = {
+      id: randomId('eventclaim'), token: randomId('claimtoken'), visitorId, type, sequence:event.claimSequence,
+      touchedAt:new Date(touchedAtMs).toISOString(), touchedAtMs, drawnCount:drawn.length,
+      lastBall:drawn.at(-1) ?? null, drawn, cardNumber:0, status:'awaiting_card', submittedAt:null, reviewedAt:null
+    };
+    event.claims ||= [];
+    event.claims.push(claim);
+    event.claims = event.claims.slice(-250);
+    event.updatedAt = nowIso();
+    savePlatform();
+  });
+  return { claimId:claim.id, token:claim.token, type:claim.type, sequence:claim.sequence, touchedAt:claim.touchedAt, expiresInSeconds:90 };
+}
+
+function submitCommunityEventClaim(payload = {}) {
+  const event = communityEvent();
+  if (!event) throw new Error('El evento ya no está disponible.');
+  const claim = (event.claims || []).find(item => item.id === String(payload.claimId || '') && safeEqual(item.token || '', payload.token || ''));
+  if (!claim) throw new Error('No encontramos ese cante. Volvé a tocar LÍNEA o BINGO.');
+  if (claim.status !== 'awaiting_card') return { status:claim.status, valid:claim.status === 'valid' || claim.status === 'reviewed', sequence:claim.sequence, cardNumber:claim.cardNumber || 0, type:claim.type };
+  if (Date.now() - Number(claim.touchedAtMs || 0) > 90_000) {
+    claim.status = 'expired'; claim.submittedAt = nowIso(); event.updatedAt = nowIso(); savePlatform();
+    throw new Error('Pasó demasiado tiempo. Tocá el premio otra vez.');
+  }
+  const lot = event.lotCode ? loadCardLot(event.lotCode) : null;
+  if (!lot) throw new Error('El lote del evento no está disponible.');
+  const cardNumber = Math.round(Number(payload.cardNumber) || 0);
+  if (cardNumber < 1 || cardNumber > lot.totalCards) throw new Error(`Escribí un número de cartón entre 1 y ${lot.totalCards}.`);
+  const cardData = eventLotCardByGlobalNumber(lot, cardNumber);
+  if (!cardData) throw new Error('Ese número de cartón no pertenece a este evento.');
+  const card = { mode:lot.mode, grid:cardData.grid };
+  const analysis = analyzeCard(card, claim.drawn || []);
+  const valid = claim.type === 'line' ? analysis.hasLine : analysis.hasBingo;
+  claim.cardNumber = cardNumber;
+  claim.submittedAt = nowIso();
+  claim.status = valid ? 'valid' : 'invalid';
+  event.updatedAt = nowIso();
+  const workspace = eventWorkspace(event);
+  if (valid && workspace?.state?.active) {
+    workspaceContext.run(workspace, () => {
+      if (state.status === 'playing') {
+        clearAutomaticDrawTimer(workspace);
+        state.status = 'paused'; state.pauseReason = 'event_claim'; state.game.phase = 'PAUSED'; state.transition = null;
+        logEvent('event_paper_claim_valid', { claimId:claim.id, sequence:claim.sequence, type:claim.type, cardNumber:claim.cardNumber, touchedAt:claim.touchedAt, drawnCount:claim.drawnCount });
+      }
+      saveState(); broadcast();
+    });
+  }
+  if (workspace?.state?.active) refreshEventPaperClaim(event, workspace);
+  savePlatform();
+  return { status:claim.status, valid, sequence:claim.sequence, cardNumber, type:claim.type, touchedAt:claim.touchedAt };
+}
+
 function updateCommunitySettings(payload = {}) {
   const community = platform.community ||= blankCommunity();
   if (payload.publicRoomsEnabled !== undefined) community.publicRoomsEnabled = payload.publicRoomsEnabled !== false;
@@ -8224,6 +8768,7 @@ function communityAdminPayload() {
     supportMessage: community.supportMessage || blankCommunity().supportMessage,
     support: communitySupportPayload(),
     banners: communityBannersAdminPayload(),
+    event: eventAdminPayload(),
     chatEnabled: community.chatEnabled !== false,
     blockPhoneNumbers: community.blockPhoneNumbers !== false,
     blockWhatsappLinks: community.blockWhatsappLinks !== false,
@@ -8324,6 +8869,20 @@ async function dispatchAdminApi(req, res, url, session) {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Agenda solo puede configurarla el administrador principal.' });
     return sendJson(res, 200, updateCommunitySchedule(await readJson(req)));
   }
+  if (url.pathname === '/api/admin/community/event' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'El Modo Evento solo puede configurarlo el administrador principal.' });
+    return sendJson(res, 200, saveCommunityEvent(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/community/event/banner' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'La publicidad del Evento solo puede configurarla el administrador principal.' });
+    return sendJson(res, 200, updateCommunityEventBannerImage(await readJson(req, 3_600_000)));
+  }
+  if (url.pathname === '/api/admin/community/event/pdf' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'El PDF del evento solo puede descargarlo el administrador principal.' });
+    const event = communityEvent(); const lot = event?.lotCode ? loadCardLot(event.lotCode) : null;
+    if (!event || !lot) throw new Error('Primero generá el lote del evento.');
+    return sendBuffer(res, 200, buildCardLotPdf(lot, { eventTitle:event.title, useGlobalNumber:true }), 'application/pdf', `EL_BINGO_DE_LA_GORDA_EVENTO_${event.lotCode}.pdf`);
+  }
   if (url.pathname === '/api/admin/community/moderate' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Comunidad solo puede moderarla el administrador principal.' });
     return sendJson(res, 200, moderateCommunity(await readJson(req)));
@@ -8411,6 +8970,14 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/community/score' && req.method === 'POST') {
       if (!consumeRate(req, 'community-score', 80, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados puntajes enviados. Probá más tarde.' });
       return sendJson(res, 200, submitCommunityScore(await readJson(req)));
+    }
+    if (url.pathname === '/api/community/event/claim/start' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-event-claim-start', 30, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Hiciste demasiados cantes. Esperá un momento.' });
+      return sendJson(res, 200, startCommunityEventClaim(await readJson(req)));
+    }
+    if (url.pathname === '/api/community/event/claim/submit' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-event-claim-submit', 40, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Hiciste demasiados intentos. Esperá un momento.' });
+      return sendJson(res, 200, submitCommunityEventClaim(await readJson(req)));
     }
     if (url.pathname === '/api/community/cards/generate' && req.method === 'POST') {
       if (!consumeRate(req, 'community-card-lot', 30, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Generaste muchos lotes en poco tiempo. Probá más tarde.' });
@@ -8976,6 +9543,27 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  const eventBannerMatch = url.pathname.match(/^\/event-banner\/([a-zA-Z0-9_-]+)\/(1|2|3)\/?$/);
+  if (eventBannerMatch && (req.method === 'GET' || req.method === 'HEAD')) {
+    const event = communityEvent();
+    const eventId = String(eventBannerMatch[1] || '');
+    const slot = Number(eventBannerMatch[2]);
+    if (!event || String(event.id) !== eventId) return sendJson(res, 404, { error: 'Banner de evento no disponible.' });
+    const sponsor = eventSponsorsAdminPayload(event).find(item => item.slot === slot);
+    if (!sponsor?.hasImage) return sendJson(res, 404, { error: 'Banner de evento no disponible.' });
+    const file = eventSponsorFilePath(event, sponsor);
+    const stat = fs.statSync(file);
+    res.writeHead(200, {
+      'Content-Type': MIME_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
+      'Content-Length': stat.size,
+      'Cache-Control': 'public, max-age=300',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'same-origin'
+    });
+    if (req.method === 'HEAD') return res.end();
+    return fs.createReadStream(file).pipe(res);
+  }
+
   const communityBannerMatch = url.pathname.match(/^\/community-banner\/(1|2|3)\/?$/);
   if (communityBannerMatch && (req.method === 'GET' || req.method === 'HEAD')) {
     const slot = Number(communityBannerMatch[1]);
@@ -9005,7 +9593,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/') {
-    res.writeHead(302, { Location: '/admin' });
+    res.writeHead(302, { Location: '/comunidad', 'Cache-Control':'no-store, max-age=0' });
     return res.end();
   }
   if (url.pathname === '/admin-principal' || url.pathname === '/admin-principal/' || url.pathname === '/admin-principal.html') { res.writeHead(302, { Location: '/admin' }); return res.end(); }

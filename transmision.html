@@ -97,6 +97,19 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
 
 
 
+
+/* MODO EVENTO · publicidad aislada, no altera salas normales */
+.eventSponsorRail{display:none;min-height:0;align-items:center;justify-content:center;gap:10px;padding:6px 10px;border:1px solid #ffc92c3b;border-radius:18px;background:linear-gradient(145deg,#1b1025,#0e0917);overflow:hidden;position:relative}
+.eventSponsorRail.show{display:flex}
+.eventSponsorRail:before{content:"SPONSOR";position:absolute;left:12px;top:8px;font-size:8px;font-weight:1000;letter-spacing:.16em;color:#ffe58b;opacity:.8}
+.eventSponsorFrame{height:100%;max-height:108px;aspect-ratio:12/5;max-width:min(620px,78%);border-radius:12px;overflow:hidden;background:#08050e;border:1px solid #ffffff18;box-shadow:0 8px 24px #0006}
+.eventSponsorFrame img{width:100%;height:100%;display:block;object-fit:contain}
+.eventSponsorText{min-width:0;max-width:250px;display:grid;gap:3px}.eventSponsorText small{color:#a99fb4;font-size:9px;font-weight:900;letter-spacing:.1em}.eventSponsorText b{font-size:clamp(12px,1.1vw,17px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.main.eventSponsorMode{grid-template-rows:minmax(145px,31%) minmax(0,1fr) clamp(74px,12vh,120px)}
+.eventSponsorDots{display:flex;gap:5px}.eventSponsorDots i{width:6px;height:6px;border-radius:50%;background:#ffffff2e}.eventSponsorDots i.active{width:16px;border-radius:99px;background:var(--gold)}
+@media(max-width:820px){.main.eventSponsorMode{grid-template-rows:118px minmax(0,1fr) 58px!important}.eventSponsorRail{padding:3px 7px;border-radius:10px;gap:6px}.eventSponsorRail:before{display:none}.eventSponsorFrame{max-height:52px;max-width:72%}.eventSponsorText b{font-size:9px}.eventSponsorText small{font-size:6px}}
+@media(max-height:560px){.main.eventSponsorMode{grid-template-rows:minmax(108px,34%) minmax(0,1fr) 52px}.eventSponsorFrame{max-height:46px}}
+
 /* Final TV FIX · transmisión estable */
 @media(min-width:821px){
   .layout,.layout.noChat{grid-template-columns:minmax(0,1fr) clamp(270px,23vw,360px)!important}
@@ -168,7 +181,7 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
 <main class="screen">
   <header class="header">
     <div class="brand">
-      <img src="/assets/logo.webp" alt="La Gorda">
+      <img src="/assets/logo.webp" alt="La Gorda" title="Volver a Comunidad" style="cursor:pointer" onclick="location.href='/comunidad?quedar=1'">
       <div class="brandText"><h1>BINGO DE LA GORDA</h1><small id="roomInfo">Transmisión</small></div>
     </div>
     <div class="rightZone"><div class="statusWrap"><span id="liveDot" class="liveDot"></span><div><div id="status" class="status">CONECTANDO…</div><small id="wakeStatus" class="wakeStatus"></small></div></div><div class="txControls"><button id="soundBtn" class="iconBtn" type="button" title="Activar o silenciar efectos" aria-label="Activar o silenciar efectos">🔊</button><button id="voiceBtn" class="iconBtn" type="button" title="Activar o silenciar voz de Vero" aria-label="Activar o silenciar voz de Vero">🗣</button><button id="castBtn" class="iconBtn" type="button" title="Transmitir con Chromecast" aria-label="Transmitir con Chromecast">📺</button><button id="fullBtn" class="iconBtn" type="button" title="Pantalla completa" aria-label="Pantalla completa">⛶</button></div></div>
@@ -196,6 +209,10 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
       <section id="cardsShell" class="cardsShell">
         <header class="cardsHeading"><div class="cardsTitle"><strong>CARRERA POR EL PREMIO</strong><small id="cardsSubtitle">Los más cerca de ganar</small></div><div id="rotationDots" class="rotationDots"></div></header>
         <div id="featuredCards" class="cards"></div>
+      </section>
+      <section id="eventSponsorRail" class="eventSponsorRail" aria-label="Publicidad del evento">
+        <div class="eventSponsorFrame"><img id="eventSponsorImage" alt="Sponsor del evento"></div>
+        <div class="eventSponsorText"><small>PUBLICIDAD DEL EVENTO</small><b id="eventSponsorLabel"></b><div id="eventSponsorDots" class="eventSponsorDots"></div></div>
       </section>
     </section>
     <aside id="chatPanel" class="chat"><div class="chatHead"><h2>CHAT DE LA SALA</h2><small>EN VIVO</small></div><div id="chatList" class="chatList"></div></aside>
@@ -228,6 +245,6 @@ html[data-theme=day] .recent span,html[data-theme=day] .badge{background:#e9eff7
 <script src="/js/emoji-stickers.js?v=2.2.0"></script>
 <script src="/js/presenter-scripts.js?v=2.1.0"></script>
 <script src="/js/cast-sender.js?v=1.0.0"></script>
-<script src="/js/transmision.js?v=final-20260818-0712"></script>
+<script src="/js/transmision.js?v=event-sponsors-20260819-2251"></script>
 </body>
 </html>

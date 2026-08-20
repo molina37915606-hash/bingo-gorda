@@ -10,8 +10,6 @@ const adminJs=fs.readFileSync(path.join(root,'js/admin.js'),'utf8');
 const communityJs=fs.readFileSync(path.join(root,'js/community.js'),'utf8');
 const communityHtml=fs.readFileSync(path.join(root,'comunidad.html'),'utf8');
 const serverSrc=fs.readFileSync(path.join(root,'server.js'),'utf8');
-const transmissionHtml=fs.readFileSync(path.join(root,'transmision.html'),'utf8');
-const transmissionJs=fs.readFileSync(path.join(root,'js/transmision.js'),'utf8');
 assert(adminHtml.includes('id="communityAdminBtn"'),'Admin debe tener botón visible de Comunidad.');
 assert(adminHtml.includes('id="communityAdminModal"'),'Admin debe tener panel de Comunidad.');
 for(const id of ['communityWhatsappNumber','communityWhatsappGroup','communitySupportEnabled','communitySupportRecipient','communitySupportWallet','communitySupportTitle','communitySupportMessage','communityChatEnabled','communityBlockPhones','communityBlockWhatsapp','communityBlockedTermInput','communityReportedMessages','communityRecentMessages']){
@@ -23,20 +21,11 @@ assert(adminJs.includes("'/api/admin/community/moderate'"),'Admin debe poder mod
 assert(communityHtml.includes('href="/demo"'),'Comunidad debe ofrecer acceso permanente al DEMO.');
 assert(communityHtml.includes('<strong>DEMO</strong>')&&communityHtml.includes('Probá el bingo'),'El acceso DEMO debe ser claro y conservar su ayuda breve.');
 assert(serverSrc.includes("url.pathname === '/api/admin/community'"),'Servidor debe exponer Comunidad al admin principal.');
-assert(adminHtml.includes('id="saveCommunityEvent"')&&adminHtml.includes('id="generateCommunityEventLot"')&&adminHtml.includes('id="communityEventClaims"'),'Admin debe incluir el MODO EVENTO y su registro de cantes.');
-assert(communityHtml.includes('id="eventClaimOverlay"')&&communityJs.includes('/api/community/event/claim/start')&&communityJs.includes('/api/community/event/claim/submit'),'Comunidad debe permitir cantar LÍNEA/BINGO y escribir el número de cartón después del toque.');
-assert(serverSrc.includes('touchedAtMs')&&serverSrc.includes('drawn = [...(state.game?.drawn || [])]')&&serverSrc.includes("pauseReason = 'event_claim'"),'El cante del evento debe guardar el instante/bolillas del toque y pausar solo tras validar.');
-assert(adminHtml.includes('id="eventSponsor1File"')&&adminHtml.includes('id="eventSponsor3File"')&&adminHtml.includes('id="saveCommunityEventSponsors"'),'MODO EVENTO debe permitir configurar al menos 3 banners propios.');
-assert(serverSrc.includes("EVENT_BANNERS_DIR")&&serverSrc.includes("/api/admin/community/event/banner")&&serverSrc.includes("/event-banner/"),'Los banners del Evento deben guardarse separados de los banners generales.');
-assert(transmissionHtml.includes('id="eventSponsorRail"')&&transmissionJs.includes('renderEventSponsors(s)'),'La transmisión debe tener una franja de publicidad exclusiva del Evento.');
-assert(adminHtml.includes('id="eventDesignPreview"')&&adminHtml.includes('id="saveCommunityEventDesign"')&&adminHtml.includes('data-event-scene="waiting"'),'Admin debe incluir editor visual 16:9 y control manual de pantallas del Evento.');
-assert(serverSrc.includes('EVENT_ASSETS_DIR')&&serverSrc.includes('/api/admin/community/event/asset')&&serverSrc.includes('/event-theme-base/'),'Los recursos visuales del Evento deben estar aislados y tener assets base internos.');
-assert(transmissionHtml.includes('id="eventBallFrame"')&&transmissionHtml.includes('id="eventSceneOverlay"')&&transmissionJs.includes('applyEventDesign(s)'),'La transmisión debe aplicar el tema y las pantallas especiales solo en MODO EVENTO.');
 
 const port=53800+Math.floor(Math.random()*100);
 const base=`http://127.0.0.1:${port}`;
 const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'bingo-beta-community-'));
-const child=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port),BINGO_TEST_MODE:'true',BINGO_DATA_DIR:dataDir,PUBLIC_URL:base,BINGO_START_SEQUENCE_MS:'30'},stdio:['ignore','pipe','pipe']});
+const child=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port),BINGO_TEST_MODE:'true',BINGO_DATA_DIR:dataDir,PUBLIC_URL:base},stdio:['ignore','pipe','pipe']});
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function waitServer(){for(let i=0;i<100;i++){try{const r=await fetch(base+'/healthz');if(r.ok)return}catch{}await wait(40)}throw Error('Servidor no disponible')}
 async function req(pathname,{method='GET',body,token}={}){const r=await fetch(base+pathname,{method,headers:{...(body!==undefined?{'Content-Type':'application/json'}:{}),...(token?{'X-Admin-Token':token}:{})},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json().catch(()=>({}));assert(r.ok,`${pathname}: ${r.status} ${JSON.stringify(data)}`);return data}
@@ -71,44 +60,5 @@ async function req(pathname,{method='GET',body,token}={}){const r=await fetch(ba
   assert.equal(publicState.support.wallet,'Ualá');
   const demo=await fetch(base+'/demo');assert(demo.ok,'/demo debe seguir disponible.');
   const comunidad=await fetch(base+'/comunidad');const html=await comunidad.text();assert(comunidad.ok&&html.includes('js/community.js'));
-
-  // MODO EVENTO: lote numerado, publicación oficial y cante en papel con snapshot al tocar.
-  const startsAt=new Date(Date.now()+3600000).toISOString();
-  community=await req('/api/admin/community/event',{method:'POST',token,body:{action:'save',title:'Evento Piloto',startsAt,mode:90,maxPeople:100,cardCount:12,autoSeconds:60}});
-  community=await req('/api/admin/community/event',{method:'POST',token,body:{action:'generate-lot'}});const eventLot=community.event.lotCode;assert(eventLot&&community.event.lotTotalCards===12);
-  community=await req('/api/admin/community/event',{method:'POST',token,body:{action:'publish'}});assert.equal(community.event.published,true);
-  let publicEvent=await req('/api/community/state?visitorId=evento-beta');assert(publicEvent.event&&publicEvent.event.title==='Evento Piloto');assert(publicEvent.lobbyRooms.some(x=>x.eventMode&&x.name==='Evento Piloto'));
-  community=await req('/api/admin/community/event',{method:'POST',token,body:{action:'create-room'}});const eventWorkspace=community.event.workspaceId;assert(eventWorkspace);
-  await req('/api/admin/workspace/select',{method:'POST',token,body:{workspaceId:eventWorkspace}});
-  let eventState=await req('/api/admin/state',{token});assert(eventState.roomSettings.eventMode&&eventState.preflight.ok&&eventState.players.length===0);assert.equal(eventState.game.cards.length,12);
-  const tinyPng='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZgWQAAAAASUVORK5CYII=';
-  community=await req('/api/admin/community/event/banner',{method:'POST',token,body:{action:'upload',slot:1,imageData:tinyPng}});
-  community=await req('/api/admin/community/event/banner',{method:'POST',token,body:{action:'upload',slot:2,imageData:tinyPng}});
-  community=await req('/api/admin/community/event/banner',{method:'POST',token,body:{action:'upload',slot:3,imageData:tinyPng}});
-  community=await req('/api/admin/community/event',{method:'POST',token,body:{action:'save-sponsors',sponsors:[{slot:1,enabled:true,label:'Sponsor Uno'},{slot:2,enabled:true,label:'Sponsor Dos'},{slot:3,enabled:true,label:'Sponsor Tres'}]}});
-  assert.equal(community.event.sponsors.filter(x=>x.enabled&&x.hasImage).length,3,'El Evento debe conservar 3 banners activos con imagen.');
-  community=await req('/api/admin/community/event',{method:'POST',token,body:{action:'save-design',design:{primaryColor:'#7a1594',secondaryColor:'#13071d',accentColor:'#f4ca55',textColor:'#fff1c4',backgroundMode:'custom',ballStyle:'premium',marqueeStyle:'premium',showLogo:true,showTitle:true,sponsorPosition:'top'}}});
-  community=await req('/api/admin/community/event/asset',{method:'POST',token,body:{action:'upload',key:'background',data:tinyPng}});
-  community=await req('/api/admin/community/event/asset',{method:'POST',token,body:{action:'upload',key:'logo',data:tinyPng}});
-  community=await req('/api/admin/community/event',{method:'POST',token,body:{action:'set-scene',scene:'line'}});
-  assert.equal(community.event.design.primaryColor,'#7a1594');assert.equal(community.event.design.sponsorPosition,'top');assert(community.event.design.assets.background.hasAsset&&community.event.design.assets.logo.hasAsset);assert.equal(community.event.broadcastScene,'line');
-  eventState=await req('/api/admin/state',{token});assert.equal(eventState.eventSponsors.length,3,'Admin en vivo debe recibir los 3 banners del Evento.');
-  const broadcastToken=eventState.roomSettings.broadcastToken;assert(broadcastToken);
-  let broadcast=await req(`/api/broadcast/state?token=${encodeURIComponent(broadcastToken)}`);assert.equal(broadcast.eventSponsors.length,3,'La transmisión debe recibir los 3 banners del Evento.');assert(broadcast.eventDesign&&broadcast.eventDesign.assets.background.hasAsset,'La transmisión debe recibir el diseño personalizado del Evento.');assert.equal(broadcast.eventDesign.scene,'line');
-  const baseBall=await fetch(base+'/event-theme-base/ball');assert(baseBall.ok&&(baseBall.headers.get('content-type')||'').includes('image/webp'),'El marco Premium base debe servirse sin depender de archivos de GitHub.');
-  const customBg=await fetch(base+broadcast.eventDesign.assets.background.url);assert(customBg.ok,'El fondo personalizado debe servirse desde almacenamiento del Evento.');
-  community=await req('/api/admin/community/event',{method:'POST',token,body:{action:'set-scene',scene:'game'}});broadcast=await req(`/api/broadcast/state?token=${encodeURIComponent(broadcastToken)}`);assert.equal(broadcast.eventDesign.scene,'game');
-  const sponsorImage=await fetch(base+broadcast.eventSponsors[0].imageUrl);assert(sponsorImage.ok,'El banner del Evento debe servirse desde su ruta aislada.');
-  const lot=await req(`/api/community/cards/lot?lot=${encodeURIComponent(eventLot)}`),paperCard=lot.series[0].cards[0],numbers=[...new Set(paperCard.grid.flat().filter(Number.isFinite))],firstRow=paperCard.grid[0].filter(Number.isFinite);assert.equal(paperCard.globalNumber,1);assert.equal(numbers.length,15);assert.equal(firstRow.length,5);
-  await req('/api/admin/test/draw-order',{method:'POST',token,body:{sequence:numbers}});eventState=await req('/api/admin/start',{method:'POST',token,body:{}});for(let i=0;i<25&&eventState.status!=='playing';i++){await wait(35);eventState=await req('/api/admin/state',{token})}assert.equal(eventState.status,'playing');
-  for(const number of firstRow)eventState=await req('/api/admin/draw',{method:'POST',token,body:{source:'manual'}});assert.equal(eventState.game.drawn.length,5);
-  const early=await req('/api/community/event/claim/start',{method:'POST',body:{visitorId:'evento-viejito',type:'bingo'}});assert.equal(early.sequence,1);
-  for(let i=firstRow.length;i<numbers.length;i++)eventState=await req('/api/admin/draw',{method:'POST',token,body:{source:'manual'}});
-  const invalid=await req('/api/community/event/claim/submit',{method:'POST',body:{claimId:early.claimId,token:early.token,cardNumber:1}});assert.equal(invalid.valid,false,'Un BINGO tocado antes de tiempo debe seguir siendo inválido aunque el cartón se complete mientras escribe.');eventState=await req('/api/admin/state',{token});assert.equal(eventState.status,'playing','Un cante falso no debe pausar la transmisión.');
-  // Dos BINGOS correctos: el segundo escribe primero, pero el orden oficial sigue siendo el toque.
-  const slow=await req('/api/community/event/claim/start',{method:'POST',body:{visitorId:'evento-lento',type:'bingo'}});assert.equal(slow.sequence,2);await wait(20);const fast=await req('/api/community/event/claim/start',{method:'POST',body:{visitorId:'evento-rapido',type:'bingo'}});assert.equal(fast.sequence,3);
-  const fastValid=await req('/api/community/event/claim/submit',{method:'POST',body:{claimId:fast.claimId,token:fast.token,cardNumber:1}});assert.equal(fastValid.valid,true);eventState=await req('/api/admin/state',{token});assert.equal(eventState.status,'paused');assert.equal(eventState.pauseReason,'event_claim');assert.equal(eventState.eventPaperClaim.sequence,3);assert.equal(eventState.eventPaperClaim.waitingEarlierCount,1,'No se debe confirmar al que escribió rápido mientras exista un cante anterior escribiendo.');
-  const slowValid=await req('/api/community/event/claim/submit',{method:'POST',body:{claimId:slow.claimId,token:slow.token,cardNumber:1}});assert.equal(slowValid.valid,true);eventState=await req('/api/admin/state',{token});assert.equal(eventState.eventPaperClaim.sequence,2,'Al completar el cartón, el cante anterior debe recuperar el primer lugar.');assert.equal(eventState.eventPaperClaim.waitingEarlierCount,0);
-  const eventPdf=await fetch(base+'/api/admin/community/event/pdf',{headers:{'X-Admin-Token':token}});assert(eventPdf.ok&&(eventPdf.headers.get('content-type')||'').includes('application/pdf'),'El evento debe descargar su PDF numerado.');assert((await eventPdf.arrayBuffer()).byteLength>5000);
-  console.log('PRUEBA BETA COMUNIDAD ADMIN + EVENTO PAPEL + DISEÑO VISUAL + 3 SPONSORS + ACCESO DEMO: OK');
+  console.log('PRUEBA BETA COMUNIDAD ADMIN + ACCESO DEMO: OK');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

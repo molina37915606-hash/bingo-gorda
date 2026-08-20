@@ -12,7 +12,7 @@ function cookie(res){return (res.headers.get('set-cookie')||'').split(';')[0]}
  await waitServer();
  const rootEntry=await fetch(base+'/',{redirect:'manual'});assert.equal(rootEntry.status,302,'La raíz debe redirigir sin cache permanente');assert.equal(rootEntry.headers.get('location'),'/comunidad','La página principal debe ser Comunidad');
  const communityEntry=await fetch(base+'/comunidad');assert(communityEntry.ok&&(await communityEntry.text()).includes('EL BINGO DE LA GORDA'),'La ruta /comunidad debe seguir abriendo Comunidad');
- for(const file of ['acceso.html','admin.html','comunidad.html','demo.html','player.html','reglamento.html','transmision.html','tv.html']){const page=fs.readFileSync(path.join(root,file),'utf8');assert(page.includes("onclick=\"location.href='/comunidad?quedar=1'\""),`${file}: el logo debe volver a Comunidad`)}
+ for(const file of ['acceso.html','admin.html','cast-receiver.html','comunidad.html','demo.html','player.html','reglamento.html','transmision.html','tv.html']){const page=fs.readFileSync(path.join(root,file),'utf8');assert(page.includes("onclick=\"location.href='/comunidad?quedar=1'\""),`${file}: el logo debe volver a Comunidad`)}
  const playerJsNav=fs.readFileSync(path.join(root,'js','player.js'),'utf8');assert(playerJsNav.includes("onclick=\"location.href='/comunidad?quedar=1'\""),'Los logos dinámicos del jugador deben volver a Comunidad');
  const login=await postJson('/api/admin/login',{}),ah={'X-Admin-Token':login.token};
  let room=await postJson('/api/admin/create-simple-room',{mode:90,cardCount:100,autoSeconds:20,rules:{line:true,bingo:true},linePrizeCount:2,maxCardsPerPlayer:4,markingMode:'normal'},ah);

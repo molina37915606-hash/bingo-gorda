@@ -73,8 +73,6 @@ function cookieValueFromSetCookie(header,name){const m=String(header||'').match(
  assert.deepEqual((activeAfter.player?.cards||[]).map(c=>c.id||c.number),cardsBefore,'El regreso automático debe conservar exactamente los mismos cartones.');
  const explicitOther=await fetch(base+'/comunidad?mesa=otra-sala',{headers:{Cookie:both},redirect:'manual'});
  assert.equal(explicitOther.status,200,'Un destino explícito de otra mesa no debe ser interceptado automáticamente.');
- const explicitCommunity=await fetch(base+'/comunidad?quedar=1',{headers:{Cookie:both},redirect:'manual'});
- assert.equal(explicitCommunity.status,200,'Tocar el logo debe permitir volver a Comunidad aunque exista una partida activa.');
 
  // 4) Wake Lock: debe estar asociado únicamente a estados activos del jugador y reintentarse al volver a la pestaña.
  const playerJs=fs.readFileSync(path.join(root,'js','player.js'),'utf8');

@@ -29,6 +29,9 @@ assert(serverSrc.includes('touchedAtMs')&&serverSrc.includes('drawn = [...(state
 assert(adminHtml.includes('id="eventSponsor1File"')&&adminHtml.includes('id="eventSponsor3File"')&&adminHtml.includes('id="saveCommunityEventSponsors"'),'MODO EVENTO debe permitir configurar al menos 3 banners propios.');
 assert(serverSrc.includes("EVENT_BANNERS_DIR")&&serverSrc.includes("/api/admin/community/event/banner")&&serverSrc.includes("/event-banner/"),'Los banners del Evento deben guardarse separados de los banners generales.');
 assert(transmissionHtml.includes('id="eventSponsorRail"')&&transmissionJs.includes('renderEventSponsors(s)'),'La transmisión debe tener una franja de publicidad exclusiva del Evento.');
+assert(adminHtml.includes('id="eventDesignPreview"')&&adminHtml.includes('id="saveCommunityEventDesign"')&&adminHtml.includes('data-event-scene="waiting"'),'Admin debe incluir editor visual 16:9 y control manual de pantallas del Evento.');
+assert(serverSrc.includes('EVENT_ASSETS_DIR')&&serverSrc.includes('/api/admin/community/event/asset')&&serverSrc.includes('/event-theme-base/'),'Los recursos visuales del Evento deben estar aislados y tener assets base internos.');
+assert(transmissionHtml.includes('id="eventBallFrame"')&&transmissionHtml.includes('id="eventSceneOverlay"')&&transmissionJs.includes('applyEventDesign(s)'),'La transmisión debe aplicar el tema y las pantallas especiales solo en MODO EVENTO.');
 
 const port=53800+Math.floor(Math.random()*100);
 const base=`http://127.0.0.1:${port}`;
@@ -84,9 +87,17 @@ async function req(pathname,{method='GET',body,token}={}){const r=await fetch(ba
   community=await req('/api/admin/community/event/banner',{method:'POST',token,body:{action:'upload',slot:3,imageData:tinyPng}});
   community=await req('/api/admin/community/event',{method:'POST',token,body:{action:'save-sponsors',sponsors:[{slot:1,enabled:true,label:'Sponsor Uno'},{slot:2,enabled:true,label:'Sponsor Dos'},{slot:3,enabled:true,label:'Sponsor Tres'}]}});
   assert.equal(community.event.sponsors.filter(x=>x.enabled&&x.hasImage).length,3,'El Evento debe conservar 3 banners activos con imagen.');
+  community=await req('/api/admin/community/event',{method:'POST',token,body:{action:'save-design',design:{primaryColor:'#7a1594',secondaryColor:'#13071d',accentColor:'#f4ca55',textColor:'#fff1c4',backgroundMode:'custom',ballStyle:'premium',marqueeStyle:'premium',showLogo:true,showTitle:true,sponsorPosition:'top'}}});
+  community=await req('/api/admin/community/event/asset',{method:'POST',token,body:{action:'upload',key:'background',data:tinyPng}});
+  community=await req('/api/admin/community/event/asset',{method:'POST',token,body:{action:'upload',key:'logo',data:tinyPng}});
+  community=await req('/api/admin/community/event',{method:'POST',token,body:{action:'set-scene',scene:'line'}});
+  assert.equal(community.event.design.primaryColor,'#7a1594');assert.equal(community.event.design.sponsorPosition,'top');assert(community.event.design.assets.background.hasAsset&&community.event.design.assets.logo.hasAsset);assert.equal(community.event.broadcastScene,'line');
   eventState=await req('/api/admin/state',{token});assert.equal(eventState.eventSponsors.length,3,'Admin en vivo debe recibir los 3 banners del Evento.');
   const broadcastToken=eventState.roomSettings.broadcastToken;assert(broadcastToken);
-  const broadcast=await req(`/api/broadcast/state?token=${encodeURIComponent(broadcastToken)}`);assert.equal(broadcast.eventSponsors.length,3,'La transmisión debe recibir los 3 banners del Evento.');
+  let broadcast=await req(`/api/broadcast/state?token=${encodeURIComponent(broadcastToken)}`);assert.equal(broadcast.eventSponsors.length,3,'La transmisión debe recibir los 3 banners del Evento.');assert(broadcast.eventDesign&&broadcast.eventDesign.assets.background.hasAsset,'La transmisión debe recibir el diseño personalizado del Evento.');assert.equal(broadcast.eventDesign.scene,'line');
+  const baseBall=await fetch(base+'/event-theme-base/ball');assert(baseBall.ok&&(baseBall.headers.get('content-type')||'').includes('image/webp'),'El marco Premium base debe servirse sin depender de archivos de GitHub.');
+  const customBg=await fetch(base+broadcast.eventDesign.assets.background.url);assert(customBg.ok,'El fondo personalizado debe servirse desde almacenamiento del Evento.');
+  community=await req('/api/admin/community/event',{method:'POST',token,body:{action:'set-scene',scene:'game'}});broadcast=await req(`/api/broadcast/state?token=${encodeURIComponent(broadcastToken)}`);assert.equal(broadcast.eventDesign.scene,'game');
   const sponsorImage=await fetch(base+broadcast.eventSponsors[0].imageUrl);assert(sponsorImage.ok,'El banner del Evento debe servirse desde su ruta aislada.');
   const lot=await req(`/api/community/cards/lot?lot=${encodeURIComponent(eventLot)}`),paperCard=lot.series[0].cards[0],numbers=[...new Set(paperCard.grid.flat().filter(Number.isFinite))],firstRow=paperCard.grid[0].filter(Number.isFinite);assert.equal(paperCard.globalNumber,1);assert.equal(numbers.length,15);assert.equal(firstRow.length,5);
   await req('/api/admin/test/draw-order',{method:'POST',token,body:{sequence:numbers}});eventState=await req('/api/admin/start',{method:'POST',token,body:{}});for(let i=0;i<25&&eventState.status!=='playing';i++){await wait(35);eventState=await req('/api/admin/state',{token})}assert.equal(eventState.status,'playing');
@@ -99,5 +110,5 @@ async function req(pathname,{method='GET',body,token}={}){const r=await fetch(ba
   const fastValid=await req('/api/community/event/claim/submit',{method:'POST',body:{claimId:fast.claimId,token:fast.token,cardNumber:1}});assert.equal(fastValid.valid,true);eventState=await req('/api/admin/state',{token});assert.equal(eventState.status,'paused');assert.equal(eventState.pauseReason,'event_claim');assert.equal(eventState.eventPaperClaim.sequence,3);assert.equal(eventState.eventPaperClaim.waitingEarlierCount,1,'No se debe confirmar al que escribió rápido mientras exista un cante anterior escribiendo.');
   const slowValid=await req('/api/community/event/claim/submit',{method:'POST',body:{claimId:slow.claimId,token:slow.token,cardNumber:1}});assert.equal(slowValid.valid,true);eventState=await req('/api/admin/state',{token});assert.equal(eventState.eventPaperClaim.sequence,2,'Al completar el cartón, el cante anterior debe recuperar el primer lugar.');assert.equal(eventState.eventPaperClaim.waitingEarlierCount,0);
   const eventPdf=await fetch(base+'/api/admin/community/event/pdf',{headers:{'X-Admin-Token':token}});assert(eventPdf.ok&&(eventPdf.headers.get('content-type')||'').includes('application/pdf'),'El evento debe descargar su PDF numerado.');assert((await eventPdf.arrayBuffer()).byteLength>5000);
-  console.log('PRUEBA BETA COMUNIDAD ADMIN + EVENTO PAPEL + 3 SPONSORS + ACCESO DEMO: OK');
+  console.log('PRUEBA BETA COMUNIDAD ADMIN + EVENTO PAPEL + DISEÑO VISUAL + 3 SPONSORS + ACCESO DEMO: OK');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

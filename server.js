@@ -670,6 +670,7 @@ function normalizeCommunityPublicRoom(raw = {}) {
     creatorCodeHash: /^[a-f0-9]{64}$/i.test(String(raw.creatorCodeHash || '')) ? String(raw.creatorCodeHash).toLowerCase() : '',
     accessType: raw.accessType === 'private' ? 'private' : 'public',
     accessKeyHash: /^[a-f0-9]{64}$/i.test(String(raw.accessKeyHash || '')) ? String(raw.accessKeyHash).toLowerCase() : '',
+    accessKeyAdmin: raw.accessType === 'private' && raw.accessKeyAdmin ? normalizeCommunityRoomAccessKey(raw.accessKeyAdmin) : '',
     roundNumber: Math.max(1, Math.round(Number(raw.roundNumber) || 1)),
     startMode: raw.startMode === 'scheduled' ? 'scheduled' : 'manual',
     startsAt: startsIso,
@@ -7096,6 +7097,7 @@ function verifyCommunityRoomAccessKey(record, value) {
   if (!record || record.accessType !== 'private' || !record.accessKeyHash) return true;
   const key = normalizeCommunityRoomAccessKey(value);
   if (!safeEqual(hashCommunityRoomAccessKey(key), record.accessKeyHash)) throw new Error('Clave incorrecta.');
+  if (!record.accessKeyAdmin) { record.accessKeyAdmin = key; savePlatform(); }
   return true;
 }
 
@@ -7370,7 +7372,7 @@ function createCommunityPublicRoom(payload = {}) {
   const creatorCode = randomCode(7);
   const creatorCodeHash = crypto.createHash('sha256').update(creatorCode).digest('hex');
   const record = normalizeCommunityPublicRoom({
-    id: randomId('public'), name:roomName, creatorName, creatorCodeHash, accessType, accessKeyHash, startMode, startsAt,
+    id: randomId('public'), name:roomName, creatorName, creatorCodeHash, accessType, accessKeyHash, accessKeyAdmin:accessKey, startMode, startsAt,
     mode, maxPlayers, maxCardsPerPlayer, autoSeconds, linePrizeCount, rules,
     status:'scheduled', createdAt:nowIso(), updatedAt:nowIso()
   });
@@ -8165,6 +8167,7 @@ function operationalRoomSummary(workspace) {
     status: room.status || 'closed',
     roomCode: room.roomCode || '',
     roomOrigin: room.roomSettings?.roomOrigin === 'community' ? 'community' : 'official',
+    communityAccessType: room.roomSettings?.roomOrigin === 'community' && room.roomSettings?.communityAccessType === 'private' ? 'private' : 'public',
     hostName: room.roomSettings?.hostName || room.communityHostName || '',
     mode: Number(room.game?.mode) || null,
     players: Array.isArray(room.players) ? room.players.length : 0,
@@ -8276,6 +8279,15 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/workspaces' && req.method === 'GET') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'Solo el administrador principal puede cambiar de sala.' });
     return sendJson(res, 200, operationalAdminPayload(session));
+  }
+  if (url.pathname === '/api/admin/private-room-key' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'Solo el administrador principal puede consultar claves privadas.' });
+    if (state.roomSettings?.roomOrigin !== 'community' || state.roomSettings?.communityAccessType !== 'private') throw new Error('La sala seleccionada no es privada.');
+    const publicId = String(state.roomSettings?.communityPublicId || '');
+    const record = publicId ? communityPublicRoomById(publicId) : null;
+    const accessKey = record?.accessKeyAdmin || '';
+    if (!accessKey) throw new Error('La clave de esta sala fue creada antes de esta actualización y todavía no puede recuperarse. Se guardará cuando vuelva a usarse correctamente.');
+    return sendJson(res, 200, { accessKey });
   }
   if (url.pathname === '/api/admin/workspace/select' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'Solo el administrador principal puede cambiar de sala.' });

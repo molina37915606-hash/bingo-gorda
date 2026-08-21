@@ -9,10 +9,10 @@ const playerJs=fs.readFileSync(path.join(root,'js','player.js'),'utf8');
 const css=fs.readFileSync(path.join(root,'css','platform.css'),'utf8');
 assert(adminHtml.includes('id="playerAdEnabled"')&&adminHtml.includes('id="playerAdFile"'),'Admin debe configurar una sola publicidad de cartones.');
 assert(adminJs.includes("'/api/admin/community/player-ad'")&&adminJs.includes('uploadPendingPlayerAd'),'Admin debe poder subir la publicidad.');
-assert(playerJs.includes('durationMs:Math.max(1000,Number(ad.durationMs)||5000)'),'La publicidad debe durar 5 segundos por defecto.');
+assert(playerJs.includes('durationMs:Math.max(1000,Number(ad.durationMs)||10000)'),'La publicidad debe durar 10 segundos por defecto.');
 assert(playerJs.includes('newCount%ad.everyBalls===0'),'La publicidad debe dispararse por cantidad de bolillas.');
 assert(playerJs.includes("this.triggerPlayerAd(`${roundKey}:start`,newState)"),'La publicidad debe mostrarse al comenzar.');
-assert(playerJs.includes('${this.playerAdMarkup()}'),'La publicidad debe renderizarse junto al cartón.');
+assert(playerJs.indexOf('${this.playerAdMarkup()}')>playerJs.indexOf('${this.claimControls(card)}'),'La publicidad debe renderizarse debajo del botón de reclamo.');
 assert(css.includes('.playerAdBanner')&&css.includes('display:none'),'La publicidad no debe ocupar espacio cuando está oculta.');
 
 const port=56800+Math.floor(Math.random()*120),base=`http://127.0.0.1:${port}`,dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'bingo-player-ad-'));
@@ -31,8 +31,8 @@ async function json(pathname,{method='GET',body,token,cookie}={}){const r=await 
   let room=await json('/api/admin/create-simple-room',{method:'POST',token,body:{mode:90,cardCount:50,autoSeconds:20,rules:{line:true,bingo:true},linePrizeCount:1,maxCardsPerPlayer:2,markingMode:'normal'}});
   room=await json('/api/admin/join-open',{method:'POST',token,body:{open:true}});
   const join=await fetch(base+'/jugador/entrar',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`roomCode=${encodeURIComponent(room.roomCode)}&name=Jugador+Publicidad&cardCount=1`,redirect:'manual'});assert.equal(join.status,303);const cookie=(join.headers.get('set-cookie')||'').split(';')[0];assert(cookie);
-  const state=await json('/api/player/state',{cookie});assert.equal(state.playerAd.enabled,true);assert.equal(state.playerAd.durationMs,5000);assert.equal(state.playerAd.everyBalls,10);
+  const state=await json('/api/player/state',{cookie});assert.equal(state.playerAd.enabled,true);assert.equal(state.playerAd.durationMs,10000);assert.equal(state.playerAd.everyBalls,10);
   const form=new URLSearchParams({mode:'90',playerCardCount:'1',aiCount:'1',autoSeconds:'60',linePrizeCount:'1',prizeLine:'1',prizeBingo:'1'});
   const demoStart=await fetch(base+'/demo/start',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form.toString(),redirect:'manual'});assert.equal(demoStart.status,303);const demoCookie=(demoStart.headers.get('set-cookie')||'').split(';')[0];const demoState=await json('/api/player/state?demo=1',{cookie:demoCookie});assert.equal(demoState.playerAd.enabled,false,'DEMO debe permanecer sin publicidad.');
-  console.log('PRUEBA PUBLICIDAD EN CARTONES: OK · 5 s + inicio + cada 10 bolillas + DEMO intacta');
+  console.log('PRUEBA PUBLICIDAD EN CARTONES: OK · 10 s + debajo de reclamar + inicio + cada 10 bolillas + DEMO intacta');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

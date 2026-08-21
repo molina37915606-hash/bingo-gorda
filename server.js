@@ -913,7 +913,7 @@ function playerAdAdminPayload() {
 
 function playerAdPublicPayload() {
   const ad = playerAdAdminPayload();
-  return ad.enabled && ad.hasImage ? { enabled:true, imageUrl:ad.imageUrl, durationMs:5000, everyBalls:10 } : { enabled:false, imageUrl:'', durationMs:5000, everyBalls:10 };
+  return ad.enabled && ad.hasImage ? { enabled:true, imageUrl:ad.imageUrl, durationMs:10000, everyBalls:10 } : { enabled:false, imageUrl:'', durationMs:10000, everyBalls:10 };
 }
 
 function removePlayerAdFiles() {
@@ -2131,7 +2131,7 @@ function playerPayload(player) {
     endedAt: state.endedAt || null,
     roomSettings: state.roomSettings,
     support: communitySupportPayload(),
-    playerAd: currentWorkspace().isDemo ? { enabled:false, imageUrl:'', durationMs:5000, everyBalls:10 } : playerAdPublicPayload(),
+    playerAd: currentWorkspace().isDemo ? { enabled:false, imageUrl:'', durationMs:10000, everyBalls:10 } : playerAdPublicPayload(),
     waitingGame: waitingGamePayload(),
     markingPolicy: markingPolicyPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), muted: (state.chat?.mutedPlayerIds || []).includes(player.id) },

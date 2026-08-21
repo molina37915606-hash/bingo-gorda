@@ -218,7 +218,12 @@ function installLogoUpload(){
 async function openEventTransmission(){
   try{await syncContext();const url=labState?.broadcastUrl;if(!url)return notify('Primero prepará la sala real.');const alias=String(url).split('/').filter(Boolean).at(-1)||'';if(!alias)return notify('No se encontró el código de transmisión.');const payload={v:2,alias,title:community?.event?.title||$('eventTitle')?.value.trim()||'EVENTO',lotCode:community?.event?.lotCode||lot?.code||'',topText:localStorage.getItem(TOP_TEXT_KEY)||'',assignments:assignmentsForLot()};const win=window.open(`${location.origin}/assets/evento-transmision.html#${encodePayload(payload)}`,'_blank');if(!win)notify('Permití ventanas emergentes para abrir la transmisión.')}catch(error){notify(error.message||'No se pudo abrir la transmisión.')}
 }
-function observePreview(){const board=$('pvBoard');if(!board)return;previewObserver?.disconnect();previewObserver=new MutationObserver(()=>renderPreviewExtras());previewObserver.observe(board,{childList:true,subtree:true,attributes:true,attributeFilter:['class']})}
+function observePreview(){
+  const board=$('pvBoard');if(!board)return;
+  previewObserver?.disconnect();
+  previewObserver=new MutationObserver(()=>renderPreviewExtras());
+  previewObserver.observe(board,{childList:true,subtree:true});
+}
 async function bind(){
   injectStyles();installMarqueeControl();buildPreview();observePreview();await seedSponsors();installSponsorUi();installLogoUpload();restartSponsorRotation();await syncContext();
   $('openPreview')?.addEventListener('click',openBolilleroPreview);$('closePreview')?.addEventListener('click',closeBolilleroPreview);$('openPlayerPreview')?.addEventListener('click',openPlayerPreview);if($('openTx'))$('openTx').onclick=openEventTransmission;

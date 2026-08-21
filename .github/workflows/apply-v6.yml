@@ -1,10 +1,13 @@
-name: Aplicar V6 software gratuito
+name: Materializar V6 software gratuito
 
 on:
   push:
+    branches: [main]
     paths:
       - '.v6-deploy/**'
       - '.github/workflows/apply-v6.yml'
+      - 'apply-v6-runtime.js'
+      - 'package.json'
 
 permissions:
   contents: write
@@ -18,20 +21,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Aplicar y validar V6
+      - name: Materializar y validar V6
         shell: bash
         run: |
           set -euo pipefail
-          cat .v6-deploy/part* | base64 -d > /tmp/v6.diff.xz
-          echo "7e7e021dc1014e718432709f874c5214706401b97a16fb7b1536af490b7decb8  /tmp/v6.diff.xz" | sha256sum -c -
-          xz -t /tmp/v6.diff.xz
-          xz -dc /tmp/v6.diff.xz > /tmp/v6.diff
-          echo "5e4316bed451066594bf7c853a4c32fac0eab1ec33ef0e0ecffff0f8d01b3f1b  /tmp/v6.diff" | sha256sum -c -
-          patch --dry-run -p1 < /tmp/v6.diff
-          patch -p1 < /tmp/v6.diff
+          node apply-v6-runtime.js
           npm install
           npm test
           rm -rf .v6-deploy
+          rm -f apply-v6-runtime.js
           rm -f .github/workflows/apply-v6.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

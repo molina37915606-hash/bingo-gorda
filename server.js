@@ -345,6 +345,7 @@ function blankState() {
       bingoPrizeCount: 1,
       allowSamePlayerSecondLine: true,
       tiePolicy: 'first_claim',
+      claimMode: 'manual',
       gameType: 'real',
       prizeAmounts: { ambo: 0, line: 0, doubleLine: 0, tripleLine: 0, corners: 0, bingo: 0 },
       whatsapp: '',
@@ -460,7 +461,8 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.linePrizeCount = Math.max(1, Math.min(2, Number(merged.roomSettings.linePrizeCount) || 1));
     merged.roomSettings.bingoPrizeCount = 1;
     merged.roomSettings.allowSamePlayerSecondLine = Boolean(merged.roomSettings.allowSamePlayerSecondLine);
-    merged.roomSettings.tiePolicy = merged.roomSettings.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim';
+    merged.roomSettings.claimMode = merged.roomSettings.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual';
+    merged.roomSettings.tiePolicy = merged.roomSettings.claimMode === 'automatic_ties' ? 'same_ball' : (merged.roomSettings.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim');
     merged.roomSettings.gameType = merged.roomSettings.gameType === 'test' ? 'test' : 'real';
     merged.roomSettings.prizeAmounts = {
       ambo: Math.max(0, Number(merged.roomSettings.prizeAmounts?.ambo) || 0),
@@ -677,6 +679,7 @@ function normalizeCommunityPublicRoom(raw = {}) {
     startsAt: startsIso,
     mode, maxPlayers, maxCardsPerPlayer,
     autoSeconds: Math.max(4, Math.min(20, Math.round(Number(raw.autoSeconds) || 8))),
+    claimMode: raw.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
     linePrizeCount, rules,
     roomCode: String(raw.roomCode || '').replace(/[^A-Z0-9]/gi, '').slice(0, 12),
     workspaceId: OPERATIONAL_WORKSPACE_IDS.includes(String(raw.workspaceId || '')) ? String(raw.workspaceId) : '',
@@ -1600,6 +1603,7 @@ function preflightPayload() {
     linePrizeCount: Number(state.game?.mode) === 90 ? Math.max(1, Math.min(2, Number(state.roomSettings?.linePrizeCount) || 1)) : 1,
     allowSamePlayerSecondLine: Number(state.game?.mode) === 90 && Boolean(state.roomSettings?.allowSamePlayerSecondLine),
     tiePolicy: state.roomSettings?.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim',
+    claimMode: state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
     errors
   };
 }
@@ -3111,7 +3115,7 @@ function createSimpleRoom(payload = {}) {
       ...blankState().roomSettings,
       playerAudioAllowed: true, playerAudioDefault: true,
       linePrizeCount: Number(game.mode) === 90 ? Math.max(1, Math.min(2, Number(payload.linePrizeCount) || 1)) : 1,
-      allowSamePlayerSecondLine: true, tiePolicy: 'first_claim', gameType: 'real',
+      allowSamePlayerSecondLine: true, claimMode: payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', tiePolicy: payload.claimMode === 'automatic_ties' ? 'same_ball' : 'first_claim', gameType: 'real',
       prizeAmounts: {
         ambo: Math.max(0, Math.min(1_000_000_000, Number(payload.prizeAmounts?.ambo) || 0)),
         line: Math.max(0, Math.min(1_000_000_000, Number(payload.prizeAmounts?.line) || 0)),
@@ -4255,7 +4259,8 @@ function configureRoom(payload) {
       linePrizeCount: Number(sanitizedGame.mode) === 90 ? Math.max(1, Math.min(2, Number(payload.roomSettings?.linePrizeCount) || 1)) : 1,
       bingoPrizeCount: 1,
       allowSamePlayerSecondLine: Number(sanitizedGame.mode) === 90 && Boolean(payload.roomSettings?.allowSamePlayerSecondLine),
-      tiePolicy: payload.roomSettings?.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim',
+      claimMode: payload.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
+      tiePolicy: payload.roomSettings?.claimMode === 'automatic_ties' ? 'same_ball' : (payload.roomSettings?.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim'),
       gameType: payload.roomSettings?.gameType === 'test' ? 'test' : 'real',
       prizeAmounts: {
         ambo: Math.max(0, Number(payload.roomSettings?.prizeAmounts?.ambo) || 0),
@@ -4603,6 +4608,7 @@ function scheduleSimulatedAiChat() {
 }
 
 function scheduleVirtualPlayerClaims() {
+  if (automaticTieClaimsEnabled()) return 0;
   if (!virtualPlayersAreActive() || state.status !== 'playing') return 0;
   const drawnCount = state.game.drawn.length;
   let candidates = [];
@@ -4710,9 +4716,10 @@ function drawNextBall(source = 'manual') {
   state.game.phase = state.game.drawMode === 'automatic' ? 'DRAWING' : 'READY';
   logEvent('ball_drawn', { number, position: state.game.drawn.length, source, drawRevision: Number(state.revision) + 1 });
   syncAllAutoMarks();
-  scheduleVirtualPlayerClaims();
+  const automaticAwards = processAutomaticClaimsForCurrentBall();
+  if (!automaticAwards.length) scheduleVirtualPlayerClaims();
   scheduleSimulatedAiChat();
-  if (state.game.drawn.length >= state.game.mode) {
+  if (state.game.drawn.length >= state.game.mode && state.status === 'playing') {
     const graceMs = currentWorkspace().isDemo
       ? Math.max(CLAIM_QUEUE_WINDOW_MS, DEMO_CLAIM_WINDOW_MS + 600)
       : FINAL_CLAIM_GRACE_MS;
@@ -4728,7 +4735,9 @@ function drawNextBall(source = 'manual') {
   }
   saveState();
   broadcast();
-  if (state.transition?.type === 'last-ball-claim-window') scheduleTransition();
+  if (state.status === 'finalizing' && state.transition?.type === 'final-balls') scheduleTransition();
+  else if (state.transition?.type === 'last-ball-claim-window') scheduleTransition();
+  else if (state.status === 'paused' && state.pauseReason === 'claim' && automaticTieClaimsEnabled()) scheduleClaimAutoResume();
   else if (state.status === 'playing') scheduleAutomaticDraw();
   return adminPayload();
 }
@@ -4982,7 +4991,7 @@ function startRoom(payload = {}) {
   state.testDrawOrderFixed = false;
   const lockedConfiguration = {
     gameId: state.game.id, mode: state.game.mode, rules: state.game.rules, cards: state.game.cards,
-    roomSettings: { linePrizeCount: state.roomSettings.linePrizeCount, allowSamePlayerSecondLine: state.roomSettings.allowSamePlayerSecondLine, tiePolicy: state.roomSettings.tiePolicy, gameType: state.roomSettings.gameType, prizeAmounts: state.roomSettings.prizeAmounts, paymentMode: state.roomSettings.paymentMode, markingMode: state.roomSettings.markingMode },
+    roomSettings: { linePrizeCount: state.roomSettings.linePrizeCount, allowSamePlayerSecondLine: state.roomSettings.allowSamePlayerSecondLine, tiePolicy: state.roomSettings.tiePolicy, claimMode: state.roomSettings.claimMode, gameType: state.roomSettings.gameType, prizeAmounts: state.roomSettings.prizeAmounts, paymentMode: state.roomSettings.paymentMode, markingMode: state.roomSettings.markingMode },
     markingPolicy: markingPolicyPayload()
   };
   state.game.integrity = { lockedAt: nowIso(), configurationSha256: crypto.createHash('sha256').update(JSON.stringify(lockedConfiguration)).digest('hex'), drawOrderCommitment: crypto.createHash('sha256').update(state.drawOrder.join(',')).digest('hex') };
@@ -5040,13 +5049,14 @@ function resumeRoom(payload = {}) {
 
 function updateRoomSettings(payload) {
   if (!state.active) throw new Error('No hay una sala abierta.');
-  if (state.status !== 'waiting' && (payload.prizeAmounts || payload.gameType || payload.linePrizeCount !== undefined || payload.allowSamePlayerSecondLine !== undefined || payload.tiePolicy)) throw new Error('Los premios y reglas quedaron bloqueados al iniciar el sorteo.');
+  if (state.status !== 'waiting' && (payload.prizeAmounts || payload.gameType || payload.linePrizeCount !== undefined || payload.allowSamePlayerSecondLine !== undefined || payload.tiePolicy || payload.claimMode)) throw new Error('Los premios y reglas quedaron bloqueados al iniciar el sorteo.');
   if (payload.playerAudioAllowed !== undefined) state.roomSettings.playerAudioAllowed = payload.playerAudioAllowed !== false;
   if (payload.playerAudioDefault !== undefined) state.roomSettings.playerAudioDefault = Boolean(payload.playerAudioDefault);
   if (state.status === 'waiting') {
     state.roomSettings.linePrizeCount = Number(state.game?.mode) === 90 ? Math.max(1, Math.min(2, Number(payload.linePrizeCount ?? state.roomSettings.linePrizeCount) || 1)) : 1;
     state.roomSettings.allowSamePlayerSecondLine = Number(state.game?.mode) === 90 && Boolean(payload.allowSamePlayerSecondLine ?? state.roomSettings.allowSamePlayerSecondLine);
-    state.roomSettings.tiePolicy = payload.tiePolicy === 'same_ball' ? 'same_ball' : (payload.tiePolicy === 'first_claim' ? 'first_claim' : state.roomSettings.tiePolicy);
+    if (payload.claimMode) { state.roomSettings.claimMode = payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual'; state.roomSettings.tiePolicy = state.roomSettings.claimMode === 'automatic_ties' ? 'same_ball' : 'first_claim'; }
+    else state.roomSettings.tiePolicy = payload.tiePolicy === 'same_ball' ? 'same_ball' : (payload.tiePolicy === 'first_claim' ? 'first_claim' : state.roomSettings.tiePolicy);
   }
   state.roomSettings.bingoPrizeCount = 1;
   if (payload.gameType) state.roomSettings.gameType = payload.gameType === 'test' ? 'test' : 'real';
@@ -5163,6 +5173,7 @@ function archiveCurrentResults() {
     gameNumber: state.game.number,
     round: state.round,
     mode: state.game.mode,
+    claimMode: state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
     createdAt: state.createdAt,
     startedAt: state.startedAt,
     endedAt: state.endedAt,
@@ -5528,7 +5539,8 @@ function restoreBackup(payload) {
     claims: Array.isArray(raw.claims) ? raw.claims.slice(-500) : [],
     eventLog: Array.isArray(raw.eventLog) ? raw.eventLog.slice(-2000) : []
   });
-  state.roomSettings.tiePolicy = state.roomSettings.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim';
+  state.roomSettings.claimMode = state.roomSettings.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual';
+  state.roomSettings.tiePolicy = state.roomSettings.claimMode === 'automatic_ties' ? 'same_ball' : (state.roomSettings.tiePolicy === 'same_ball' ? 'same_ball' : 'first_claim');
   enforceAutoMarkPolicy();
   updateCardDisplayNames();
   refreshAllOffers();
@@ -5851,8 +5863,131 @@ function setAutoMark(player, payload) {
   saveState(); broadcast(); return playerPayload(player);
 }
 
+function automaticTieClaimsEnabled() {
+  return !currentWorkspace().isDemo && state.roomSettings?.claimMode === 'automatic_ties';
+}
+
+function automaticClaimValidity(type, analysis, lineDetail = null) {
+  if (type === 'ambo') return Boolean(analysis?.hasAmbo);
+  if (type === 'line') return Number(state.game?.mode) === 90 ? Boolean(lineDetail) : Boolean(analysis?.hasLine);
+  if (type === 'doubleLine') return Boolean(analysis?.hasDoubleLine);
+  if (type === 'tripleLine') return Boolean(analysis?.hasTripleLine);
+  if (type === 'corners') return Boolean(analysis?.hasCorners);
+  if (type === 'bingo') return Boolean(analysis?.hasBingo);
+  return false;
+}
+
+function automaticClaimCandidates(type, prizeNumber = 1) {
+  if (!state.game || !isPrizeEnabled(type)) return [];
+  const mode = Number(state.game.mode) === 75 ? 75 : 90;
+  const betName = claimBetName(type);
+  const winners = [];
+  const playerWonLine = new Set(confirmedClaims('line').map(claim => String(claim.playerId)));
+  for (const player of state.players || []) {
+    if (!player?.selectionConfirmed || player.paymentStatus === 'pending' || player.paymentStatus === 'reported') continue;
+    if (type === 'line' && mode === 90 && Number(prizeNumber) === 2 && !state.roomSettings?.allowSamePlayerSecondLine && playerWonLine.has(String(player.id))) continue;
+    for (const cardId of player.cardIds || []) {
+      const card = state.game.cards.find(item => item.id === cardId);
+      if (!card || card.bets?.[betName] === false) continue;
+      if (type !== 'line' || mode !== 90) {
+        if (confirmedClaims(type).some(claim => claim.cardId === cardId)) continue;
+      }
+      const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
+      const lineDetail = type === 'line' && mode === 90 ? nextUnclaimedLineDetail(cardId, analysis) : null;
+      if (!automaticClaimValidity(type, analysis, lineDetail)) continue;
+      winners.push({ player, card, analysis, lineDetail });
+    }
+  }
+  return winners;
+}
+
+function registerAutomaticConfirmedClaim({ player, card, analysis, lineDetail, type, prizeNumber, batchId, resolvedAt, receivedEpochMs }) {
+  state.claimSequence = Math.max(0, Number(state.claimSequence) || 0) + 1;
+  const sequence = state.claimSequence;
+  const claim = {
+    id: randomId('claim'), type, prizeNumber, prizeLabel: prizeLabelFor(type, prizeNumber, state.game.mode),
+    playerId: player.id, playerName: playerDisplayName(player), cardId: card.id, cardNumber: card.number,
+    createdAt: resolvedAt, receivedAt: resolvedAt, receivedEpochMs, receivedSequence: sequence,
+    receivedMonotonicNs: process.hrtime.bigint().toString(), deltaFromFirstMs: 0,
+    claimWindowId: batchId, status: 'confirmed', officialValid: true, simulated: false, automatic: true,
+    winningLineKey: type === 'line' && Number(state.game.mode) === 90 ? (lineDetail?.key || null) : null,
+    drawnAtClaim: [...state.game.drawn], playerMarksAtClaim: [...(player.marks?.[card.id] || [])], comparison: analysis,
+    tieGroupId: batchId, resolvedAt, adminNote: 'Detectado automáticamente por el servidor en la misma bolilla.',
+    resolutionReason: 'automatic_same_ball'
+  };
+  state.claims.push(claim);
+  addClaimNotice(claim, 'confirmed', `${claim.prizeLabel} detectado automáticamente en el cartón ${claim.cardNumber}.`);
+  logEvent('claim_created', { claimId: claim.id, type, prizeNumber, playerId: player.id, cardId: card.id, officialValid: true, receivedSequence: sequence, deltaFromFirstMs: 0, automatic: true });
+  logEvent('claim_resolved', { claimId: claim.id, resolution: 'confirmed', prizeNumber, officialValid: true, receivedSequence: sequence, reason: claim.resolutionReason, automatic: true });
+  return claim;
+}
+
+function processAutomaticClaimsForCurrentBall() {
+  if (!automaticTieClaimsEnabled() || !state.active || !state.game || state.status !== 'playing') return [];
+  const resolvedAt = nowIso();
+  const receivedEpochMs = Date.now();
+  const batchId = randomId(`auto_ball_${state.game.drawn.length}`);
+  const awarded = [];
+  const mode = Number(state.game.mode) === 75 ? 75 : 90;
+
+  for (const type of PRIZE_TYPES) {
+    if (!isPrizeEnabled(type)) continue;
+    if (type === 'line' && mode === 90) {
+      let guard = 0;
+      while (guard++ < 2) {
+        const current = prizeStatusPayload().line;
+        if (!current || current.closed) break;
+        const prizeNumber = Math.max(1, Number(current.nextNumber) || 1);
+        const candidates = automaticClaimCandidates('line', prizeNumber);
+        if (!candidates.length) break;
+        for (const candidate of candidates) awarded.push(registerAutomaticConfirmedClaim({ ...candidate, type:'line', prizeNumber, batchId, resolvedAt, receivedEpochMs }));
+      }
+      continue;
+    }
+    const current = prizeStatusPayload()[type];
+    if (!current || current.closed) continue;
+    const candidates = automaticClaimCandidates(type, 1);
+    if (!candidates.length) continue;
+    for (const candidate of candidates) awarded.push(registerAutomaticConfirmedClaim({ ...candidate, type, prizeNumber:1, batchId, resolvedAt, receivedEpochMs }));
+  }
+
+  if (!awarded.length) return awarded;
+  clearWorkspaceTransitionTimer();
+  clearAutomaticDrawTimer();
+  state.claimWindow = null;
+  state.transition = null;
+  state.pauseReason = 'claim';
+  const bingoWinners = awarded.filter(claim => claim.type === 'bingo');
+  logEvent('automatic_claim_batch_confirmed', {
+    batchId, ball: state.game.drawn.at(-1) ?? null, drawnCount: state.game.drawn.length,
+    winners: awarded.map(claim => ({ claimId:claim.id, type:claim.type, prizeNumber:claim.prizeNumber, playerId:claim.playerId, cardId:claim.cardId }))
+  });
+  if (bingoWinners.length) {
+    const startedAt = nowIso();
+    const remainingInitial = Math.max(0, Number(state.game.mode || 0) - state.game.drawn.length);
+    const timing = finalExtractionTiming(remainingInitial);
+    const now = Date.now();
+    state.status = 'finalizing';
+    state.game.phase = 'BINGO_CONFIRMED';
+    state.transition = {
+      id: randomId('transition'), type: 'final-balls', startedAt,
+      initialDrawnCount: state.game.drawn.length,
+      remainingInitial,
+      intervalMs: timing.intervalMs,
+      leadInEndsAt: new Date(now + timing.leadInMs).toISOString(),
+      endsAt: new Date(now + timing.totalMs).toISOString()
+    };
+    logEvent('bingo_confirmed_final_extraction', { claimIds:bingoWinners.map(claim => claim.id), tieCount:bingoWinners.length, remainingBalls:remainingInitial, leadInMs:timing.leadInMs, intervalMs:timing.intervalMs, automatic:true });
+  } else {
+    state.status = 'paused';
+    state.game.phase = 'PAUSED';
+  }
+  return awarded;
+}
+
 function createClaim(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
+  if (state.roomSettings?.claimMode === 'automatic_ties' && !payload?.automaticSystem) throw new Error('Esta partida usa reclamo automático. El servidor detecta los premios y los empates.');
   const requested = String(payload.type || '');
   const type = PRIZE_TYPES.includes(requested) ? requested : 'line';
   const nowMs = Date.now();
@@ -6111,6 +6246,9 @@ function winnerDetails(claim) {
   const details = winningDetailsForClaim(claim);
   return {
     type: claim.type,
+    automatic: Boolean(claim.automatic),
+    tieGroupId: claim.tieGroupId || null,
+    resolutionReason: claim.resolutionReason || null,
     prizeNumber: Number(claim.prizeNumber) || 1,
     prizeLabel: claim.prizeLabel || prizeLabelFor(claim.type, claim.prizeNumber, state.game?.mode),
     playerName: claim.playerName,
@@ -6150,6 +6288,7 @@ function actaPayload() {
   };
   return {
     version: APP_PUBLIC_VERSION, roomCode: state.roomCode, round: state.round, gameNumber: state.game.number, mode,
+    claimMode: state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
     status: state.status, presenter: PRESENTER_ID, createdAt: state.createdAt, startedAt: state.startedAt, endedAt: state.endedAt,
     totalPlayers: state.players.length,
     activeCards: state.players.reduce((sum, player) => sum + (player.selectionConfirmed ? player.cardIds.length : 0), 0),
@@ -6234,6 +6373,7 @@ function formatDuration(startedAt, endedAt) {
 }
 
 function claimAuditResultLabel(alert) {
+  if (alert?.resolutionReason === 'automatic_same_ball') return 'GANADOR · AUTOMÁTICO · EMPATE MISMA BOLILLA';
   if (alert?.resolutionReason === 'automatic_verified') return 'GANADOR · VERIFICACIÓN AUTOMÁTICA';
   if (alert?.resolutionReason === 'automatic_rejected') return 'RECHAZADO · VERIFICACIÓN AUTOMÁTICA';
   if (alert?.status === 'confirmed') return 'GANADOR';
@@ -6251,6 +6391,7 @@ function actaCsv() {
     ['Juego', acta.gameNumber],
     ['Ronda', acta.round],
     ['Bingo', acta.mode],
+    ['Sistema de reclamos', acta.claimMode === 'automatic_ties' ? 'AUTOMÁTICO + EMPATES' : 'TRADICIONAL'],
     ['Inicio', formatLocalTimestamp(acta.startedAt)],
     ['Finalización', formatLocalTimestamp(acta.endedAt)],
     ['Jugadores', acta.totalPlayers],
@@ -7286,6 +7427,7 @@ function publicRoomPayload(record) {
     maxPlayers: record.maxPlayers,
     maxCardsPerPlayer: record.maxCardsPerPlayer,
     autoSeconds: record.autoSeconds,
+    claimMode: record.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
     linePrizeCount: record.linePrizeCount,
     rules: record.rules,
     startMode: record.startMode,
@@ -7388,6 +7530,7 @@ function openCommunityPublicRoom(record, { autoJoinCreator = false, deviceId = '
       mode: record.mode,
       cardCount: normalizedGeneratedCount(Math.max(25, Math.min(100, record.maxPlayers * record.maxCardsPerPlayer + 20))),
       autoSeconds: record.autoSeconds,
+      claimMode: record.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
       rules: record.rules,
       linePrizeCount: record.linePrizeCount,
       markingMode: 'normal',
@@ -7459,7 +7602,7 @@ function createCommunityPublicRoom(payload = {}) {
   const creatorCodeHash = crypto.createHash('sha256').update(creatorCode).digest('hex');
   const record = normalizeCommunityPublicRoom({
     id: randomId('public'), name:roomName, creatorName, creatorCodeHash, accessType, accessKeyHash, accessKeyAdmin:accessKey, startMode, startsAt,
-    mode, maxPlayers, maxCardsPerPlayer, autoSeconds, linePrizeCount, rules,
+    mode, maxPlayers, maxCardsPerPlayer, autoSeconds, claimMode: payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', linePrizeCount, rules,
     status:'scheduled', createdAt:nowIso(), updatedAt:nowIso()
   });
   communityPublicRooms().push(record);
@@ -7535,7 +7678,7 @@ function recoverCommunityCreator(payload = {}) {
     if (record.startMode === 'scheduled' && record.startsAt && record.status === 'scheduled') {
       return {
         token:'', pending:true, organizer:true, publicId:record.id, roomCode:'', status:'scheduled',
-        name:record.name, mode:record.mode, maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
+        name:record.name, mode:record.mode, claimMode:record.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
         playerCount:0, cardCount:0, pendingSelectionPlayers:0, players:[], canStart:false, joinOpen:false,
         shareUrl:communityPublicShareUrl(record.id), transmissionUrl:''
       };
@@ -7554,7 +7697,7 @@ function recoverCommunityCreator(payload = {}) {
       }));
     return {
       token:'', organizer:true, roomCode:state.roomCode, publicId:record.id, status:state.status,
-      name:record.name, mode:record.mode, maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
+      name:record.name, mode:record.mode, claimMode:state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
       playerCount:summary.registeredPlayers, cardCount:summary.playingCards,
       pendingSelectionPlayers:players.filter(item => !item.ready).length, players,
       enterUrl:communityPublicShareUrl(record.id), shareUrl:communityPublicShareUrl(record.id),
@@ -7738,7 +7881,7 @@ function restartCommunityRoomForRematch(creatorPlayer) {
   const accessKeyHash = record.accessKeyHash || '';
   createSimpleRoom({
     mode:record.mode, cardCount:normalizedGeneratedCount(Math.max(25, Math.min(100, record.maxPlayers * record.maxCardsPerPlayer + 20))),
-    autoSeconds:record.autoSeconds, rules:record.rules, linePrizeCount:record.linePrizeCount,
+    autoSeconds:record.autoSeconds, rules:record.rules, linePrizeCount:record.linePrizeCount, claimMode:record.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
     markingMode:'normal', maxCardsPerPlayer:record.maxCardsPerPlayer, paymentMode:'free', roomOrigin:'community',
     hostName:record.creatorName, roomName:record.name, communityPublicId:record.id, communityStartMode:'manual', communityAccessType:record.accessType,
     maxOpenPlayers:record.maxPlayers
@@ -7821,6 +7964,7 @@ function createCommunityPrivateRoom(payload = {}) {
       autoSeconds,
       rules,
       linePrizeCount,
+      claimMode: payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
       markingMode: 'normal',
       maxCardsPerPlayer,
       paymentMode: 'free',

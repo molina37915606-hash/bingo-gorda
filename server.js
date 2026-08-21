@@ -2097,7 +2097,7 @@ function playerPayload(player) {
       canCancel: ['waiting','starting','playing','verifying','paused','resuming','finalizing'].includes(state.status) && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
       cancelAction: state.status === 'waiting' ? 'cancel' : 'interrupt',
       roundNumber: Math.max(1, Number(communityRecord?.roundNumber || state.round) || 1),
-      rematch: state.status === 'finished' && state.communityRematch ? {
+      rematch: state.status === 'finished' && state.communityRematch && !state.communityRematch.disabled ? {
         available: new Date(state.communityRematch.expiresAt || 0).getTime() > Date.now(),
         expiresAt: state.communityRematch.expiresAt || '',
         remainingMs: Math.max(0, new Date(state.communityRematch.expiresAt || 0).getTime() - Date.now()),
@@ -3469,6 +3469,7 @@ function removeRoomPlayer(payload = {}) {
   if (!player) throw new Error('No se encontró el jugador.');
   releaseReservationsForPlayer(player);
   state.players = state.players.filter(item => item.id !== id);
+  if (String(state.communityCreatorPlayerId || '') === id) state.communityCreatorPlayerId = null;
   state.roomSettings.joinOpen = state.roomSettings.roomType === 'test' && state.players.length < 10;
   updateCardDisplayNames(); enforceAutoMarkPolicy();
   logEvent('player_removed', { playerId: id, playerName: playerDisplayName(player) });
@@ -6626,17 +6627,20 @@ function accessRoomMetaMarkup(roomState) {
 
 function playerAccessContent({ workspace = null, error = '', direct = false, closed = false } = {}) {
   if (!workspace) {
+    const waBase = communityWhatsappContactUrl();
+    const waText = 'Hola. Ya tengo cartones para una partida de El Bingo de la Gorda pero perdí mi acceso. ¿Me podés enviar un nuevo link de recuperación?';
+    const help = waBase ? `<a class="btn primary" href="${waBase}?text=${encodeURIComponent(waText)}" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">PEDIR NUEVO LINK POR WHATSAPP</a>` : '';
     return `<h2>Tu acceso es personal</h2>
       <p class="lead">Para entrar a una partida, abrí el link privado que te envió el administrador por WhatsApp.</p>
       ${accessErrorMarkup(error)}
-      <div class="notice"><b>NO NECESITÁS CLAVE</b><br>Cada link ya identifica tu partida y la cantidad máxima de cartones que podés elegir. Si cambiaste de dispositivo, pedile al administrador un nuevo enlace de recuperación.</div>`;
+      <div class="notice"><b>NO NECESITÁS CLAVE</b><br>Cada link ya identifica tu partida y la cantidad máxima de cartones que podés elegir. Si cambiaste de dispositivo, pedile al administrador un nuevo enlace de recuperación.</div>${help}`;
   }
   const roomState = workspace.state || {};
   const settings = roomState.roomSettings || {};
   const paid = settings.paymentMode === 'paid';
   if (closed) {
-    const wa = String(settings.whatsapp || '').replace(/\D/g,'');
-    const help = wa ? `<a class="btn primary" href="https://wa.me/${wa}?text=${encodeURIComponent(`Hola. Ya estaba inscripto/a en la sala ${roomState.roomCode || ''} y necesito recuperar mi acceso.`)}" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">PEDIR AYUDA POR WHATSAPP</a>` : '';
+    const wa = String(settings.whatsapp || communityWhatsappNumber() || '').replace(/\D/g,'');
+    const help = wa ? `<a class="btn primary" href="https://wa.me/${wa}?text=${encodeURIComponent(`Hola. Ya estaba inscripto/a en la sala ${roomState.roomCode || ''} y necesito recuperar mi acceso.`)}" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">PEDIR NUEVO LINK POR WHATSAPP</a>` : '';
     return `<h2>Inscripciones cerradas</h2><p class="lead">Esta sala ya no acepta jugadores nuevos.</p>${accessRoomMetaMarkup(roomState)}${accessErrorMarkup(error)}<div class="notice"><b>¿YA ESTABAS INSCRIPTO?</b><br>No necesitás volver a anotarte. Entrá desde tu link o sesión privada. Si la perdiste, el administrador puede enviarte un enlace de recuperación.</div>${help}`;
   }
   const maxCards = settings.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(settings.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
@@ -6658,7 +6662,11 @@ function playerAccessContent({ workspace = null, error = '', direct = false, clo
 
 function playerRecoveryContent({ workspace = null, token = '', error = '' } = {}) {
   const player = workspace?.state?.players?.find(item => item.directAccessToken === token) || null;
-  if (!workspace || !player) return `<h2>Enlace no disponible</h2>${accessErrorMarkup(error || 'Este enlace venció o ya fue utilizado. Pedile uno nuevo al administrador.')}<a class="btn secondary" href="/jugador" style="text-decoration:none;text-align:center">VOLVER AL INGRESO</a>`;
+  if (!workspace || !player) {
+    const waBase = communityWhatsappContactUrl();
+    const help = waBase ? `<a class="btn primary" href="${waBase}?text=${encodeURIComponent('Hola. Mi enlace de recuperación de El Bingo de la Gorda venció o ya fue usado. ¿Me podés enviar uno nuevo?')}" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">PEDIR NUEVO LINK POR WHATSAPP</a>` : '';
+    return `<h2>Enlace no disponible</h2>${accessErrorMarkup(error || 'Este enlace venció o ya fue utilizado. Pedile uno nuevo al administrador.')}${help}<a class="btn secondary" href="/jugador" style="text-decoration:none;text-align:center">VOLVER AL INGRESO</a>`;
+  }
   return `<h2>Recuperar acceso</h2>
     <p class="lead">Vas a recuperar la sesión de <b>${escapeHtml(playerDisplayName(player))}</b> en la sala ${escapeHtml(workspace.state.roomCode || '')}.</p>
     <div class="notice"><b>IMPORTANTE</b><br>Este enlace funciona una sola vez. Al recuperarlo, cualquier sesión anterior de este jugador quedará cerrada.</div>
@@ -7321,7 +7329,10 @@ function openCommunityPublicRoom(record, { autoJoinCreator = false, deviceId = '
     });
     state.communityCreatorCodeHash = record.creatorCodeHash;
     state.communityAccessKeyHash = record.accessKeyHash || null;
+    // El creador organiza la sala con su código, pero no ocupa un lugar de jugador
+    // hasta que elija explícitamente "Ingresar a jugar".
     state.communityHostKeyHash = null;
+    state.communityHostName = '';
     state.communityHostExpiresAt = null;
     state.roomSettings.joinOpen = true;
     if (autoJoinCreator) {
@@ -7382,7 +7393,7 @@ function createCommunityPublicRoom(payload = {}) {
   const shouldOpenNow = startMode === 'manual' || (new Date(startsAt).getTime() - Date.now() <= COMMUNITY_PUBLIC_OPEN_MS);
   if (shouldOpenNow) {
     try {
-      const opened = openCommunityPublicRoom(record, { autoJoinCreator:true, deviceId:String(payload.visitorId || '').slice(0,120) });
+      const opened = openCommunityPublicRoom(record, { autoJoinCreator:false, deviceId:String(payload.visitorId || '').slice(0,120) });
       playerSessionToken = opened.playerSessionToken;
     } catch (error) {
       const index = communityPublicRooms().findIndex(item => item.id === record.id);
@@ -7396,7 +7407,7 @@ function createCommunityPublicRoom(payload = {}) {
     ...publicPayload,
     creatorCode,
     creatorCodeHint:'Guardalo para recuperar tu sala desde otro dispositivo.',
-    enterNow:Boolean(playerSessionToken),
+    enterNow:Boolean(record.roomCode),
     playerSessionToken
   };
 }
@@ -7451,12 +7462,30 @@ function recoverCommunityCreator(payload = {}) {
     }
     throw new Error('La sala todavía no está disponible.');
   }
+  return workspaceContext.run(workspace, () => ({
+    token:'', organizer:true, roomCode:state.roomCode, publicId:record.id,
+    enterUrl:communityPublicShareUrl(record.id), status:state.status,
+    canStart:state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && registrationSummaryPayload().registeredPlayers >= 2
+  }));
+}
+
+function joinCommunityCreatorAsPlayer(req, res, payload = {}) {
+  const publicId = String(payload.publicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0,100);
+  const record = communityPublicRoomById(publicId);
+  verifyCommunityCreatorCode(record, payload.creatorCode);
+  const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
+  if (!workspace?.state?.active) throw new Error('La sala todavía no está disponible.');
   return workspaceContext.run(workspace, () => {
     let player = state.communityCreatorPlayerId ? state.players.find(item => item.id === state.communityCreatorPlayerId) : null;
     let token = '';
     if (!player) {
-      if (state.status !== 'waiting') throw new Error('La partida ya comenzó y el creador no estaba registrado.');
-      const joined = openJoinPlayer({ name:record.creatorName, cardCount:record.maxCardsPerPlayer, deviceId:String(payload.deviceId || randomId('device')).slice(0,120), communityAccessGranted:true });
+      if (state.status !== 'waiting' || !state.roomSettings?.joinOpen) throw new Error('La partida ya no acepta jugadores nuevos.');
+      const joined = openJoinPlayer({
+        name:record.creatorName,
+        cardCount:record.maxCardsPerPlayer,
+        deviceId:String(payload.deviceId || randomId('device')).slice(0,120),
+        communityAccessGranted:true
+      });
       token = joined.token;
       player = state.players.find(item => item.sessionToken === token) || null;
       state.communityCreatorPlayerId = player?.id || null;
@@ -7468,7 +7497,27 @@ function recoverCommunityCreator(payload = {}) {
       token = player.sessionToken;
     }
     saveState(); broadcast();
-    return { token, roomCode:state.roomCode, publicId:record.id, playerName:playerDisplayName(player), enterUrl:'/jugar' };
+    setPlayerSessionCookie(req, res, token);
+    return { ok:true, roomCode:state.roomCode, publicId:record.id, playerName:playerDisplayName(player), enterUrl:'/jugar' };
+  });
+}
+
+function startCommunityRoomFromCreator(payload = {}) {
+  const publicId = String(payload.publicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0,100);
+  const record = communityPublicRoomById(publicId);
+  verifyCommunityCreatorCode(record, payload.creatorCode);
+  const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
+  if (!workspace?.state?.active) throw new Error('La sala todavía no está disponible.');
+  return workspaceContext.run(workspace, () => {
+    if (state.roomSettings?.roomOrigin !== 'community' || String(state.roomSettings?.communityPublicId || '') !== String(record.id)) throw new Error('La sala ya no está disponible.');
+    if (state.roomSettings?.communityStartMode !== 'manual') throw new Error('Esta sala comenzará automáticamente en el horario programado.');
+    if (state.status !== 'waiting') return { ok:true, room:publicRoomPayload(record) };
+    if (registrationSummaryPayload().registeredPlayers < 2) throw new Error('Se necesitan al menos 2 jugadores para comenzar.');
+    state.roomSettings.joinOpen = false;
+    saveState(); broadcast();
+    startRoom({ communityCreator:true });
+    syncCommunityPublicRecordFromState('playing');
+    return { ok:true, room:publicRoomPayload(record) };
   });
 }
 
@@ -7555,6 +7604,19 @@ function accessCommunityRoom(req, res, payload = {}) {
 
 function prepareCommunityRematchWindow() {
   if (state.roomSettings?.roomOrigin !== 'community' || state.status !== 'finished') return null;
+  // El flujo histórico de revancha depende de que el creador sea jugador.
+  // Si el creador organizó sin entrar como jugador, no ofrecemos revancha,
+  // pero conservamos el plazo de cierre para liberar el workspace automáticamente.
+  if (!state.communityCreatorPlayerId) {
+    state.communityRematch = {
+      expiresAt: new Date(Date.now() + COMMUNITY_FINISH_GRACE_MS).toISOString(),
+      readyPlayerIds: [],
+      createdAt: nowIso(),
+      disabled: true
+    };
+    logEvent('community_finish_window_opened', { expiresAt:state.communityRematch.expiresAt, rematch:false });
+    return state.communityRematch;
+  }
   state.communityRematch = {
     expiresAt: new Date(Date.now() + COMMUNITY_FINISH_GRACE_MS).toISOString(),
     readyPlayerIds: [],
@@ -7615,7 +7677,7 @@ function restartCommunityRoomForRematch(creatorPlayer) {
 }
 
 function communityRematchFromPlayer(player) {
-  if (state.roomSettings?.roomOrigin !== 'community' || state.status !== 'finished' || !state.communityRematch) throw new Error('Ahora no se puede abrir otra partida.');
+  if (state.roomSettings?.roomOrigin !== 'community' || state.status !== 'finished' || !state.communityRematch || state.communityRematch.disabled) throw new Error('Ahora no se puede abrir otra partida.');
   if (new Date(state.communityRematch.expiresAt || 0).getTime() <= Date.now()) throw new Error('El tiempo para jugar otra partida terminó.');
   state.communityRematch.readyPlayerIds ||= [];
   if (!state.communityRematch.readyPlayerIds.includes(String(player.id))) state.communityRematch.readyPlayerIds.push(String(player.id));
@@ -8159,6 +8221,24 @@ function operationalRoomSummary(workspace) {
   const room = workspace.state || blankState();
   const connectedPlayers = [...workspace.sseClients].filter(client => client.role === 'player').length;
   const adminConnections = [...workspace.sseClients].filter(client => client.role === 'admin').length;
+  const roomMaxCards = room.roomSettings?.markingMode === 'manual_only' ? 2 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(room.roomSettings?.maxCardsPerPlayer) || MAX_CARDS_PER_PLAYER));
+  const playerSummary = (Array.isArray(room.players) ? room.players : [])
+    .filter(player => player?.nameSet)
+    .map(player => {
+      const requested = room.roomSettings?.paymentMode === 'paid'
+        ? (Number(player.requestedCardCount) || Number(player.allowedCardCount) || 1)
+        : (Number(player.allowedCardCount) || Number(player.requestedCardCount) || 1);
+      const expected = Math.max(1, Math.min(roomMaxCards, requested));
+      const selected = Boolean(player.selectionConfirmed);
+      return {
+        id: String(player.id || ''),
+        name: playerDisplayName(player),
+        cardCount: selected ? (player.cardIds || []).length : expected,
+        selected,
+        virtual: Boolean(player.virtual),
+        connected: [...workspace.sseClients].some(client => client.role === 'player' && String(client.playerId || '') === String(player.id || ''))
+      };
+    });
   return {
     workspaceId: workspace.id,
     slot: workspaceOperationalIndex(workspace),
@@ -8172,7 +8252,8 @@ function operationalRoomSummary(workspace) {
     mode: Number(room.game?.mode) || null,
     players: Array.isArray(room.players) ? room.players.length : 0,
     connectedPlayers,
-    cards: Array.isArray(room.players) ? room.players.reduce((sum, player) => sum + (player.cardIds || []).length, 0) : 0,
+    cards: playerSummary.reduce((sum, player) => sum + Number(player.cardCount || 0), 0),
+    playerSummary,
     joinOpen: Boolean(room.roomSettings?.joinOpen),
     scheduledAt: room.roomSettings?.scheduledAt || '',
     createdAt: room.createdAt || null,
@@ -8312,6 +8393,7 @@ async function dispatchAdminApi(req, res, url, session) {
       'results-pdf': [entry.files?.resultsPdf, 'application/pdf', `LA_GORDA_Resultados_${entry.roomCode}.pdf`],
       'acta-pdf': [entry.files?.actaPdf, 'application/pdf', `LA_GORDA_Acta_${entry.roomCode}.pdf`],
       'acta-csv': [entry.files?.actaCsv, 'text/csv; charset=utf-8', `LA_GORDA_Acta_${entry.roomCode}.csv`],
+      'acta-json': [entry.files?.actaJson, 'application/json; charset=utf-8', `LA_GORDA_Acta_${entry.roomCode}.json`],
       'participants-csv': [entry.files?.participantsCsv, 'text/csv; charset=utf-8', `LA_GORDA_Jugadores_${entry.roomCode}.csv`]
     };
     const choice = map[type];
@@ -8453,9 +8535,16 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/community/creator-recover' && req.method === 'POST') {
       if (!consumeRate(req, 'community-creator-recover', 20, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
       const recovered = recoverCommunityCreator(await readJson(req));
-      if (recovered.token) setPlayerSessionCookie(req, res, recovered.token);
       const { token, ...safeRecovered } = recovered;
       return sendJson(res, 200, safeRecovered);
+    }
+    if (url.pathname === '/api/community/creator-join-player' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-creator-join-player', 20, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
+      return sendJson(res, 200, joinCommunityCreatorAsPlayer(req, res, await readJson(req)));
+    }
+    if (url.pathname === '/api/community/creator-start' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-creator-start', 20, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
+      return sendJson(res, 200, startCommunityRoomFromCreator(await readJson(req)));
     }
     if (url.pathname === '/api/community/room-access' && req.method === 'POST') {
       if (!consumeRate(req, 'community-room-access', 80, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
@@ -8466,7 +8555,7 @@ async function handleApi(req, res, url) {
       return sendJson(res, 200, cancelCommunityPublicRoom(await readJson(req)));
     }
     if (url.pathname === '/api/community/private-room' && req.method === 'POST') return sendJson(res, 410, { error: 'Usá el creador de salas de Comunidad.' });
-    if (url.pathname === '/api/community/host-login' && req.method === 'POST') return sendJson(res, 410, { error: 'El acceso de anfitrión ya no se utiliza.' });
+    if (url.pathname === '/api/community/host-login' && req.method === 'POST') return sendJson(res, 410, { error: 'El acceso de anfitrión separado no se utiliza.' });
 
     if (url.pathname === '/api/demo/create' && req.method === 'POST') {
       if (!consumeRate(req, 'demo-create', 40, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Se crearon muchas demostraciones desde esta conexión. Esperá unos minutos y probá de nuevo.' });

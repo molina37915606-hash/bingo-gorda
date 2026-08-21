@@ -1,0 +1,1 @@
+Reintento V6: eliminar assets/tv-voice antes de pruebas.

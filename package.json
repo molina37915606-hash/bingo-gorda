@@ -2,13 +2,14 @@
   "name": "el-bingo-de-la-gorda",
   "version": "1.0.0",
   "private": true,
-  "description": "EL BINGO DE LA GORDA: plataforma de Bingo web con acceso privado/general, administración de partidas, pagos informados, recuperación y transmisión.",
+  "description": "EL BINGO DE LA GORDA: instalación V6 free-only.",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
+    "postinstall": "node apply-v6-runtime.js",
     "start": "node server.js",
-    "test": "node tests/access-forms.js && node tests/admin-contingency.js && node tests/admin-simulation.js && node tests/alfa-core.js && node tests/alpha5-start.js && node tests/alpha6-security.js && node tests/beta-stability.js && node tests/claim-screen-final-2025.js && node tests/community-admin-beta.js && node tests/community-schedule-final.js && node tests/cuasifinal-ui.js && node tests/demo-unified.js && node tests/final-access-payments.js && node tests/functional-invite.js && node tests/functional-polish-514.js && node tests/functional-ui.js && node tests/free-prize-no-payout.js && node tests/general-link-community.js && node tests/line-queue-90.js && node tests/mobile-chat-drag.js && node tests/mobile-player-polish.js && node tests/mobile-player-redesign.js && node tests/paid-card-count-lock.js && node tests/preview-unified.js && node tests/prize-autofocus-515.js && node tests/restart-recovery.js && node tests/scheduled-auto-start.js && node tests/simulation-stress.js && node tests/transmission-tv-stability.js && node tests/tv-safe-view.js && node tests/winner-payout-final.js && node tests/session-priority-wakelock.js && node tests/multisala-history.js && node tests/community-public-room.js && node tests/community-public-10.js && node tests/transmission-mobile-landscape.js && node tests/community-public-cancel.js && node tests/community-lobby-types.js",
+    "test": "node tests/access-forms.js && node tests/admin-contingency.js && node tests/admin-simulation.js && node tests/alfa-core.js && node tests/alpha5-start.js && node tests/alpha6-security.js && node tests/beta-stability.js && node tests/claim-screen-final-2025.js && node tests/community-admin-beta.js && node tests/community-schedule-final.js && node tests/cuasifinal-ui.js && node tests/demo-unified.js && node tests/functional-invite.js && node tests/functional-polish-514.js && node tests/functional-ui.js && node tests/general-link-community.js && node tests/line-queue-90.js && node tests/mobile-chat-drag.js && node tests/mobile-player-polish.js && node tests/mobile-player-redesign.js && node tests/preview-unified.js && node tests/prize-autofocus-515.js && node tests/restart-recovery.js && node tests/scheduled-auto-start.js && node tests/simulation-stress.js && node tests/transmission-tv-stability.js && node tests/tv-safe-view.js && node tests/session-priority-wakelock.js && node tests/multisala-history.js && node tests/community-public-room.js && node tests/community-public-10.js && node tests/transmission-mobile-landscape.js && node tests/community-public-cancel.js && node tests/community-lobby-types.js && node tests/automatic-claims-ties.js && node tests/player-ad-banner.js && node tests/free-only-cleanup.js",
     "test:mobile": "node tests/mobile-player-redesign.js && node tests/mobile-player-polish.js"
   }
 }

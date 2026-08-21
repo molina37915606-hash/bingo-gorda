@@ -35,9 +35,13 @@
     document.documentElement.classList.toggle('bolScreenOpen', Boolean(open));
     document.body.classList.toggle('bolScreenOpen', Boolean(open));
   }
+  function cleanEventTitle(value) {
+    return String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 24);
+  }
 
   function openCards() {
     $('cardsSeries').value ||= '1';
+    if ($('cardsTitle')) $('cardsTitle').value = cleanEventTitle($('cardsTitle').value);
     updateCardsSummary();
     hide('cardsResult');
     $('cardsError').textContent = '';
@@ -54,10 +58,12 @@
     try {
       button.disabled = true;
       $('cardsError').textContent = '';
-      const lot = await api('/api/community/cards/generate', { method:'POST', body:JSON.stringify({ mode:Number($('cardsMode').value), seriesCount:Number($('cardsSeries').value) }) });
+      const title = cleanEventTitle($('cardsTitle')?.value);
+      if ($('cardsTitle')) $('cardsTitle').value = title;
+      const lot = await api('/api/community/cards/generate', { method:'POST', body:JSON.stringify({ mode:Number($('cardsMode').value), seriesCount:Number($('cardsSeries').value), title }) });
       cardLot = lot;
       $('cardsLotCode').textContent = lot.code;
-      $('cardsLotMeta').textContent = `Bingo ${lot.mode} · ${lot.seriesCount} serie${lot.seriesCount===1?'':'s'} · ${lot.totalCards} cartones`;
+      $('cardsLotMeta').textContent = `${lot.title ? `${lot.title} · ` : ''}Bingo ${lot.mode} · ${lot.seriesCount} serie${lot.seriesCount===1?'':'s'} · ${lot.totalCards} cartones`;
       $('cardsDownload').href = lot.downloadUrl;
       $('cardsLoadBolillero').dataset.lot = lot.code;
       show('cardsResult');
@@ -73,7 +79,7 @@
 
   function defaultBolillero() {
     return {
-      version:2, active:false, finished:false, mode:90, drawMode:'manual', interval:8, sound:true, paused:false,
+      version:3, active:false, finished:false, mode:90, drawMode:'manual', interval:8, sound:true, paused:false, title:'',
       rules:{ ambo:false, line:true, secondLine:false, doubleLine:false, tripleLine:false, corners:false, bingo:true },
       order:[], drawn:[], reviewIndex:-1, lotCode:'', loadedCards:[], closedPrizes:[], lineClaims:[], createdAt:'', updatedAt:''
     };
@@ -82,7 +88,7 @@
     try {
       const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
       if (!parsed || typeof parsed !== 'object') return defaultBolillero();
-      return { ...defaultBolillero(), ...parsed, rules:{ ...defaultBolillero().rules, ...(parsed.rules || {}) }, drawn:Array.isArray(parsed.drawn)?parsed.drawn:[], order:Array.isArray(parsed.order)?parsed.order:[], loadedCards:Array.isArray(parsed.loadedCards)?parsed.loadedCards:[], closedPrizes:Array.isArray(parsed.closedPrizes)?parsed.closedPrizes:[], lineClaims:Array.isArray(parsed.lineClaims)?parsed.lineClaims:[] };
+      return { ...defaultBolillero(), ...parsed, title:cleanEventTitle(parsed.title), rules:{ ...defaultBolillero().rules, ...(parsed.rules || {}) }, drawn:Array.isArray(parsed.drawn)?parsed.drawn:[], order:Array.isArray(parsed.order)?parsed.order:[], loadedCards:Array.isArray(parsed.loadedCards)?parsed.loadedCards:[], closedPrizes:Array.isArray(parsed.closedPrizes)?parsed.closedPrizes:[], lineClaims:Array.isArray(parsed.lineClaims)?parsed.lineClaims:[] };
     } catch { return defaultBolillero(); }
   }
   let bol = loadBolilleroState();
@@ -140,6 +146,7 @@
     setupLotCode = String(lot.code || '').trim().toUpperCase();
     setupLoadSource = source;
     $('bolMode').value = String(mode);
+    if ($('bolTitle') && lot?.title && !cleanEventTitle($('bolTitle').value)) $('bolTitle').value = cleanEventTitle(lot.title);
     setupModeUi();
     updateSetupLoadedInfo();
     $('bolLoadResult').textContent = `✓ ${cards.length} cartones cargados · Bingo ${mode}`;
@@ -182,8 +189,9 @@
   function openBolillero(prefillLot = '') {
     bol = loadBolilleroState();
     resetSetupCards();
+    if ($('bolTitle')) $('bolTitle').value = bol.active ? cleanEventTitle(bol.title) : '';
     if (bol.active) {
-      $('bolResumeInfo').textContent = `Bingo ${bol.mode} · ${bol.drawn.length} bolilla${bol.drawn.length===1?'':'s'} salidas${bol.loadedCards.length?` · ${bol.loadedCards.length} cartones`:''}`;
+      $('bolResumeInfo').textContent = `${bol.title ? `${bol.title} · ` : ''}Bingo ${bol.mode} · ${bol.drawn.length} bolilla${bol.drawn.length===1?'':'s'} salidas${bol.loadedCards.length?` · ${bol.loadedCards.length} cartones`:''}`;
       show('bolResumeBox');
     } else hide('bolResumeBox');
     setupModeUi();
@@ -217,7 +225,9 @@
     if (!Object.values(rules).some(Boolean)) return toast('Elegí al menos una jugada.');
     if (setupLoadedCards.length && Number(setupLoadedCards[0]?.mode) !== mode) return toast(`Los cartones cargados son de Bingo ${setupLoadedCards[0]?.mode}.`);
     const max = mode === 75 ? 75 : 90;
-    bol = { ...defaultBolillero(), active:true, mode, drawMode:$('bolDrawMode').value === 'automatic'?'automatic':'manual', interval:Math.max(3,Math.min(30,Number($('bolInterval').value)||8)), sound:$('bolSoundStart').checked, rules, order:shuffle(Array.from({length:max},(_,i)=>i+1)), loadedCards:setupLoadedCards.map(card => ({...card})), lotCode:setupLotCode, reviewIndex:-1, createdAt:new Date().toISOString() };
+    const title = cleanEventTitle($('bolTitle')?.value);
+    if ($('bolTitle')) $('bolTitle').value = title;
+    bol = { ...defaultBolillero(), active:true, mode, title, drawMode:$('bolDrawMode').value === 'automatic'?'automatic':'manual', interval:Math.max(3,Math.min(30,Number($('bolInterval').value)||8)), sound:$('bolSoundStart').checked, rules, order:shuffle(Array.from({length:max},(_,i)=>i+1)), loadedCards:setupLoadedCards.map(card => ({...card})), lotCode:setupLotCode, reviewIndex:-1, createdAt:new Date().toISOString() };
     boardView = 'numbers';
     saveBol();
     hide('bolSetupOverlay');
@@ -249,11 +259,19 @@
     if (!bol.sound || !('speechSynthesis' in window)) return;
     try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(String(text)); u.lang='es-AR'; u.rate=.9; speechSynthesis.speak(u); } catch {}
   }
+  function animateCurrentBall() {
+    const ball = $('bolCurrent');
+    if (!ball || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+    ball.classList.remove('bolDrawnAnim');
+    void ball.offsetWidth;
+    ball.classList.add('bolDrawnAnim');
+    ball.addEventListener('animationend', () => ball.classList.remove('bolDrawnAnim'), { once:true });
+  }
   function drawNext() {
     if (!bol.active || bol.finished || bol.paused) return;
     const next = bol.order.find(number => !bol.drawn.includes(number));
     if (!next) { bol.finished = true; saveBol(); renderBolillero(); syncAutoTimer(); return; }
-    bol.drawn.push(next); bol.reviewIndex = -1; saveBol(); renderBolillero(); speak(next);
+    bol.drawn.push(next); bol.reviewIndex = -1; saveBol(); renderBolillero(); animateCurrentBall(); speak(next);
   }
   function undoLast() {
     if (!bol.drawn.length || !confirm('¿Anular la última bolilla?')) return;
@@ -314,6 +332,7 @@
     const viewedIndex = bol.reviewIndex < 0 ? bol.drawn.length - 1 : bol.reviewIndex;
     const current = viewedIndex >= 0 ? bol.drawn[viewedIndex] : '—';
     const isReview = bol.reviewIndex >= 0;
+    $('bolCustomTitle').textContent = cleanEventTitle(bol.title) || 'EL BINGO DE LA GORDA';
     $('bolModeLabel').textContent = `BINGO ${bol.mode}`;
     $('bolStateLabel').textContent = bol.finished ? 'FINALIZADO' : bol.paused ? 'PAUSADO' : bol.drawMode === 'automatic' ? 'AUTOMÁTICO' : 'MANUAL';
     $('bolCurrent').textContent = current;
@@ -621,6 +640,8 @@
     $('closeCardsBtn')?.addEventListener('click', closeCards);
     $('cardsMode')?.addEventListener('change', updateCardsSummary);
     $('cardsSeries')?.addEventListener('change', updateCardsSummary);
+    $('cardsTitle')?.addEventListener('blur', event => { event.target.value = cleanEventTitle(event.target.value); });
+    $('bolTitle')?.addEventListener('blur', event => { event.target.value = cleanEventTitle(event.target.value); });
     $('cardsGenerateBtn')?.addEventListener('click', generateCards);
     $('cardsLoadBolillero')?.addEventListener('click', () => {
       closeCards(); openBolillero();

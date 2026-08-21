@@ -2492,6 +2492,28 @@ function printableSiteLabel() {
   return configured || 'bingo-gorda.onrender.com/comunidad';
 }
 
+function normalizePrintableTitle(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 24);
+}
+
+function printableTitleFilename(value) {
+  const title = normalizePrintableTitle(value);
+  if (!title) return '';
+  return title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 36);
+}
+
+function cardLotPdfFilename(lot) {
+  const title = printableTitleFilename(lot?.title);
+  return title
+    ? `${title}_BINGO_${Number(lot?.mode) === 75 ? 75 : 90}_${safeCardLotCode(lot?.code) || 'CARTONES'}.pdf`
+    : `EL_BINGO_DE_LA_GORDA_${Number(lot?.mode) === 75 ? 75 : 90}_Lote_${safeCardLotCode(lot?.code) || 'CARTONES'}.pdf`;
+}
+
 function publicCardLot(lot) {
   return {
     version: Number(lot.version) || 1,
@@ -2502,6 +2524,7 @@ function publicCardLot(lot) {
     totalCards: Number(lot.totalCards) || 6,
     createdAt: lot.createdAt,
     site: lot.site || printableSiteLabel(),
+    title: normalizePrintableTitle(lot.title),
     series: Array.isArray(lot.series) ? lot.series.map(series => ({
       number: Number(series.number) || 1,
       cards: Array.isArray(series.cards) ? series.cards.map(card => ({
@@ -2532,6 +2555,7 @@ function createPrintableCardLot(payload = {}) {
   const seriesCount = Math.max(1, Math.min(10, Math.round(Number(payload.seriesCount) || 1)));
   const totalCards = seriesCount * 6;
   const code = randomCardLotCode();
+  const title = normalizePrintableTitle(payload.title);
   let series;
   if (mode === 90) {
     // En Bingo 90 cada serie impresa es una tira estándar de 6 cartones: entre los
@@ -2572,6 +2596,7 @@ function createPrintableCardLot(payload = {}) {
     totalCards,
     createdAt: nowIso(),
     site: printableSiteLabel(),
+    title,
     series
   };
   const file = cardLotPath(code);
@@ -2681,8 +2706,13 @@ function buildCardLotPdf(lot) {
       rect(x, y, cardW, 3.5, index % 2 ? colors.pink : colors.purple);
       const logoSize = mode === 90 ? 27 : 25;
       image(x + 7, y + 7, logoSize, logoSize);
-      text(`BINGO ${mode}`, x + 39, y + 7, mode === 90 ? 10 : 9, { bold:true, color:colors.purple });
-      text(`Lote ${publicLot.code} · Serie ${String(series.number).padStart(2,'0')}`, x + 39, y + 20, 5.4, { color:colors.muted, maxWidth:cardW * .45 });
+      if (publicLot.title) {
+        text(publicLot.title, x + 39, y + 5.5, mode === 90 ? 8.7 : 8.2, { bold:true, color:colors.purple, maxWidth:cardW * .58 });
+        text(`BINGO ${mode} · Lote ${publicLot.code} · Serie ${String(series.number).padStart(2,'0')}`, x + 39, y + 19.5, 5.1, { color:colors.muted, maxWidth:cardW * .58 });
+      } else {
+        text(`BINGO ${mode}`, x + 39, y + 7, mode === 90 ? 10 : 9, { bold:true, color:colors.purple });
+        text(`Lote ${publicLot.code} · Serie ${String(series.number).padStart(2,'0')}`, x + 39, y + 20, 5.4, { color:colors.muted, maxWidth:cardW * .45 });
+      }
       const badgeSize = mode === 90 ? 31 : 28;
       const badgeX = x + cardW - 7 - badgeSize;
       const badgeY = y + 7;
@@ -8439,7 +8469,7 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/community/cards/pdf' && req.method === 'GET') {
       const lot = loadCardLot(url.searchParams.get('lot'));
       if (!lot) return sendJson(res, 404, { error: 'No encontramos ese lote de cartones.' });
-      return sendBuffer(res, 200, buildCardLotPdf(lot), 'application/pdf', `EL_BINGO_DE_LA_GORDA_${lot.mode}_Lote_${lot.code}.pdf`);
+      return sendBuffer(res, 200, buildCardLotPdf(lot), 'application/pdf', cardLotPdfFilename(lot));
     }
     if (url.pathname === '/api/community/public-room' && req.method === 'POST') {
       if (!consumeRate(req, 'community-public-room', 15, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Se crearon demasiadas salas desde esta conexión. Probá más tarde.' });

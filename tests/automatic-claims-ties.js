@@ -15,8 +15,8 @@ async function invite(name,ah){const inv=await post('/api/admin/invite-player',{
 async function drawMany(numbers,ah){for(const _ of numbers)await post('/api/admin/draw',{source:'automatic-ties-test'},ah)}
 function numbers(card){return card.grid.flat().filter(Number.isFinite)}
 function rows(card){return card.grid.map(row=>row.filter(Number.isFinite)).filter(row=>row.length)}
-function findLinePair(aOffers,bOffers){for(const a of aOffers)for(const b of bOffers)for(const ra of rows(a))for(const rb of rows(b)){const common=ra.filter(n=>rb.includes(n));for(const target of common){const before=[...new Set([...ra,...rb].filter(n=>n!==target))];const completedOther=[...rows(a),...rows(b)].filter(row=>row!==ra&&row!==rb&&row.every(n=>before.includes(n)));if(!completedOther.length)return{a,b,target,before}}}return null}
-function findBingoPair(aOffers,bOffers){for(const a of aOffers)for(const b of bOffers){const an=numbers(a),bn=numbers(b),common=an.filter(n=>bn.includes(n));if(common.length){const target=common[0],before=[...new Set([...an,...bn].filter(n=>n!==target))];return{a,b,target,before}}}return null}
+function findLinePair(aOffers,bOffers){for(const a of aOffers)for(const b of bOffers){if(a.id===b.id)continue;for(const ra of rows(a))for(const rb of rows(b)){const common=ra.filter(n=>rb.includes(n));for(const target of common){const before=[...new Set([...ra,...rb].filter(n=>n!==target))];const completedOther=[...rows(a),...rows(b)].filter(row=>row!==ra&&row!==rb&&row.every(n=>before.includes(n)));if(!completedOther.length)return{a,b,target,before}}}}return null}
+function findBingoPair(aOffers,bOffers){for(const a of aOffers)for(const b of bOffers){if(a.id===b.id)continue;const an=numbers(a),bn=numbers(b),common=an.filter(n=>bn.includes(n));if(common.length){const target=common[0],before=[...new Set([...an,...bn].filter(n=>n!==target))];return{a,b,target,before}}}return null}
 async function choose(pair,a,b){await post('/api/player/choose',{cardIds:[pair.a.id]},{Cookie:a.cookie});await post('/api/player/choose',{cardIds:[pair.b.id]},{Cookie:b.cookie})}
 (async()=>{try{
   await waitServer();

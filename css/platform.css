@@ -450,3 +450,11 @@ html[data-theme=day] .finalWinnerTicker{background:linear-gradient(135deg,#f8f3f
 /* Sala comunitaria · control simple para quien creó la mesa */
 .creatorRoster{margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel3);text-align:left}.creatorRosterHead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}.creatorRosterHead b{font-size:11px;letter-spacing:.06em}.creatorRosterHead small{color:var(--muted);font-size:9px}.creatorRosterRow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-top:1px solid #ffffff12;font-size:11px}.creatorRosterRow:first-of-type{border-top:0}.creatorRosterRow b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.creatorRosterRow span{flex:0 0 auto;font-size:9px;font-weight:1000}.creatorRosterRow span.ready{color:#9af0be}.creatorRosterRow span.choosing{color:#ffe08a}.creatorRosterPending,.creatorRosterReady,.creatorRosterEmpty{margin-top:7px;padding:7px 8px;border-radius:9px;font-size:9px;font-weight:900}.creatorRosterPending{background:#49390e;color:#fff0b0}.creatorRosterReady{background:#163a30;color:#dbfff2}.creatorRosterEmpty{background:#171f35;color:var(--muted)}.creatorGameActions .btn:disabled,.waitingHero .btn:disabled{opacity:.5;cursor:not-allowed;filter:saturate(.55)}
 html[data-theme=day] .creatorRoster{background:#f5f3fa}.creatorRosterRow{border-top-color:#ffffff12}html[data-theme=day] .creatorRosterRow{border-top-color:#ddd7e6}
+
+/* Publicidad horizontal de jugadores: solo ocupa lugar durante los 5 s visibles. */
+.playerAdBanner{display:none;margin:10px 0 2px;width:100%;overflow:hidden;border-radius:12px}
+.playerAdBanner.show{display:block;animation:playerAdIn .18s ease-out}
+.playerAdBanner.hidden{display:none!important}
+.playerAdBanner img{display:block;width:100%;height:auto;max-height:160px;aspect-ratio:12/5;object-fit:contain;border-radius:12px;background:rgba(0,0,0,.12)}
+@keyframes playerAdIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:720px){.playerAdBanner{margin-top:8px}.playerAdBanner img{max-height:130px;border-radius:10px}}

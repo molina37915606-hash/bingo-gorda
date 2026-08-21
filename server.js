@@ -597,6 +597,7 @@ function blankCommunity() {
     supportTitle: 'COLABORÁ PARA SEGUIR CRECIENDO',
     supportMessage: 'Tu aporte nos ayuda a mejorar y mantener El Bingo de la Gorda.',
     banners: [1,2,3].map(slot => ({ slot, enabled:false, destinationType:'none', target:'', alt:'', imageExt:'', updatedAt:'' })),
+    playerAd: { enabled:false, imageExt:'', updatedAt:'' },
     chatEnabled: true,
     blockPhoneNumbers: true,
     blockWhatsappLinks: true,
@@ -884,6 +885,78 @@ function updateCommunityBannerImage(payload = {}) {
   return communityAdminPayload();
 }
 
+function normalizePlayerAd(raw = {}) {
+  const imageExt = ['jpg','png','webp'].includes(String(raw.imageExt || '').toLowerCase()) ? String(raw.imageExt).toLowerCase() : '';
+  return {
+    enabled: raw.enabled === true,
+    imageExt,
+    updatedAt: raw.updatedAt ? String(raw.updatedAt) : ''
+  };
+}
+
+function playerAdFilePath(ad = {}) {
+  const ext = ['jpg','png','webp'].includes(String(ad.imageExt || '').toLowerCase()) ? String(ad.imageExt).toLowerCase() : '';
+  return ext ? path.join(COMMUNITY_BANNERS_DIR, `player-ad.${ext}`) : '';
+}
+
+function playerAdAdminPayload() {
+  const community = platform.community ||= blankCommunity();
+  const ad = normalizePlayerAd(community.playerAd || {});
+  const file = playerAdFilePath(ad);
+  const hasImage = Boolean(file && fs.existsSync(file));
+  return {
+    ...ad,
+    hasImage,
+    imageUrl: hasImage ? `/player-ad-banner?v=${encodeURIComponent(ad.updatedAt || '1')}` : ''
+  };
+}
+
+function playerAdPublicPayload() {
+  const ad = playerAdAdminPayload();
+  return ad.enabled && ad.hasImage ? { enabled:true, imageUrl:ad.imageUrl, durationMs:5000, everyBalls:10 } : { enabled:false, imageUrl:'', durationMs:5000, everyBalls:10 };
+}
+
+function removePlayerAdFiles() {
+  for (const ext of ['jpg','png','webp']) {
+    const file = path.join(COMMUNITY_BANNERS_DIR, `player-ad.${ext}`);
+    try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch {}
+  }
+}
+
+function updatePlayerAdImage(payload = {}) {
+  const community = platform.community ||= blankCommunity();
+  community.playerAd = normalizePlayerAd(community.playerAd || {});
+  const ad = community.playerAd;
+  const action = String(payload.action || 'upload').toLowerCase();
+  if (action === 'remove') {
+    removePlayerAdFiles();
+    ad.enabled = false;
+    ad.imageExt = '';
+    ad.updatedAt = nowIso();
+    savePlatform();
+    return communityAdminPayload();
+  }
+  const match = String(payload.imageData || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) throw new Error('Usá una imagen JPG, PNG o WebP.');
+  const mime = match[1];
+  const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer.length || buffer.length > 2_000_000) throw new Error('La imagen procesada de publicidad supera el tamaño permitido. Volvé a seleccionarla para optimizarla.');
+  const isJpg = buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const isPng = buffer.length > 8 && buffer.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]));
+  const isWebp = buffer.length > 12 && buffer.subarray(0,4).toString('ascii') === 'RIFF' && buffer.subarray(8,12).toString('ascii') === 'WEBP';
+  const ext = mime === 'image/jpeg' && isJpg ? 'jpg' : mime === 'image/png' && isPng ? 'png' : mime === 'image/webp' && isWebp ? 'webp' : '';
+  if (!ext) throw new Error('El archivo no coincide con un formato de imagen permitido.');
+  removePlayerAdFiles();
+  const file = path.join(COMMUNITY_BANNERS_DIR, `player-ad.${ext}`);
+  const temp = `${file}.tmp`;
+  fs.writeFileSync(temp, buffer);
+  fs.renameSync(temp, file);
+  ad.imageExt = ext;
+  ad.updatedAt = nowIso();
+  savePlatform();
+  return communityAdminPayload();
+}
+
 function normalizeCommunity(raw = {}) {
   const defaults = blankCommunity();
   return {
@@ -898,6 +971,7 @@ function normalizeCommunity(raw = {}) {
     supportTitle: String(raw.supportTitle || defaults.supportTitle).trim().replace(/\s+/g, ' ').slice(0, 80),
     supportMessage: String(raw.supportMessage || defaults.supportMessage).trim().replace(/\s+/g, ' ').slice(0, 180),
     banners: [1,2,3].map(slot => normalizeCommunityBanner((Array.isArray(raw.banners) ? raw.banners : []).find(item => Number(item?.slot) === slot) || {}, slot)),
+    playerAd: normalizePlayerAd(raw.playerAd || {}),
     chatEnabled: raw.chatEnabled !== false,
     blockPhoneNumbers: raw.blockPhoneNumbers !== false,
     blockWhatsappLinks: raw.blockWhatsappLinks !== false,
@@ -2057,6 +2131,7 @@ function playerPayload(player) {
     endedAt: state.endedAt || null,
     roomSettings: state.roomSettings,
     support: communitySupportPayload(),
+    playerAd: currentWorkspace().isDemo ? { enabled:false, imageUrl:'', durationMs:5000, everyBalls:10 } : playerAdPublicPayload(),
     waitingGame: waitingGamePayload(),
     markingPolicy: markingPolicyPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), muted: (state.chat?.mutedPlayerIds || []).includes(player.id) },
@@ -8202,6 +8277,14 @@ function updateCommunitySettings(payload = {}) {
     }
     community.banners = current;
   }
+  if (payload.playerAd && typeof payload.playerAd === 'object') {
+    community.playerAd = normalizePlayerAd(community.playerAd || {});
+    if (payload.playerAd.enabled !== undefined) {
+      const enable = payload.playerAd.enabled === true;
+      if (enable && !playerAdAdminPayload().hasImage) throw new Error('Subí una imagen de publicidad antes de activarla.');
+      community.playerAd.enabled = enable;
+    }
+  }
   if (payload.chatEnabled !== undefined) community.chatEnabled = Boolean(payload.chatEnabled);
   if (payload.blockPhoneNumbers !== undefined) community.blockPhoneNumbers = Boolean(payload.blockPhoneNumbers);
   if (payload.blockWhatsappLinks !== undefined) community.blockWhatsappLinks = Boolean(payload.blockWhatsappLinks);
@@ -8328,6 +8411,7 @@ function communityAdminPayload() {
     supportMessage: community.supportMessage || blankCommunity().supportMessage,
     support: communitySupportPayload(),
     banners: communityBannersAdminPayload(),
+    playerAd: playerAdAdminPayload(),
     chatEnabled: community.chatEnabled !== false,
     blockPhoneNumbers: community.blockPhoneNumbers !== false,
     blockWhatsappLinks: community.blockWhatsappLinks !== false,
@@ -8433,6 +8517,10 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/community/banner' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'Los banners solo puede configurarlos el administrador principal.' });
     return sendJson(res, 200, updateCommunityBannerImage(await readJson(req, 3_600_000)));
+  }
+  if (url.pathname === '/api/admin/community/player-ad' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'La publicidad solo puede configurarla el administrador principal.' });
+    return sendJson(res, 200, updatePlayerAdImage(await readJson(req, 3_600_000)));
   }
   if (url.pathname === '/api/admin/community/schedule' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'La Agenda solo puede configurarla el administrador principal.' });
@@ -9109,6 +9197,22 @@ const server = http.createServer(async (req, res) => {
     const banner = communityBannersAdminPayload().find(item => item.slot === slot);
     if (!banner?.hasImage) return sendJson(res, 404, { error: 'Banner no disponible.' });
     const file = communityBannerFilePath(banner);
+    const stat = fs.statSync(file);
+    res.writeHead(200, {
+      'Content-Type': MIME_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
+      'Content-Length': stat.size,
+      'Cache-Control': 'public, max-age=300',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'same-origin'
+    });
+    if (req.method === 'HEAD') return res.end();
+    return fs.createReadStream(file).pipe(res);
+  }
+
+  if (url.pathname === '/player-ad-banner' && (req.method === 'GET' || req.method === 'HEAD')) {
+    const ad = playerAdAdminPayload();
+    if (!ad?.hasImage) return sendJson(res, 404, { error: 'Publicidad no disponible.' });
+    const file = playerAdFilePath(ad);
     const stat = fs.statSync(file);
     res.writeHead(200, {
       'Content-Type': MIME_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',

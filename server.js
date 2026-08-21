@@ -7458,15 +7458,35 @@ function recoverCommunityCreator(payload = {}) {
   const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
   if (!workspace?.state?.active) {
     if (record.startMode === 'scheduled' && record.startsAt && record.status === 'scheduled') {
-      return { token:'', pending:true, publicId:record.id, roomCode:'', enterUrl:communityPublicShareUrl(record.id) };
+      return {
+        token:'', pending:true, organizer:true, publicId:record.id, roomCode:'', status:'scheduled',
+        name:record.name, mode:record.mode, maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
+        playerCount:0, cardCount:0, pendingSelectionPlayers:0, players:[], canStart:false, joinOpen:false,
+        shareUrl:communityPublicShareUrl(record.id), transmissionUrl:''
+      };
     }
     throw new Error('La sala todavía no está disponible.');
   }
-  return workspaceContext.run(workspace, () => ({
-    token:'', organizer:true, roomCode:state.roomCode, publicId:record.id,
-    enterUrl:communityPublicShareUrl(record.id), status:state.status,
-    canStart:state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && registrationSummaryPayload().registeredPlayers >= 2
-  }));
+  return workspaceContext.run(workspace, () => {
+    const summary = registrationSummaryPayload();
+    const players = (state.players || [])
+      .filter(item => item?.nameSet && !item.virtual)
+      .map(item => ({
+        name:playerDisplayName(item),
+        cardCount:item.selectionConfirmed ? (item.cardIds || []).length : 0,
+        expectedCardCount:authorizedCardCount(item),
+        ready:Boolean(item.selectionConfirmed)
+      }));
+    return {
+      token:'', organizer:true, roomCode:state.roomCode, publicId:record.id, status:state.status,
+      name:record.name, mode:record.mode, maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
+      playerCount:summary.registeredPlayers, cardCount:summary.playingCards,
+      pendingSelectionPlayers:players.filter(item => !item.ready).length, players,
+      enterUrl:communityPublicShareUrl(record.id), shareUrl:communityPublicShareUrl(record.id),
+      transmissionUrl:shortBroadcastUrlFor(), joinOpen:Boolean(state.status === 'waiting' && state.roomSettings?.joinOpen),
+      canStart:state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && summary.registeredPlayers >= 2
+    };
+  });
 }
 
 function joinCommunityCreatorAsPlayer(req, res, payload = {}) {
@@ -8537,6 +8557,12 @@ async function handleApi(req, res, url) {
       const recovered = recoverCommunityCreator(await readJson(req));
       const { token, ...safeRecovered } = recovered;
       return sendJson(res, 200, safeRecovered);
+    }
+    if (url.pathname === '/api/community/creator-state' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-creator-state', 240, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiadas actualizaciones. Esperá un momento.' });
+      const organizerState = recoverCommunityCreator(await readJson(req));
+      const { token, ...safeOrganizerState } = organizerState;
+      return sendJson(res, 200, safeOrganizerState);
     }
     if (url.pathname === '/api/community/creator-join-player' && req.method === 'POST') {
       if (!consumeRate(req, 'community-creator-join-player', 20, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });

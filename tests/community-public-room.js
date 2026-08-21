@@ -11,6 +11,8 @@ const serverSrc=fs.readFileSync(path.join(root,'server.js'),'utf8');
 assert(communityHtml.includes('id="publicRoomsList"'),'Comunidad debe mostrar el lobby de mesas.');
 const creator=communityHtml.slice(communityHtml.indexOf('id="privateRoomOverlay"'),communityHtml.indexOf('id="whatsappOverlay"'));
 assert(creator.includes('CÓDIGO DE CREADOR')&&creator.includes('INGRESAR A JUGAR'),'Crear sala debe separar organización de ingreso como jugador.');
+assert(creator.includes('id="privateRoomJoinBtn"')&&creator.includes('>VER MI SALA</button>'),'VER MI SALA debe ser una acción de organizador, no un enlace de invitado.');
+assert(communityJs.includes('/api/community/creator-state')&&communityJs.includes('viewCreatorRoomById'),'Comunidad debe tener una vista propia para el organizador.');
 assert(communityJs.includes('/api/community/creator-start')&&communityJs.includes('/api/community/creator-join-player'),'Comunidad debe permitir iniciar como organizador e ingresar a jugar aparte.');
 assert(serverSrc.includes("Array.from({ length: 9 }")&&serverSrc.includes('COMMUNITY_PUBLIC_MAX_AHEAD_MS = 36 * 60 * 60 * 1000'),'Servidor debe mantener límites de salas y programación.');
 
@@ -36,8 +38,10 @@ async function selectRoom(admin,roomCode){const ws=await ok('/api/admin/workspac
   assert(created.id&&created.roomCode&&created.shareUrl.includes('/mesa/')&&created.creatorCode&&created.enterNow===true,'Sala manual debe abrir y devolver link/código de creador.');
   assert.equal(playerCookie(createResp.r.headers),'','Crear una sala no debe iniciar una sesión de jugador.');
   let adminState=await selectRoom(admin,created.roomCode);assert.equal(adminState.players.length,0,'El creador no debe aparecer como jugador al crear.');
+  const organizerView=await ok('/api/community/creator-state',{method:'POST',body:{publicId:created.id,creatorCode:created.creatorCode}});assert(organizerView.organizer);assert.equal(organizerView.playerCount,0,'Ver mi sala no debe agregar al creador como jugador.');assert(Array.isArray(organizerView.players)&&organizerView.players.length===0);
   const pedro=await ok('/api/player/open-join',{method:'POST',body:{roomCode:created.roomCode,name:'Pedro',cardCount:1,deviceId:'pedro-device'}});
   const lucia=await ok('/api/player/open-join',{method:'POST',body:{roomCode:created.roomCode,name:'Lucía',cardCount:4,deviceId:'lucia-device'}});
+  const organizerWithPlayers=await ok('/api/community/creator-state',{method:'POST',body:{publicId:created.id,creatorCode:created.creatorCode}});assert.equal(organizerWithPlayers.playerCount,2);assert.deepEqual(organizerWithPlayers.players.map(p=>p.name).sort(),['Lucía','Pedro']);
   const startedByCreator=await ok('/api/community/creator-start',{method:'POST',body:{publicId:created.id,creatorCode:created.creatorCode}});assert(startedByCreator.ok);
   await wait(120);adminState=await selectRoom(admin,created.roomCode);assert(['starting','playing'].includes(adminState.status));assert.equal(adminState.players.length,2);assert(adminState.players.every(p=>p.name!=='Marta'));
   const pedroStarted=await ok('/api/player/state',{playerToken:pedro.token}),luciaStarted=await ok('/api/player/state',{playerToken:lucia.token});assert.equal(pedroStarted.player.cards.length,1);assert.equal(luciaStarted.player.cards.length,4);

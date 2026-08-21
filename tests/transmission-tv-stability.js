@@ -7,7 +7,7 @@ const must=(ok,msg)=>{if(!ok){console.error('TRANSMISION TV FAIL:',msg);process.
 must(!html.includes('id="themeBtn"'),'Transmisión no debe ofrecer tema Día/Noche');
 must(html.includes('data-theme="night"')&&js.includes("theme='night'"),'Transmisión debe fijar noche');
 must(!js.includes('ADMINISTRADOR SIN CONEXIÓN'),'El estado de desconexión del admin no debe mostrarse al público');
-must(html.includes('id="prizeTicker"')&&html.includes('PREMIO CONFIRMADO'),'Debe existir panel de premio en vivo');
+must(html.includes('id="prizeTicker"')&&html.includes('GANADOR CONFIRMADO'),'Debe existir panel de ganador en vivo');
 must(js.includes("x.status==='confirmed'&&x.type!=='bingo'"),'Bingo debe quedar fuera del rotador');
 must(js.includes("['playing','verifying','paused'].includes(s?.status)&&!s?.bingoConfirmed"),'Rotador solo activo durante partida y antes del Bingo');
 must(js.includes("active=s.status==='finished'&&winners.length>0"),'Showcase final de cartón ganador debe conservarse');

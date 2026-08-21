@@ -28,7 +28,7 @@ const profiles = {
       ],
       late: [
         'Entramos en una parte decisiva del sorteo.',
-        'Cada bolilla puede dejar un premio a un solo número.',
+        'Cada bolilla puede dejar una jugada a un solo número.',
         'La carrera está cada vez más apretada. Atención a sus cartones.',
         'Quedan menos números y aumenta la tensión.'
       ],

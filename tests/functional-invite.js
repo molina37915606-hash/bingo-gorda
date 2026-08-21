@@ -16,7 +16,7 @@ async function claimInvite(url){const u=new URL(url),path=u.pathname+u.search;co
   await waitServer();
   const login=await post('/api/admin/login',{}),ah={'X-Admin-Token':login.token};
   const room=await post('/api/admin/create-simple-room',{mode:90,cardCount:100,autoSeconds:60,rules:{line:true,bingo:true},markingMode:'normal',linePrizeCount:2,maxCardsPerPlayer:4},ah);
-  assert.equal(room.roomSettings.maxCardsPerPlayer,4);assert.equal(room.roomSettings.joinOpen,false);assert.equal(room.roomSettings.paymentMode,'free');assert(room.broadcastUrl,'La transmisión debe existir siempre');
+  assert.equal(room.roomSettings.maxCardsPerPlayer,4);assert.equal(room.roomSettings.joinOpen,false);assert(room.broadcastUrl,'La transmisión debe existir siempre');
 
   const ana=await post('/api/admin/invite-player',{name:'María',allowedCardCount:4},ah);
   const beto=await post('/api/admin/invite-player',{name:'Beto',allowedCardCount:4},ah);

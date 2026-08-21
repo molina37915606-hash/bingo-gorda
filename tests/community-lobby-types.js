@@ -20,7 +20,7 @@ function assertStandard90Card(card,label='cartón 90'){
 function assertStandard90Series(series){
   assert.equal(series.cards.length,6,`Serie ${series.number}: debe contener 6 cartones`);const nums=[];series.cards.forEach((card,index)=>{assertStandard90Card(card,`Serie ${series.number} cartón ${index+1}`);nums.push(...card.grid.flat().filter(Number.isFinite))});assert.equal(nums.length,90);assert.deepEqual([...nums].sort((a,b)=>a-b),Array.from({length:90},(_,i)=>i+1),`Serie ${series.number}: debe contener 1..90 exactamente una vez`);
 }
-assert(communityHtml.includes('Públicas, privadas y oficiales')&&communityHtml.includes('🔒 PRIVADA')&&communityHtml.includes('PÚBLICA'),'Comunidad debe presentar el lobby por tipos.');
+assert(communityHtml.includes('Públicas, privadas y administradas')&&communityHtml.includes('🔒 PRIVADA')&&communityHtml.includes('PÚBLICA'),'Comunidad debe presentar el lobby por tipos.');
 assert(communityJs.includes("kind==='official'")&&communityJs.includes("kind==='private'")&&communityJs.includes('/api/community/room-access'),'El lobby debe diferenciar oficial/privada y proteger el acceso.');
 assert(playerJs.includes('/api/player/community-rematch'),'El flujo de revancha debe seguir disponible cuando el creador también ingresó como jugador.');
 assert(serverSrc.includes('COMMUNITY_FINISH_GRACE_MS')&&serverSrc.includes('maybeCloseFinishedCommunityRoom')&&serverSrc.includes("roomType: state.roomSettings?.roomOrigin === 'community'"),'Servidor debe cerrar la sala tras la ventana final y conservar tipo en historial.');
@@ -58,7 +58,7 @@ async function finishCurrent(adminToken){let st=await ok('/api/admin/state',{adm
   await ok('/api/admin/community/settings',{method:'POST',adminToken:admin,body:{cardsPrintSite:'ejemplo.com/bingo'}});const branded=await ok('/api/community/cards/generate',{method:'POST',body:{mode:90,seriesCount:1}});assert.equal(branded.site,'ejemplo.com/bingo');
 
   // Una sala creada por Admin debe aparecer como OFICIAL, nunca como pública/privada de jugador.
-  const official=await ok('/api/admin/create-simple-room',{method:'POST',adminToken:admin,body:{mode:90,cardCount:40,autoSeconds:30,rules:{line:true,bingo:true},linePrizeCount:1,paymentMode:'free',maxCardsPerPlayer:2}});
+  const official=await ok('/api/admin/create-simple-room',{method:'POST',adminToken:admin,body:{mode:90,cardCount:40,autoSeconds:30,rules:{line:true,bingo:true},linePrizeCount:1,maxCardsPerPlayer:2}});
   await ok('/api/admin/join-open',{method:'POST',adminToken:admin,body:{open:true}});
   let community=await ok('/api/community/state?visitorId=lobby-test');
   const officialCard=community.lobbyRooms.find(x=>x.kind==='official'&&x.status==='waiting');

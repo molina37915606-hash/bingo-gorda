@@ -12,7 +12,7 @@ async function form(pathname,values){return fetch(base+pathname,{method:'POST',h
 function cookieFrom(r){const c=(r.headers.get('set-cookie')||'').split(';')[0];assert(c.startsWith('bingo_player_session='),`Cookie faltante: ${c}`);return c}
 (async()=>{try{
   await waitServer();const login=(await json('/api/admin/login','POST',{})).data,ah={'X-Admin-Token':login.token};
-  let room=(await json('/api/admin/create-simple-room','POST',{mode:90,cardCount:80,autoSeconds:60,rules:{line:true,bingo:true},paymentMode:'free',markingMode:'normal',maxCardsPerPlayer:4,linePrizeCount:2},ah)).data;
+  let room=(await json('/api/admin/create-simple-room','POST',{mode:90,cardCount:80,autoSeconds:60,rules:{line:true,bingo:true},markingMode:'normal',maxCardsPerPlayer:4,linePrizeCount:2},ah)).data;
   let r=await fetch(base+'/jugador'),html=await r.text();assert(r.ok);assert(!html.includes('name="accessKey"'));assert(html.includes('link privado'),'El acceso base debe orientar al link privado/recuperación');
   const joinPath=new URL(room.joinUrl).pathname+new URL(room.joinUrl).search;
   r=await fetch(base+joinPath);html=await r.text();assert(html.includes('Inscripciones cerradas'));
@@ -28,10 +28,6 @@ function cookieFrom(r){const c=(r.headers.get('set-cookie')||'').split(';')[0];a
   await json('/api/admin/join-open','POST',{open:false},ah);let admin=(await json('/api/admin/state','GET',undefined,ah)).data;assert.equal(admin.startPlan.eligiblePlayers,2);await json('/api/admin/start','POST',{},ah);
 
   await json('/api/admin/close','POST',{},ah);
-  room=(await json('/api/admin/create-simple-room','POST',{mode:90,cardCount:100,autoSeconds:60,rules:{line:true,bingo:true},paymentMode:'paid',cardPrice:1000,paymentAlias:'lagorda.form',paymentAccountHolder:'La Gorda',paymentProvider:'Mercado Pago',whatsapp:'5493757624388',markingMode:'normal',maxCardsPerPlayer:4,linePrizeCount:1},ah)).data;
-  await json('/api/admin/join-open','POST',{open:true},ah);
-  r=await form('/jugador/entrar',{roomCode:room.roomCode,name:'Pago Directo',cardCount:'2'});const pc=cookieFrom(r);let ps=(await json('/api/player/state','GET',undefined,{Cookie:pc})).data;assert.equal(ps.player.paymentStatus,'pending');assert.equal(ps.player.offeredCards.length,0);
-  await json('/api/player/payment-report','POST',{dni:'12345678',holder:'Titular Pago'},{Cookie:pc});admin=(await json('/api/admin/state','GET',undefined,ah)).data;const pa=admin.players.find(p=>p.name==='Pago Directo');assert.equal(pa.paymentStatus,'reported');await json('/api/admin/player-approval','POST',{playerId:pa.id,allowedCardCount:2,confirmPayment:true},ah);ps=(await json('/api/player/state','GET',undefined,{Cookie:pc})).data;assert.equal(ps.player.paymentStatus,'confirmed');assert(ps.player.offeredCards.length>=2);
-  r=await fetch(base+'/jugador/salir',{headers:{Cookie:pc},redirect:'manual'});assert.equal(r.status,303);assert.equal(r.headers.get('location'),'/jugador');r=await fetch(base+'/jugador/salir?comunidad=1',{headers:{Cookie:pc},redirect:'manual'});assert.equal(r.status,303);assert.equal(r.headers.get('location'),'/comunidad');
-  console.log('PRUEBA ACCESO FINAL: OK · link general -> cookie privada -> pago/recuperación sin clave compartida');
+  r=await fetch(base+'/jugador/salir',{headers:{Cookie:c2},redirect:'manual'});assert.equal(r.status,303);assert.equal(r.headers.get('location'),'/jugador');
+  console.log('PRUEBA ACCESO FINAL: OK · link general -> cookie privada -> recuperación sin clave compartida');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

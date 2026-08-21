@@ -10,9 +10,9 @@ const adminJs=fs.readFileSync(path.join(root,'js/admin.js'),'utf8');
 const communityHtml=fs.readFileSync(path.join(root,'comunidad.html'),'utf8');
 const communityJs=fs.readFileSync(path.join(root,'js/community.js'),'utf8');
 const serverSrc=fs.readFileSync(path.join(root,'server.js'),'utf8');
-for(const id of ['communityScheduleAt','communityScheduleMode','communitySchedulePayment','communitySchedulePrice','communityScheduleMarkingMode','communityScheduleMaxCards','communityScheduleCardCount','communityScheduleInterval','communitySchedulePrizeOptions','saveCommunitySchedule','communityScheduleList'])assert(adminHtml.includes(`id="${id}"`),`Falta agenda Admin: ${id}`);
+for(const id of ['communityScheduleAt','communityScheduleMode','communityScheduleMarkingMode','communityScheduleMaxCards','communityScheduleCardCount','communityScheduleInterval','communitySchedulePrizeOptions','saveCommunitySchedule','communityScheduleList'])assert(adminHtml.includes(`id="${id}"`),`Falta agenda Admin: ${id}`);
 assert(adminJs.includes("action:'create-room'"),'Agenda debe crear una sala directamente con su configuración guardada.');
-assert(adminJs.includes('communitySchedulePrizeLabel'),'Agenda debe mostrar los premios configurados.');
+assert(adminJs.includes('communitySchedulePrizeLabel'),'Agenda debe mostrar las jugadas configuradas.');
 assert(!adminJs.includes('data-community-schedule-prepare'),'Agenda no debe depender del paso PREPARAR.');
 assert(communityHtml.includes('quickTile quickTileArt demo')&&communityHtml.includes('quickTile quickTileArt whatsapp')&&communityHtml.includes('quickTile transmission'),'Demo, WhatsApp y Transmisión deben mantener accesos compactos.');
 for(const asset of ['assets/community/demo.webp','assets/community/crear-sala.webp','assets/community/whatsapp.webp']){assert(fs.existsSync(path.join(root,asset)),`Falta ícono Comunidad: ${asset}`);assert(fs.statSync(path.join(root,asset)).size<180000,`Ícono Comunidad demasiado pesado: ${asset}`)}
@@ -24,7 +24,7 @@ assert(communityHtml.includes('id="mobileChatBar"'),'Chat debe tener barra infer
 assert(communityJs.includes("panel.addEventListener('touchstart'"),'Chat Comunidad debe poder cerrarse con gesto desde el panel.');
 assert(communityJs.includes('dy<58'),'Chat Comunidad debe tener umbral de arrastre claro.');
 assert(communityJs.includes('ENTRAR A JUGAR'),'Sala abierta debe tener llamado directo para jugar.');
-assert(communityJs.includes('priceLabel'),'Comunidad debe mostrar el precio o GRATIS.');
+assert(communityJs.includes('priceLabel'),'Comunidad debe identificar la partida como gratuita.');
 assert(serverSrc.includes('communityUpcomingGames'),'Servidor debe publicar partidas programadas.');
 assert(serverSrc.includes('createRoomFromCommunitySchedule'),'Servidor debe poder construir la sala desde la programación completa.');
 
@@ -38,25 +38,21 @@ async function req(pathname,{method='GET',body,token}={}){const r=await fetch(ba
  await waitServer();
  const login=await req('/api/admin/login',{method:'POST',body:{}}),token=login.token;
  const startsAt=new Date(Date.now()+2*60*60*1000).toISOString();
- let admin=await req('/api/admin/community/schedule',{method:'POST',token,body:{action:'save',startsAt,registrationMinutes:15,autoStart:false,mode:90,paymentMode:'paid',cardPrice:5000,paymentAlias:'la.gorda.test',paymentAccountHolder:'La Gorda',paymentProvider:'Mercado Pago',whatsapp:'+5493757123456',markingMode:'normal',maxCardsPerPlayer:3,cardCount:100,autoSeconds:8,linePrizeCount:2,rules:{ambocabeza:true,line:true,bingo:true}}});
+ let admin=await req('/api/admin/community/schedule',{method:'POST',token,body:{action:'save',startsAt,registrationMinutes:15,autoStart:false,mode:90,whatsapp:'+5493757123456',markingMode:'normal',maxCardsPerPlayer:3,cardCount:100,autoSeconds:8,linePrizeCount:2,rules:{ambocabeza:true,line:true,bingo:true}}});
  assert.equal(admin.scheduledGames.length,1,'Debe guardar una partida programada.');
  const schedule=admin.scheduledGames[0];
- assert.equal(schedule.mode,90);assert.equal(schedule.cardPrice,5000);assert.equal(schedule.maxCardsPerPlayer,3);assert.equal(schedule.cardCount,100);assert.equal(schedule.autoSeconds,8);assert.equal(schedule.linePrizeCount,2);assert.equal(schedule.rules.ambocabeza,true);
+ assert.equal(schedule.mode,90);assert.equal(schedule.maxCardsPerPlayer,3);assert.equal(schedule.cardCount,100);assert.equal(schedule.autoSeconds,8);assert.equal(schedule.linePrizeCount,2);assert.equal(schedule.rules.ambocabeza,true);
  let publicState=await req('/api/community/state');
  assert.equal(publicState.upcomingGames.length,1,'Comunidad debe publicar la próxima partida.');
- assert.equal(publicState.upcomingGames[0].paymentMode,'paid');
- assert.equal(publicState.upcomingGames[0].cardPrice,5000);
  admin=await req('/api/admin/community/schedule',{method:'POST',token,body:{action:'create-room',id:schedule.id}});
  const linked=admin.scheduledGames.find(g=>g.id===schedule.id);assert(linked.roomCode,'La agenda debe asociar la sala creada.');
  let room=await req('/api/admin/state',{token});
  assert.equal(room.roomSettings.communityScheduleId,schedule.id,'Sala debe quedar asociada a la programación.');
  assert.equal(room.roomSettings.scheduledAt,startsAt,'Sala debe conservar el horario anunciado.');
  assert.equal(room.game.mode,90);assert.equal(room.game.cards.length,100);assert.equal(room.game.autoSeconds,8);assert.equal(room.roomSettings.maxCardsPerPlayer,3);assert.equal(room.roomSettings.linePrizeCount,2);assert.equal(room.game.rules.ambocabeza,true);
- assert.equal(room.roomSettings.paymentAlias,'la.gorda.test');assert.equal(room.roomSettings.paymentAccountHolder,'La Gorda');assert.equal(room.roomSettings.paymentProvider,'Mercado Pago');
  publicState=await req('/api/community/state');
  assert(publicState.activeGame,'Comunidad debe detectar la sala oficial.');
  assert.equal(publicState.activeGame.canJoin,false,'Sala oficial empieza con inscripciones cerradas.');
- assert.equal(publicState.activeGame.cardPrice,5000);
  assert.equal(publicState.upcomingGames.length,0,'La programación asociada no debe duplicarse debajo de la sala activa.');
  room=await req('/api/admin/join-open',{method:'POST',token,body:{open:true}});
  assert.equal(room.roomSettings.joinOpen,true);

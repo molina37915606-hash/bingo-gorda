@@ -9,7 +9,7 @@ const must=(ok,msg)=>{if(!ok){console.error('TV SAFE FAIL:',msg);process.exit(1)
 must(server.includes("path.join(ROOT, 'tv.html')"),'tv.html debe estar permitido por serveFile');
 must(server.includes("url.pathname === '/tv'")&&server.includes("/^\\/tv\\/[^/]+\\/?$/"),'deben existir /tv y /tv/:codigo');
 must(server.includes('randomNumericCode(6)'),'nuevas salas deben usar codigo TV numerico corto');
-must(html.includes('MODO TV')&&html.includes('CARRERA POR EL PREMIO')&&html.includes('CHAT DE LA SALA'),'TV debe conservar bolilla, carrera y chat');
+must(html.includes('MODO TV')&&html.includes('CARTONES MÁS CERCA')&&html.includes('CHAT DE LA SALA'),'TV debe conservar bolilla, carrera y chat');
 must(html.includes('raceGrid mode90')&&html.includes('.raceGrid.mode90{grid-template-columns:repeat(3'),'TV 90 debe reservar seis cartones 3x2');
 must(html.includes('.raceGrid.mode75{grid-template-columns:repeat(3'),'TV 75 debe tener tres principales y columna compacta');
 must(js.includes('pendingRaw=raw')&&js.includes('setTimeout(flushPending,45)'),'TV debe coalescer estados y saltar a la informacion mas nueva');

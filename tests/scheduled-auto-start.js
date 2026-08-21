@@ -28,7 +28,7 @@ async function generalJoin(roomCode,name){const r=await fetch(base+'/jugador/ent
   await waitServer();
   const login=await req('/api/admin/login',{method:'POST',body:{}}),token=login.token;
   const startsAt=new Date(Date.now()+4400).toISOString();
-  let community=await req('/api/admin/community/schedule',{method:'POST',token,body:{action:'save',startsAt,registrationMinutes:1,autoStart:true,mode:75,paymentMode:'free',markingMode:'normal',maxCardsPerPlayer:2,cardCount:100,autoSeconds:60,linePrizeCount:1,rules:{line:true,corners:true,doubleLine:true,tripleLine:false,bingo:true}}});
+  let community=await req('/api/admin/community/schedule',{method:'POST',token,body:{action:'save',startsAt,registrationMinutes:1,autoStart:true,mode:75,markingMode:'normal',maxCardsPerPlayer:2,cardCount:100,autoSeconds:60,linePrizeCount:1,rules:{line:true,corners:true,doubleLine:true,tripleLine:false,bingo:true}}});
   const schedule=community.scheduledGames[0];
   assert.equal(schedule.registrationMinutes,1);assert.equal(schedule.autoStart,true);assert.equal(schedule.cardCount,100);assert.equal(schedule.maxCardsPerPlayer,2);assert.equal(schedule.rules.corners,true);assert.equal(schedule.rules.doubleLine,true);
 

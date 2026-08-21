@@ -54,7 +54,7 @@ async function drawSequence(numbers,ah){for(const _ of numbers)await post('/api/
   state=await get('/api/admin/state',ah);assert.equal(state.claims.find(c=>c.id===first.id).prizeNumber,1);
   await resumeIfNeeded(ah);
   // Repetir la misma fila no crea una segunda línea válida.
-  const repeated=await post('/api/player/claim',{type:'line',cardId:solo.card.id},{Cookie:solo.cookie});assert.equal(repeated.officialValid,false,'La misma fila no puede cobrarse dos veces.');await wait(500);
+  const repeated=await post('/api/player/claim',{type:'line',cardId:solo.card.id},{Cookie:solo.cookie});assert.equal(repeated.officialValid,false,'La misma fila no puede adjudicarse dos veces.');await wait(500);
   await resumeIfNeeded(ah);
   await drawSequence(row2.filter(n=>!row1.includes(n)),ah);
   const second=await post('/api/player/claim',{type:'line',cardId:solo.card.id},{Cookie:solo.cookie});assert.equal(second.officialValid,true,'Una fila distinta del mismo cartón sí puede ser la segunda línea global.');await wait(500);

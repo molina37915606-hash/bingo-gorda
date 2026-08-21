@@ -485,7 +485,7 @@
       .sort((a,b) => a.progress.missing - b.progress.missing || (priority[a.progress.type] ?? 9) - (priority[b.progress.type] ?? 9) || Number(a.card.seriesNumber)-Number(b.card.seriesNumber) || Number(a.card.cardNumber)-Number(b.card.cardNumber));
   }
   function progressText(progress) {
-    if (!progress) return 'Sin premios pendientes';
+    if (!progress) return 'Sin jugadas pendientes';
     const label = prizeLabel(progress.type);
     if (progress.valid) return `✓ YA TIENE ${label}`;
     return `${progress.missing === 1 ? 'Falta' : 'Faltan'} ${progress.missing} para ${label}`;

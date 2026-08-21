@@ -31,6 +31,7 @@ jobs:
           if [ -f apply-v6-runtime.js ]; then
             node apply-v6-runtime.js
           fi
+          rm -rf assets/tv-voice
           npm install
           npm test
           if [ ! -f apply-v6-runtime.js ]; then

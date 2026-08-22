@@ -3751,14 +3751,17 @@ function premiumEventPlayerLivePayloadFromContext(event, eventPlayer, accessedCa
   }
   syncAutoMarksForPlayer(roomPlayer);
   const readinessById = new Map(playerPrizeReadiness(roomPlayer).map(item=>[String(item.cardId),item]));
+  const racePrizes = prizeStatusPayload();
   const cards = (eventPlayer.cards || []).map(ref=>{
     const card = premiumEventRoomCard(ref.lotCode,ref.cardNumber);
     if(!card)return null;
     const analysis=analyzeCard(card,state.game.drawn,roomPlayer.marks?.[card.id]||[]);
+    const race=broadcastRaceForCard(card,analysis,racePrizes);
     return {
       lotCode:card.eventLotCode,cardNumber:Number(card.eventCardNumber),mode:card.mode,grid:deepCopy(card.grid),roomCardId:card.id,
       marks:[...(roomPlayer.marks?.[card.id]||[])],markedCount:roomPlayer.autoMark?analysis.markedCount:analysis.playerMarkedCount,totalNumbers:analysis.totalNumbers,
-      readiness:readinessById.get(String(card.id))||null
+      readiness:readinessById.get(String(card.id))||null,
+      race:{type:race.type,label:race.label,missing:race.missing,importance:race.importance,prizeNumber:race.prizeNumber}
     };
   }).filter(Boolean).sort((a,b)=>a.lotCode.localeCompare(b.lotCode)||a.cardNumber-b.cardNumber);
   const broadcast=broadcastPayload();
@@ -3818,6 +3821,11 @@ function claimPremiumEventCard(payload={}) {
 }
 
 
+// -----------------------------------------------------------------------------
+// MODO EVENTO PREMIUM · FASE 5.1
+// Carrera Premium de cartones: TV/Transmisión reutilizan highlightedBroadcastCards
+// y el jugador recibe la cercanía de cada uno de sus propios cartones.
+// -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
 // MODO EVENTO PREMIUM · FASE 5
 // Preflight obligatorio, recuperación verificable, presencia de pantallas y

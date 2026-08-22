@@ -176,3 +176,12 @@ La integridad se protege verificando el SHA-256 de las tandas al cargarlas y con
 - El Evento conserva un historial de cierres (hasta 30) con sala, jugadores, cartones, ganadores e integridad.
 - Los cartones del jugador quedan en modo consulta después del cierre.
 - Se mantienen los límites de Fase 4.1: 150 jugadores / 250 cartones activos y tandas de hasta 1.000.
+
+
+## Modo Evento Premium · Fase 5.1 — Carrera de Cartones
+
+- TV Premium y Transmisión Premium incorporan una **Carrera de Cartones** con hasta 6 posiciones, calculadas por el mismo motor oficial que ya usa la transmisión tradicional.
+- Cada posición muestra jugador, número de cartón, miniatura real, jugada objetivo y cantidad faltante.
+- El ranking se recalcula con cada bolilla y no altera probabilidades, reclamos ni validaciones.
+- El jugador Evento no ve datos de otros participantes: en `evento.html` sólo se destaca cuál de **sus propios cartones** está más cerca y cuánto le falta para la jugada objetivo.
+- Reclamos, ganador y cierre Premium conservan prioridad visual sobre la carrera.

@@ -1,0 +1,10 @@
+MODO EVENTO PREMIUM · FASE 5.1 · CARRERA PREMIUM DE CARTONES
+
+- TV Premium y Transmisión Premium muestran hasta 6 cartones más cerca de completar una jugada.
+- Cada puesto muestra nombre del jugador, número de cartón, miniatura real, objetivo actual y cuántos números faltan.
+- La carrera reutiliza el cálculo oficial del servidor (highlightedBroadcastCards); no existe un ranking paralelo del navegador.
+- Se actualiza después de cada bolilla y respeta las jugadas abiertas/configuradas.
+- Durante reclamos y ganadores, el overlay Premium mantiene prioridad visual.
+- En el teléfono Evento, el mejor de los cartones propios recibe la marca “MÁS CERCA” y muestra el faltante de la jugada objetivo.
+- No se expone el ranking completo de otros jugadores en los teléfonos.
+- No se modifica el motor matemático, reclamos, tandas, Comunidad ni Bolillero Libre.

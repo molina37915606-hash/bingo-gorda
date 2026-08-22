@@ -110,3 +110,12 @@ Incluye Modo Libre del 1 al 250, con máximo configurable de 1 a 10 apariciones 
 ## Modo Evento Premium - Fase 1 (2026-08-22)
 
 Se agregó `/evento-admin` para crear eventos con nombre, logo, colores, sponsor, modalidad y tandas de hasta 300 cartones. Cada tanda tiene código `EVT-XXXXXX`, SHA-256 y códigos privados por cartón. Genera PDF de impresión con 6 cartones por hoja sin códigos, ZIP con PDFs individuales (código + QR), `tanda.json` y `control.csv`. La vinculación de jugadores y la integración con sala/transmisión corresponden a Fase 2 y siguientes.
+
+
+## Modo Evento Premium · Fase 2 (2026-08-22)
+
+Sobre la Fase 1 se agregó gestión persistente de jugadores y cartones. Un jugador puede tener varios cartones de una o varias tandas del mismo Evento. Cada cartón conserva su código privado original y, cuando está vinculado, ingresar con cualquiera de esos códigos abre automáticamente todos los cartones de ese jugador.
+
+El panel `evento-admin.html` permite alta, corrección y baja de jugadores; vinculación/desvinculación por código privado o número de cartón; importación CSV atómica; vista grande de cada cartón; control de cartones sin asignar y presencia reciente del jugador. `evento.html` incorpora mosaico de cartones y vista grande anterior/siguiente. Las vinculaciones se guardan en los datos del Evento y no modifican la matriz ni el SHA-256 de la tanda.
+
+El CSV de control y los PDFs individuales descargados después de vincular jugadores incluyen el nombre asociado. La Transmisión Premium y el motor de partida del Evento se mantienen fuera de esta fase.

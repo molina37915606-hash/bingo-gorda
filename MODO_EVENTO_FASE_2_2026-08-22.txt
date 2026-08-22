@@ -1,0 +1,18 @@
+EL BINGO DE LA GORDA · MODO EVENTO PREMIUM · FASE 2
+
+Implementado:
+- Jugadores persistentes por Evento.
+- Varios cartones vinculados a un mismo jugador.
+- Acceso: cualquier código de un cartón vinculado abre todos los cartones del jugador.
+- Alta, renombrado, baja, vinculación y desvinculación desde evento-admin.html.
+- Importación CSV atómica por jugador + cartón o jugador + código.
+- Vista grande de cartones en Admin y Jugador.
+- Estado de presencia reciente mediante heartbeat.
+- PDFs individuales y control.csv reflejan el jugador vinculado al descargarlos.
+- La tanda y su SHA-256 permanecen inmutables.
+
+No incluido todavía:
+- Partida en vivo del Evento.
+- Reclamos del Evento.
+- Transmisión / TV Premium.
+- Panel especial del conductor.

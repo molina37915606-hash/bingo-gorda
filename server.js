@@ -2823,9 +2823,10 @@ function buildCardLotPdf(lot) {
 
 
 // -----------------------------------------------------------------------------
-// MODO EVENTO PREMIUM - FASE 1
-// Evento + diseñador de tanda + códigos privados + PDFs premium.
-// El motor de partida todavía no cambia en esta fase.
+// MODO EVENTO PREMIUM - FASE 1 + FASE 2
+// Fase 1: Evento + diseñador de tanda + códigos privados + PDFs premium.
+// Fase 2: jugadores + vinculación de varios cartones + acceso agrupado por código.
+// El motor de partida todavía no cambia en estas fases.
 // -----------------------------------------------------------------------------
 function safeEventCode(value) {
   const code = String(value || '').trim().toUpperCase();
@@ -2907,7 +2908,9 @@ function publicEvent(event) {
     createdAt: event?.createdAt || '',
     updatedAt: event?.updatedAt || event?.createdAt || '',
     status: event?.status || 'draft',
-    lotCodes: Array.isArray(event?.lotCodes) ? event.lotCodes.filter(safeEventLotCode) : []
+    lotCodes: Array.isArray(event?.lotCodes) ? event.lotCodes.filter(safeEventLotCode) : [],
+    playersCount: Array.isArray(event?.players) ? event.players.length : 0,
+    linkedCardsCount: Array.isArray(event?.players) ? event.players.reduce((sum, player) => sum + (Array.isArray(player?.cards) ? player.cards.length : 0), 0) : 0
   };
 }
 function loadEvent(code) {
@@ -2939,7 +2942,7 @@ function createPremiumEvent(payload = {}) {
       secondary: normalizeEventHex(payload.colors?.secondary, '#D83A84'),
       accent: normalizeEventHex(payload.colors?.accent, '#E0A71A')
     },
-    status: 'draft', lotCodes: [], createdAt: now, updatedAt: now
+    status: 'draft', lotCodes: [], players: [], createdAt: now, updatedAt: now
   };
   if (payload.logoDataUrl) saveEventLogo(code, payload.logoDataUrl);
   saveEvent(event);
@@ -3157,6 +3160,8 @@ function buildPremiumEventIndividualPdf(lot, card) {
   if(lot.branding.sponsor)canvas.text(`Presentado por ${lot.branding.sponsor}`,128,99,8,{bold:true,color:secondary,maxWidth:420});
   canvas.rect(34,126,PAGE_W-68,430,'#FBFAFC','#DDD6E1',1); drawPremiumCard(commands,canvas,card,48,144,PAGE_W-96,390,lot,{individual:true});
   canvas.text(`CARTÓN ${String(card.globalNumber).padStart(4,'0')}`,42,585,17,{bold:true,color:primary});
+  const assignedPlayer = eventPlayerForCard(loadEvent(lot.eventCode), lot.code, card.globalNumber);
+  if (assignedPlayer) canvas.text(`Jugador: ${assignedPlayer.name}`,PAGE_W-42,588,10,{bold:true,color:secondary,align:'right',maxWidth:270});
   canvas.text('CÓDIGO PRIVADO DE ACCESO',42,616,8,{bold:true,color:'#6B6570'}); canvas.text(card.accessCode,42,632,25,{bold:true,color:secondary});
   const url=eventPlayerEntryUrl(card.accessCode), qrOk=drawQrCommands(commands,canvas,url,403,582,145);
   canvas.text(qrOk?'Escaneá para entrar con este cartón':'Usá el código para entrar al evento',475,735,7,{align:'center',color:'#6B6570',maxWidth:180});
@@ -3165,14 +3170,52 @@ function buildPremiumEventIndividualPdf(lot, card) {
   return pdfDocumentFromStreams([commands.join('\n')],PAGE_W,PAGE_H,logo,`LA_GORDA_EVENT_CARD_V1\n${lot.code}\n${card.globalNumber}\n${card.accessCode}\n${lot.hash}`);
 }
 function csvEscape(value){const text=String(value??'');return /[",\n\r]/.test(text)?`"${text.replace(/"/g,'""')}"`:text;}
-function eventLotControlCsv(lot){const rows=['tanda,evento,carton,serie,posicion,codigo'];for(const card of lot.cards)rows.push([lot.code,lot.eventCode,String(card.globalNumber).padStart(4,'0'),String(card.seriesNumber).padStart(2,'0'),card.cardNumber,card.accessCode].map(csvEscape).join(','));return '\uFEFF'+rows.join('\r\n');}
-function eventLotManifest(lot){return {...publicEventLot(lot,true),event:publicEvent(loadEvent(lot.eventCode)),integrity:{algorithm:'SHA-256',hash:lot.hash},accessRule:'Cada código pertenece a un cartón. En Fase 2 podrá vincularse a un jugador y abrir todos sus cartones.'};}
+function eventLotControlCsv(lot){const event=loadEvent(lot.eventCode);const rows=['tanda,evento,carton,serie,posicion,codigo,jugador_id,jugador'];for(const card of lot.cards){const player=eventPlayerForCard(event,lot.code,card.globalNumber);rows.push([lot.code,lot.eventCode,String(card.globalNumber).padStart(4,'0'),String(card.seriesNumber).padStart(2,'0'),card.cardNumber,card.accessCode,player?.id||'',player?.name||''].map(csvEscape).join(','));}return '\uFEFF'+rows.join('\r\n');}
+function eventLotManifest(lot){const event=loadEvent(lot.eventCode);const assignments=(eventPlayers(event)||[]).flatMap(player=>(player.cards||[]).filter(ref=>ref.lotCode===lot.code).map(ref=>({playerId:player.id,playerName:player.name,lotCode:ref.lotCode,cardNumber:ref.cardNumber})));return {...publicEventLot(lot,true),event:publicEvent(event),assignments,integrity:{algorithm:'SHA-256',hash:lot.hash},accessRule:'Cada código pertenece a un cartón. Si el cartón está vinculado a un jugador, cualquiera de sus códigos abre todos sus cartones vinculados.'};}
 function crc32Buffer(buffer){let crc=0xFFFFFFFF;for(const byte of buffer){crc^=byte;for(let k=0;k<8;k++)crc=(crc>>>1)^((crc&1)?0xEDB88320:0);}return (crc^0xFFFFFFFF)>>>0;}
 function dosDateTime(date=new Date()){let year=Math.max(1980,date.getFullYear());const dosTime=(date.getHours()<<11)|(date.getMinutes()<<5)|(date.getSeconds()>>1);const dosDate=((year-1980)<<9)|((date.getMonth()+1)<<5)|date.getDate();return {dosTime,dosDate};}
 function buildStoredZip(entries){const locals=[],centrals=[];let offset=0;const {dosTime,dosDate}=dosDateTime();for(const entry of entries){const name=Buffer.from(entry.name.replace(/\\/g,'/'),'utf8'),data=Buffer.isBuffer(entry.data)?entry.data:Buffer.from(entry.data),crc=crc32Buffer(data);const local=Buffer.alloc(30);local.writeUInt32LE(0x04034b50,0);local.writeUInt16LE(20,4);local.writeUInt16LE(0x0800,6);local.writeUInt16LE(0,8);local.writeUInt16LE(dosTime,10);local.writeUInt16LE(dosDate,12);local.writeUInt32LE(crc,14);local.writeUInt32LE(data.length,18);local.writeUInt32LE(data.length,22);local.writeUInt16LE(name.length,26);local.writeUInt16LE(0,28);locals.push(local,name,data);const central=Buffer.alloc(46);central.writeUInt32LE(0x02014b50,0);central.writeUInt16LE(20,4);central.writeUInt16LE(20,6);central.writeUInt16LE(0x0800,8);central.writeUInt16LE(0,10);central.writeUInt16LE(dosTime,12);central.writeUInt16LE(dosDate,14);central.writeUInt32LE(crc,16);central.writeUInt32LE(data.length,20);central.writeUInt32LE(data.length,24);central.writeUInt16LE(name.length,28);central.writeUInt16LE(0,30);central.writeUInt16LE(0,32);central.writeUInt16LE(0,34);central.writeUInt16LE(0,36);central.writeUInt32LE(0,38);central.writeUInt32LE(offset,42);centrals.push(central,name);offset+=local.length+name.length+data.length;}const centralStart=offset,centralBuffer=Buffer.concat(centrals);const end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50,0);end.writeUInt16LE(0,4);end.writeUInt16LE(0,6);end.writeUInt16LE(entries.length,8);end.writeUInt16LE(entries.length,10);end.writeUInt32LE(centralBuffer.length,12);end.writeUInt32LE(centralStart,16);end.writeUInt16LE(0,20);return Buffer.concat([...locals,centralBuffer,end]);}
 function buildEventIndividualsZip(lot){const event=loadEvent(lot.eventCode);const safeName=printableTitleFilename(event?.name)||'EVENTO';const entries=lot.cards.map(card=>({name:`${safeName}/Carton_${String(card.globalNumber).padStart(4,'0')}.pdf`,data:buildPremiumEventIndividualPdf(lot,card)}));entries.push({name:`${safeName}/tanda.json`,data:Buffer.from(JSON.stringify(eventLotManifest(lot),null,2),'utf8')});entries.push({name:`${safeName}/control.csv`,data:Buffer.from(eventLotControlCsv(lot),'utf8')});return buildStoredZip(entries);}
 function eventPrintPdfFilename(lot){const event=loadEvent(lot.eventCode),name=printableTitleFilename(event?.name)||'EVENTO';return `${name}_${lot.code}_6_CARTONES_POR_HOJA.pdf`;}
 function eventIndividualsZipFilename(lot){const event=loadEvent(lot.eventCode),name=printableTitleFilename(event?.name)||'EVENTO';return `${name}_${lot.code}_CARTONES_INDIVIDUALES.zip`;}
+
+
+// -----------------------------------------------------------------------------
+// MODO EVENTO PREMIUM - FASE 2
+// Jugadores persistentes, vinculación de cartones, importación CSV y acceso
+// agrupado: cualquier código de un jugador abre todos sus cartones vinculados.
+// -----------------------------------------------------------------------------
+const EVENT_PLAYER_PRESENCE_MS = 90 * 1000;
+const eventPlayerPresence = new Map();
+function safeEventPlayerId(value){const id=String(value||'').trim().toUpperCase();return /^EVP-[A-Z0-9]{6}$/.test(id)?id:'';}
+function eventPlayers(event){if(!event)return[];if(!Array.isArray(event.players))event.players=[];return event.players;}
+function normalizeEventPlayerName(value){return normalizeEventText(value,80);}
+function normalizedEventPlayerNameKey(value){return normalizeEventPlayerName(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();}
+function randomEventPlayerId(event){const used=new Set(eventPlayers(event).map(player=>safeEventPlayerId(player.id)).filter(Boolean));const alphabet='23456789ABCDEFGHJKLMNPQRSTUVWXYZ';for(let attempt=0;attempt<1000;attempt++){const bytes=crypto.randomBytes(6);let raw='';for(let i=0;i<6;i++)raw+=alphabet[bytes[i]%alphabet.length];const id=`EVP-${raw}`;if(!used.has(id))return id;}throw new Error('No se pudo crear un identificador único para el jugador.');}
+function eventCardRefKey(lotCode,cardNumber){return `${safeEventLotCode(lotCode)}:${Math.max(1,Math.round(Number(cardNumber)||0))}`;}
+function cleanEventPlayerCards(event,player){const valid=[];const seen=new Set();for(const ref of Array.isArray(player?.cards)?player.cards:[]){const lotCode=safeEventLotCode(ref?.lotCode),cardNumber=Math.max(1,Math.round(Number(ref?.cardNumber)||0));if(!lotCode||!cardNumber||!Array.isArray(event?.lotCodes)||!event.lotCodes.includes(lotCode))continue;const lot=loadEventLot(lotCode);if(!lot||lot.eventCode!==event.code||!eventCardByGlobalNumber(lot,cardNumber))continue;const key=eventCardRefKey(lotCode,cardNumber);if(seen.has(key))continue;seen.add(key);valid.push({lotCode,cardNumber});}player.cards=valid;return valid;}
+function eventPlayerById(event,id){const safe=safeEventPlayerId(id);return safe?eventPlayers(event).find(player=>safeEventPlayerId(player.id)===safe)||null:null;}
+function eventPlayerForCard(event,lotCode,cardNumber){if(!event)return null;const key=eventCardRefKey(lotCode,cardNumber);for(const player of eventPlayers(event)){if((player.cards||[]).some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key))return player;}return null;}
+function eventLotsFor(event){return (event?.lotCodes||[]).map(code=>loadEventLot(code)).filter(lot=>lot&&lot.eventCode===event.code);}
+function normalizeEventAccessCode(value){const raw=String(value||'').trim().toUpperCase().replace(/[^23456789ABCDEFGHJKLMNPQRSTUVWXYZ]/g,'').slice(0,8);return raw.length===8?`${raw.slice(0,4)}-${raw.slice(4)}`:'';}
+function eventCardLookupByAccess(event,accessCode){const code=normalizeEventAccessCode(accessCode);if(!code)return null;for(const lot of eventLotsFor(event)){const card=lot.cards.find(item=>item.accessCode===code);if(card)return{lot,card};}return null;}
+function eventCardLookupGlobal(accessCode){const code=normalizeEventAccessCode(accessCode);if(!code)return null;for(const entry of fs.readdirSync(EVENT_LOTS_DIR,{withFileTypes:true})){if(!entry.isFile()||!/^EVT-[A-Z0-9]{6}\.json$/.test(entry.name))continue;const lot=loadEventLot(entry.name.replace(/\.json$/,''));if(!lot)continue;const card=lot.cards.find(item=>item.accessCode===code);if(!card)continue;const event=loadEvent(lot.eventCode);if(event)return{event,lot,card};}return null;}
+function eventCardLookupForAdmin(event,payload={}){const accessCode=normalizeEventAccessCode(payload.accessCode||payload.codigo);if(accessCode){const found=eventCardLookupByAccess(event,accessCode);if(!found)throw new Error('Ese código no pertenece a este evento.');return found;}let lotCode=safeEventLotCode(payload.lotCode||payload.tanda);const lots=eventLotsFor(event);if(!lotCode){if(lots.length!==1)throw new Error('Indicá la tanda o usá el código privado del cartón.');lotCode=lots[0].code;}const lot=lots.find(item=>item.code===lotCode);if(!lot)throw new Error('La tanda indicada no pertenece a este evento.');const card=eventCardByGlobalNumber(lot,payload.cardNumber??payload.carton);if(!card)throw new Error('No encontramos ese cartón dentro de la tanda.');return{lot,card};}
+function eventPresenceKey(eventCode,playerId){return `${safeEventCode(eventCode)}:${safeEventPlayerId(playerId)}`;}
+function markEventPlayerPresence(eventCode,playerId){const key=eventPresenceKey(eventCode,playerId);if(key.includes(':EVP-'))eventPlayerPresence.set(key,Date.now());}
+function eventPlayerPresenceState(eventCode,playerId){const seen=Number(eventPlayerPresence.get(eventPresenceKey(eventCode,playerId))||0);return{connected:seen>0&&Date.now()-seen<=EVENT_PLAYER_PRESENCE_MS,lastSeenAt:seen?new Date(seen).toISOString():''};}
+function eventPlayerCardPayload(event,ref,includePrivate=false){const lot=loadEventLot(ref.lotCode);if(!lot||lot.eventCode!==event.code)return null;const card=eventCardByGlobalNumber(lot,ref.cardNumber);if(!card)return null;const payload={lotCode:lot.code,cardNumber:card.globalNumber,seriesNumber:card.seriesNumber,position:card.cardNumber,mode:lot.mode,grid:card.grid};if(includePrivate)payload.accessCode=card.accessCode;return payload;}
+function eventAdminPlayersPayload(eventCode){const event=loadEvent(eventCode);if(!event)throw new Error('No encontramos ese evento.');const players=eventPlayers(event).map(player=>{cleanEventPlayerCards(event,player);const presence=eventPlayerPresenceState(event.code,player.id);return{id:player.id,name:normalizeEventPlayerName(player.name),cards:(player.cards||[]).map(ref=>eventPlayerCardPayload(event,ref,true)).filter(Boolean),createdAt:player.createdAt||'',updatedAt:player.updatedAt||player.createdAt||'',...presence};});const assignment=new Map();players.forEach(player=>player.cards.forEach(card=>assignment.set(eventCardRefKey(card.lotCode,card.cardNumber),player)));const lots=eventLotsFor(event).map(lot=>({code:lot.code,mode:lot.mode,totalCards:lot.totalCards,cards:lot.cards.map(card=>{const player=assignment.get(eventCardRefKey(lot.code,card.globalNumber));return{lotCode:lot.code,cardNumber:card.globalNumber,seriesNumber:card.seriesNumber,position:card.cardNumber,mode:lot.mode,grid:card.grid,accessCode:card.accessCode,playerId:player?.id||'',playerName:player?.name||''};})}));const totalCards=lots.reduce((sum,lot)=>sum+lot.totalCards,0),linkedCards=players.reduce((sum,player)=>sum+player.cards.length,0);return{phase:2,event:publicEvent(event),players,lots,stats:{players:players.length,totalCards,linkedCards,unassignedCards:Math.max(0,totalCards-linkedCards),connectedPlayers:players.filter(player=>player.connected).length}};}
+function createEventPlayer(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');const name=normalizeEventPlayerName(payload.name);if(!name)throw new Error('Escribí el nombre del jugador.');const now=nowIso(),player={id:randomEventPlayerId(event),name,cards:[],createdAt:now,updatedAt:now};eventPlayers(event).push(player);event.version=Math.max(2,Number(event.version)||1);event.updatedAt=now;saveEvent(event);return eventAdminPlayersPayload(event.code);}
+function updateEventPlayer(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const name=normalizeEventPlayerName(payload.name);if(!name)throw new Error('Escribí el nombre del jugador.');player.name=name;player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
+function deleteEventPlayer(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');const id=safeEventPlayerId(payload.playerId),index=eventPlayers(event).findIndex(player=>player.id===id);if(index<0)throw new Error('No encontramos ese jugador.');event.players.splice(index,1);event.version=Math.max(2,Number(event.version)||1);event.updatedAt=nowIso();saveEvent(event);eventPlayerPresence.delete(eventPresenceKey(event.code,id));return eventAdminPlayersPayload(event.code);}
+function linkEventPlayerCard(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const{lot,card}=eventCardLookupForAdmin(event,payload);const assigned=eventPlayerForCard(event,lot.code,card.globalNumber);if(assigned&&assigned.id!==player.id)throw new Error(`El cartón ${String(card.globalNumber).padStart(4,'0')} ya está vinculado a ${assigned.name}. Desvinculalo antes de reasignarlo.`);cleanEventPlayerCards(event,player);const key=eventCardRefKey(lot.code,card.globalNumber);if(!(player.cards||[]).some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key))player.cards.push({lotCode:lot.code,cardNumber:card.globalNumber});player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
+function unlinkEventPlayerCard(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const lotCode=safeEventLotCode(payload.lotCode),cardNumber=Math.max(1,Math.round(Number(payload.cardNumber)||0));const key=eventCardRefKey(lotCode,cardNumber);player.cards=(player.cards||[]).filter(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)!==key);player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
+function parseEventCsv(text){const source=String(text||'').replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');const first=(source.split('\n').find(line=>line.trim())||'');const candidates=[',',';','\t'];let delimiter=',',best=-1;for(const candidate of candidates){const count=(first.match(new RegExp(candidate==='\t'?'\\t':`\\${candidate}`,'g'))||[]).length;if(count>best){best=count;delimiter=candidate;}}const rows=[];let row=[],cell='',quoted=false;for(let i=0;i<=source.length;i++){const ch=i<source.length?source[i]:'\n';if(quoted){if(ch==='"'&&source[i+1]==='"'){cell+='"';i++;}else if(ch==='"')quoted=false;else cell+=ch;}else if(ch==='"')quoted=true;else if(ch===delimiter){row.push(cell);cell='';}else if(ch==='\n'){row.push(cell);cell='';if(row.some(value=>String(value).trim()))rows.push(row);row=[];}else cell+=ch;}return rows;}
+function eventCsvHeader(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase().replace(/\s+/g,'_');}
+function importEventPlayersCsv(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');const rows=parseEventCsv(payload.csvText);if(rows.length<2)throw new Error('El CSV no contiene filas para importar.');const headers=rows[0].map(eventCsvHeader),indexOf=(...names)=>{for(const name of names){const index=headers.indexOf(name);if(index>=0)return index;}return-1;};const nameIndex=indexOf('jugador','nombre','player','participante'),idIndex=indexOf('jugador_id','player_id','id'),cardIndex=indexOf('carton','card','nro_carton','numero_carton'),codeIndex=indexOf('codigo','code','codigo_privado'),lotIndex=indexOf('tanda','lot','lot_code');if(nameIndex<0&&idIndex<0)throw new Error('El CSV necesita una columna jugador/nombre o jugador_id.');if(cardIndex<0&&codeIndex<0)throw new Error('El CSV necesita una columna carton o codigo.');const working=deepCopy(event);working.players=Array.isArray(working.players)?working.players:[];let created=0,linked=0;const errors=[];for(let rowIndex=1;rowIndex<rows.length;rowIndex++){const cols=rows[rowIndex],line=rowIndex+1;try{const id=idIndex>=0?safeEventPlayerId(cols[idIndex]):'';const name=nameIndex>=0?normalizeEventPlayerName(cols[nameIndex]):'';let player=id?eventPlayerById(working,id):null;if(id&&!player)throw new Error(`jugador_id ${id} no existe`);if(!player&&name){const matches=eventPlayers(working).filter(item=>normalizedEventPlayerNameKey(item.name)===normalizedEventPlayerNameKey(name));if(matches.length>1)throw new Error(`hay más de un jugador llamado ${name}; usá jugador_id`);player=matches[0]||null;}if(!player){if(!name)throw new Error('falta el nombre del jugador');const now=nowIso();player={id:randomEventPlayerId(working),name,cards:[],createdAt:now,updatedAt:now};eventPlayers(working).push(player);created++;}const selector={};if(codeIndex>=0&&normalizeEventAccessCode(cols[codeIndex]))selector.accessCode=cols[codeIndex];else{selector.cardNumber=cardIndex>=0?cols[cardIndex]:'';selector.lotCode=lotIndex>=0?cols[lotIndex]:'';}const{lot,card}=eventCardLookupForAdmin(working,selector);const assigned=eventPlayerForCard(working,lot.code,card.globalNumber);if(assigned&&assigned.id!==player.id)throw new Error(`cartón ${String(card.globalNumber).padStart(4,'0')} ya asignado a ${assigned.name}`);const key=eventCardRefKey(lot.code,card.globalNumber);if(!(player.cards||[]).some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key)){player.cards.push({lotCode:lot.code,cardNumber:card.globalNumber});linked++;}player.updatedAt=nowIso();}catch(error){errors.push(`Línea ${line}: ${error.message}`);}}if(errors.length)throw new Error(`No se importó nada. Corregí el CSV:\n${errors.slice(0,8).join('\n')}${errors.length>8?`\n… y ${errors.length-8} error(es) más.`:''}`);event.players=working.players;event.version=Math.max(2,Number(event.version)||1);event.updatedAt=nowIso();saveEvent(event);return{...eventAdminPlayersPayload(event.code),import:{rows:rows.length-1,playersCreated:created,linksCreated:linked}};}
+function publicEventAccessPayload(accessCode){const found=eventCardLookupGlobal(accessCode);if(!found)throw new Error('No encontramos ese código de cartón.');const{event,lot,card}=found;const player=eventPlayerForCard(event,lot.code,card.globalNumber);let refs=player?(player.cards||[]):[{lotCode:lot.code,cardNumber:card.globalNumber}];const cards=refs.map(ref=>eventPlayerCardPayload(event,ref,false)).filter(Boolean).sort((a,b)=>a.lotCode.localeCompare(b.lotCode)||a.cardNumber-b.cardNumber);if(player)markEventPlayerPresence(event.code,player.id);return{phase:2,event:publicEvent(event),player:player?{id:player.id,name:player.name}:null,accessedCard:{lotCode:lot.code,cardNumber:card.globalNumber},cards,message:player?`Código reconocido. Tenés ${cards.length} cartón${cards.length===1?'':'es'} vinculado${cards.length===1?'':'s'}.`:'Código reconocido. Este cartón todavía no está vinculado a un jugador.'};}
+function heartbeatEventPlayer(accessCode){const found=eventCardLookupGlobal(accessCode);if(!found)throw new Error('No encontramos ese código de cartón.');const player=eventPlayerForCard(found.event,found.lot.code,found.card.globalNumber);if(player)markEventPlayerPresence(found.event.code,player.id);return{ok:true,playerId:player?.id||'',at:nowIso()};}
 
 
 function normalizedGeneratedCount(value) {
@@ -8703,6 +8746,34 @@ async function dispatchAdminApi(req, res, url, session) {
     const lot=loadEventLot(url.searchParams.get('lot')); if(!lot)return sendJson(res,404,{error:'No encontramos esa tanda de evento.'});
     return sendBuffer(res,200,Buffer.from(eventLotControlCsv(lot),'utf8'),'text/csv; charset=utf-8',`${lot.code}_control.csv`);
   }
+  if (url.pathname === '/api/admin/events/players' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    return sendJson(res,200,eventAdminPlayersPayload(url.searchParams.get('event')));
+  }
+  if (url.pathname === '/api/admin/events/player/create' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    return sendJson(res,200,createEventPlayer(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/events/player/update' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    return sendJson(res,200,updateEventPlayer(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/events/player/delete' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    return sendJson(res,200,deleteEventPlayer(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/events/player/link' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    return sendJson(res,200,linkEventPlayerCard(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/events/player/unlink' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    return sendJson(res,200,unlinkEventPlayerCard(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/events/players/import' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    return sendJson(res,200,importEventPlayersCsv(await readJson(req,1_500_000)));
+  }
   if (url.pathname === '/api/admin/state' && req.method === 'GET') return sendJson(res, 200, { ...adminPayload(), accessRole: session.role, selectedWorkspaceId: session.workspaceId });
   if (url.pathname === '/api/admin/workspaces' && req.method === 'GET') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'Solo el administrador principal puede cambiar de sala.' });
@@ -8841,15 +8912,13 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso(), version: APP_PUBLIC_VERSION });
 
     if (url.pathname === '/api/event/access-info' && req.method === 'GET') {
-      const code=String(url.searchParams.get('codigo')||'').trim().toUpperCase();
-      if(!/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}$/.test(code)) return sendJson(res,400,{error:'Código de cartón no válido.'});
-      for(const entry of fs.readdirSync(EVENT_LOTS_DIR,{withFileTypes:true})){
-        if(!entry.isFile()||!/^EVT-[A-Z0-9]{6}\.json$/.test(entry.name))continue;
-        const lot=loadEventLot(entry.name.replace(/\.json$/,'')); if(!lot)continue;
-        const card=lot.cards.find(item=>item.accessCode===code); if(!card)continue;
-        const event=loadEvent(lot.eventCode); return sendJson(res,200,{phase:1,event:publicEvent(event),lot:lot.code,cardNumber:card.globalNumber,message:'Código reconocido. La vinculación de jugadores y apertura de cartones se habilita en Fase 2.'});
-      }
-      return sendJson(res,404,{error:'No encontramos ese código de cartón.'});
+      try { return sendJson(res,200,publicEventAccessPayload(url.searchParams.get('codigo'))); }
+      catch(error){ const message=String(error?.message||'No se pudo verificar el código.'); return sendJson(res,message.includes('no válido')?400:404,{error:message}); }
+    }
+    if (url.pathname === '/api/event/heartbeat' && req.method === 'POST') {
+      if(!consumeRate(req,'event-heartbeat',120,60*1000))return sendJson(res,429,{error:'Demasiadas solicitudes. Esperá un momento.'});
+      try { const payload=await readJson(req); return sendJson(res,200,heartbeatEventPlayer(payload.codigo)); }
+      catch(error){ return sendJson(res,404,{error:String(error?.message||'No se pudo actualizar la conexión.')}); }
     }
     if (url.pathname === '/api/community/state' && req.method === 'GET') return sendJson(res, 200, communityStatePayload(url.searchParams.get('visitorId')));
     if (url.pathname === '/api/community/resume' && req.method === 'GET') {

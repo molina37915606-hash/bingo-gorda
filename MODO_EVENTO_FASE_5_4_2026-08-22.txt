@@ -1,0 +1,10 @@
+MODO EVENTO PREMIUM · FASE 5.4 · 2026-08-22
+
+- PDF individual: QR y logo con enlace clickeable al acceso privado del cartón.
+- Link general del Evento para compartir por WhatsApp sin exponer códigos privados.
+- Respaldo completo .bingo.zip con Evento, tandas, matrices, códigos, jugadores, reservas y logos.
+- Importación/restauración exacta con verificación SHA-256 y protección contra sobreescritura.
+- Links individuales de selección de cartones (1 a 4) con vencimiento configurable.
+- Reserva atómica: un cartón reservado se bloquea para otros links.
+- El Admin confirma manualmente creando el jugador y asignando sus cartones reservados.
+- Reservas liberables/cancelables y persistentes dentro del respaldo.

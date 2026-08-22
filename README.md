@@ -194,3 +194,17 @@ La integridad se protege verificando el SHA-256 de las tandas al cargarlas y con
 - Sala de espera del jugador: el código privado abre sus cartones antes del inicio y la pantalla pasa al juego en vivo automáticamente.
 - El código queda recordado sólo en el almacenamiento local de ese navegador/dispositivo. Al volver desde el mismo navegador no se pide otra vez; en otro dispositivo o navegador se debe ingresar o escanear nuevamente.
 - Al finalizar, un jugador participante puede descargar el Acta Premium oficial en PDF desde su pantalla.
+
+
+## Modo Evento Premium · Fase 5.3 (2026-08-22)
+
+- La partida del jugador Evento adopta la misma estructura funcional del jugador normal: cartón principal, marcado y botón RECLAMAR grande y permanente.
+- Los selectores de cartón son grandes, cuadrados y visibles, con 2 por fila en celular para facilitar el cambio a jugadores ocasionales.
+- Skin Premium en rojo vino/bordó con acentos dorados; sala de espera y cierre conservan el branding del Evento.
+- Manual/Automarcado funciona también desde Evento mediante un endpoint protegido propio.
+- Comunidad reconoce una Sala Evento activa y muestra **ENTRAR A MI CARTÓN**; en el mismo navegador se reutiliza el acceso guardado y en otro dispositivo se solicita el código privado.
+
+
+## Modo Evento Premium · Fase 5.4
+
+Acceso fácil desde PDF, link general para compartir, respaldo/restauración exacta de eventos y tandas, y links de selección con reserva de cartones y confirmación manual del administrador.

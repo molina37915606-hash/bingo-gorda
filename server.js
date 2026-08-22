@@ -65,6 +65,9 @@ const EVENT_MAX_LOT_CARDS = 1000;
 const EVENT_MAX_ACTIVE_CARDS = 250;
 const EVENT_90_MAX_SHARED = 6;
 const EVENT_75_MAX_SHARED = 13;
+const EVENT_SELECTION_DEFAULT_TTL_MS = 2 * 60 * 60 * 1000;
+const EVENT_SELECTION_MAX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const EVENT_BACKUP_MAX_BYTES = 80 * 1024 * 1024;
 function event90SharedLimitForCount(count) { return Number(count) > 500 ? 7 : EVENT_90_MAX_SHARED; }
 const MAX_CARDS_PER_PLAYER = 4;
 const MAX_CARD_OPTIONS = 10;
@@ -2242,6 +2245,19 @@ function readJson(req, limit = 2_000_000) {
   });
 }
 
+function readBuffer(req, limit = EVENT_BACKUP_MAX_BYTES) {
+  return new Promise((resolve, reject) => {
+    const chunks = []; let size = 0;
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > limit) { reject(new Error('El archivo es demasiado grande.')); req.destroy(); return; }
+      chunks.push(Buffer.from(chunk));
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 function readForm(req, limit = 200_000) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -2975,6 +2991,8 @@ function publicEvent(event) {
     archivedAt: event?.archivedAt || '',
     restoredAt: event?.restoredAt || '',
     lotCodes: Array.isArray(event?.lotCodes) ? event.lotCodes.filter(safeEventLotCode) : [],
+    shareUrl: eventGeneralEntryUrl(event?.code),
+    selectionLinksCount: Array.isArray(event?.selectionLinks) ? event.selectionLinks.length : 0,
     playersCount: Array.isArray(event?.players) ? event.players.length : 0,
     linkedCardsCount: Array.isArray(event?.players) ? event.players.reduce((sum, player) => sum + (Array.isArray(player?.cards) ? player.cards.length : 0), 0) : 0,
     live: event?.live && event.live.workspaceId ? {
@@ -3015,11 +3033,11 @@ function createPremiumEvent(payload = {}) {
     mode: Number(payload.mode) === 75 ? 75 : 90,
     gameConfig: normalizePremiumEventGameConfig(Number(payload.mode) === 75 ? 75 : 90, payload.gameConfig || {}),
     colors: {
-      primary: normalizeEventHex(payload.colors?.primary, '#6D238C'),
-      secondary: normalizeEventHex(payload.colors?.secondary, '#D83A84'),
-      accent: normalizeEventHex(payload.colors?.accent, '#E0A71A')
+      primary: normalizeEventHex(payload.colors?.primary, '#6E1F2A'),
+      secondary: normalizeEventHex(payload.colors?.secondary, '#8F2D3E'),
+      accent: normalizeEventHex(payload.colors?.accent, '#C8A96B')
     },
-    status: 'draft', lotCodes: [], players: [], createdAt: now, updatedAt: now
+    status: 'draft', lotCodes: [], players: [], selectionLinks: [], createdAt: now, updatedAt: now
   };
   if (payload.logoDataUrl) saveEventLogo(code, payload.logoDataUrl);
   saveEvent(event);
@@ -3371,7 +3389,7 @@ function premiumEventLotLogo(lot) {
   if (eventFile && fs.existsSync(eventFile)) return { buffer:fs.readFileSync(eventFile), width:512, height:512 };
   return { buffer:fs.readFileSync(path.join(ROOT, 'assets', 'logo-pdf.jpg')), width:360, height:360 };
 }
-function pdfDocumentFromStreams(pageStreams, pageW, pageH, logoInfo, marker = '') {
+function pdfDocumentFromStreams(pageStreams, pageW, pageH, logoInfo, marker = '', pageAnnotations = []) {
   const objects = [];
   const addObject = body => { objects.push(body); return objects.length; };
   const catalogId = addObject(''); const pagesId = addObject('');
@@ -3383,10 +3401,19 @@ function pdfDocumentFromStreams(pageStreams, pageW, pageH, logoInfo, marker = ''
     logo, Buffer.from('\nendstream', 'latin1')
   ]));
   const pageIds = [];
-  for (const stream of pageStreams) {
+  for (let pageIndex=0; pageIndex<pageStreams.length; pageIndex++) {
+    const stream=pageStreams[pageIndex];
     const contentBuffer = Buffer.from(stream, 'latin1');
     const contentId = addObject(Buffer.concat([Buffer.from(`<< /Length ${contentBuffer.length} >>\nstream\n`, 'latin1'), contentBuffer, Buffer.from('\nendstream', 'latin1')]));
-    pageIds.push(addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> /XObject << /Logo ${imageId} 0 R >> >> /Contents ${contentId} 0 R >>`));
+    const annotations = Array.isArray(pageAnnotations?.[pageIndex]) ? pageAnnotations[pageIndex] : [];
+    const annotationIds = annotations.map(annotation => {
+      const x=Number(annotation.x)||0,y=Number(annotation.y)||0,width=Math.max(1,Number(annotation.width)||1),height=Math.max(1,Number(annotation.height)||1);
+      const left=x,bottom=pageH-y-height,right=x+width,top=pageH-y;
+      const url=pdfEscape(String(annotation.url||''));
+      return addObject(`<< /Type /Annot /Subtype /Link /Rect [${left.toFixed(2)} ${bottom.toFixed(2)} ${right.toFixed(2)} ${top.toFixed(2)}] /Border [0 0 0] /A << /S /URI /URI (${url}) >> >>`);
+    });
+    const annots=annotationIds.length?` /Annots [${annotationIds.map(id=>`${id} 0 R`).join(' ')}]`:'';
+    pageIds.push(addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> /XObject << /Logo ${imageId} 0 R >> >> /Contents ${contentId} 0 R${annots} >>`));
   }
   objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
   objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
@@ -3452,7 +3479,10 @@ function drawQrCommands(commands, canvas, value, x, y, size) {
   const count=matrix.length,quiet=4,cell=size/(count+quiet*2); canvas.rect(x,y,size,size,'#FFFFFF','#111111',.5);
   for(let r=0;r<count;r++)for(let col=0;col<count;col++)if(matrix[r][col])canvas.rect(x+(col+quiet)*cell,y+(r+quiet)*cell,cell+.08,cell+.08,'#111111'); return true;
 }
-function eventPlayerEntryUrl(accessCode) { return `${PUBLIC_URL || `http://localhost:${PORT}`}/evento?codigo=${encodeURIComponent(accessCode)}`; }
+function eventBaseUrl() { return PUBLIC_URL || `http://localhost:${PORT}`; }
+function eventGeneralEntryUrl(eventCode) { const code=safeEventCode(eventCode); return code ? `${eventBaseUrl()}/evento?evento=${encodeURIComponent(code)}` : `${eventBaseUrl()}/evento`; }
+function eventPlayerEntryUrl(accessCode) { return `${eventBaseUrl()}/evento?codigo=${encodeURIComponent(accessCode)}`; }
+function eventSelectionEntryUrl(token) { return `${eventBaseUrl()}/evento-elegir?token=${encodeURIComponent(String(token||''))}`; }
 function buildPremiumEventIndividualPdf(lot, card) {
   const PAGE_W=595,PAGE_H=842,logo=premiumEventLotLogo(lot),commands=[],canvas=premiumPdfCanvas(commands,PAGE_W,PAGE_H,{ink:'#21192A'}),c=lot.branding.colors||{};
   const primary=normalizeEventHex(c.primary,'#6D238C'),secondary=normalizeEventHex(c.secondary,'#D83A84'),accent=normalizeEventHex(c.accent,'#E0A71A');
@@ -3467,10 +3497,12 @@ function buildPremiumEventIndividualPdf(lot, card) {
   if (assignedPlayer) canvas.text(`Jugador: ${assignedPlayer.name}`,PAGE_W-42,588,10,{bold:true,color:secondary,align:'right',maxWidth:270});
   canvas.text('CÓDIGO PRIVADO DE ACCESO',42,616,8,{bold:true,color:'#6B6570'}); canvas.text(card.accessCode,42,632,25,{bold:true,color:secondary});
   const url=eventPlayerEntryUrl(card.accessCode), qrOk=drawQrCommands(commands,canvas,url,403,582,145);
-  canvas.text(qrOk?'Escaneá para entrar con este cartón':'Usá el código para entrar al evento',475,735,7,{align:'center',color:'#6B6570',maxWidth:180});
+  canvas.text(qrOk?'Escaneá o tocá el QR para entrar':'Usá el código para entrar al evento',475,735,7,{align:'center',color:'#6B6570',maxWidth:180});
+  canvas.text('TOCÁ EL QR O EL LOGO PARA ENTRAR AL BINGO',42,754,8,{bold:true,color:primary,maxWidth:340});
   canvas.text(`Tanda ${lot.code} · SHA-256 ${lot.hash.slice(0,16)}…`,42,773,7,{color:'#77707C',maxWidth:500});
   canvas.text('El código de acceso es privado. No lo publiques ni lo compartas fuera del jugador asignado.',42,792,7,{color:'#77707C',maxWidth:500});
-  return pdfDocumentFromStreams([commands.join('\n')],PAGE_W,PAGE_H,logo,`LA_GORDA_EVENT_CARD_V1\n${lot.code}\n${card.globalNumber}\n${card.accessCode}\n${lot.hash}`);
+  const links=[[{x:36,y:34,width:72,height:72,url},{x:403,y:582,width:145,height:145,url}]];
+  return pdfDocumentFromStreams([commands.join('\n')],PAGE_W,PAGE_H,logo,`LA_GORDA_EVENT_CARD_V2\n${lot.code}\n${card.globalNumber}\n${card.accessCode}\n${lot.hash}`,links);
 }
 function csvEscape(value){const text=String(value??'');return /[",\n\r]/.test(text)?`"${text.replace(/"/g,'""')}"`:text;}
 function eventLotControlCsv(lot){const event=loadEvent(lot.eventCode);const rows=['tanda,evento,carton,hoja,posicion,codigo,jugador_id,jugador'];for(const card of lot.cards){const player=eventPlayerForCard(event,lot.code,card.globalNumber);rows.push([lot.code,lot.eventCode,String(card.globalNumber).padStart(4,'0'),String(card.seriesNumber).padStart(2,'0'),card.cardNumber,card.accessCode,player?.id||'',player?.name||''].map(csvEscape).join(','));}return '\uFEFF'+rows.join('\r\n');}
@@ -3481,6 +3513,93 @@ function buildStoredZip(entries){const locals=[],centrals=[];let offset=0;const 
 function buildEventIndividualsZip(lot){const event=loadEvent(lot.eventCode);const safeName=printableTitleFilename(event?.name)||'EVENTO';const entries=lot.cards.map(card=>({name:`${safeName}/Carton_${String(card.globalNumber).padStart(4,'0')}.pdf`,data:buildPremiumEventIndividualPdf(lot,card)}));entries.push({name:`${safeName}/tanda.json`,data:Buffer.from(JSON.stringify(eventLotManifest(lot),null,2),'utf8')});entries.push({name:`${safeName}/control.csv`,data:Buffer.from(eventLotControlCsv(lot),'utf8')});return buildStoredZip(entries);}
 function eventPrintPdfFilename(lot){const event=loadEvent(lot.eventCode),name=printableTitleFilename(event?.name)||'EVENTO';return `${name}_${lot.code}_6_CARTONES_POR_HOJA.pdf`;}
 function eventIndividualsZipFilename(lot){const event=loadEvent(lot.eventCode),name=printableTitleFilename(event?.name)||'EVENTO';return `${name}_${lot.code}_CARTONES_INDIVIDUALES.zip`;}
+
+
+// -----------------------------------------------------------------------------
+// MODO EVENTO PREMIUM - FASE 5.4
+// Acceso fácil, respaldo/restauración exacta y links de selección con reserva.
+// -----------------------------------------------------------------------------
+function sha256Buffer(buffer){return crypto.createHash('sha256').update(buffer).digest('hex');}
+function safeBackupEntryName(value){const name=String(value||'').replace(/\\/g,'/').replace(/^\/+/, '');if(!name||name.includes('..')||name.includes('\0'))throw new Error('El respaldo contiene una ruta no válida.');return name;}
+function parseStoredZip(buffer){
+  if(!Buffer.isBuffer(buffer)||buffer.length<22)throw new Error('El respaldo no es un ZIP válido.');
+  const entries=new Map();let offset=0;
+  while(offset+4<=buffer.length){
+    const sig=buffer.readUInt32LE(offset);
+    if(sig===0x04034b50){
+      if(offset+30>buffer.length)throw new Error('ZIP incompleto.');
+      const flags=buffer.readUInt16LE(offset+6),method=buffer.readUInt16LE(offset+8),compressed=buffer.readUInt32LE(offset+18),uncompressed=buffer.readUInt32LE(offset+22),nameLen=buffer.readUInt16LE(offset+26),extraLen=buffer.readUInt16LE(offset+28);
+      if(flags&0x0008)throw new Error('El respaldo usa un formato ZIP no compatible.');
+      if(method!==0)throw new Error('El respaldo debe usar archivos ZIP sin compresión.');
+      const nameStart=offset+30,nameEnd=nameStart+nameLen,dataStart=nameEnd+extraLen,dataEnd=dataStart+compressed;
+      if(dataEnd>buffer.length)throw new Error('ZIP truncado.');
+      const name=safeBackupEntryName(buffer.slice(nameStart,nameEnd).toString('utf8'));
+      const data=Buffer.from(buffer.slice(dataStart,dataEnd));
+      if(uncompressed!==data.length)throw new Error(`Tamaño inválido en ${name}.`);
+      entries.set(name,data);offset=dataEnd;continue;
+    }
+    if(sig===0x02014b50||sig===0x06054b50)break;
+    throw new Error('El respaldo contiene una estructura ZIP desconocida.');
+  }
+  return entries;
+}
+function premiumEventBackupEntries(event){
+  if(!event)throw new Error('No encontramos ese evento.');
+  const entries=[];
+  const eventBuffer=Buffer.from(JSON.stringify(event,null,2),'utf8');
+  entries.push({name:`eventos/${event.code}.json`,data:eventBuffer});
+  const lotCodes=Array.isArray(event.lotCodes)?event.lotCodes.filter(safeEventLotCode):[];
+  for(const lotCode of lotCodes){const lot=loadEventLot(lotCode);if(!lot||lot.eventCode!==event.code)throw new Error(`No se pudo respaldar la tanda ${lotCode}.`);entries.push({name:`tandas/${lotCode}.json`,data:Buffer.from(JSON.stringify(lot,null,2),'utf8')});const logo=eventLotLogoPath(lotCode);if(logo&&fs.existsSync(logo))entries.push({name:`assets/${lotCode}.jpg`,data:fs.readFileSync(logo)});}
+  const eventLogo=eventLogoPath(event.code);if(eventLogo&&fs.existsSync(eventLogo))entries.push({name:`assets/${event.code}.jpg`,data:fs.readFileSync(eventLogo)});
+  const manifest={format:'EL_BINGO_DE_LA_GORDA_EVENT_BACKUP',version:1,phase:'5.4',createdAt:nowIso(),eventCode:event.code,eventName:event.name,lotCodes,files:{}};
+  for(const entry of entries)manifest.files[entry.name]={sha256:sha256Buffer(entry.data),bytes:entry.data.length};
+  const manifestBuffer=Buffer.from(JSON.stringify(manifest,null,2),'utf8');
+  return [{name:'backup.json',data:manifestBuffer},...entries];
+}
+function buildPremiumEventBackupZip(event){return buildStoredZip(premiumEventBackupEntries(event));}
+function premiumEventBackupFilename(event){const name=printableTitleFilename(event?.name)||'EVENTO';return `${name}_${event.code}_RESPALDO_COMPLETO.bingo.zip`;}
+function inspectPremiumEventBackup(buffer){
+  const entries=parseStoredZip(buffer),manifestBuffer=entries.get('backup.json');if(!manifestBuffer)throw new Error('Falta backup.json en el respaldo.');
+  let manifest;try{manifest=JSON.parse(manifestBuffer.toString('utf8'));}catch{throw new Error('backup.json es inválido.');}
+  if(manifest?.format!=='EL_BINGO_DE_LA_GORDA_EVENT_BACKUP'||Number(manifest?.version)!==1)throw new Error('El archivo no es un respaldo de Evento compatible.');
+  const eventCode=safeEventCode(manifest.eventCode),eventName=`eventos/${eventCode}.json`,eventBuffer=entries.get(eventName);if(!eventCode||!eventBuffer)throw new Error('Falta el Evento dentro del respaldo.');
+  for(const [name,meta] of Object.entries(manifest.files||{})){const data=entries.get(name);if(!data)throw new Error(`Falta ${name} en el respaldo.`);if(sha256Buffer(data)!==String(meta.sha256||''))throw new Error(`La integridad de ${name} no coincide.`);}
+  let event;try{event=JSON.parse(eventBuffer.toString('utf8'));}catch{throw new Error('El archivo del Evento es inválido.');}
+  if(safeEventCode(event.code)!==eventCode)throw new Error('El código del Evento no coincide con el manifiesto.');
+  const lots=[];for(const lotCode of (manifest.lotCodes||[])){const safe=safeEventLotCode(lotCode);if(!safe)throw new Error('Código de tanda inválido en el respaldo.');const data=entries.get(`tandas/${safe}.json`);if(!data)throw new Error(`Falta la tanda ${safe}.`);let lot;try{lot=JSON.parse(data.toString('utf8'));}catch{throw new Error(`La tanda ${safe} es inválida.`);}if(lot.eventCode!==eventCode||lot.code!==safe||lot.hash!==eventLotHash(lot))throw new Error(`La integridad matemática de ${safe} no coincide.`);if(lot.qualityAudit&&!lot.qualityAudit.approved)throw new Error(`La tanda ${safe} no tiene auditoría aprobada.`);lots.push(lot);}
+  const existing=loadEvent(eventCode);const existingExact=Boolean(existing&&sha256Buffer(Buffer.from(JSON.stringify(existing,null,2),'utf8'))===sha256Buffer(eventBuffer));
+  return {entries,manifest,event,lots,summary:{eventCode,eventName:event.name||manifest.eventName||'',lots:lots.length,cards:lots.reduce((sum,lot)=>sum+(lot.cards?.length||0),0),players:Array.isArray(event.players)?event.players.length:0,selectionLinks:Array.isArray(event.selectionLinks)?event.selectionLinks.length:0,createdAt:manifest.createdAt||'',existing:Boolean(existing),existingExact}};
+}
+function restorePremiumEventBackup(buffer,{replace=false,confirmation=''}={}){
+  const inspected=inspectPremiumEventBackup(buffer),{event,manifest,entries,summary}=inspected;
+  if(summary.existing&&!summary.existingExact&&!replace)throw new Error(`Ya existe ${event.code} con datos diferentes. Para reemplazarlo usá la confirmación explícita.`);
+  if(summary.existing&&!summary.existingExact&&replace&&String(confirmation||'').trim().toUpperCase()!==event.code)throw new Error(`Para reemplazar, escribí exactamente ${event.code}.`);
+  const writeAtomic=(file,data)=>{fs.mkdirSync(path.dirname(file),{recursive:true});const tmp=`${file}.restore-${process.pid}-${Date.now()}`;fs.writeFileSync(tmp,data);fs.renameSync(tmp,file);};
+  writeAtomic(eventPath(event.code),entries.get(`eventos/${event.code}.json`));
+  for(const lotCode of manifest.lotCodes||[]){writeAtomic(eventLotPath(lotCode),entries.get(`tandas/${lotCode}.json`));const asset=entries.get(`assets/${lotCode}.jpg`);if(asset)writeAtomic(eventLotLogoPath(lotCode),asset);}
+  const eventAsset=entries.get(`assets/${event.code}.jpg`);if(eventAsset)writeAtomic(eventLogoPath(event.code),eventAsset);else if(replace)unlinkIfExists(eventLogoPath(event.code));
+  for(const lotCode of manifest.lotCodes||[]){if(!entries.get(`assets/${lotCode}.jpg`)&&replace)unlinkIfExists(eventLotLogoPath(lotCode));}
+  return {ok:true,restored:true,replaced:Boolean(summary.existing&&!summary.existingExact),summary, event:publicEvent(loadEvent(event.code))};
+}
+function eventSelectionLinks(event){if(!event)return[];if(!Array.isArray(event.selectionLinks))event.selectionLinks=[];return event.selectionLinks;}
+function eventSelectionToken(){return crypto.randomBytes(24).toString('base64url');}
+function safeEventSelectionId(value){const text=String(value||'').trim().toUpperCase();return /^SEL-[A-Z0-9]{8}$/.test(text)?text:'';}
+function randomEventSelectionId(event){const used=new Set(eventSelectionLinks(event).map(item=>safeEventSelectionId(item.id)));const alphabet='23456789ABCDEFGHJKLMNPQRSTUVWXYZ';for(let tries=0;tries<1000;tries++){const b=crypto.randomBytes(8);let x='';for(let i=0;i<8;i++)x+=alphabet[b[i]%alphabet.length];const id=`SEL-${x}`;if(!used.has(id))return id;}throw new Error('No se pudo crear el link de selección.');}
+function selectionExpiresAt(ttlMs){const ttl=Number(ttlMs);if(!Number.isFinite(ttl)||ttl<=0)return'';return new Date(Date.now()+Math.min(EVENT_SELECTION_MAX_TTL_MS,Math.max(5*60*1000,ttl))).toISOString();}
+function eventSelectionExpired(link){return Boolean(link?.expiresAt&&Date.now()>=new Date(link.expiresAt).getTime());}
+function eventSelectionByToken(token){const raw=String(token||'').trim();if(raw.length<20)return null;for(const file of fs.readdirSync(EVENTS_DIR,{withFileTypes:true})){if(!file.isFile()||!/^EV-[A-Z0-9]{6}\.json$/.test(file.name))continue;const event=loadEvent(file.name.replace(/\.json$/,''));if(!event)continue;const link=eventSelectionLinks(event).find(item=>item.token===raw);if(link)return{event,link};}return null;}
+function eventSelectionById(event,id){const safe=safeEventSelectionId(id);return safe?eventSelectionLinks(event).find(item=>safeEventSelectionId(item.id)===safe)||null:null;}
+function activeEventReservations(event,excludeId=''){
+  const map=new Map();for(const link of eventSelectionLinks(event)){if(link.id===excludeId||link.status==='confirmed'||link.status==='cancelled'||eventSelectionExpired(link))continue;for(const ref of Array.isArray(link.reservations)?link.reservations:[]){map.set(eventCardRefKey(ref.lotCode,ref.cardNumber),{linkId:link.id,reservedAt:ref.reservedAt||link.updatedAt||link.createdAt});}}return map;
+}
+function selectionLinkPublic(link){return {id:link.id,lotCode:link.lotCode,maxCards:Number(link.maxCards)||1,status:eventSelectionExpired(link)&&link.status!=='confirmed'?'expired':link.status||'open',createdAt:link.createdAt||'',updatedAt:link.updatedAt||'',expiresAt:link.expiresAt||'',reservedCount:Array.isArray(link.reservations)?link.reservations.length:0,confirmedPlayerId:link.playerId||'',url:eventSelectionEntryUrl(link.token)};}
+function eventSelectionAdminPayload(event){const links=eventSelectionLinks(event).map(selectionLinkPublic).sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));return{links};}
+function createEventSelectionLink(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const lotCode=safeEventLotCode(payload.lotCode),lot=loadEventLot(lotCode);if(!lot||lot.eventCode!==event.code)throw new Error('Elegí una tanda válida del Evento.');const maxCards=Math.max(1,Math.min(MAX_CARDS_PER_PLAYER,Math.round(Number(payload.maxCards)||1))),ttlMs=payload.ttlMs===0?0:(Number(payload.ttlMs)||EVENT_SELECTION_DEFAULT_TTL_MS),now=nowIso(),link={id:randomEventSelectionId(event),token:eventSelectionToken(),lotCode,maxCards,status:'open',reservations:[],createdAt:now,updatedAt:now,expiresAt:selectionExpiresAt(ttlMs),playerId:''};eventSelectionLinks(event).push(link);event.version=Math.max(10,Number(event.version)||1);event.updatedAt=now;saveEvent(event);return{event:publicEvent(event),selection:selectionLinkPublic(link),...eventSelectionAdminPayload(event)};}
+function publicEventSelectionPayload(token){const found=eventSelectionByToken(token);if(!found)throw new Error('El link de selección no es válido.');const{event,link}=found;if(event.status==='archived')throw new Error('Este Evento está archivado.');if(eventSelectionExpired(link)&&link.status!=='confirmed')throw new Error('Este link de selección venció.');if(link.status==='cancelled')throw new Error('Este link de selección fue cancelado.');const lot=loadEventLot(link.lotCode);if(!lot||lot.eventCode!==event.code)throw new Error('La tanda de este link ya no está disponible.');const assigned=new Set(eventPlayers(event).flatMap(player=>(player.cards||[]).map(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)))),reserved=activeEventReservations(event,link.id),mine=new Set((link.reservations||[]).map(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)));const cards=lot.cards.filter(card=>{const key=eventCardRefKey(lot.code,card.globalNumber);return mine.has(key)||(!assigned.has(key)&&!reserved.has(key));}).map(card=>({lotCode:lot.code,cardNumber:card.globalNumber,grid:card.grid,mode:lot.mode,reservedByMe:mine.has(eventCardRefKey(lot.code,card.globalNumber))}));return{event:publicEvent(event),selection:selectionLinkPublic(link),cards,reservations:(link.reservations||[]).map(ref=>({lotCode:ref.lotCode,cardNumber:ref.cardNumber,reservedAt:ref.reservedAt||''}))};}
+function reserveEventSelectionCard(payload={}){const found=eventSelectionByToken(payload.token);if(!found)throw new Error('El link de selección no es válido.');const{event,link}=found;assertEventEditable(event);if(eventSelectionExpired(link)||link.status==='cancelled'||link.status==='confirmed')throw new Error('Este link ya no admite nuevas reservas.');const lot=loadEventLot(link.lotCode);const card=lot?eventCardByGlobalNumber(lot,payload.cardNumber):null;if(!card)throw new Error('No encontramos ese cartón.');const key=eventCardRefKey(lot.code,card.globalNumber);if(eventPlayerForCard(event,lot.code,card.globalNumber))throw new Error('Ese cartón ya fue asignado.');const other=activeEventReservations(event,link.id).get(key);if(other)throw new Error('Ese cartón acaba de ser reservado por otra persona. Elegí otro.');link.reservations=Array.isArray(link.reservations)?link.reservations:[];if(!link.reservations.some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key)){if(link.reservations.length>=Math.max(1,Number(link.maxCards)||1))throw new Error(`Este link permite elegir hasta ${link.maxCards} cartón(es).`);link.reservations.push({lotCode:lot.code,cardNumber:card.globalNumber,reservedAt:nowIso()});}link.status=link.reservations.length?'reserved':'open';link.updatedAt=nowIso();event.updatedAt=link.updatedAt;saveEvent(event);return publicEventSelectionPayload(link.token);}
+function releaseEventSelectionCard(payload={}){const found=eventSelectionByToken(payload.token);if(!found)throw new Error('El link de selección no es válido.');const{event,link}=found;assertEventEditable(event);if(link.status==='confirmed')throw new Error('La selección ya fue confirmada por el administrador.');const key=eventCardRefKey(link.lotCode,payload.cardNumber);link.reservations=(link.reservations||[]).filter(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)!==key);link.status=link.reservations.length?'reserved':'open';link.updatedAt=nowIso();event.updatedAt=link.updatedAt;saveEvent(event);return publicEventSelectionPayload(link.token);}
+function confirmEventSelection(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const link=eventSelectionById(event,payload.selectionId);if(!link)throw new Error('No encontramos esa reserva.');if(eventSelectionExpired(link)||link.status==='cancelled')throw new Error('La reserva ya no está vigente.');if(link.status==='confirmed')throw new Error('Esta reserva ya fue confirmada.');const refs=Array.isArray(link.reservations)?link.reservations:[];if(!refs.length)throw new Error('Todavía no eligieron ningún cartón en este link.');const name=normalizeEventPlayerName(payload.name);if(!name)throw new Error('Escribí el nombre del jugador.');if(eventPlayers(event).length>=EVENT_MAX_PLAYERS)throw new Error(`El Modo Evento admite hasta ${EVENT_MAX_PLAYERS} jugadores.`);for(const ref of refs){if(eventPlayerForCard(event,ref.lotCode,ref.cardNumber))throw new Error(`El cartón ${ref.cardNumber} ya fue asignado.`);const occupied=activeEventReservations(event,link.id).get(eventCardRefKey(ref.lotCode,ref.cardNumber));if(occupied)throw new Error(`El cartón ${ref.cardNumber} tiene otra reserva activa.`);}const now=nowIso(),player={id:randomEventPlayerId(event),name,cards:refs.map(ref=>({lotCode:ref.lotCode,cardNumber:ref.cardNumber})),createdAt:now,updatedAt:now};eventPlayers(event).push(player);link.status='confirmed';link.playerId=player.id;link.confirmedAt=now;link.updatedAt=now;event.version=Math.max(10,Number(event.version)||1);event.updatedAt=now;saveEvent(event);return eventAdminPlayersPayload(event.code);}
+function releaseEventSelectionAdmin(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const link=eventSelectionById(event,payload.selectionId);if(!link)throw new Error('No encontramos ese link.');if(link.status==='confirmed')throw new Error('La selección ya fue confirmada; administrá el jugador desde la lista.');link.reservations=[];link.status=payload.cancel?'cancelled':'open';link.updatedAt=nowIso();event.updatedAt=link.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
 
 
 // -----------------------------------------------------------------------------
@@ -3509,15 +3628,15 @@ function eventPresenceKey(eventCode,playerId){return `${safeEventCode(eventCode)
 function markEventPlayerPresence(eventCode,playerId){const key=eventPresenceKey(eventCode,playerId);if(key.includes(':EVP-'))eventPlayerPresence.set(key,Date.now());}
 function eventPlayerPresenceState(eventCode,playerId){const seen=Number(eventPlayerPresence.get(eventPresenceKey(eventCode,playerId))||0);return{connected:seen>0&&Date.now()-seen<=EVENT_PLAYER_PRESENCE_MS,lastSeenAt:seen?new Date(seen).toISOString():''};}
 function eventPlayerCardPayload(event,ref,includePrivate=false){const lot=loadEventLot(ref.lotCode);if(!lot||lot.eventCode!==event.code)return null;const card=eventCardByGlobalNumber(lot,ref.cardNumber);if(!card)return null;const payload={lotCode:lot.code,cardNumber:card.globalNumber,seriesNumber:card.seriesNumber,position:card.cardNumber,mode:lot.mode,grid:card.grid};if(includePrivate)payload.accessCode=card.accessCode;return payload;}
-function eventAdminPlayersPayload(eventCode){const event=loadEvent(eventCode);if(!event)throw new Error('No encontramos ese evento.');const players=eventPlayers(event).map(player=>{cleanEventPlayerCards(event,player);const presence=eventPlayerPresenceState(event.code,player.id);return{id:player.id,name:normalizeEventPlayerName(player.name),cards:(player.cards||[]).map(ref=>eventPlayerCardPayload(event,ref,true)).filter(Boolean),createdAt:player.createdAt||'',updatedAt:player.updatedAt||player.createdAt||'',...presence};});const assignment=new Map();players.forEach(player=>player.cards.forEach(card=>assignment.set(eventCardRefKey(card.lotCode,card.cardNumber),player)));const lots=eventLotsFor(event).map(lot=>({code:lot.code,mode:lot.mode,totalCards:lot.totalCards,cards:lot.cards.map(card=>{const player=assignment.get(eventCardRefKey(lot.code,card.globalNumber));return{lotCode:lot.code,cardNumber:card.globalNumber,seriesNumber:card.seriesNumber,position:card.cardNumber,mode:lot.mode,grid:card.grid,accessCode:card.accessCode,playerId:player?.id||'',playerName:player?.name||''};})}));const totalCards=lots.reduce((sum,lot)=>sum+lot.totalCards,0),linkedCards=players.reduce((sum,player)=>sum+player.cards.length,0);return{phase:2,event:publicEvent(event),players,lots,stats:{players:players.length,totalCards,linkedCards,unassignedCards:Math.max(0,totalCards-linkedCards),connectedPlayers:players.filter(player=>player.connected).length}};}
+function eventAdminPlayersPayload(eventCode){const event=loadEvent(eventCode);if(!event)throw new Error('No encontramos ese evento.');const players=eventPlayers(event).map(player=>{cleanEventPlayerCards(event,player);const presence=eventPlayerPresenceState(event.code,player.id);return{id:player.id,name:normalizeEventPlayerName(player.name),cards:(player.cards||[]).map(ref=>eventPlayerCardPayload(event,ref,true)).filter(Boolean),createdAt:player.createdAt||'',updatedAt:player.updatedAt||player.createdAt||'',...presence};});const assignment=new Map();players.forEach(player=>player.cards.forEach(card=>assignment.set(eventCardRefKey(card.lotCode,card.cardNumber),player)));const reservations=activeEventReservations(event);const lots=eventLotsFor(event).map(lot=>({code:lot.code,mode:lot.mode,totalCards:lot.totalCards,cards:lot.cards.map(card=>{const key=eventCardRefKey(lot.code,card.globalNumber),player=assignment.get(key),reservation=reservations.get(key);return{lotCode:lot.code,cardNumber:card.globalNumber,seriesNumber:card.seriesNumber,position:card.cardNumber,mode:lot.mode,grid:card.grid,accessCode:card.accessCode,playerId:player?.id||'',playerName:player?.name||'',reserved:Boolean(reservation),reservationId:reservation?.linkId||''};})}));const totalCards=lots.reduce((sum,lot)=>sum+lot.totalCards,0),linkedCards=players.reduce((sum,player)=>sum+player.cards.length,0);return{phase:2,event:publicEvent(event),players,lots,selectionLinks:eventSelectionAdminPayload(event).links,stats:{players:players.length,totalCards,linkedCards,unassignedCards:Math.max(0,totalCards-linkedCards),connectedPlayers:players.filter(player=>player.connected).length}};}
 function createEventPlayer(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);if(eventPlayers(event).length>=EVENT_MAX_PLAYERS)throw new Error(`El Modo Evento admite hasta ${EVENT_MAX_PLAYERS} jugadores.`);const name=normalizeEventPlayerName(payload.name);if(!name)throw new Error('Escribí el nombre del jugador.');const now=nowIso(),player={id:randomEventPlayerId(event),name,cards:[],createdAt:now,updatedAt:now};eventPlayers(event).push(player);event.version=Math.max(2,Number(event.version)||1);event.updatedAt=now;saveEvent(event);return eventAdminPlayersPayload(event.code);}
 function updateEventPlayer(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const name=normalizeEventPlayerName(payload.name);if(!name)throw new Error('Escribí el nombre del jugador.');player.name=name;player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
 function deleteEventPlayer(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const id=safeEventPlayerId(payload.playerId),index=eventPlayers(event).findIndex(player=>player.id===id);if(index<0)throw new Error('No encontramos ese jugador.');event.players.splice(index,1);event.version=Math.max(2,Number(event.version)||1);event.updatedAt=nowIso();saveEvent(event);eventPlayerPresence.delete(eventPresenceKey(event.code,id));return eventAdminPlayersPayload(event.code);}
-function linkEventPlayerCard(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const{lot,card}=eventCardLookupForAdmin(event,payload);const assigned=eventPlayerForCard(event,lot.code,card.globalNumber);if(assigned&&assigned.id!==player.id)throw new Error(`El cartón ${String(card.globalNumber).padStart(4,'0')} ya está vinculado a ${assigned.name}. Desvinculalo antes de reasignarlo.`);cleanEventPlayerCards(event,player);const key=eventCardRefKey(lot.code,card.globalNumber);if(!(player.cards||[]).some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key))player.cards.push({lotCode:lot.code,cardNumber:card.globalNumber});player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
+function linkEventPlayerCard(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const{lot,card}=eventCardLookupForAdmin(event,payload);const assigned=eventPlayerForCard(event,lot.code,card.globalNumber);if(assigned&&assigned.id!==player.id)throw new Error(`El cartón ${String(card.globalNumber).padStart(4,'0')} ya está vinculado a ${assigned.name}. Desvinculalo antes de reasignarlo.`);cleanEventPlayerCards(event,player);const key=eventCardRefKey(lot.code,card.globalNumber),reservation=activeEventReservations(event).get(key);if(reservation)throw new Error(`El cartón ${String(card.globalNumber).padStart(4,'0')} está reservado mediante un link de selección. Confirmá o liberá esa reserva antes de asignarlo manualmente.`);if(!(player.cards||[]).some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key))player.cards.push({lotCode:lot.code,cardNumber:card.globalNumber});player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
 function unlinkEventPlayerCard(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const lotCode=safeEventLotCode(payload.lotCode),cardNumber=Math.max(1,Math.round(Number(payload.cardNumber)||0));const key=eventCardRefKey(lotCode,cardNumber);player.cards=(player.cards||[]).filter(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)!==key);player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
 function parseEventCsv(text){const source=String(text||'').replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');const first=(source.split('\n').find(line=>line.trim())||'');const candidates=[',',';','\t'];let delimiter=',',best=-1;for(const candidate of candidates){const count=(first.match(new RegExp(candidate==='\t'?'\\t':`\\${candidate}`,'g'))||[]).length;if(count>best){best=count;delimiter=candidate;}}const rows=[];let row=[],cell='',quoted=false;for(let i=0;i<=source.length;i++){const ch=i<source.length?source[i]:'\n';if(quoted){if(ch==='"'&&source[i+1]==='"'){cell+='"';i++;}else if(ch==='"')quoted=false;else cell+=ch;}else if(ch==='"')quoted=true;else if(ch===delimiter){row.push(cell);cell='';}else if(ch==='\n'){row.push(cell);cell='';if(row.some(value=>String(value).trim()))rows.push(row);row=[];}else cell+=ch;}return rows;}
 function eventCsvHeader(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase().replace(/\s+/g,'_');}
-function importEventPlayersCsv(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const rows=parseEventCsv(payload.csvText);if(rows.length<2)throw new Error('El CSV no contiene filas para importar.');const headers=rows[0].map(eventCsvHeader),indexOf=(...names)=>{for(const name of names){const index=headers.indexOf(name);if(index>=0)return index;}return-1;};const nameIndex=indexOf('jugador','nombre','player','participante'),idIndex=indexOf('jugador_id','player_id','id'),cardIndex=indexOf('carton','card','nro_carton','numero_carton'),codeIndex=indexOf('codigo','code','codigo_privado'),lotIndex=indexOf('tanda','lot','lot_code');if(nameIndex<0&&idIndex<0)throw new Error('El CSV necesita una columna jugador/nombre o jugador_id.');if(cardIndex<0&&codeIndex<0)throw new Error('El CSV necesita una columna carton o codigo.');const working=deepCopy(event);working.players=Array.isArray(working.players)?working.players:[];let created=0,linked=0;const errors=[];for(let rowIndex=1;rowIndex<rows.length;rowIndex++){const cols=rows[rowIndex],line=rowIndex+1;try{const id=idIndex>=0?safeEventPlayerId(cols[idIndex]):'';const name=nameIndex>=0?normalizeEventPlayerName(cols[nameIndex]):'';let player=id?eventPlayerById(working,id):null;if(id&&!player)throw new Error(`jugador_id ${id} no existe`);if(!player&&name){const matches=eventPlayers(working).filter(item=>normalizedEventPlayerNameKey(item.name)===normalizedEventPlayerNameKey(name));if(matches.length>1)throw new Error(`hay más de un jugador llamado ${name}; usá jugador_id`);player=matches[0]||null;}if(!player){if(!name)throw new Error('falta el nombre del jugador');if(eventPlayers(working).length>=EVENT_MAX_PLAYERS)throw new Error(`se alcanzó el máximo de ${EVENT_MAX_PLAYERS} jugadores del Modo Evento`);const now=nowIso();player={id:randomEventPlayerId(working),name,cards:[],createdAt:now,updatedAt:now};eventPlayers(working).push(player);created++;}const selector={};if(codeIndex>=0&&normalizeEventAccessCode(cols[codeIndex]))selector.accessCode=cols[codeIndex];else{selector.cardNumber=cardIndex>=0?cols[cardIndex]:'';selector.lotCode=lotIndex>=0?cols[lotIndex]:'';}const{lot,card}=eventCardLookupForAdmin(working,selector);const assigned=eventPlayerForCard(working,lot.code,card.globalNumber);if(assigned&&assigned.id!==player.id)throw new Error(`cartón ${String(card.globalNumber).padStart(4,'0')} ya asignado a ${assigned.name}`);const key=eventCardRefKey(lot.code,card.globalNumber);if(!(player.cards||[]).some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key)){player.cards.push({lotCode:lot.code,cardNumber:card.globalNumber});linked++;}player.updatedAt=nowIso();}catch(error){errors.push(`Línea ${line}: ${error.message}`);}}if(errors.length)throw new Error(`No se importó nada. Corregí el CSV:\n${errors.slice(0,8).join('\n')}${errors.length>8?`\n… y ${errors.length-8} error(es) más.`:''}`);event.players=working.players;event.version=Math.max(2,Number(event.version)||1);event.updatedAt=nowIso();saveEvent(event);return{...eventAdminPlayersPayload(event.code),import:{rows:rows.length-1,playersCreated:created,linksCreated:linked}};}
+function importEventPlayersCsv(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const rows=parseEventCsv(payload.csvText);if(rows.length<2)throw new Error('El CSV no contiene filas para importar.');const headers=rows[0].map(eventCsvHeader),indexOf=(...names)=>{for(const name of names){const index=headers.indexOf(name);if(index>=0)return index;}return-1;};const nameIndex=indexOf('jugador','nombre','player','participante'),idIndex=indexOf('jugador_id','player_id','id'),cardIndex=indexOf('carton','card','nro_carton','numero_carton'),codeIndex=indexOf('codigo','code','codigo_privado'),lotIndex=indexOf('tanda','lot','lot_code');if(nameIndex<0&&idIndex<0)throw new Error('El CSV necesita una columna jugador/nombre o jugador_id.');if(cardIndex<0&&codeIndex<0)throw new Error('El CSV necesita una columna carton o codigo.');const working=deepCopy(event);working.players=Array.isArray(working.players)?working.players:[];let created=0,linked=0;const errors=[];for(let rowIndex=1;rowIndex<rows.length;rowIndex++){const cols=rows[rowIndex],line=rowIndex+1;try{const id=idIndex>=0?safeEventPlayerId(cols[idIndex]):'';const name=nameIndex>=0?normalizeEventPlayerName(cols[nameIndex]):'';let player=id?eventPlayerById(working,id):null;if(id&&!player)throw new Error(`jugador_id ${id} no existe`);if(!player&&name){const matches=eventPlayers(working).filter(item=>normalizedEventPlayerNameKey(item.name)===normalizedEventPlayerNameKey(name));if(matches.length>1)throw new Error(`hay más de un jugador llamado ${name}; usá jugador_id`);player=matches[0]||null;}if(!player){if(!name)throw new Error('falta el nombre del jugador');if(eventPlayers(working).length>=EVENT_MAX_PLAYERS)throw new Error(`se alcanzó el máximo de ${EVENT_MAX_PLAYERS} jugadores del Modo Evento`);const now=nowIso();player={id:randomEventPlayerId(working),name,cards:[],createdAt:now,updatedAt:now};eventPlayers(working).push(player);created++;}const selector={};if(codeIndex>=0&&normalizeEventAccessCode(cols[codeIndex]))selector.accessCode=cols[codeIndex];else{selector.cardNumber=cardIndex>=0?cols[cardIndex]:'';selector.lotCode=lotIndex>=0?cols[lotIndex]:'';}const{lot,card}=eventCardLookupForAdmin(working,selector);const assigned=eventPlayerForCard(working,lot.code,card.globalNumber);if(assigned&&assigned.id!==player.id)throw new Error(`cartón ${String(card.globalNumber).padStart(4,'0')} ya asignado a ${assigned.name}`);const key=eventCardRefKey(lot.code,card.globalNumber),reservation=activeEventReservations(working).get(key);if(reservation)throw new Error(`cartón ${String(card.globalNumber).padStart(4,'0')} reservado mediante link ${reservation.linkId}`);if(!(player.cards||[]).some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key)){player.cards.push({lotCode:lot.code,cardNumber:card.globalNumber});linked++;}player.updatedAt=nowIso();}catch(error){errors.push(`Línea ${line}: ${error.message}`);}}if(errors.length)throw new Error(`No se importó nada. Corregí el CSV:\n${errors.slice(0,8).join('\n')}${errors.length>8?`\n… y ${errors.length-8} error(es) más.`:''}`);event.players=working.players;event.version=Math.max(2,Number(event.version)||1);event.updatedAt=nowIso();saveEvent(event);return{...eventAdminPlayersPayload(event.code),import:{rows:rows.length-1,playersCreated:created,linksCreated:linked}};}
 function publicEventAccessPayload(accessCode){const found=eventCardLookupGlobal(accessCode);if(!found)throw new Error('No encontramos ese código de cartón.');const{event,lot,card}=found;if(event.status==='archived')throw new Error('Este evento está archivado.');const player=eventPlayerForCard(event,lot.code,card.globalNumber);let refs=player?(player.cards||[]):[{lotCode:lot.code,cardNumber:card.globalNumber}];const cards=refs.map(ref=>eventPlayerCardPayload(event,ref,false)).filter(Boolean).sort((a,b)=>a.lotCode.localeCompare(b.lotCode)||a.cardNumber-b.cardNumber);if(player)markEventPlayerPresence(event.code,player.id);return{phase:2,event:publicEvent(event),player:player?{id:player.id,name:player.name}:null,accessedCard:{lotCode:lot.code,cardNumber:card.globalNumber},cards,message:player?`Código reconocido. Tenés ${cards.length} cartón${cards.length===1?'':'es'} vinculado${cards.length===1?'':'s'}.`:'Código reconocido. Este cartón todavía no está vinculado a un jugador.'};}
 function heartbeatEventPlayer(accessCode){const found=eventCardLookupGlobal(accessCode);if(!found)throw new Error('No encontramos ese código de cartón.');if(found.event.status==='archived')throw new Error('Este evento está archivado.');const player=eventPlayerForCard(found.event,found.lot.code,found.card.globalNumber);if(player)markEventPlayerPresence(found.event.code,player.id);return{ok:true,playerId:player?.id||'',at:nowIso()};}
 
@@ -3926,6 +4045,21 @@ function markPremiumEventCard(payload={}) {
     markNumber(roomPlayer,{cardId:roomCard.id,number,marked:payload.marked});
     markEventPlayerPresence(ctx.event.code,ctx.player.id);
     return premiumEventPlayerLivePayloadFromContext(ctx.event,ctx.player,{lotCode,cardNumber});
+  });
+}
+function automarkPremiumEventPlayer(payload={}) {
+  const ctx=premiumEventActionContext(payload);
+  return workspaceContext.run(ctx.workspace,()=>{
+    if(safeEventCode(state.eventContext?.eventCode)!==ctx.event.code)throw new Error('La sala todavía no fue preparada con esta tanda Evento.');
+    const roomPlayer=premiumEventRoomPlayer(ctx.event,ctx.player); if(!roomPlayer)throw new Error('El jugador todavía no está sincronizado con la sala.');
+    const manualOnly=state.roomSettings?.markingMode==='manual_only';
+    if(manualOnly&&Boolean(payload.enabled))throw new Error('Esta partida está configurada como SOLO MANUAL.');
+    roomPlayer.autoMark=manualOnly?false:Boolean(payload.enabled);
+    roomPlayer.markingModeChosen=true;
+    if(roomPlayer.autoMark)syncAutoMarksForPlayer(roomPlayer);
+    saveState(); broadcast();
+    markEventPlayerPresence(ctx.event.code,ctx.player.id);
+    return premiumEventPlayerLivePayloadFromContext(ctx.event,ctx.player,{lotCode:ctx.lot.code,cardNumber:ctx.card.globalNumber});
   });
 }
 function claimPremiumEventCard(payload={}) {
@@ -8302,6 +8436,10 @@ function communityActiveGamePayload() {
     current.roomSettings.broadcastAlias ||= freshBroadcastAlias(workspace.id);
     const broadcastToken = current.roomSettings.broadcastToken;
     const schedule = communityScheduledGames().find(item => item.id === String(current.roomSettings?.communityScheduleId || '') || (item.roomCode && item.roomCode === current.roomCode));
+    const premiumEventCode = current.roomSettings?.eventMode
+      ? safeEventCode(current.eventContext?.eventCode || current.roomSettings?.eventCode || '')
+      : '';
+    const premiumEvent = premiumEventCode ? loadEvent(premiumEventCode) : null;
     return {
       roomCode: current.roomCode,
       mode: Number(current.game.mode) === 75 ? 75 : 90,
@@ -8313,7 +8451,11 @@ function communityActiveGamePayload() {
       scheduledAt: String(current.roomSettings?.scheduledAt || schedule?.startsAt || ''),
       drawnCount: Array.isArray(current.game?.drawn) ? current.game.drawn.length : 0,
       transmissionUrl: broadcastToken ? `/v/${encodeURIComponent(current.roomSettings.broadcastAlias)}` : '',
-      transmissionEnabled: Boolean(broadcastToken)
+      transmissionEnabled: Boolean(broadcastToken),
+      eventMode: Boolean(premiumEventCode),
+      eventCode: premiumEventCode,
+      eventName: premiumEvent?.name || String(current.eventContext?.eventName || current.roomSettings?.eventName || ''),
+      eventJoinUrl: premiumEventCode ? '/evento' : ''
     };
   });
 }
@@ -9673,6 +9815,32 @@ async function dispatchAdminApi(req, res, url, session) {
     if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
     return sendJson(res, 200, deactivatePremiumEventLive(await readJson(req)));
   }
+  if (url.pathname === '/api/admin/events/backup.zip' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    const event=loadEvent(url.searchParams.get('event'));if(!event)return sendJson(res,404,{error:'No encontramos ese evento.'});
+    return sendBuffer(res,200,buildPremiumEventBackupZip(event),'application/zip',premiumEventBackupFilename(event));
+  }
+  if (url.pathname === '/api/admin/events/backup/inspect' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    const info=inspectPremiumEventBackup(await readBuffer(req));return sendJson(res,200,{ok:true,summary:info.summary});
+  }
+  if (url.pathname === '/api/admin/events/backup/restore' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    const buffer=await readBuffer(req),replace=url.searchParams.get('replace')==='1',confirmation=url.searchParams.get('confirmation')||'';
+    return sendJson(res,200,restorePremiumEventBackup(buffer,{replace,confirmation}));
+  }
+  if (url.pathname === '/api/admin/events/selection/create' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    return sendJson(res,200,createEventSelectionLink(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/events/selection/confirm' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    return sendJson(res,200,confirmEventSelection(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/events/selection/release' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res,403,{error:'Modo Evento está reservado al administrador principal.'});
+    return sendJson(res,200,releaseEventSelectionAdmin(await readJson(req)));
+  }
   if (url.pathname === '/api/admin/events/lot/generate' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
     return sendJson(res, 200, createPremiumEventLot(await readJson(req)));
@@ -9873,6 +10041,21 @@ async function handleApi(req, res, url) {
     if (url.pathname.startsWith('/api/master/')) return await handleMasterApi(req, res, url);
     if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso(), version: APP_PUBLIC_VERSION });
 
+    if (url.pathname === '/api/event/public-info' && req.method === 'GET') {
+      const event=loadEvent(url.searchParams.get('evento'));if(!event||event.status==='archived')return sendJson(res,404,{error:'No encontramos ese Evento.'});return sendJson(res,200,{event:publicEvent(event)});
+    }
+    if (url.pathname === '/api/event/selection' && req.method === 'GET') {
+      if(!consumeRate(req,'event-selection-view',240,60*1000))return sendJson(res,429,{error:'Demasiadas solicitudes. Esperá un momento.'});
+      try{return sendJson(res,200,publicEventSelectionPayload(url.searchParams.get('token')))}catch(error){return sendJson(res,404,{error:String(error?.message||'No se pudo abrir la selección.')})}
+    }
+    if (url.pathname === '/api/event/selection/reserve' && req.method === 'POST') {
+      if(!consumeRate(req,'event-selection-reserve',60,60*1000))return sendJson(res,429,{error:'Demasiados intentos. Esperá un momento.'});
+      try{return sendJson(res,200,reserveEventSelectionCard(await readJson(req)))}catch(error){return sendJson(res,409,{error:String(error?.message||'No se pudo reservar el cartón.')})}
+    }
+    if (url.pathname === '/api/event/selection/release' && req.method === 'POST') {
+      if(!consumeRate(req,'event-selection-release',60,60*1000))return sendJson(res,429,{error:'Demasiados intentos. Esperá un momento.'});
+      try{return sendJson(res,200,releaseEventSelectionCard(await readJson(req)))}catch(error){return sendJson(res,400,{error:String(error?.message||'No se pudo liberar el cartón.')})}
+    }
     if (url.pathname === '/api/event/access-info' && req.method === 'GET') {
       try { return sendJson(res,200,publicEventAccessPayload(url.searchParams.get('codigo'))); }
       catch(error){ const message=String(error?.message||'No se pudo verificar el código.'); const status=message.includes('no válido')?400:(message.includes('archivado')?410:404); return sendJson(res,status,{error:message}); }
@@ -9894,6 +10077,10 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/event/mark' && req.method === 'POST') {
       if(!consumeRate(req,'event-mark',500,60*1000))return sendJson(res,429,{error:'Demasiadas marcas. Esperá un momento.'});
       try{return sendJson(res,200,markPremiumEventCard(await readJson(req)))}catch(error){return sendJson(res,400,{error:String(error?.message||'No se pudo marcar el cartón.')})}
+    }
+    if (url.pathname === '/api/event/automark' && req.method === 'POST') {
+      if(!consumeRate(req,'event-automark',60,60*1000))return sendJson(res,429,{error:'Demasiados cambios. Esperá un momento.'});
+      try{return sendJson(res,200,automarkPremiumEventPlayer(await readJson(req)))}catch(error){return sendJson(res,400,{error:String(error?.message||'No se pudo cambiar el modo de marcado.')})}
     }
     if (url.pathname === '/api/event/claim' && req.method === 'POST') {
       if(!consumeRate(req,'event-claim',120,60*1000))return sendJson(res,429,{error:'Demasiados reclamos. Esperá un momento.'});
@@ -10310,7 +10497,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, version: APP_PUBLIC_VERSION, workspaces: workspaces.size });
   if (url.pathname === '/robots.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    return res.end('User-agent: *\nDisallow: /admin\nDisallow: /admin-principal\nDisallow: /operador\nDisallow: /transmision\nDisallow: /v\nDisallow: /tv\n');
+    return res.end('User-agent: *\nDisallow: /admin\nDisallow: /admin-principal\nDisallow: /operador\nDisallow: /transmision\nDisallow: /v\nDisallow: /tv\nDisallow: /evento-admin\nDisallow: /evento-elegir\n');
   }
   if (url.pathname === '/api/events' && req.method === 'GET') return handleEvents(req, res, url);
   if (url.pathname.startsWith('/api/')) return handleApi(req, res, url);
@@ -10569,6 +10756,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'admin.html'));
   if (url.pathname === '/evento-admin' || url.pathname === '/evento-admin/') return serveFile(res, path.join(ROOT, 'evento-admin.html'));
   if (url.pathname === '/evento' || url.pathname === '/evento/') return serveFile(res, path.join(ROOT, 'evento.html'));
+  if (url.pathname === '/evento-elegir' || url.pathname === '/evento-elegir/') return serveFile(res, path.join(ROOT, 'evento-elegir.html'));
   if (url.pathname === '/evento-conductor' || url.pathname === '/evento-conductor/') return serveFile(res, path.join(ROOT, 'evento-conductor.html'));
   if (url.pathname === '/evento-transmision' || url.pathname === '/evento-transmision/') return serveFile(res, path.join(ROOT, 'evento-transmision.html'));
   if (url.pathname === '/evento-tv' || url.pathname === '/evento-tv/') return serveFile(res, path.join(ROOT, 'evento-tv.html'));

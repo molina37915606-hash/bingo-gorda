@@ -164,3 +164,15 @@ La integridad se protege verificando el SHA-256 de las tandas al cargarlas y con
 - La auditoría queda dentro de `tanda.json` y protegida por el SHA-256 de la tanda.
 - Modo Evento: hasta **150 jugadores** y **250 cartones activos por partida**. Una tanda puede tener hasta 1.000 cartones aunque sólo se vinculen/activen hasta 250 en una partida.
 - Salas normales y Comunidad conservan sus límites anteriores.
+
+
+## Modo Evento Premium · Fase 5 (2026-08-22)
+
+- Verificación obligatoria antes de iniciar: modalidad, auditoría/SHA de tandas, jugadores, cartones, preparación, fingerprint y persistencia.
+- Si se cambian asignaciones después de preparar la sala, el inicio se bloquea hasta volver a sincronizar.
+- Estado de salud en el Panel del Conductor: sala, recuperación, jugadores conectados y presencia reciente de TV/Transmisión Premium.
+- Recuperación comprobable después de reinicio: la vinculación Evento → workspace y el estado de la partida se recuperan desde disco.
+- Al finalizar se congela un acta Premium del Evento en PDF, CSV y JSON dentro del historial de la partida.
+- El Evento conserva un historial de cierres (hasta 30) con sala, jugadores, cartones, ganadores e integridad.
+- Los cartones del jugador quedan en modo consulta después del cierre.
+- Se mantienen los límites de Fase 4.1: 150 jugadores / 250 cartones activos y tandas de hasta 1.000.

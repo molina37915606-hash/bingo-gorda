@@ -1,0 +1,10 @@
+EL BINGO DE LA GORDA · MODO EVENTO PREMIUM · FASE 5
+
+CIERRE V1 / ROBUSTEZ
+- Preflight obligatorio antes de iniciar.
+- Recuperación de Evento y sala después de reinicio.
+- Diagnóstico del conductor y presencia TV/Transmisión.
+- Acta Premium PDF + CSV + JSON al finalizar.
+- Historial de cierres asociado al Evento.
+- Inicio bloqueado si cambian asignaciones o hashes después de preparar.
+- No modifica Comunidad ni Bolillero Libre.

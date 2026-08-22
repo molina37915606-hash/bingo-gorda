@@ -2932,6 +2932,12 @@ function publicEvent(event) {
     live: event?.live && event.live.workspaceId ? {
       active: Boolean(event.live.active), roomCode: String(event.live.roomCode || ''),
       activatedAt: event.live.activatedAt || '', updatedAt: event.live.updatedAt || ''
+    } : null,
+    completedAt: event?.completedAt || '',
+    runsCount: Array.isArray(event?.runs) ? event.runs.length : 0,
+    lastRun: event?.lastRun ? {
+      id:String(event.lastRun.id || ''), roomCode:String(event.lastRun.roomCode || ''), startedAt:event.lastRun.startedAt || '',
+      endedAt:event.lastRun.endedAt || '', players:Number(event.lastRun.players)||0, cards:Number(event.lastRun.cards)||0, winners:Number(event.lastRun.winners)||0
     } : null
   };
 }
@@ -3435,6 +3441,7 @@ function eventIndividualsZipFilename(lot){const event=loadEvent(lot.eventCode),n
 // -----------------------------------------------------------------------------
 const EVENT_PLAYER_PRESENCE_MS = 90 * 1000;
 const eventPlayerPresence = new Map();
+const eventDisplayPresence = new Map();
 function safeEventPlayerId(value){const id=String(value||'').trim().toUpperCase();return /^EVP-[A-Z0-9]{6}$/.test(id)?id:'';}
 function eventPlayers(event){if(!event)return[];if(!Array.isArray(event.players))event.players=[];return event.players;}
 function normalizeEventPlayerName(value){return normalizeEventText(value,80);}
@@ -3808,6 +3815,149 @@ function claimPremiumEventCard(payload={}) {
     markEventPlayerPresence(ctx.event.code,ctx.player.id);
     return {ok:true,claim:premiumEventClaim(ctx.event,claim),state:premiumEventPlayerLivePayloadFromContext(ctx.event,ctx.player,{lotCode,cardNumber})};
   });
+}
+
+
+// -----------------------------------------------------------------------------
+// MODO EVENTO PREMIUM · FASE 5
+// Preflight obligatorio, recuperación verificable, presencia de pantallas y
+// acta/historial Premium congelado al finalizar.
+// -----------------------------------------------------------------------------
+const EVENT_DISPLAY_PRESENCE_MS = 12_000;
+function safeEventDisplayView(value) {
+  const view=String(value||'').trim().toLowerCase();
+  return view==='tv'||view==='transmision'?view:'';
+}
+function markEventDisplayPresence(eventCode, view) {
+  const event=safeEventCode(eventCode),screen=safeEventDisplayView(view);
+  if(event&&screen)eventDisplayPresence.set(`${event}:${screen}`,Date.now());
+}
+function eventDisplayPresenceState(eventCode, view) {
+  const event=safeEventCode(eventCode),screen=safeEventDisplayView(view),seen=Number(eventDisplayPresence.get(`${event}:${screen}`)||0);
+  return { connected:Boolean(seen&&Date.now()-seen<=EVENT_DISPLAY_PRESENCE_MS), lastSeenAt:seen?new Date(seen).toISOString():'' };
+}
+function premiumEventPreflight(eventCode, workspaceOverride = null) {
+  const event=loadEvent(eventCode);
+  if(!event)throw new Error('No encontramos ese evento.');
+  const workspace=workspaceOverride || eventLiveWorkspace(event);
+  const rows=premiumEventLinkedPlayers(event);
+  const linkedCards=rows.reduce((sum,row)=>sum+row.refs.length,0);
+  const checks=[];
+  const add=(id,label,ok,detail='',required=true)=>checks.push({id,label,ok:Boolean(ok),detail:String(detail||''),required:Boolean(required)});
+  add('event','Evento activo',event.status!=='archived',event.status==='archived'?'El Evento está archivado.':'Evento disponible.');
+  const configuredLots=(event.lotCodes||[]).filter(safeEventLotCode),lots=eventLotsFor(event),lotsComplete=configuredLots.length>0&&lots.length===configuredLots.length;
+  add('lots','Tanda disponible',lotsComplete,lotsComplete?`${lots.length} tanda(s) cargada(s) e íntegra(s).`:configuredLots.length?'Falta o está dañada alguna tanda asociada al Evento.':'Generá al menos una tanda.');
+  const auditOk=lotsComplete&&lots.every(lot=>Number(lot.version)<2||Boolean(lot.qualityAudit?.approved));
+  add('audit','Integridad de tanda',auditOk,auditOk?'SHA-256 y auditoría de calidad válidos.':'Hay una tanda ausente, alterada o sin auditoría aprobada.');
+  add('players','Jugadores vinculados',rows.length>=(TEST_MODE?1:MIN_PLAYERS)&&rows.length<=EVENT_MAX_PLAYERS,`${rows.length}/${EVENT_MAX_PLAYERS} jugadores con cartones.`);
+  add('cards','Cartones activos',linkedCards>0&&linkedCards<=EVENT_MAX_ACTIVE_CARDS,`${linkedCards}/${EVENT_MAX_ACTIVE_CARDS} cartones vinculados.`);
+  const room=workspace?workspaceContext.run(workspace,()=>({active:Boolean(state.active),status:String(state.status||'closed'),roomCode:String(state.roomCode||''),mode:Number(state.game?.mode)||null,eventCode:safeEventCode(state.eventContext?.eventCode||''),eventContext:deepCopy(state.eventContext||null),markingMode:String(state.roomSettings?.markingMode||'normal'),maxCardsPerPlayer:Number(state.roomSettings?.maxCardsPerPlayer)||MAX_CARDS_PER_PLAYER,updatedAt:state.updatedAt||'',stateFile:workspace.stateFile})) : null;
+  add('room','Sala vinculada',Boolean(event.live?.active&&workspace&&room?.active),workspace&&room?.active?`Sala ${room.roomCode}.`:'Prepará el Evento en una sala activa.');
+  add('mode','Modalidad compatible',Boolean(room&&Number(room.mode)===Number(event.mode)),room?`Evento Bingo ${event.mode} · Sala Bingo ${room.mode||'—'}.`:`Evento Bingo ${event.mode}.`);
+  const maxPer=room?.markingMode==='manual_only'?2:Math.max(1,Math.min(MAX_CARDS_PER_PLAYER,Number(room?.maxCardsPerPlayer)||MAX_CARDS_PER_PLAYER));
+  const cardLimitOk=rows.every(row=>row.refs.length<=maxPer);
+  add('perPlayer','Cartones por jugador',cardLimitOk,cardLimitOk?`Máximo ${maxPer} por jugador para esta configuración.`:`Hay jugadores con más de ${maxPer} cartones.`);
+  const prepared=Boolean(room&&room.eventCode===event.code&&room.eventContext);
+  add('prepared','Sala preparada con la tanda',prepared,prepared?'La sala usa cartones Evento.':'Sincronizá la tanda y jugadores antes de iniciar.');
+  let expectedFingerprint='';
+  try{expectedFingerprint=premiumEventPreparationFingerprint(event,rows)}catch{}
+  const fingerprintOk=Boolean(prepared&&expectedFingerprint&&room.eventContext?.fingerprint===expectedFingerprint);
+  add('fingerprint','Asignaciones congelables',fingerprintOk,fingerprintOk?'Jugadores/cartones coinciden con la preparación.':'Las asignaciones cambiaron: volvé a sincronizar antes de iniciar.');
+  const lotHashMap=Object.fromEntries(lots.map(lot=>[lot.code,lot.hash]));
+  const preparedHashes=room?.eventContext?.lotHashes||{};
+  const hashesOk=Boolean(prepared&&Object.keys(lotHashMap).every(code=>lotHashMap[code]&&preparedHashes[code]===lotHashMap[code]));
+  add('hashes','SHA de tandas preparado',hashesOk,hashesOk?'Los hashes de las tandas coinciden.':'La tanda cambió o falta volver a preparar la sala.');
+  const persisted=Boolean(workspace&&workspace.stateFile&&fs.existsSync(workspace.stateFile));
+  add('recovery','Recuperación guardada',persisted,persisted?`Estado persistido ${room?.updatedAt||''}.`:'No se encontró el estado persistido de la sala.');
+  const tv=eventDisplayPresenceState(event.code,'tv'),transmission=eventDisplayPresenceState(event.code,'transmision');
+  add('tv','TV Premium',tv.connected,tv.connected?'Conectada recientemente.':'Sin señal reciente (no bloquea el inicio).',false);
+  add('transmission','Transmisión Premium',transmission.connected,transmission.connected?'Conectada recientemente.':'Sin señal reciente (no bloquea el inicio).',false);
+  const errors=checks.filter(c=>c.required&&!c.ok).map(c=>c.detail||c.label);
+  const roomWaiting=room?.status==='waiting';
+  const running=Boolean(room&&['starting','playing','paused','verifying','resuming','finalizing'].includes(room.status));
+  const finished=room?.status==='finished';
+  return {
+    phase:5,event:publicEvent(event),checks,errors,readyToStart:errors.length===0&&roomWaiting,
+    recoverable:Boolean(persisted&&prepared&&event.live?.active),running,finished,
+    room:room?{active:room.active,status:room.status,roomCode:room.roomCode,mode:room.mode,updatedAt:room.updatedAt}:null,
+    stats:{players:rows.length,linkedCards,connectedPlayers:eventPlayers(event).filter(p=>eventPlayerPresenceState(event.code,p.id).connected).length},
+    screens:{tv,transmission},checkedAt:nowIso()
+  };
+}
+function assertPremiumEventPreflightForStart() {
+  if(!state.roomSettings?.eventMode)return null;
+  const eventCode=safeEventCode(state.eventContext?.eventCode||state.roomSettings?.eventCode||'');
+  if(!eventCode)throw new Error('La sala está marcada como Evento pero no tiene un Evento preparado.');
+  const health=premiumEventPreflight(eventCode,currentWorkspace());
+  if(!health.readyToStart)throw new Error(`VERIFICACIÓN DEL EVENTO: ${health.errors[0]||'la sala no está lista para iniciar.'}`);
+  return health;
+}
+function premiumEventResultLogo(event) {
+  const file=eventLogoPath(event?.code);
+  if(file&&fs.existsSync(file))return {buffer:fs.readFileSync(file),width:512,height:512};
+  return {buffer:fs.readFileSync(path.join(ROOT,'assets','logo-pdf.jpg')),width:360,height:360};
+}
+function premiumEventFrozenParticipants(event) {
+  return eventPlayers(event).map(player=>({
+    id:player.id,name:normalizeEventPlayerName(player.name),
+    cards:(player.cards||[]).map(ref=>({lotCode:safeEventLotCode(ref.lotCode),cardNumber:Number(ref.cardNumber)})).filter(ref=>ref.lotCode&&ref.cardNumber)
+  })).filter(player=>player.cards.length);
+}
+function premiumEventResultReport(event,acta,meta) {
+  const participants=premiumEventFrozenParticipants(event);
+  const winners=(acta.winners||[]).map(w=>({
+    type:w.type,prizeLabel:w.prizeLabel,playerName:w.playerName,eventPlayerId:w.eventPlayerId||'',
+    cardNumber:Number(w.eventCardNumber)||Number(w.cardNumber)||w.cardNumber,eventLotCode:safeEventLotCode(w.eventLotCode||''),
+    claimedAt:w.claimedAt||'',ballNumber:w.ballNumber??null
+  }));
+  return {
+    version:5,event:{code:event.code,name:event.name,tagline:event.tagline||'',sponsor:event.sponsor||'',date:event.date||'',location:event.location||'',mode:event.mode,colors:event.colors},
+    run:{id:meta.id,roomCode:meta.roomCode,workspaceId:meta.workspaceId,startedAt:meta.startedAt,endedAt:meta.endedAt,savedAt:meta.savedAt,durationSeconds:meta.startedAt&&meta.endedAt?Math.max(0,Math.round((new Date(meta.endedAt)-new Date(meta.startedAt))/1000)):0},
+    totals:{players:participants.length,cards:participants.reduce((sum,p)=>sum+p.cards.length,0),balls:(acta.balls||[]).length,winners:winners.length},
+    winners,participants,balls:acta.balls||[],claimAlerts:acta.claimAlerts||[],categories:acta.categories||{},integrity:acta.integrity||null,
+    generatedAt:nowIso()
+  };
+}
+function premiumEventResultCsv(report) {
+  const rows=[['MODO EVENTO PREMIUM · ACTA'],['Evento',report.event.name],['Código',report.event.code],['Sala',report.run.roomCode],['Modalidad',`Bingo ${report.event.mode}`],['Fecha evento',report.event.date],['Lugar',report.event.location],['Inicio',report.run.startedAt],['Finalización',report.run.endedAt],['Jugadores',report.totals.players],['Cartones',report.totals.cards],['Bolillas',report.totals.balls],['Ganadores',report.totals.winners],['SHA-256 sorteo',report.integrity?.commitment||''],[],['GANADORES'],['Premio','Jugador','Tanda','Cartón','Bolilla','Hora']];
+  for(const w of report.winners)rows.push([w.prizeLabel,w.playerName,w.eventLotCode,w.cardNumber,w.ballNumber??'',w.claimedAt]);
+  rows.push([],['PARTICIPANTES'],['Jugador','ID','Cartones']);
+  for(const p of report.participants)rows.push([p.name,p.id,p.cards.map(c=>`${c.lotCode} #${String(c.cardNumber).padStart(4,'0')}`).join(' · ')]);
+  return '\uFEFF'+rows.map(row=>row.map(csvEscape).join(',')).join('\r\n');
+}
+function buildPremiumEventResultPdf(event,report) {
+  const PAGE_W=595,PAGE_H=842,logo=premiumEventResultLogo(event),colors={ink:'#21192A'},pages=[];
+  const makePage=(title,subtitle='')=>{const commands=[],canvas=premiumPdfCanvas(commands,PAGE_W,PAGE_H,colors),{rect,text,image}=canvas;const primary=normalizeEventHex(event.colors?.primary,'#6D238C'),secondary=normalizeEventHex(event.colors?.secondary,'#D83A84'),accent=normalizeEventHex(event.colors?.accent,'#E0A71A');rect(0,0,PAGE_W,12,primary);image(35,30,62,62);text(title,112,34,19,{bold:true,color:primary,maxWidth:430});if(subtitle)text(subtitle,112,61,9,{color:'#6B6570',maxWidth:430});return{commands,canvas,primary,secondary,accent};};
+  {
+    const p=makePage(event.name||'EVENTO PREMIUM','ACTA PREMIUM · EL BINGO DE LA GORDA'),{rect,text}=p.canvas;
+    const meta=[['CÓDIGO',event.code],['SALA',report.run.roomCode],['MODALIDAD',`Bingo ${event.mode}`],['JUGADORES',String(report.totals.players)],['CARTONES',String(report.totals.cards)],['BOLILLAS',String(report.totals.balls)]];
+    meta.forEach(([k,v],i)=>{const col=i%3,row=Math.floor(i/3),x=35+col*175,y=112+row*62;rect(x,y,160,50,'#F7F3F8','#DED6E3',.7);text(k,x+10,y+8,7,{bold:true,color:'#6B6570'});text(v,x+10,y+23,12,{bold:true,color:p.primary,maxWidth:140})});
+    text(`Inicio: ${formatLocalTimestamp(report.run.startedAt)}   ·   Final: ${formatLocalTimestamp(report.run.endedAt)}`,35,250,8,{color:'#6B6570',maxWidth:525});
+    text('GANADORES CONFIRMADOS',35,282,12,{bold:true,color:p.secondary});let y=307;
+    if(!report.winners.length){text('Sin ganadores confirmados.',35,y,9,{color:'#6B6570'});y+=22}else for(const w of report.winners.slice(0,12)){rect(35,y,525,27,'#FBF8FC','#E7DFEA',.5);text(w.prizeLabel||w.type,45,y+7,8,{bold:true,color:p.primary,maxWidth:140});text(w.playerName||'—',190,y+7,8,{bold:true,maxWidth:190});text(`Cartón ${String(w.cardNumber||'—').padStart(4,'0')}`,470,y+7,8,{bold:true,color:p.secondary,align:'right'});y+=31}
+    y=Math.max(y+12,520);text('BOLILLAS EXTRAÍDAS',35,y,11,{bold:true,color:p.primary});y+=24;const balls=(report.balls||[]).map(b=>b.number);for(let i=0;i<balls.length;i++){const col=i%15,row=Math.floor(i/15),x=35+col*35,yb=y+row*30;rect(x,yb,26,26,'#F4EFF6','#DAD0DE',.5);text(String(balls[i]),x+13,yb+7,8,{bold:true,align:'center'});}const footerY=PAGE_H-64;text('Integridad SHA-256',35,footerY,7,{bold:true,color:'#6B6570'});text(report.integrity?.commitment||'Sin sello disponible',35,footerY+13,6.2,{color:'#6B6570',maxWidth:520});text('GRACIAS POR JUGAR AL BINGO DE LA GORDA',PAGE_W/2,PAGE_H-25,8,{bold:true,color:p.secondary,align:'center'});pages.push(p.commands.join('\n'));
+  }
+  const perPage=34;for(let offset=0;offset<report.participants.length;offset+=perPage){const p=makePage('Participantes y cartones',`${event.name} · ${event.code}`),{rect,text}=p.canvas;let y=112;text('JUGADOR',35,y,7,{bold:true,color:'#6B6570'});text('CARTONES VINCULADOS',260,y,7,{bold:true,color:'#6B6570'});y+=18;for(const participant of report.participants.slice(offset,offset+perPage)){rect(35,y-4,525,19,offset%2?'#FFFFFF':'#FBF9FC',null);text(participant.name,40,y,7.2,{bold:true,maxWidth:205});text(participant.cards.map(c=>String(c.cardNumber).padStart(4,'0')).join(' · '),260,y,7,{maxWidth:290});y+=20}text(`Página ${pages.length+1}`,PAGE_W-35,PAGE_H-28,6.5,{color:'#6B6570',align:'right'});pages.push(p.commands.join('\n'))}
+  return pdfDocumentFromStreams(pages,PAGE_W,PAGE_H,logo,`EVENTO:${event.code};RUN:${report.run.id}`);
+}
+function finalizePremiumEventRun(eventCode,meta,acta,archiveDir) {
+  const event=loadEvent(eventCode);if(!event)return null;
+  const report=premiumEventResultReport(event,acta,meta),pdf=buildPremiumEventResultPdf(event,report),csv=Buffer.from(premiumEventResultCsv(report),'utf8'),json=Buffer.from(JSON.stringify(report,null,2),'utf8');
+  const files={eventActaPdf:'evento-acta.pdf',eventActaCsv:'evento-acta.csv',eventActaJson:'evento-acta.json'};
+  writeAtomic(path.join(archiveDir,files.eventActaPdf),pdf);writeAtomic(path.join(archiveDir,files.eventActaCsv),csv);writeAtomic(path.join(archiveDir,files.eventActaJson),json);
+  const run={id:meta.id,archiveId:meta.id,roomCode:meta.roomCode,workspaceId:meta.workspaceId,startedAt:meta.startedAt,endedAt:meta.endedAt,savedAt:meta.savedAt,players:report.totals.players,cards:report.totals.cards,winners:report.totals.winners,files,integrity:report.integrity?{algorithm:report.integrity.algorithm,commitment:report.integrity.commitment,verified:Boolean(report.integrity.verified)}:null};
+  event.runs=Array.isArray(event.runs)?event.runs:[];event.runs=event.runs.filter(item=>item.id!==run.id);event.runs.push(run);if(event.runs.length>30)event.runs=event.runs.slice(-30);event.lastRun=run;event.completedAt=meta.endedAt||meta.savedAt;event.version=Math.max(6,Number(event.version)||1);event.updatedAt=nowIso();if(event.live)event.live={...event.live,updatedAt:event.updatedAt,lastCompletedAt:event.completedAt,lastArchiveId:run.id};saveEvent(event);return{report,run,pdfSha256:crypto.createHash('sha256').update(pdf).digest('hex')};
+}
+function premiumEventResultsPayload(eventCode) {
+  const event=loadEvent(eventCode);if(!event)throw new Error('No encontramos ese evento.');
+  const runs=(Array.isArray(event.runs)?event.runs:[]).slice().reverse().map(run=>({id:String(run.id||''),roomCode:String(run.roomCode||''),startedAt:run.startedAt||'',endedAt:run.endedAt||'',players:Number(run.players)||0,cards:Number(run.cards)||0,winners:Number(run.winners)||0,files:run.files||{},integrity:run.integrity||null}));
+  return{phase:5,event:publicEvent(event),runs};
+}
+function premiumEventRun(event,runId='') {const runs=Array.isArray(event?.runs)?event.runs:[];if(!runs.length)return null;const id=String(runId||'').trim();return(id?runs.find(run=>String(run.id)===id):runs.at(-1))||null;}
+function premiumEventHistoricalEntry(run) {return run?historyEntries().find(entry=>String(entry.id||'')===String(run.archiveId||run.id||''))||historyEntryByRoomCode(run.roomCode):null;}
+function premiumEventResultFile(eventCode,runId,type) {
+  const event=loadEvent(eventCode);if(!event)throw new Error('No encontramos ese evento.');const run=premiumEventRun(event,runId);if(!run)throw new Error('Este Evento todavía no tiene un cierre archivado.');const entry=premiumEventHistoricalEntry(run);if(!entry)throw new Error('No encontramos el archivo histórico de este Evento.');
+  const map={pdf:[run.files?.eventActaPdf,'application/pdf',`${printableTitleFilename(event.name)||'EVENTO'}_${event.code}_ACTA.pdf`],csv:[run.files?.eventActaCsv,'text/csv; charset=utf-8',`${printableTitleFilename(event.name)||'EVENTO'}_${event.code}_ACTA.csv`],json:[run.files?.eventActaJson,'application/json; charset=utf-8',`${printableTitleFilename(event.name)||'EVENTO'}_${event.code}_ACTA.json`]};const choice=map[String(type||'pdf').toLowerCase()];if(!choice?.[0])throw new Error('Tipo de archivo Evento no válido.');const file=historicalFile(entry,choice[0]);if(!file)throw new Error('El archivo histórico del Evento no está disponible.');return{buffer:fs.readFileSync(file),contentType:choice[1],filename:choice[2]};
 }
 
 
@@ -5744,6 +5894,7 @@ function completeTransition() {
 function startRoom(payload = {}) {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'waiting') return adminPayload();
+  assertPremiumEventPreflightForStart();
   const forcedSimulationStart = Boolean(state.roomSettings?.adminSimulation && payload?.force === true);
   const planBefore = startPlanPayload();
   if (!forcedSimulationStart && state.roomSettings?.joinOpen) throw new Error('Primero cerrá las inscripciones. Cerrarlas no inicia el sorteo.');
@@ -5997,6 +6148,11 @@ function archiveCurrentResults() {
   writeAtomic(path.join(dir, 'acta.csv'), officialActaCsv);
   writeAtomic(path.join(dir, 'participantes.csv'), playersCsv);
   writeAtomic(path.join(dir, 'acta.json'), JSON.stringify(acta, null, 2));
+  const premiumEventCode=safeEventCode(state.eventContext?.eventCode || state.roomSettings?.eventCode || '');
+  if(premiumEventCode){
+    const premium=finalizePremiumEventRun(premiumEventCode,meta,acta,dir);
+    if(premium){meta.event={code:premiumEventCode,runId:premium.run.id};meta.files={...meta.files,...premium.run.files};meta.eventActaSha256=premium.pdfSha256;}
+  }
   writeAtomic(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
 
   // Compatibilidad: se conserva el último resultado por workspace.
@@ -7049,7 +7205,10 @@ function winnerDetails(claim) {
     mode: Number(card?.mode || state.game?.mode) === 75 ? 75 : 90,
     grid: card ? deepCopy(card.grid) : [],
     winningNumbers: winningNumbersForClaim(claim, card),
-    winningLineLabel: details.map(detail => detail.label).join(' · ') || null
+    winningLineLabel: details.map(detail => detail.label).join(' · ') || null,
+    eventPlayerId: safeEventPlayerId(claim.eventPlayerId || ''),
+    eventLotCode: safeEventLotCode(claim.eventLotCode || card?.eventLotCode || ''),
+    eventCardNumber: Number(claim.eventCardNumber || card?.eventCardNumber) || null
   };
 }
 
@@ -9331,6 +9490,19 @@ async function dispatchAdminApi(req, res, url, session) {
     if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
     try { return sendJson(res, 200, eventLiveAdminPayload(url.searchParams.get('event'))); } catch(error) { return sendJson(res, 404, { error:String(error.message || error) }); }
   }
+  if (url.pathname === '/api/admin/events/health' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    try { return sendJson(res, 200, premiumEventPreflight(url.searchParams.get('event'))); } catch(error) { return sendJson(res, 404, { error:String(error.message || error) }); }
+  }
+  if (url.pathname === '/api/admin/events/results' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    return sendJson(res, 200, premiumEventResultsPayload(url.searchParams.get('event')));
+  }
+  if (url.pathname === '/api/admin/events/result/file' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    const result=premiumEventResultFile(url.searchParams.get('event'),url.searchParams.get('run'),url.searchParams.get('type'));
+    return sendBuffer(res,200,result.buffer,result.contentType,result.filename);
+  }
   if (url.pathname === '/api/admin/events/live/activate' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
     return sendJson(res, 200, activatePremiumEventLive(await readJson(req), currentWorkspace()));
@@ -9562,6 +9734,7 @@ async function handleApi(req, res, url) {
     }
     if (url.pathname === '/api/event/live-state' && req.method === 'GET') {
       if(!consumeRate(req,'event-live-state',300,60*1000)) return sendJson(res,429,{error:'Demasiadas actualizaciones. Esperá un momento.'});
+      markEventDisplayPresence(url.searchParams.get('evento'),url.searchParams.get('view'));
       try { return sendJson(res,200,premiumEventPublicLivePayload(url.searchParams.get('evento'), url.searchParams.get('token'))); }
       catch(error){ const message=String(error?.message||'No se pudo abrir la pantalla del evento.'); return sendJson(res,message.includes('no válido')?401:404,{error:message}); }
     }

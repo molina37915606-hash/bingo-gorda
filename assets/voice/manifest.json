@@ -1,0 +1,690 @@
+{
+  "generatedAt": "2026-08-22T05:19:00.029Z",
+  "voiceName": "Gorda del bingo",
+  "voiceId": "nfhYhxcjG9f8UFvacXWo",
+  "modelId": "eleven_multilingual_v2",
+  "outputFormat": "mp3_44100_128",
+  "modeLibreIncluded": false,
+  "clips": {
+    "numeros/numero_01": {
+      "path": "assets/voice/numeros/numero_01.mp3",
+      "text": "Uno.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_02": {
+      "path": "assets/voice/numeros/numero_02.mp3",
+      "text": "Dos.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_03": {
+      "path": "assets/voice/numeros/numero_03.mp3",
+      "text": "Tres.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_04": {
+      "path": "assets/voice/numeros/numero_04.mp3",
+      "text": "Cuatro.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_05": {
+      "path": "assets/voice/numeros/numero_05.mp3",
+      "text": "Cinco.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_06": {
+      "path": "assets/voice/numeros/numero_06.mp3",
+      "text": "Seis.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_07": {
+      "path": "assets/voice/numeros/numero_07.mp3",
+      "text": "Siete.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_08": {
+      "path": "assets/voice/numeros/numero_08.mp3",
+      "text": "Ocho.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_09": {
+      "path": "assets/voice/numeros/numero_09.mp3",
+      "text": "Nueve.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_10": {
+      "path": "assets/voice/numeros/numero_10.mp3",
+      "text": "Diez.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_11": {
+      "path": "assets/voice/numeros/numero_11.mp3",
+      "text": "Once.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_12": {
+      "path": "assets/voice/numeros/numero_12.mp3",
+      "text": "Doce.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_13": {
+      "path": "assets/voice/numeros/numero_13.mp3",
+      "text": "Trece.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_14": {
+      "path": "assets/voice/numeros/numero_14.mp3",
+      "text": "Catorce.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_15": {
+      "path": "assets/voice/numeros/numero_15.mp3",
+      "text": "Quince.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_16": {
+      "path": "assets/voice/numeros/numero_16.mp3",
+      "text": "Dieciséis.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_17": {
+      "path": "assets/voice/numeros/numero_17.mp3",
+      "text": "Diecisiete.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_18": {
+      "path": "assets/voice/numeros/numero_18.mp3",
+      "text": "Dieciocho.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_19": {
+      "path": "assets/voice/numeros/numero_19.mp3",
+      "text": "Diecinueve.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_20": {
+      "path": "assets/voice/numeros/numero_20.mp3",
+      "text": "Veinte.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_21": {
+      "path": "assets/voice/numeros/numero_21.mp3",
+      "text": "Veintiuno.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_22": {
+      "path": "assets/voice/numeros/numero_22.mp3",
+      "text": "Veintidós.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_23": {
+      "path": "assets/voice/numeros/numero_23.mp3",
+      "text": "Veintitrés.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_24": {
+      "path": "assets/voice/numeros/numero_24.mp3",
+      "text": "Veinticuatro.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_25": {
+      "path": "assets/voice/numeros/numero_25.mp3",
+      "text": "Veinticinco.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_26": {
+      "path": "assets/voice/numeros/numero_26.mp3",
+      "text": "Veintiséis.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_27": {
+      "path": "assets/voice/numeros/numero_27.mp3",
+      "text": "Veintisiete.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_28": {
+      "path": "assets/voice/numeros/numero_28.mp3",
+      "text": "Veintiocho.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_29": {
+      "path": "assets/voice/numeros/numero_29.mp3",
+      "text": "Veintinueve.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_30": {
+      "path": "assets/voice/numeros/numero_30.mp3",
+      "text": "Treinta.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_31": {
+      "path": "assets/voice/numeros/numero_31.mp3",
+      "text": "Treinta y uno.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_32": {
+      "path": "assets/voice/numeros/numero_32.mp3",
+      "text": "Treinta y dos.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_33": {
+      "path": "assets/voice/numeros/numero_33.mp3",
+      "text": "Treinta y tres.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_34": {
+      "path": "assets/voice/numeros/numero_34.mp3",
+      "text": "Treinta y cuatro.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_35": {
+      "path": "assets/voice/numeros/numero_35.mp3",
+      "text": "Treinta y cinco.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_36": {
+      "path": "assets/voice/numeros/numero_36.mp3",
+      "text": "Treinta y seis.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_37": {
+      "path": "assets/voice/numeros/numero_37.mp3",
+      "text": "Treinta y siete.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_38": {
+      "path": "assets/voice/numeros/numero_38.mp3",
+      "text": "Treinta y ocho.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_39": {
+      "path": "assets/voice/numeros/numero_39.mp3",
+      "text": "Treinta y nueve.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_40": {
+      "path": "assets/voice/numeros/numero_40.mp3",
+      "text": "Cuarenta.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_41": {
+      "path": "assets/voice/numeros/numero_41.mp3",
+      "text": "Cuarenta y uno.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_42": {
+      "path": "assets/voice/numeros/numero_42.mp3",
+      "text": "Cuarenta y dos.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_43": {
+      "path": "assets/voice/numeros/numero_43.mp3",
+      "text": "Cuarenta y tres.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_44": {
+      "path": "assets/voice/numeros/numero_44.mp3",
+      "text": "Cuarenta y cuatro.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_45": {
+      "path": "assets/voice/numeros/numero_45.mp3",
+      "text": "Cuarenta y cinco.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_46": {
+      "path": "assets/voice/numeros/numero_46.mp3",
+      "text": "Cuarenta y seis.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_47": {
+      "path": "assets/voice/numeros/numero_47.mp3",
+      "text": "Cuarenta y siete.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_48": {
+      "path": "assets/voice/numeros/numero_48.mp3",
+      "text": "Cuarenta y ocho.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_49": {
+      "path": "assets/voice/numeros/numero_49.mp3",
+      "text": "Cuarenta y nueve.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_50": {
+      "path": "assets/voice/numeros/numero_50.mp3",
+      "text": "Cincuenta.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_51": {
+      "path": "assets/voice/numeros/numero_51.mp3",
+      "text": "Cincuenta y uno.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_52": {
+      "path": "assets/voice/numeros/numero_52.mp3",
+      "text": "Cincuenta y dos.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_53": {
+      "path": "assets/voice/numeros/numero_53.mp3",
+      "text": "Cincuenta y tres.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_54": {
+      "path": "assets/voice/numeros/numero_54.mp3",
+      "text": "Cincuenta y cuatro.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_55": {
+      "path": "assets/voice/numeros/numero_55.mp3",
+      "text": "Cincuenta y cinco.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_56": {
+      "path": "assets/voice/numeros/numero_56.mp3",
+      "text": "Cincuenta y seis.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_57": {
+      "path": "assets/voice/numeros/numero_57.mp3",
+      "text": "Cincuenta y siete.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_58": {
+      "path": "assets/voice/numeros/numero_58.mp3",
+      "text": "Cincuenta y ocho.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_59": {
+      "path": "assets/voice/numeros/numero_59.mp3",
+      "text": "Cincuenta y nueve.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_60": {
+      "path": "assets/voice/numeros/numero_60.mp3",
+      "text": "Sesenta.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_61": {
+      "path": "assets/voice/numeros/numero_61.mp3",
+      "text": "Sesenta y uno.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_62": {
+      "path": "assets/voice/numeros/numero_62.mp3",
+      "text": "Sesenta y dos.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_63": {
+      "path": "assets/voice/numeros/numero_63.mp3",
+      "text": "Sesenta y tres.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_64": {
+      "path": "assets/voice/numeros/numero_64.mp3",
+      "text": "Sesenta y cuatro.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_65": {
+      "path": "assets/voice/numeros/numero_65.mp3",
+      "text": "Sesenta y cinco.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_66": {
+      "path": "assets/voice/numeros/numero_66.mp3",
+      "text": "Sesenta y seis.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_67": {
+      "path": "assets/voice/numeros/numero_67.mp3",
+      "text": "Sesenta y siete.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_68": {
+      "path": "assets/voice/numeros/numero_68.mp3",
+      "text": "Sesenta y ocho.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_69": {
+      "path": "assets/voice/numeros/numero_69.mp3",
+      "text": "Sesenta y nueve.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_70": {
+      "path": "assets/voice/numeros/numero_70.mp3",
+      "text": "Setenta.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_71": {
+      "path": "assets/voice/numeros/numero_71.mp3",
+      "text": "Setenta y uno.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_72": {
+      "path": "assets/voice/numeros/numero_72.mp3",
+      "text": "Setenta y dos.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_73": {
+      "path": "assets/voice/numeros/numero_73.mp3",
+      "text": "Setenta y tres.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_74": {
+      "path": "assets/voice/numeros/numero_74.mp3",
+      "text": "Setenta y cuatro.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_75": {
+      "path": "assets/voice/numeros/numero_75.mp3",
+      "text": "Setenta y cinco.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_76": {
+      "path": "assets/voice/numeros/numero_76.mp3",
+      "text": "Setenta y seis.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_77": {
+      "path": "assets/voice/numeros/numero_77.mp3",
+      "text": "Setenta y siete.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_78": {
+      "path": "assets/voice/numeros/numero_78.mp3",
+      "text": "Setenta y ocho.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_79": {
+      "path": "assets/voice/numeros/numero_79.mp3",
+      "text": "Setenta y nueve.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_80": {
+      "path": "assets/voice/numeros/numero_80.mp3",
+      "text": "Ochenta.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_81": {
+      "path": "assets/voice/numeros/numero_81.mp3",
+      "text": "Ochenta y uno.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_82": {
+      "path": "assets/voice/numeros/numero_82.mp3",
+      "text": "Ochenta y dos.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_83": {
+      "path": "assets/voice/numeros/numero_83.mp3",
+      "text": "Ochenta y tres.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_84": {
+      "path": "assets/voice/numeros/numero_84.mp3",
+      "text": "Ochenta y cuatro.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_85": {
+      "path": "assets/voice/numeros/numero_85.mp3",
+      "text": "Ochenta y cinco.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_86": {
+      "path": "assets/voice/numeros/numero_86.mp3",
+      "text": "Ochenta y seis.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_87": {
+      "path": "assets/voice/numeros/numero_87.mp3",
+      "text": "Ochenta y siete.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_88": {
+      "path": "assets/voice/numeros/numero_88.mp3",
+      "text": "Ochenta y ocho.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_89": {
+      "path": "assets/voice/numeros/numero_89.mp3",
+      "text": "Ochenta y nueve.",
+      "group": "Números 1-90"
+    },
+    "numeros/numero_90": {
+      "path": "assets/voice/numeros/numero_90.mp3",
+      "text": "Noventa.",
+      "group": "Números 1-90"
+    },
+    "letras/letra_b": {
+      "path": "assets/voice/letras/letra_b.mp3",
+      "text": "Be.",
+      "group": "Letras Bingo 75"
+    },
+    "letras/letra_i": {
+      "path": "assets/voice/letras/letra_i.mp3",
+      "text": "I.",
+      "group": "Letras Bingo 75"
+    },
+    "letras/letra_n": {
+      "path": "assets/voice/letras/letra_n.mp3",
+      "text": "Ene.",
+      "group": "Letras Bingo 75"
+    },
+    "letras/letra_g": {
+      "path": "assets/voice/letras/letra_g.mp3",
+      "text": "Ge.",
+      "group": "Letras Bingo 75"
+    },
+    "letras/letra_o": {
+      "path": "assets/voice/letras/letra_o.mp3",
+      "text": "O.",
+      "group": "Letras Bingo 75"
+    },
+    "inicio/inicio_bienvenida": {
+      "path": "assets/voice/inicio/inicio_bienvenida.mp3",
+      "text": "Bienvenidos a El Bingo de la Gorda.",
+      "group": "Inicio"
+    },
+    "inicio/inicio_preparados": {
+      "path": "assets/voice/inicio/inicio_preparados.mp3",
+      "text": "Preparen sus cartones, que estamos por comenzar.",
+      "group": "Inicio"
+    },
+    "inicio/inicio_atencion": {
+      "path": "assets/voice/inicio/inicio_atencion.mp3",
+      "text": "Atención, que comienza la partida.",
+      "group": "Inicio"
+    },
+    "inicio/inicio_suerte": {
+      "path": "assets/voice/inicio/inicio_suerte.mp3",
+      "text": "Mucha suerte para todos.",
+      "group": "Inicio"
+    },
+    "inicio/inicio_comenzamos": {
+      "path": "assets/voice/inicio/inicio_comenzamos.mp3",
+      "text": "Comenzamos.",
+      "group": "Inicio"
+    },
+    "partida/partida_pausa": {
+      "path": "assets/voice/partida/partida_pausa.mp3",
+      "text": "La partida está en pausa.",
+      "group": "Partida"
+    },
+    "partida/partida_continuamos": {
+      "path": "assets/voice/partida/partida_continuamos.mp3",
+      "text": "Continuamos con la partida.",
+      "group": "Partida"
+    },
+    "partida/partida_reanudamos": {
+      "path": "assets/voice/partida/partida_reanudamos.mp3",
+      "text": "Reanudamos el sorteo.",
+      "group": "Partida"
+    },
+    "partida/partida_ultima_etapa": {
+      "path": "assets/voice/partida/partida_ultima_etapa.mp3",
+      "text": "Entramos en la etapa final de la partida.",
+      "group": "Partida"
+    },
+    "partida/partida_ultima_bolilla": {
+      "path": "assets/voice/partida/partida_ultima_bolilla.mp3",
+      "text": "Atención. Última bolilla.",
+      "group": "Partida"
+    },
+    "partida/partida_finalizada": {
+      "path": "assets/voice/partida/partida_finalizada.mp3",
+      "text": "Partida finalizada.",
+      "group": "Partida"
+    },
+    "reclamos/reclamo_recibido": {
+      "path": "assets/voice/reclamos/reclamo_recibido.mp3",
+      "text": "Reclamo recibido.",
+      "group": "Reclamos"
+    },
+    "reclamos/reclamo_verificando": {
+      "path": "assets/voice/reclamos/reclamo_verificando.mp3",
+      "text": "Estamos verificando el reclamo.",
+      "group": "Reclamos"
+    },
+    "reclamos/reclamo_valido": {
+      "path": "assets/voice/reclamos/reclamo_valido.mp3",
+      "text": "Reclamo válido.",
+      "group": "Reclamos"
+    },
+    "reclamos/reclamo_no_valido": {
+      "path": "assets/voice/reclamos/reclamo_no_valido.mp3",
+      "text": "El reclamo no es válido. Continuamos jugando.",
+      "group": "Reclamos"
+    },
+    "reclamos/reclamo_empate": {
+      "path": "assets/voice/reclamos/reclamo_empate.mp3",
+      "text": "Tenemos más de un ganador.",
+      "group": "Reclamos"
+    },
+    "premios/premio_ambo_cantado": {
+      "path": "assets/voice/premios/premio_ambo_cantado.mp3",
+      "text": "¡Ambo cabeza!",
+      "group": "Premios"
+    },
+    "premios/premio_ambo_confirmado": {
+      "path": "assets/voice/premios/premio_ambo_confirmado.mp3",
+      "text": "Ambo cabeza confirmado.",
+      "group": "Premios"
+    },
+    "premios/premio_linea_cantada": {
+      "path": "assets/voice/premios/premio_linea_cantada.mp3",
+      "text": "¡Línea!",
+      "group": "Premios"
+    },
+    "premios/premio_linea_confirmada": {
+      "path": "assets/voice/premios/premio_linea_confirmada.mp3",
+      "text": "Línea confirmada.",
+      "group": "Premios"
+    },
+    "premios/premio_segunda_linea_cantada": {
+      "path": "assets/voice/premios/premio_segunda_linea_cantada.mp3",
+      "text": "¡Segunda línea!",
+      "group": "Premios"
+    },
+    "premios/premio_segunda_linea_confirmada": {
+      "path": "assets/voice/premios/premio_segunda_linea_confirmada.mp3",
+      "text": "Segunda línea confirmada.",
+      "group": "Premios"
+    },
+    "premios/premio_doble_linea_cantada": {
+      "path": "assets/voice/premios/premio_doble_linea_cantada.mp3",
+      "text": "¡Doble línea!",
+      "group": "Premios"
+    },
+    "premios/premio_doble_linea_confirmada": {
+      "path": "assets/voice/premios/premio_doble_linea_confirmada.mp3",
+      "text": "Doble línea confirmada.",
+      "group": "Premios"
+    },
+    "premios/premio_triple_linea_cantada": {
+      "path": "assets/voice/premios/premio_triple_linea_cantada.mp3",
+      "text": "¡Triple línea!",
+      "group": "Premios"
+    },
+    "premios/premio_triple_linea_confirmada": {
+      "path": "assets/voice/premios/premio_triple_linea_confirmada.mp3",
+      "text": "Triple línea confirmada.",
+      "group": "Premios"
+    },
+    "premios/premio_esquinas_cantado": {
+      "path": "assets/voice/premios/premio_esquinas_cantado.mp3",
+      "text": "¡Cuatro esquinas!",
+      "group": "Premios"
+    },
+    "premios/premio_esquinas_confirmado": {
+      "path": "assets/voice/premios/premio_esquinas_confirmado.mp3",
+      "text": "Cuatro esquinas confirmado.",
+      "group": "Premios"
+    },
+    "premios/premio_bingo_cantado": {
+      "path": "assets/voice/premios/premio_bingo_cantado.mp3",
+      "text": "¡Bingo!",
+      "group": "Premios"
+    },
+    "premios/premio_bingo_confirmado": {
+      "path": "assets/voice/premios/premio_bingo_confirmado.mp3",
+      "text": "Bingo confirmado.",
+      "group": "Premios"
+    },
+    "comentarios/comentario_01": {
+      "path": "assets/voice/comentarios/comentario_01.mp3",
+      "text": "Seguimos jugando.",
+      "group": "Comentarios"
+    },
+    "comentarios/comentario_02": {
+      "path": "assets/voice/comentarios/comentario_02.mp3",
+      "text": "Atención a sus cartones.",
+      "group": "Comentarios"
+    },
+    "comentarios/comentario_03": {
+      "path": "assets/voice/comentarios/comentario_03.mp3",
+      "text": "La suerte puede estar en la próxima bolilla.",
+      "group": "Comentarios"
+    },
+    "comentarios/comentario_04": {
+      "path": "assets/voice/comentarios/comentario_04.mp3",
+      "text": "Vamos por la siguiente.",
+      "group": "Comentarios"
+    },
+    "comentarios/comentario_05": {
+      "path": "assets/voice/comentarios/comentario_05.mp3",
+      "text": "Cada vez falta menos.",
+      "group": "Comentarios"
+    },
+    "comentarios/comentario_06": {
+      "path": "assets/voice/comentarios/comentario_06.mp3",
+      "text": "Seguimos con El Bingo de la Gorda.",
+      "group": "Comentarios"
+    },
+    "cierre/cierre_felicitaciones": {
+      "path": "assets/voice/cierre/cierre_felicitaciones.mp3",
+      "text": "Felicitaciones a los ganadores.",
+      "group": "Cierre"
+    },
+    "cierre/cierre_final": {
+      "path": "assets/voice/cierre/cierre_final.mp3",
+      "text": "GRACIAS POR JUGAR AL BINGO DE LA GORDA.",
+      "group": "Cierre"
+    },
+    "demo/demo_inicio": {
+      "path": "assets/voice/demo/demo_inicio.mp3",
+      "text": "Esta es una partida de demostración de El Bingo de la Gorda.",
+      "group": "Demo"
+    },
+    "demo/demo_explicacion": {
+      "path": "assets/voice/demo/demo_explicacion.mp3",
+      "text": "Podés usar esta partida para conocer cómo funciona el juego.",
+      "group": "Demo"
+    },
+    "demo/demo_fin": {
+      "path": "assets/voice/demo/demo_fin.mp3",
+      "text": "La demostración terminó.",
+      "group": "Demo"
+    }
+  }
+}

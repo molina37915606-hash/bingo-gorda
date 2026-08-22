@@ -1,0 +1,8 @@
+Fecha: 2026-08-22T05:23:00.639Z
+Voz: Gorda del bingo
+Voice ID: nfhYhxcjG9f8UFvacXWo
+Generados en esta ejecución: 136
+Omitidos porque ya existían: 0
+Errores: 0
+Archivos completos actualmente: 136/136
+Bolillero Modo Libre: excluido

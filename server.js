@@ -33,6 +33,9 @@ const PLATFORM_FILE = path.join(DATA_DIR, 'plataforma.json');
 const WORKSPACES_DIR = path.join(DATA_DIR, 'operadores');
 const HISTORY_DIR = path.join(DATA_DIR, 'historial');
 const CARD_LOTS_DIR = path.join(DATA_DIR, 'cartones');
+const EVENTS_DIR = path.join(DATA_DIR, 'eventos');
+const EVENT_ASSETS_DIR = path.join(EVENTS_DIR, 'assets');
+const EVENT_LOTS_DIR = path.join(EVENTS_DIR, 'tandas');
 const COMMUNITY_BANNERS_DIR = path.join(DATA_DIR, 'community-banners');
 const OPERATIONAL_WORKSPACE_IDS = ['owner', ...Array.from({ length: 9 }, (_, index) => `slot${index + 2}`)];
 const MAX_OPERATIONAL_ROOMS = OPERATIONAL_WORKSPACE_IDS.length;
@@ -119,6 +122,9 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
 fs.mkdirSync(HISTORY_DIR, { recursive: true });
 fs.mkdirSync(CARD_LOTS_DIR, { recursive: true });
+fs.mkdirSync(EVENTS_DIR, { recursive: true });
+fs.mkdirSync(EVENT_ASSETS_DIR, { recursive: true });
+fs.mkdirSync(EVENT_LOTS_DIR, { recursive: true });
 fs.mkdirSync(COMMUNITY_BANNERS_DIR, { recursive: true });
 
 function loadLastResultMeta(metaFile, pdfFile) {
@@ -2814,6 +2820,359 @@ function buildCardLotPdf(lot) {
   parts.push(Buffer.from(xref, 'latin1'));
   return Buffer.concat(parts);
 }
+
+
+// -----------------------------------------------------------------------------
+// MODO EVENTO PREMIUM - FASE 1
+// Evento + diseñador de tanda + códigos privados + PDFs premium.
+// El motor de partida todavía no cambia en esta fase.
+// -----------------------------------------------------------------------------
+function safeEventCode(value) {
+  const code = String(value || '').trim().toUpperCase();
+  return /^EV-[A-Z0-9]{6}$/.test(code) ? code : '';
+}
+function safeEventLotCode(value) {
+  const code = String(value || '').trim().toUpperCase();
+  return /^EVT-[A-Z0-9]{6}$/.test(code) ? code : '';
+}
+function eventPath(code) {
+  const safe = safeEventCode(code);
+  return safe ? path.join(EVENTS_DIR, `${safe}.json`) : '';
+}
+function eventLotPath(code) {
+  const safe = safeEventLotCode(code);
+  return safe ? path.join(EVENT_LOTS_DIR, `${safe}.json`) : '';
+}
+function randomPremiumCode(prefix, dir, validator) {
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const bytes = crypto.randomBytes(6);
+    let suffix = '';
+    for (let index = 0; index < 6; index++) suffix += alphabet[bytes[index] % alphabet.length];
+    const code = `${prefix}-${suffix}`;
+    const file = validator(code) ? path.join(dir, `${code}.json`) : '';
+    if (file && !fs.existsSync(file)) return code;
+  }
+  throw new Error('No se pudo crear un código único para el evento.');
+}
+function randomEventCode() { return randomPremiumCode('EV', EVENTS_DIR, safeEventCode); }
+function randomEventLotCode() { return randomPremiumCode('EVT', EVENT_LOTS_DIR, safeEventLotCode); }
+function normalizeEventText(value, max = 80) {
+  return String(value || '').normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+function normalizeEventHex(value, fallback) {
+  const raw = String(value || '').trim();
+  return /^#[0-9A-Fa-f]{6}$/.test(raw) ? raw.toUpperCase() : fallback;
+}
+function normalizeEventDate(value) {
+  const raw = String(value || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
+}
+function eventLogoPath(code) {
+  const safe = safeEventCode(code);
+  return safe ? path.join(EVENT_ASSETS_DIR, `${safe}.jpg`) : '';
+}
+function eventLotLogoPath(code) {
+  const safe = safeEventLotCode(code);
+  return safe ? path.join(EVENT_ASSETS_DIR, `${safe}.jpg`) : '';
+}
+function saveEventLogo(code, dataUrl) {
+  const file = eventLogoPath(code);
+  if (!file) return false;
+  if (!dataUrl) return false;
+  const match = String(dataUrl).match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) throw new Error('El logo del evento debe enviarse como JPEG.');
+  const buffer = Buffer.from(match[1], 'base64');
+  if (!buffer.length || buffer.length > 2_500_000) throw new Error('El logo del evento es demasiado grande.');
+  // La interfaz normaliza el logo a JPEG cuadrado 512 x 512.
+  fs.writeFileSync(file, buffer);
+  return true;
+}
+function publicEvent(event) {
+  return {
+    version: Number(event?.version) || 1,
+    code: safeEventCode(event?.code),
+    name: normalizeEventText(event?.name, 80),
+    tagline: normalizeEventText(event?.tagline, 100),
+    sponsor: normalizeEventText(event?.sponsor, 80),
+    date: normalizeEventDate(event?.date),
+    location: normalizeEventText(event?.location, 100),
+    mode: Number(event?.mode) === 75 ? 75 : 90,
+    colors: {
+      primary: normalizeEventHex(event?.colors?.primary, '#6D238C'),
+      secondary: normalizeEventHex(event?.colors?.secondary, '#D83A84'),
+      accent: normalizeEventHex(event?.colors?.accent, '#E0A71A')
+    },
+    logoUrl: fs.existsSync(eventLogoPath(event?.code)) ? `/event-assets/${encodeURIComponent(event.code)}.jpg?v=${encodeURIComponent(event.updatedAt || event.createdAt || '1')}` : '/assets/logo.webp',
+    createdAt: event?.createdAt || '',
+    updatedAt: event?.updatedAt || event?.createdAt || '',
+    status: event?.status || 'draft',
+    lotCodes: Array.isArray(event?.lotCodes) ? event.lotCodes.filter(safeEventLotCode) : []
+  };
+}
+function loadEvent(code) {
+  const file = eventPath(code);
+  if (!file || !fs.existsSync(file)) return null;
+  try { const parsed = JSON.parse(fs.readFileSync(file, 'utf8')); return safeEventCode(parsed.code) ? parsed : null; } catch { return null; }
+}
+function saveEvent(event) {
+  const file = eventPath(event.code);
+  if (!file) throw new Error('Código de evento no válido.');
+  const temp = `${file}.tmp`;
+  fs.writeFileSync(temp, JSON.stringify(event, null, 2), 'utf8');
+  fs.renameSync(temp, file);
+}
+function createPremiumEvent(payload = {}) {
+  const name = normalizeEventText(payload.name, 80);
+  if (!name) throw new Error('Escribí el nombre del evento.');
+  const code = randomEventCode();
+  const now = nowIso();
+  const event = {
+    version: 1, code, name,
+    tagline: normalizeEventText(payload.tagline, 100),
+    sponsor: normalizeEventText(payload.sponsor, 80),
+    date: normalizeEventDate(payload.date),
+    location: normalizeEventText(payload.location, 100),
+    mode: Number(payload.mode) === 75 ? 75 : 90,
+    colors: {
+      primary: normalizeEventHex(payload.colors?.primary, '#6D238C'),
+      secondary: normalizeEventHex(payload.colors?.secondary, '#D83A84'),
+      accent: normalizeEventHex(payload.colors?.accent, '#E0A71A')
+    },
+    status: 'draft', lotCodes: [], createdAt: now, updatedAt: now
+  };
+  if (payload.logoDataUrl) saveEventLogo(code, payload.logoDataUrl);
+  saveEvent(event);
+  return publicEvent(event);
+}
+function eventListPayload() {
+  const events = [];
+  for (const name of fs.readdirSync(EVENTS_DIR, { withFileTypes: true })) {
+    if (!name.isFile() || !/^EV-[A-Z0-9]{6}\.json$/.test(name.name)) continue;
+    const event = loadEvent(name.name.replace(/\.json$/, ''));
+    if (event) events.push(publicEvent(event));
+  }
+  return events.sort((a,b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 100);
+}
+function randomEventCardAccessCode(used) {
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const bytes = crypto.randomBytes(8);
+    let raw = '';
+    for (let i=0;i<8;i++) raw += alphabet[bytes[i] % alphabet.length];
+    const code = `${raw.slice(0,4)}-${raw.slice(4)}`;
+    if (!used.has(code)) { used.add(code); return code; }
+  }
+  throw new Error('No se pudo crear un código privado para un cartón.');
+}
+function eventLotIntegrityPayload(lot) {
+  return {
+    version: lot.version, code: lot.code, eventCode: lot.eventCode, mode: lot.mode,
+    totalCards: lot.totalCards, seriesCount: lot.seriesCount, createdAt: lot.createdAt,
+    branding: lot.branding, cards: lot.cards.map(card => ({
+      globalNumber: card.globalNumber, seriesNumber: card.seriesNumber, cardNumber: card.cardNumber,
+      accessCode: card.accessCode, grid: card.grid
+    }))
+  };
+}
+function eventLotHash(lot) {
+  return crypto.createHash('sha256').update(JSON.stringify(eventLotIntegrityPayload(lot))).digest('hex');
+}
+function publicEventLot(lot, includePrivate = false) {
+  const base = {
+    version: Number(lot?.version) || 1,
+    code: safeEventLotCode(lot?.code), eventCode: safeEventCode(lot?.eventCode),
+    mode: Number(lot?.mode) === 75 ? 75 : 90,
+    totalCards: Number(lot?.totalCards) || 0, seriesCount: Number(lot?.seriesCount) || 0,
+    cardsPerSeries: 6, createdAt: lot?.createdAt || '', hash: String(lot?.hash || ''),
+    branding: { ...(lot?.branding || {}) }
+  };
+  if (includePrivate) base.cards = (lot.cards || []).map(card => ({...card}));
+  return base;
+}
+function loadEventLot(code) {
+  const file = eventLotPath(code);
+  if (!file || !fs.existsSync(file)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!safeEventLotCode(parsed.code) || !Array.isArray(parsed.cards)) return null;
+    if (parsed.hash && parsed.hash !== eventLotHash(parsed)) return null;
+    return parsed;
+  } catch { return null; }
+}
+function createPremiumEventLot(payload = {}) {
+  const event = loadEvent(payload.eventCode);
+  if (!event) throw new Error('No encontramos el evento indicado.');
+  const mode = Number(event.mode) === 75 ? 75 : 90;
+  const requested = Math.round(Number(payload.totalCards) || 60);
+  const totalCards = Math.max(6, Math.min(300, Math.ceil(requested / 6) * 6));
+  const seriesCount = totalCards / 6;
+  const usedCodes = new Set();
+  const cards = [];
+  if (mode === 90) {
+    for (let seriesIndex=0; seriesIndex<seriesCount; seriesIndex++) {
+      const strip = generateCard90StripServer();
+      strip.forEach((grid, cardIndex) => cards.push({
+        seriesNumber: seriesIndex + 1, cardNumber: cardIndex + 1,
+        globalNumber: seriesIndex * 6 + cardIndex + 1, mode, grid,
+        accessCode: randomEventCardAccessCode(usedCodes)
+      }));
+    }
+  } else {
+    const rules = roomRulesFor(75, { line:true, corners:true, doubleLine:true, tripleLine:true, bingo:true });
+    const generated = generateDiverseCardsServer(totalCards, 75, rules, 13);
+    generated.forEach((card, index) => cards.push({
+      seriesNumber: Math.floor(index / 6) + 1, cardNumber: index % 6 + 1,
+      globalNumber: index + 1, mode, grid: card.grid,
+      accessCode: randomEventCardAccessCode(usedCodes)
+    }));
+  }
+  const code = randomEventLotCode();
+  const customLogo = eventLogoPath(event.code);
+  const logoSource = customLogo && fs.existsSync(customLogo) ? customLogo : path.join(ROOT, 'assets', 'logo-pdf.jpg');
+  const logoTarget = eventLotLogoPath(code);
+  fs.copyFileSync(logoSource, logoTarget);
+  const logoBuffer = fs.readFileSync(logoTarget);
+  const branding = {
+    eventName: event.name, tagline: event.tagline, sponsor: event.sponsor,
+    date: event.date, location: event.location, colors: event.colors,
+    logoEventCode: event.code, logoLotCode: code,
+    logoWidth: customLogo && fs.existsSync(customLogo) ? 512 : 360,
+    logoHeight: customLogo && fs.existsSync(customLogo) ? 512 : 360,
+    logoSha256: crypto.createHash('sha256').update(logoBuffer).digest('hex')
+  };
+  const lot = { version:1, code, eventCode:event.code, mode, totalCards, seriesCount, cardsPerSeries:6, createdAt:nowIso(), branding, cards };
+  lot.hash = eventLotHash(lot);
+  const file = eventLotPath(code), temp = `${file}.tmp`;
+  fs.writeFileSync(temp, JSON.stringify(lot, null, 2), 'utf8'); fs.renameSync(temp, file);
+  event.lotCodes = Array.from(new Set([...(event.lotCodes || []), code])); event.updatedAt = nowIso(); saveEvent(event);
+  return publicEventLot(lot, false);
+}
+function eventLotSeries(lot) {
+  return Array.from({length: lot.seriesCount}, (_, index) => ({
+    number:index + 1,
+    cards: lot.cards.filter(card => Number(card.seriesNumber) === index + 1)
+  }));
+}
+function eventCardByGlobalNumber(lot, value) {
+  const globalNumber = Math.max(1, Math.round(Number(value) || 0));
+  return lot.cards.find(card => Number(card.globalNumber) === globalNumber) || null;
+}
+function premiumEventLotLogo(lot) {
+  const file = eventLotLogoPath(lot?.code);
+  if (file && fs.existsSync(file)) return { buffer:fs.readFileSync(file), width:Number(lot?.branding?.logoWidth)||360, height:Number(lot?.branding?.logoHeight)||360 };
+  const eventFile = eventLogoPath(lot?.eventCode);
+  if (eventFile && fs.existsSync(eventFile)) return { buffer:fs.readFileSync(eventFile), width:512, height:512 };
+  return { buffer:fs.readFileSync(path.join(ROOT, 'assets', 'logo-pdf.jpg')), width:360, height:360 };
+}
+function pdfDocumentFromStreams(pageStreams, pageW, pageH, logoInfo, marker = '') {
+  const objects = [];
+  const addObject = body => { objects.push(body); return objects.length; };
+  const catalogId = addObject(''); const pagesId = addObject('');
+  const fontRegularId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  const fontBoldId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  const logo = logoInfo.buffer;
+  const imageId = addObject(Buffer.concat([
+    Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${logoInfo.width} /Height ${logoInfo.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logo.length} >>\nstream\n`, 'latin1'),
+    logo, Buffer.from('\nendstream', 'latin1')
+  ]));
+  const pageIds = [];
+  for (const stream of pageStreams) {
+    const contentBuffer = Buffer.from(stream, 'latin1');
+    const contentId = addObject(Buffer.concat([Buffer.from(`<< /Length ${contentBuffer.length} >>\nstream\n`, 'latin1'), contentBuffer, Buffer.from('\nendstream', 'latin1')]));
+    pageIds.push(addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> /XObject << /Logo ${imageId} 0 R >> >> /Contents ${contentId} 0 R >>`));
+  }
+  objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
+  objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map(id => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
+  if (marker) {
+    const markerBuffer = Buffer.from(marker, 'utf8');
+    addObject(Buffer.concat([Buffer.from(`<< /Length ${markerBuffer.length} >>\nstream\n`, 'latin1'), markerBuffer, Buffer.from('\nendstream', 'latin1')]));
+  }
+  const parts = [Buffer.from('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n', 'latin1')]; const offsets = [0]; let length = parts[0].length;
+  objects.forEach((body,index)=>{ offsets.push(length); const head=Buffer.from(`${index+1} 0 obj\n`,'latin1'); const content=Buffer.isBuffer(body)?body:Buffer.from(body,'latin1'); const tail=Buffer.from('\nendobj\n','latin1'); parts.push(head,content,tail); length += head.length+content.length+tail.length; });
+  const xrefOffset=length; let xref=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;
+  for(let index=1;index<=objects.length;index++) xref += `${String(offsets[index]).padStart(10,'0')} 00000 n \n`;
+  xref += `trailer\n<< /Size ${objects.length+1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  parts.push(Buffer.from(xref,'latin1')); return Buffer.concat(parts);
+}
+function premiumPdfCanvas(commands, PAGE_W, PAGE_H, colors) {
+  const rgb = hex => hexRgb(hex).map(value => value.toFixed(3)).join(' ');
+  const topY = (y, height=0) => PAGE_H - y - height;
+  const rect = (x,y,width,height,fill=null,stroke=null,lineWidth=1) => { if(fill)commands.push(`${rgb(fill)} rg`); if(stroke)commands.push(`${rgb(stroke)} RG ${lineWidth} w`); commands.push(`${x.toFixed(2)} ${topY(y,height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re ${fill&&stroke?'B':fill?'f':'S'}`); };
+  const text = (value,x,y,size=10,options={}) => { const font=options.bold?'F2':'F1', color=options.color||colors.ink, maxWidth=options.maxWidth||null, shown=maxWidth?fitPdfText(value,maxWidth,size):pdfLatin(value); let tx=x; const width=pdfTextWidth(shown,size); if(options.align==='center')tx=x-width/2; if(options.align==='right')tx=x-width; commands.push(`BT /${font} ${size.toFixed(2)} Tf ${rgb(color)} rg 1 0 0 1 ${tx.toFixed(2)} ${(PAGE_H-y-size).toFixed(2)} Tm (${pdfEscape(shown)}) Tj ET`); };
+  const image = (x,y,width,height) => commands.push(`q ${width.toFixed(2)} 0 0 ${height.toFixed(2)} ${x.toFixed(2)} ${topY(y,height).toFixed(2)} cm /Logo Do Q`);
+  return {rgb,topY,rect,text,image};
+}
+function drawPremiumCard(commands, canvas, card, x, y, cardW, cardH, lot, options={}) {
+  const {rect,text,image} = canvas; const mode=lot.mode; const c=lot.branding.colors || {};
+  const colors={ink:'#21192A',muted:'#6B6570',primary:normalizeEventHex(c.primary,'#6D238C'),secondary:normalizeEventHex(c.secondary,'#D83A84'),accent:normalizeEventHex(c.accent,'#E0A71A'),line:'#D8D2DC',empty:'#EEEAF1',white:'#FFFFFF'};
+  rect(x,y,cardW,cardH,'#FFFFFF',colors.line,.8); rect(x,y,cardW,4,colors.primary);
+  const logoSize=Math.min(34,cardH*.18); image(x+8,y+8,logoSize,logoSize);
+  text(lot.branding.eventName || 'EL BINGO DE LA GORDA',x+logoSize+15,y+7,Math.min(11,cardH*.055),{bold:true,color:colors.primary,maxWidth:cardW*.56});
+  const sub=[lot.branding.tagline,lot.branding.sponsor?`Sponsor: ${lot.branding.sponsor}`:''].filter(Boolean).join(' · ');
+  if(sub) text(sub,x+logoSize+15,y+22,5.6,{color:colors.muted,maxWidth:cardW*.55});
+  text(`Cartón ${String(card.globalNumber).padStart(4,'0')}`,x+cardW-9,y+8,9,{bold:true,color:colors.secondary,align:'right'});
+  text(`Tanda ${lot.code} · Serie ${String(card.seriesNumber).padStart(2,'0')}`,x+cardW-9,y+22,5.5,{color:colors.muted,align:'right',maxWidth:cardW*.38});
+  if(mode===90){
+    const gx=x+8, gy=y+42, gw=cardW-16, gh=cardH-51, cw=gw/9, ch=gh/3;
+    for(let r=0;r<3;r++)for(let col=0;col<9;col++){const value=card.grid?.[r]?.[col],cx=gx+col*cw,cy=gy+r*ch;rect(cx,cy,cw,ch,value==null?colors.empty:'#FFFFFF',colors.line,.55);if(Number.isFinite(value))text(String(value),cx+cw/2,cy+ch*.23,Math.min(18,ch*.48),{bold:true,align:'center',color:colors.ink});}
+  }else{
+    const gx=x+9,gy=y+41,gw=cardW-18,headerH=Math.min(20,cardH*.10),gh=cardH-51,cw=gw/5,ch=(gh-headerH)/5;
+    'BINGO'.split('').forEach((letter,col)=>{const cx=gx+col*cw;rect(cx,gy,cw,headerH,col===4?'#FBEAF3':'#F3ECF7',colors.line,.55);text(letter,cx+cw/2,gy+3,10,{bold:true,align:'center',color:col===4?colors.secondary:colors.primary});});
+    for(let r=0;r<5;r++)for(let col=0;col<5;col++){const value=card.grid?.[r]?.[col],cx=gx+col*cw,cy=gy+headerH+r*ch,free=value==='LIBRE';rect(cx,cy,cw,ch,free?'#FFF8DF':'#FFFFFF',free?colors.accent:colors.line,free?.9:.55);if(free)commands.push(pdfStarCommands(cx+cw/2,cy+ch/2,Math.min(cw,ch)*.26,Math.min(cw,ch)*.12,canvas.rgb,colors.accent,canvas.topY));else if(Number.isFinite(value))text(String(value),cx+cw/2,cy+ch*.22,Math.min(18,ch*.44),{bold:true,align:'center',color:colors.ink});}
+  }
+}
+function buildPremiumEventPrintPdf(lot) {
+  const PAGE_W=842,PAGE_H=595,logo=premiumEventLotLogo(lot),streams=[];
+  const colors={ink:'#21192A'};
+  for(const series of eventLotSeries(lot)){
+    const commands=[]; const canvas=premiumPdfCanvas(commands,PAGE_W,PAGE_H,colors); canvas.rect(0,0,PAGE_W,PAGE_H,'#FFFFFF');
+    const marginX=18,marginTop=14,footerH=24,gapX=10,gapY=8,cardW=(PAGE_W-marginX*2-gapX)/2,cardH=(PAGE_H-marginTop-footerH-gapY*2)/3;
+    series.cards.forEach((card,index)=>drawPremiumCard(commands,canvas,card,marginX+(index%2)*(cardW+gapX),marginTop+Math.floor(index/2)*(cardH+gapY),cardW,cardH,lot));
+    canvas.text(`${lot.branding.eventName} · ${lot.code} · 6 cartones por hoja · CÓDIGOS PRIVADOS OMITIDOS`,PAGE_W/2,PAGE_H-15,6.7,{align:'center',color:'#77707C',maxWidth:PAGE_W-80}); streams.push(commands.join('\n'));
+  }
+  return pdfDocumentFromStreams(streams,PAGE_W,PAGE_H,logo,`LA_GORDA_EVENT_LOT_V1\n${lot.code}\n${lot.hash}\nNO_PRIVATE_CODES`);
+}
+function qrMatrixForText(value) {
+  try {
+    // Dependencia liviana MIT, instalada por npm install en Render.
+    const qrcode = require('qrcode-generator');
+    const qr = qrcode(0, 'M'); qr.addData(String(value)); qr.make();
+    const count=qr.getModuleCount(), rows=[]; for(let r=0;r<count;r++){const row=[];for(let col=0;col<count;col++)row.push(Boolean(qr.isDark(r,col)));rows.push(row);} return rows;
+  } catch (error) { return null; }
+}
+function drawQrCommands(commands, canvas, value, x, y, size) {
+  const matrix=qrMatrixForText(value); if(!matrix){canvas.rect(x,y,size,size,'#FFFFFF','#111111',1);canvas.text('QR',x+size/2,y+size*.38,18,{bold:true,align:'center',color:'#111111'});return false;}
+  const count=matrix.length,quiet=4,cell=size/(count+quiet*2); canvas.rect(x,y,size,size,'#FFFFFF','#111111',.5);
+  for(let r=0;r<count;r++)for(let col=0;col<count;col++)if(matrix[r][col])canvas.rect(x+(col+quiet)*cell,y+(r+quiet)*cell,cell+.08,cell+.08,'#111111'); return true;
+}
+function eventPlayerEntryUrl(accessCode) { return `${PUBLIC_URL || `http://localhost:${PORT}`}/evento?codigo=${encodeURIComponent(accessCode)}`; }
+function buildPremiumEventIndividualPdf(lot, card) {
+  const PAGE_W=595,PAGE_H=842,logo=premiumEventLotLogo(lot),commands=[],canvas=premiumPdfCanvas(commands,PAGE_W,PAGE_H,{ink:'#21192A'}),c=lot.branding.colors||{};
+  const primary=normalizeEventHex(c.primary,'#6D238C'),secondary=normalizeEventHex(c.secondary,'#D83A84'),accent=normalizeEventHex(c.accent,'#E0A71A');
+  canvas.rect(0,0,PAGE_W,PAGE_H,'#FFFFFF'); canvas.rect(0,0,PAGE_W,12,primary); canvas.image(36,34,72,72);
+  canvas.text(lot.branding.eventName||'EL BINGO DE LA GORDA',128,38,20,{bold:true,color:primary,maxWidth:420});
+  if(lot.branding.tagline)canvas.text(lot.branding.tagline,128,66,10,{color:'#6B6570',maxWidth:420});
+  const details=[lot.branding.date,lot.branding.location].filter(Boolean).join(' · '); if(details)canvas.text(details,128,84,8,{color:'#6B6570',maxWidth:420});
+  if(lot.branding.sponsor)canvas.text(`Presentado por ${lot.branding.sponsor}`,128,99,8,{bold:true,color:secondary,maxWidth:420});
+  canvas.rect(34,126,PAGE_W-68,430,'#FBFAFC','#DDD6E1',1); drawPremiumCard(commands,canvas,card,48,144,PAGE_W-96,390,lot,{individual:true});
+  canvas.text(`CARTÓN ${String(card.globalNumber).padStart(4,'0')}`,42,585,17,{bold:true,color:primary});
+  canvas.text('CÓDIGO PRIVADO DE ACCESO',42,616,8,{bold:true,color:'#6B6570'}); canvas.text(card.accessCode,42,632,25,{bold:true,color:secondary});
+  const url=eventPlayerEntryUrl(card.accessCode), qrOk=drawQrCommands(commands,canvas,url,403,582,145);
+  canvas.text(qrOk?'Escaneá para entrar con este cartón':'Usá el código para entrar al evento',475,735,7,{align:'center',color:'#6B6570',maxWidth:180});
+  canvas.text(`Tanda ${lot.code} · SHA-256 ${lot.hash.slice(0,16)}…`,42,773,7,{color:'#77707C',maxWidth:500});
+  canvas.text('El código de acceso es privado. No lo publiques ni lo compartas fuera del jugador asignado.',42,792,7,{color:'#77707C',maxWidth:500});
+  return pdfDocumentFromStreams([commands.join('\n')],PAGE_W,PAGE_H,logo,`LA_GORDA_EVENT_CARD_V1\n${lot.code}\n${card.globalNumber}\n${card.accessCode}\n${lot.hash}`);
+}
+function csvEscape(value){const text=String(value??'');return /[",\n\r]/.test(text)?`"${text.replace(/"/g,'""')}"`:text;}
+function eventLotControlCsv(lot){const rows=['tanda,evento,carton,serie,posicion,codigo'];for(const card of lot.cards)rows.push([lot.code,lot.eventCode,String(card.globalNumber).padStart(4,'0'),String(card.seriesNumber).padStart(2,'0'),card.cardNumber,card.accessCode].map(csvEscape).join(','));return '\uFEFF'+rows.join('\r\n');}
+function eventLotManifest(lot){return {...publicEventLot(lot,true),event:publicEvent(loadEvent(lot.eventCode)),integrity:{algorithm:'SHA-256',hash:lot.hash},accessRule:'Cada código pertenece a un cartón. En Fase 2 podrá vincularse a un jugador y abrir todos sus cartones.'};}
+function crc32Buffer(buffer){let crc=0xFFFFFFFF;for(const byte of buffer){crc^=byte;for(let k=0;k<8;k++)crc=(crc>>>1)^((crc&1)?0xEDB88320:0);}return (crc^0xFFFFFFFF)>>>0;}
+function dosDateTime(date=new Date()){let year=Math.max(1980,date.getFullYear());const dosTime=(date.getHours()<<11)|(date.getMinutes()<<5)|(date.getSeconds()>>1);const dosDate=((year-1980)<<9)|((date.getMonth()+1)<<5)|date.getDate();return {dosTime,dosDate};}
+function buildStoredZip(entries){const locals=[],centrals=[];let offset=0;const {dosTime,dosDate}=dosDateTime();for(const entry of entries){const name=Buffer.from(entry.name.replace(/\\/g,'/'),'utf8'),data=Buffer.isBuffer(entry.data)?entry.data:Buffer.from(entry.data),crc=crc32Buffer(data);const local=Buffer.alloc(30);local.writeUInt32LE(0x04034b50,0);local.writeUInt16LE(20,4);local.writeUInt16LE(0x0800,6);local.writeUInt16LE(0,8);local.writeUInt16LE(dosTime,10);local.writeUInt16LE(dosDate,12);local.writeUInt32LE(crc,14);local.writeUInt32LE(data.length,18);local.writeUInt32LE(data.length,22);local.writeUInt16LE(name.length,26);local.writeUInt16LE(0,28);locals.push(local,name,data);const central=Buffer.alloc(46);central.writeUInt32LE(0x02014b50,0);central.writeUInt16LE(20,4);central.writeUInt16LE(20,6);central.writeUInt16LE(0x0800,8);central.writeUInt16LE(0,10);central.writeUInt16LE(dosTime,12);central.writeUInt16LE(dosDate,14);central.writeUInt32LE(crc,16);central.writeUInt32LE(data.length,20);central.writeUInt32LE(data.length,24);central.writeUInt16LE(name.length,28);central.writeUInt16LE(0,30);central.writeUInt16LE(0,32);central.writeUInt16LE(0,34);central.writeUInt16LE(0,36);central.writeUInt32LE(0,38);central.writeUInt32LE(offset,42);centrals.push(central,name);offset+=local.length+name.length+data.length;}const centralStart=offset,centralBuffer=Buffer.concat(centrals);const end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50,0);end.writeUInt16LE(0,4);end.writeUInt16LE(0,6);end.writeUInt16LE(entries.length,8);end.writeUInt16LE(entries.length,10);end.writeUInt32LE(centralBuffer.length,12);end.writeUInt32LE(centralStart,16);end.writeUInt16LE(0,20);return Buffer.concat([...locals,centralBuffer,end]);}
+function buildEventIndividualsZip(lot){const event=loadEvent(lot.eventCode);const safeName=printableTitleFilename(event?.name)||'EVENTO';const entries=lot.cards.map(card=>({name:`${safeName}/Carton_${String(card.globalNumber).padStart(4,'0')}.pdf`,data:buildPremiumEventIndividualPdf(lot,card)}));entries.push({name:`${safeName}/tanda.json`,data:Buffer.from(JSON.stringify(eventLotManifest(lot),null,2),'utf8')});entries.push({name:`${safeName}/control.csv`,data:Buffer.from(eventLotControlCsv(lot),'utf8')});return buildStoredZip(entries);}
+function eventPrintPdfFilename(lot){const event=loadEvent(lot.eventCode),name=printableTitleFilename(event?.name)||'EVENTO';return `${name}_${lot.code}_6_CARTONES_POR_HOJA.pdf`;}
+function eventIndividualsZipFilename(lot){const event=loadEvent(lot.eventCode),name=printableTitleFilename(event?.name)||'EVENTO';return `${name}_${lot.code}_CARTONES_INDIVIDUALES.zip`;}
 
 
 function normalizedGeneratedCount(value) {
@@ -6744,6 +7103,8 @@ function serveFile(res, filePath) {
   const cssRoot = `${path.join(ROOT, 'css')}${path.sep}`;
   const allowedHtml = new Set([
     path.join(ROOT, 'admin.html'),
+    path.join(ROOT, 'evento-admin.html'),
+    path.join(ROOT, 'evento.html'),
     path.join(ROOT, 'acceso.html'),
     path.join(ROOT, 'player.html'),
     path.join(ROOT, 'cast-receiver.html'),
@@ -8298,6 +8659,50 @@ async function handleMasterApi(req, res, url) {
 
 async function dispatchAdminApi(req, res, url, session) {
   currentWorkspace().lastActivityAt = Date.now();
+
+  if (url.pathname === '/api/admin/events' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    return sendJson(res, 200, { events:eventListPayload() });
+  }
+  if (url.pathname === '/api/admin/events/create' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    return sendJson(res, 200, createPremiumEvent(await readJson(req, 3_600_000)));
+  }
+  if (url.pathname === '/api/admin/events/lot/generate' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    return sendJson(res, 200, createPremiumEventLot(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/events/lot' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    const lot=loadEventLot(url.searchParams.get('lot')); if(!lot)return sendJson(res,404,{error:'No encontramos esa tanda de evento.'});
+    return sendJson(res,200,eventLotManifest(lot));
+  }
+  if (url.pathname === '/api/admin/events/lot/print.pdf' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    const lot=loadEventLot(url.searchParams.get('lot')); if(!lot)return sendJson(res,404,{error:'No encontramos esa tanda de evento.'});
+    return sendBuffer(res,200,buildPremiumEventPrintPdf(lot),'application/pdf',eventPrintPdfFilename(lot));
+  }
+  if (url.pathname === '/api/admin/events/lot/card.pdf' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    const lot=loadEventLot(url.searchParams.get('lot')); if(!lot)return sendJson(res,404,{error:'No encontramos esa tanda de evento.'});
+    const card=eventCardByGlobalNumber(lot,url.searchParams.get('card')); if(!card)return sendJson(res,404,{error:'Ese cartón no pertenece a la tanda.'});
+    return sendBuffer(res,200,buildPremiumEventIndividualPdf(lot,card),'application/pdf',`Carton_${String(card.globalNumber).padStart(4,'0')}_${lot.code}.pdf`);
+  }
+  if (url.pathname === '/api/admin/events/lot/individuals.zip' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    const lot=loadEventLot(url.searchParams.get('lot')); if(!lot)return sendJson(res,404,{error:'No encontramos esa tanda de evento.'});
+    return sendBuffer(res,200,buildEventIndividualsZip(lot),'application/zip',eventIndividualsZipFilename(lot));
+  }
+  if (url.pathname === '/api/admin/events/lot/manifest.json' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    const lot=loadEventLot(url.searchParams.get('lot')); if(!lot)return sendJson(res,404,{error:'No encontramos esa tanda de evento.'});
+    return sendBuffer(res,200,Buffer.from(JSON.stringify(eventLotManifest(lot),null,2),'utf8'),'application/json; charset=utf-8',`${lot.code}_tanda.json`);
+  }
+  if (url.pathname === '/api/admin/events/lot/control.csv' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    const lot=loadEventLot(url.searchParams.get('lot')); if(!lot)return sendJson(res,404,{error:'No encontramos esa tanda de evento.'});
+    return sendBuffer(res,200,Buffer.from(eventLotControlCsv(lot),'utf8'),'text/csv; charset=utf-8',`${lot.code}_control.csv`);
+  }
   if (url.pathname === '/api/admin/state' && req.method === 'GET') return sendJson(res, 200, { ...adminPayload(), accessRole: session.role, selectedWorkspaceId: session.workspaceId });
   if (url.pathname === '/api/admin/workspaces' && req.method === 'GET') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'Solo el administrador principal puede cambiar de sala.' });
@@ -8434,6 +8839,18 @@ async function handleApi(req, res, url) {
   try {
     if (url.pathname.startsWith('/api/master/')) return await handleMasterApi(req, res, url);
     if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { ok: true, at: nowIso(), version: APP_PUBLIC_VERSION });
+
+    if (url.pathname === '/api/event/access-info' && req.method === 'GET') {
+      const code=String(url.searchParams.get('codigo')||'').trim().toUpperCase();
+      if(!/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}$/.test(code)) return sendJson(res,400,{error:'Código de cartón no válido.'});
+      for(const entry of fs.readdirSync(EVENT_LOTS_DIR,{withFileTypes:true})){
+        if(!entry.isFile()||!/^EVT-[A-Z0-9]{6}\.json$/.test(entry.name))continue;
+        const lot=loadEventLot(entry.name.replace(/\.json$/,'')); if(!lot)continue;
+        const card=lot.cards.find(item=>item.accessCode===code); if(!card)continue;
+        const event=loadEvent(lot.eventCode); return sendJson(res,200,{phase:1,event:publicEvent(event),lot:lot.code,cardNumber:card.globalNumber,message:'Código reconocido. La vinculación de jugadores y apertura de cartones se habilita en Fase 2.'});
+      }
+      return sendJson(res,404,{error:'No encontramos ese código de cartón.'});
+    }
     if (url.pathname === '/api/community/state' && req.method === 'GET') return sendJson(res, 200, communityStatePayload(url.searchParams.get('visitorId')));
     if (url.pathname === '/api/community/resume' && req.method === 'GET') {
       const resume = activePlayerResume(req);
@@ -9026,6 +9443,13 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+
+  const eventAssetMatch = url.pathname.match(/^\/event-assets\/(EV-[A-Z0-9]{6})\.jpg$/i);
+  if (eventAssetMatch && (req.method === 'GET' || req.method === 'HEAD')) {
+    const file=eventLogoPath(eventAssetMatch[1]); if(!file||!fs.existsSync(file))return sendJson(res,404,{error:'Logo de evento no disponible.'});
+    const stat=fs.statSync(file); res.writeHead(200,{'Content-Type':'image/jpeg','Content-Length':stat.size,'Cache-Control':'public, max-age=300','X-Content-Type-Options':'nosniff'}); if(req.method==='HEAD')return res.end(); return fs.createReadStream(file).pipe(res);
+  }
+
   const communityBannerMatch = url.pathname.match(/^\/community-banner\/(1|2|3)\/?$/);
   if (communityBannerMatch && (req.method === 'GET' || req.method === 'HEAD')) {
     const slot = Number(communityBannerMatch[1]);
@@ -9076,6 +9500,8 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/admin-principal' || url.pathname === '/admin-principal/' || url.pathname === '/admin-principal.html') { res.writeHead(302, { Location: '/admin' }); return res.end(); }
   if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'admin.html'));
+  if (url.pathname === '/evento-admin' || url.pathname === '/evento-admin/') return serveFile(res, path.join(ROOT, 'evento-admin.html'));
+  if (url.pathname === '/evento' || url.pathname === '/evento/') return serveFile(res, path.join(ROOT, 'evento.html'));
   if (url.pathname === '/admin-player-preview' || url.pathname === '/admin-player-preview/') return serveFile(res, path.join(ROOT, 'player.html'));
   if (url.pathname === '/demo' || url.pathname === '/demo/') return serveFile(res, path.join(ROOT, 'demo.html'));
   if (url.pathname === '/comunidad' || url.pathname === '/comunidad/' || url.pathname === '/comunidad.html') {

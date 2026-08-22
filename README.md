@@ -105,3 +105,8 @@ La lógica crítica vive en el servidor. El cliente presenta el juego, pero no d
 
 ### Bolillero de Comunidad
 Incluye Modo Libre del 1 al 250, con máximo configurable de 1 a 10 apariciones por número y voz robótica del dispositivo.
+
+
+## Modo Evento Premium - Fase 1 (2026-08-22)
+
+Se agregó `/evento-admin` para crear eventos con nombre, logo, colores, sponsor, modalidad y tandas de hasta 300 cartones. Cada tanda tiene código `EVT-XXXXXX`, SHA-256 y códigos privados por cartón. Genera PDF de impresión con 6 cartones por hoja sin códigos, ZIP con PDFs individuales (código + QR), `tanda.json` y `control.csv`. La vinculación de jugadores y la integración con sala/transmisión corresponden a Fase 2 y siguientes.

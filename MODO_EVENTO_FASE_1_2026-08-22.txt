@@ -1,0 +1,22 @@
+EL BINGO DE LA GORDA - MODO EVENTO PREMIUM - FASE 1
+
+Incluye:
+- Crear Evento Premium desde /evento-admin.
+- Nombre, fecha, lugar, lema, sponsor, logo y tres colores.
+- Bingo 75 o Bingo 90.
+- Tandas de 6 a 300 cartones, siempre en series de 6.
+- Código único de evento EV-XXXXXX.
+- Código único de tanda EVT-XXXXXX.
+- Código privado individual XXXX-XXXX para cada cartón.
+- SHA-256 de integridad de la tanda.
+- PDF masivo: 6 cartones por hoja, sin códigos privados.
+- ZIP de PDFs individuales: un PDF por cartón, código privado y QR.
+- tanda.json y control.csv.
+- /evento reconoce códigos en Fase 1 y queda listo para el acceso completo de Fase 2.
+
+No incluido todavía:
+- Vinculación cartones <-> jugadores.
+- Acceso a todos los cartones de un jugador con cualquiera de sus códigos.
+- Panel de conductor Evento.
+- Transmisión/TV Evento Premium.
+- Conexión del Evento con el motor de sala para jugar.

@@ -140,3 +140,10 @@ El motor de partida continúa sin cambios en esta fase.
 - Agrega **ASIGNAR A…** directamente en la lista de cartones sin asignar para reducir pasos durante la preparación del evento.
 - Los errores de vinculación quedan visibles en el panel y el campo sólo se limpia después de una vinculación exitosa.
 - Incluye prueba de regresión específica `tests/event-mode-phase2-2.js`.
+
+
+## Modo Evento Premium · Fase 3
+
+La Fase 3 agrega el **Panel del Conductor** y las pantallas **TV Premium / Transmisión Premium**. Un Evento se vincula explícitamente a una sala operacional existente; por debajo se reutiliza el mismo motor, estado, bolillero y endpoints de conducción. Las pantallas públicas usan un token de visualización propio y de solo lectura, sin exponer credenciales de administrador.
+
+La integración matemática de la tanda Evento con los cartones y jugadores operacionales de la sala se mantiene fuera de esta fase y queda reservada para Fase 4.

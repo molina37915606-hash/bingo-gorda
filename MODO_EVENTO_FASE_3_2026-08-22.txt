@@ -1,0 +1,16 @@
+MODO EVENTO PREMIUM · FASE 3 · 2026-08-22
+
+ALCANCE
+- Panel del Conductor conectado a la sala real del Admin.
+- Vinculación explícita Evento ↔ workspace/sala.
+- TV Premium y Transmisión Premium de solo lectura.
+- Branding automático: nombre, logo, colores, lema, lugar y sponsor.
+- Estados públicos: espera, inicio, juego, pausa, reclamo, confirmado y final.
+- Nombre/cartón del ganador mostrado usando el estado real; si el número coincide unívocamente con una vinculación Evento, prioriza el nombre del Evento.
+- Voz local de La Gorda también disponible en pantallas Premium, con activación por interacción del navegador.
+- El Panel del Conductor usa las mismas APIs de iniciar, sacar bolilla, pausar, reanudar y finalizar que el Admin general.
+
+NO HACE TODAVÍA
+- No reemplaza los cartones matemáticos de la sala por la tanda Evento.
+- No convierte automáticamente los jugadores Evento en jugadores operacionales de la sala.
+- Esa integración profunda, reclamos y acta específica corresponde a Fase 4.

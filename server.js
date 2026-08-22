@@ -2913,7 +2913,11 @@ function publicEvent(event) {
     restoredAt: event?.restoredAt || '',
     lotCodes: Array.isArray(event?.lotCodes) ? event.lotCodes.filter(safeEventLotCode) : [],
     playersCount: Array.isArray(event?.players) ? event.players.length : 0,
-    linkedCardsCount: Array.isArray(event?.players) ? event.players.reduce((sum, player) => sum + (Array.isArray(player?.cards) ? player.cards.length : 0), 0) : 0
+    linkedCardsCount: Array.isArray(event?.players) ? event.players.reduce((sum, player) => sum + (Array.isArray(player?.cards) ? player.cards.length : 0), 0) : 0,
+    live: event?.live && event.live.workspaceId ? {
+      active: Boolean(event.live.active), roomCode: String(event.live.roomCode || ''),
+      activatedAt: event.live.activatedAt || '', updatedAt: event.live.updatedAt || ''
+    } : null
   };
 }
 function loadEvent(code) {
@@ -2971,6 +2975,7 @@ function archivePremiumEvent(payload = {}) {
   const now = nowIso();
   event.status = 'archived';
   event.archivedAt = now;
+  if (event.live) event.live = { ...event.live, active:false, updatedAt:now, deactivatedAt:now };
   event.updatedAt = now;
   event.version = Math.max(3, Number(event.version) || 1);
   saveEvent(event);
@@ -3272,6 +3277,117 @@ function eventCsvHeader(value){return String(value||'').normalize('NFD').replace
 function importEventPlayersCsv(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const rows=parseEventCsv(payload.csvText);if(rows.length<2)throw new Error('El CSV no contiene filas para importar.');const headers=rows[0].map(eventCsvHeader),indexOf=(...names)=>{for(const name of names){const index=headers.indexOf(name);if(index>=0)return index;}return-1;};const nameIndex=indexOf('jugador','nombre','player','participante'),idIndex=indexOf('jugador_id','player_id','id'),cardIndex=indexOf('carton','card','nro_carton','numero_carton'),codeIndex=indexOf('codigo','code','codigo_privado'),lotIndex=indexOf('tanda','lot','lot_code');if(nameIndex<0&&idIndex<0)throw new Error('El CSV necesita una columna jugador/nombre o jugador_id.');if(cardIndex<0&&codeIndex<0)throw new Error('El CSV necesita una columna carton o codigo.');const working=deepCopy(event);working.players=Array.isArray(working.players)?working.players:[];let created=0,linked=0;const errors=[];for(let rowIndex=1;rowIndex<rows.length;rowIndex++){const cols=rows[rowIndex],line=rowIndex+1;try{const id=idIndex>=0?safeEventPlayerId(cols[idIndex]):'';const name=nameIndex>=0?normalizeEventPlayerName(cols[nameIndex]):'';let player=id?eventPlayerById(working,id):null;if(id&&!player)throw new Error(`jugador_id ${id} no existe`);if(!player&&name){const matches=eventPlayers(working).filter(item=>normalizedEventPlayerNameKey(item.name)===normalizedEventPlayerNameKey(name));if(matches.length>1)throw new Error(`hay más de un jugador llamado ${name}; usá jugador_id`);player=matches[0]||null;}if(!player){if(!name)throw new Error('falta el nombre del jugador');const now=nowIso();player={id:randomEventPlayerId(working),name,cards:[],createdAt:now,updatedAt:now};eventPlayers(working).push(player);created++;}const selector={};if(codeIndex>=0&&normalizeEventAccessCode(cols[codeIndex]))selector.accessCode=cols[codeIndex];else{selector.cardNumber=cardIndex>=0?cols[cardIndex]:'';selector.lotCode=lotIndex>=0?cols[lotIndex]:'';}const{lot,card}=eventCardLookupForAdmin(working,selector);const assigned=eventPlayerForCard(working,lot.code,card.globalNumber);if(assigned&&assigned.id!==player.id)throw new Error(`cartón ${String(card.globalNumber).padStart(4,'0')} ya asignado a ${assigned.name}`);const key=eventCardRefKey(lot.code,card.globalNumber);if(!(player.cards||[]).some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key)){player.cards.push({lotCode:lot.code,cardNumber:card.globalNumber});linked++;}player.updatedAt=nowIso();}catch(error){errors.push(`Línea ${line}: ${error.message}`);}}if(errors.length)throw new Error(`No se importó nada. Corregí el CSV:\n${errors.slice(0,8).join('\n')}${errors.length>8?`\n… y ${errors.length-8} error(es) más.`:''}`);event.players=working.players;event.version=Math.max(2,Number(event.version)||1);event.updatedAt=nowIso();saveEvent(event);return{...eventAdminPlayersPayload(event.code),import:{rows:rows.length-1,playersCreated:created,linksCreated:linked}};}
 function publicEventAccessPayload(accessCode){const found=eventCardLookupGlobal(accessCode);if(!found)throw new Error('No encontramos ese código de cartón.');const{event,lot,card}=found;if(event.status==='archived')throw new Error('Este evento está archivado.');const player=eventPlayerForCard(event,lot.code,card.globalNumber);let refs=player?(player.cards||[]):[{lotCode:lot.code,cardNumber:card.globalNumber}];const cards=refs.map(ref=>eventPlayerCardPayload(event,ref,false)).filter(Boolean).sort((a,b)=>a.lotCode.localeCompare(b.lotCode)||a.cardNumber-b.cardNumber);if(player)markEventPlayerPresence(event.code,player.id);return{phase:2,event:publicEvent(event),player:player?{id:player.id,name:player.name}:null,accessedCard:{lotCode:lot.code,cardNumber:card.globalNumber},cards,message:player?`Código reconocido. Tenés ${cards.length} cartón${cards.length===1?'':'es'} vinculado${cards.length===1?'':'s'}.`:'Código reconocido. Este cartón todavía no está vinculado a un jugador.'};}
 function heartbeatEventPlayer(accessCode){const found=eventCardLookupGlobal(accessCode);if(!found)throw new Error('No encontramos ese código de cartón.');if(found.event.status==='archived')throw new Error('Este evento está archivado.');const player=eventPlayerForCard(found.event,found.lot.code,found.card.globalNumber);if(player)markEventPlayerPresence(found.event.code,player.id);return{ok:true,playerId:player?.id||'',at:nowIso()};}
+
+
+// MODO EVENTO PREMIUM · FASE 3
+// El Evento se vincula a una sala operacional existente. No duplica el motor de Bingo.
+function safeEventDisplayToken(value) {
+  const token = String(value || '').trim();
+  return /^[A-Za-z0-9_-]{12,160}$/.test(token) ? token : '';
+}
+function eventLiveWorkspace(event) {
+  const id = String(event?.live?.workspaceId || '');
+  const byId = id ? workspaces.get(id) : null;
+  if (byId) return byId;
+  const roomCode = String(event?.live?.roomCode || '').trim().toUpperCase();
+  return roomCode ? findWorkspaceByRoomCode(roomCode) : null;
+}
+function eventPlayerByAnyCardNumber(event, cardNumber) {
+  const number = Math.max(1, Math.round(Number(cardNumber) || 0));
+  if (!number) return null;
+  const matches = eventPlayers(event).filter(player => (player.cards || []).some(ref => Number(ref.cardNumber) === number));
+  return matches.length === 1 ? matches[0] : null;
+}
+function premiumEventClaim(event, claim) {
+  if (!claim) return null;
+  const linked = eventPlayerByAnyCardNumber(event, claim.cardNumber);
+  return {
+    ...claim,
+    playerName: linked?.name || claim.playerName || '',
+    eventPlayerId: linked?.id || ''
+  };
+}
+function eventPremiumDisplayUrls(event) {
+  const token = safeEventDisplayToken(event?.live?.displayToken);
+  if (!token) return { tvUrl:'', transmissionUrl:'' };
+  const qs = `evento=${encodeURIComponent(event.code)}&token=${encodeURIComponent(token)}`;
+  return {
+    tvUrl: `/evento-tv?${qs}`,
+    transmissionUrl: `/evento-transmision?${qs}`
+  };
+}
+function eventLiveAdminPayload(eventCode) {
+  const event = loadEvent(eventCode);
+  if (!event) throw new Error('No encontramos ese evento.');
+  const workspace = eventLiveWorkspace(event);
+  const bound = Boolean(event.live?.active && workspace);
+  let room = null;
+  if (workspace) room = workspaceContext.run(workspace, () => ({
+    active:Boolean(state.active), status:state.status || 'closed', roomCode:state.roomCode || '',
+    mode:Number(state.game?.mode)||null, lastBall:state.game?.drawn?.at(-1) ?? null,
+    drawnCount:Array.isArray(state.game?.drawn)?state.game.drawn.length:0,
+    playersTotal:Array.isArray(state.players)?state.players.length:0,
+    playersConnected:connectedPlayerIds().size,
+    updatedAt:state.updatedAt || ''
+  }));
+  return { phase:3, event:publicEvent(event), bound, room, ...eventPremiumDisplayUrls(event) };
+}
+function activatePremiumEventLive(payload = {}, workspace = currentWorkspace()) {
+  const event = loadEvent(payload.eventCode);
+  if (!event) throw new Error('No encontramos ese evento.');
+  assertEventEditable(event);
+  if (!workspace?.state?.active || !workspace.state.game) throw new Error('Primero prepará una sala en el Admin general.');
+  const roomMode = Number(workspace.state.game.mode) === 75 ? 75 : 90;
+  if (roomMode !== Number(event.mode)) throw new Error(`El Evento es Bingo ${event.mode}, pero la sala actual es Bingo ${roomMode}.`);
+  const now = nowIso();
+  const previousToken = safeEventDisplayToken(event.live?.displayToken);
+  event.live = {
+    active:true,
+    workspaceId:workspace.id,
+    roomCode:String(workspace.state.roomCode || ''),
+    displayToken:previousToken || randomId('eventview').replace(/[^A-Za-z0-9_-]/g,''),
+    activatedAt:event.live?.activatedAt || now,
+    updatedAt:now,
+    deactivatedAt:''
+  };
+  event.version = Math.max(4, Number(event.version) || 1);
+  event.updatedAt = now;
+  saveEvent(event);
+  return eventLiveAdminPayload(event.code);
+}
+function deactivatePremiumEventLive(payload = {}) {
+  const event = loadEvent(payload.eventCode);
+  if (!event) throw new Error('No encontramos ese evento.');
+  const now = nowIso();
+  if (event.live) event.live = { ...event.live, active:false, updatedAt:now, deactivatedAt:now };
+  event.version = Math.max(4, Number(event.version) || 1);
+  event.updatedAt = now;
+  saveEvent(event);
+  return eventLiveAdminPayload(event.code);
+}
+function premiumEventPublicLivePayload(eventCode, displayToken) {
+  const event = loadEvent(eventCode);
+  if (!event || event.status === 'archived') throw new Error('Evento no disponible.');
+  const supplied = safeEventDisplayToken(displayToken);
+  const expected = safeEventDisplayToken(event.live?.displayToken);
+  if (!supplied || !expected || !safeEqual(supplied, expected)) throw new Error('Acceso de pantalla no válido.');
+  if (!event.live?.active) return { phase:3, event:publicEvent(event), live:false, room:null, eventStats:{ players:eventPlayers(event).length, linkedCards:eventPlayers(event).reduce((s,p)=>s+(p.cards||[]).length,0) } };
+  const workspace = eventLiveWorkspace(event);
+  if (!workspace) return { phase:3, event:publicEvent(event), live:false, room:null, eventStats:{ players:eventPlayers(event).length, linkedCards:eventPlayers(event).reduce((s,p)=>s+(p.cards||[]).length,0) } };
+  return workspaceContext.run(workspace, () => {
+    const room = broadcastPayload();
+    room.pendingClaim = premiumEventClaim(event, room.pendingClaim);
+    room.latestConfirmed = premiumEventClaim(event, room.latestConfirmed);
+    return {
+      phase:3, event:publicEvent(event), live:Boolean(room.active), room,
+      eventStats:{
+        players:eventPlayers(event).length,
+        linkedCards:eventPlayers(event).reduce((s,p)=>s+(p.cards||[]).length,0),
+        connectedPlayers:eventPlayers(event).filter(p=>eventPlayerPresenceState(event.code,p.id).connected).length
+      }
+    };
+  });
+}
 
 
 function normalizedGeneratedCount(value) {
@@ -7204,6 +7320,9 @@ function serveFile(res, filePath) {
     path.join(ROOT, 'admin.html'),
     path.join(ROOT, 'evento-admin.html'),
     path.join(ROOT, 'evento.html'),
+    path.join(ROOT, 'evento-conductor.html'),
+    path.join(ROOT, 'evento-transmision.html'),
+    path.join(ROOT, 'evento-tv.html'),
     path.join(ROOT, 'acceso.html'),
     path.join(ROOT, 'player.html'),
     path.join(ROOT, 'cast-receiver.html'),
@@ -8779,6 +8898,18 @@ async function dispatchAdminApi(req, res, url, session) {
     if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
     return sendJson(res, 200, deletePremiumEvent(await readJson(req)));
   }
+  if (url.pathname === '/api/admin/events/live' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    try { return sendJson(res, 200, eventLiveAdminPayload(url.searchParams.get('event'))); } catch(error) { return sendJson(res, 404, { error:String(error.message || error) }); }
+  }
+  if (url.pathname === '/api/admin/events/live/activate' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    return sendJson(res, 200, activatePremiumEventLive(await readJson(req), currentWorkspace()));
+  }
+  if (url.pathname === '/api/admin/events/live/deactivate' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    return sendJson(res, 200, deactivatePremiumEventLive(await readJson(req)));
+  }
   if (url.pathname === '/api/admin/events/lot/generate' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
     return sendJson(res, 200, createPremiumEventLot(await readJson(req)));
@@ -8987,6 +9118,11 @@ async function handleApi(req, res, url) {
       if(!consumeRate(req,'event-heartbeat',120,60*1000))return sendJson(res,429,{error:'Demasiadas solicitudes. Esperá un momento.'});
       try { const payload=await readJson(req); return sendJson(res,200,heartbeatEventPlayer(payload.codigo)); }
       catch(error){ const message=String(error?.message||'No se pudo actualizar la conexión.'); return sendJson(res,message.includes('archivado')?410:404,{error:message}); }
+    }
+    if (url.pathname === '/api/event/live-state' && req.method === 'GET') {
+      if(!consumeRate(req,'event-live-state',300,60*1000)) return sendJson(res,429,{error:'Demasiadas actualizaciones. Esperá un momento.'});
+      try { return sendJson(res,200,premiumEventPublicLivePayload(url.searchParams.get('evento'), url.searchParams.get('token'))); }
+      catch(error){ const message=String(error?.message||'No se pudo abrir la pantalla del evento.'); return sendJson(res,message.includes('no válido')?401:404,{error:message}); }
     }
     if (url.pathname === '/api/community/state' && req.method === 'GET') return sendJson(res, 200, communityStatePayload(url.searchParams.get('visitorId')));
     if (url.pathname === '/api/community/resume' && req.method === 'GET') {
@@ -9639,6 +9775,9 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/admin' || url.pathname === '/admin/') return serveFile(res, path.join(ROOT, 'admin.html'));
   if (url.pathname === '/evento-admin' || url.pathname === '/evento-admin/') return serveFile(res, path.join(ROOT, 'evento-admin.html'));
   if (url.pathname === '/evento' || url.pathname === '/evento/') return serveFile(res, path.join(ROOT, 'evento.html'));
+  if (url.pathname === '/evento-conductor' || url.pathname === '/evento-conductor/') return serveFile(res, path.join(ROOT, 'evento-conductor.html'));
+  if (url.pathname === '/evento-transmision' || url.pathname === '/evento-transmision/') return serveFile(res, path.join(ROOT, 'evento-transmision.html'));
+  if (url.pathname === '/evento-tv' || url.pathname === '/evento-tv/') return serveFile(res, path.join(ROOT, 'evento-tv.html'));
   if (url.pathname === '/admin-player-preview' || url.pathname === '/admin-player-preview/') return serveFile(res, path.join(ROOT, 'player.html'));
   if (url.pathname === '/demo' || url.pathname === '/demo/') return serveFile(res, path.join(ROOT, 'demo.html'));
   if (url.pathname === '/comunidad' || url.pathname === '/comunidad/' || url.pathname === '/comunidad.html') {

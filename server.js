@@ -2823,9 +2823,10 @@ function buildCardLotPdf(lot) {
 
 
 // -----------------------------------------------------------------------------
-// MODO EVENTO PREMIUM - FASE 1 + FASE 2
+// MODO EVENTO PREMIUM - FASE 1 + FASE 2 + FASE 2.1
 // Fase 1: Evento + diseñador de tanda + códigos privados + PDFs premium.
 // Fase 2: jugadores + vinculación de varios cartones + acceso agrupado por código.
+// Fase 2.1: ciclo de vida del evento: archivar, restaurar y eliminar definitivamente.
 // El motor de partida todavía no cambia en estas fases.
 // -----------------------------------------------------------------------------
 function safeEventCode(value) {
@@ -2908,6 +2909,8 @@ function publicEvent(event) {
     createdAt: event?.createdAt || '',
     updatedAt: event?.updatedAt || event?.createdAt || '',
     status: event?.status || 'draft',
+    archivedAt: event?.archivedAt || '',
+    restoredAt: event?.restoredAt || '',
     lotCodes: Array.isArray(event?.lotCodes) ? event.lotCodes.filter(safeEventLotCode) : [],
     playersCount: Array.isArray(event?.players) ? event.players.length : 0,
     linkedCardsCount: Array.isArray(event?.players) ? event.players.reduce((sum, player) => sum + (Array.isArray(player?.cards) ? player.cards.length : 0), 0) : 0
@@ -2956,6 +2959,58 @@ function eventListPayload() {
     if (event) events.push(publicEvent(event));
   }
   return events.sort((a,b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 100);
+}
+function assertEventEditable(event) {
+  if (!event) throw new Error('No encontramos ese evento.');
+  if (event.status === 'archived') throw new Error('Este evento está archivado. Restauralo antes de modificarlo.');
+}
+function archivePremiumEvent(payload = {}) {
+  const event = loadEvent(payload.eventCode);
+  if (!event) throw new Error('No encontramos ese evento.');
+  if (event.status === 'archived') return publicEvent(event);
+  const now = nowIso();
+  event.status = 'archived';
+  event.archivedAt = now;
+  event.updatedAt = now;
+  event.version = Math.max(3, Number(event.version) || 1);
+  saveEvent(event);
+  return publicEvent(event);
+}
+function restorePremiumEvent(payload = {}) {
+  const event = loadEvent(payload.eventCode);
+  if (!event) throw new Error('No encontramos ese evento.');
+  if (event.status !== 'archived') return publicEvent(event);
+  const now = nowIso();
+  event.status = 'draft';
+  event.archivedAt = '';
+  event.restoredAt = now;
+  event.updatedAt = now;
+  event.version = Math.max(3, Number(event.version) || 1);
+  saveEvent(event);
+  return publicEvent(event);
+}
+function unlinkIfExists(file) {
+  if (file && fs.existsSync(file)) fs.unlinkSync(file);
+}
+function deletePremiumEvent(payload = {}) {
+  const event = loadEvent(payload.eventCode);
+  if (!event) throw new Error('No encontramos ese evento.');
+  if (event.status !== 'archived') throw new Error('Primero archivá el evento antes de eliminarlo definitivamente.');
+  const confirmation = String(payload.confirmation || '').trim().toUpperCase();
+  if (confirmation !== event.code) throw new Error(`Para eliminar definitivamente, escribí exactamente ${event.code}.`);
+  const lotCodes = Array.isArray(event.lotCodes) ? event.lotCodes.filter(safeEventLotCode) : [];
+  for (const lotCode of lotCodes) {
+    const lot = loadEventLot(lotCode);
+    if (lot && lot.eventCode === event.code) {
+      unlinkIfExists(eventLotPath(lotCode));
+      unlinkIfExists(eventLotLogoPath(lotCode));
+    }
+  }
+  unlinkIfExists(eventLogoPath(event.code));
+  unlinkIfExists(eventPath(event.code));
+  const prefix = `${event.code}:`;
+  for (const key of eventPlayerPresence.keys()) if (key.startsWith(prefix)) eventPlayerPresence.delete(key);
+  return { ok:true, deleted:true, eventCode:event.code, lotsDeleted:lotCodes.length };
 }
 function randomEventCardAccessCode(used) {
   const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -3006,6 +3061,7 @@ function loadEventLot(code) {
 function createPremiumEventLot(payload = {}) {
   const event = loadEvent(payload.eventCode);
   if (!event) throw new Error('No encontramos el evento indicado.');
+  assertEventEditable(event);
   const mode = Number(event.mode) === 75 ? 75 : 90;
   const requested = Math.round(Number(payload.totalCards) || 60);
   const totalCards = Math.max(6, Math.min(300, Math.ceil(requested / 6) * 6));
@@ -3206,16 +3262,16 @@ function markEventPlayerPresence(eventCode,playerId){const key=eventPresenceKey(
 function eventPlayerPresenceState(eventCode,playerId){const seen=Number(eventPlayerPresence.get(eventPresenceKey(eventCode,playerId))||0);return{connected:seen>0&&Date.now()-seen<=EVENT_PLAYER_PRESENCE_MS,lastSeenAt:seen?new Date(seen).toISOString():''};}
 function eventPlayerCardPayload(event,ref,includePrivate=false){const lot=loadEventLot(ref.lotCode);if(!lot||lot.eventCode!==event.code)return null;const card=eventCardByGlobalNumber(lot,ref.cardNumber);if(!card)return null;const payload={lotCode:lot.code,cardNumber:card.globalNumber,seriesNumber:card.seriesNumber,position:card.cardNumber,mode:lot.mode,grid:card.grid};if(includePrivate)payload.accessCode=card.accessCode;return payload;}
 function eventAdminPlayersPayload(eventCode){const event=loadEvent(eventCode);if(!event)throw new Error('No encontramos ese evento.');const players=eventPlayers(event).map(player=>{cleanEventPlayerCards(event,player);const presence=eventPlayerPresenceState(event.code,player.id);return{id:player.id,name:normalizeEventPlayerName(player.name),cards:(player.cards||[]).map(ref=>eventPlayerCardPayload(event,ref,true)).filter(Boolean),createdAt:player.createdAt||'',updatedAt:player.updatedAt||player.createdAt||'',...presence};});const assignment=new Map();players.forEach(player=>player.cards.forEach(card=>assignment.set(eventCardRefKey(card.lotCode,card.cardNumber),player)));const lots=eventLotsFor(event).map(lot=>({code:lot.code,mode:lot.mode,totalCards:lot.totalCards,cards:lot.cards.map(card=>{const player=assignment.get(eventCardRefKey(lot.code,card.globalNumber));return{lotCode:lot.code,cardNumber:card.globalNumber,seriesNumber:card.seriesNumber,position:card.cardNumber,mode:lot.mode,grid:card.grid,accessCode:card.accessCode,playerId:player?.id||'',playerName:player?.name||''};})}));const totalCards=lots.reduce((sum,lot)=>sum+lot.totalCards,0),linkedCards=players.reduce((sum,player)=>sum+player.cards.length,0);return{phase:2,event:publicEvent(event),players,lots,stats:{players:players.length,totalCards,linkedCards,unassignedCards:Math.max(0,totalCards-linkedCards),connectedPlayers:players.filter(player=>player.connected).length}};}
-function createEventPlayer(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');const name=normalizeEventPlayerName(payload.name);if(!name)throw new Error('Escribí el nombre del jugador.');const now=nowIso(),player={id:randomEventPlayerId(event),name,cards:[],createdAt:now,updatedAt:now};eventPlayers(event).push(player);event.version=Math.max(2,Number(event.version)||1);event.updatedAt=now;saveEvent(event);return eventAdminPlayersPayload(event.code);}
-function updateEventPlayer(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const name=normalizeEventPlayerName(payload.name);if(!name)throw new Error('Escribí el nombre del jugador.');player.name=name;player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
-function deleteEventPlayer(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');const id=safeEventPlayerId(payload.playerId),index=eventPlayers(event).findIndex(player=>player.id===id);if(index<0)throw new Error('No encontramos ese jugador.');event.players.splice(index,1);event.version=Math.max(2,Number(event.version)||1);event.updatedAt=nowIso();saveEvent(event);eventPlayerPresence.delete(eventPresenceKey(event.code,id));return eventAdminPlayersPayload(event.code);}
-function linkEventPlayerCard(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const{lot,card}=eventCardLookupForAdmin(event,payload);const assigned=eventPlayerForCard(event,lot.code,card.globalNumber);if(assigned&&assigned.id!==player.id)throw new Error(`El cartón ${String(card.globalNumber).padStart(4,'0')} ya está vinculado a ${assigned.name}. Desvinculalo antes de reasignarlo.`);cleanEventPlayerCards(event,player);const key=eventCardRefKey(lot.code,card.globalNumber);if(!(player.cards||[]).some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key))player.cards.push({lotCode:lot.code,cardNumber:card.globalNumber});player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
-function unlinkEventPlayerCard(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const lotCode=safeEventLotCode(payload.lotCode),cardNumber=Math.max(1,Math.round(Number(payload.cardNumber)||0));const key=eventCardRefKey(lotCode,cardNumber);player.cards=(player.cards||[]).filter(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)!==key);player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
+function createEventPlayer(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const name=normalizeEventPlayerName(payload.name);if(!name)throw new Error('Escribí el nombre del jugador.');const now=nowIso(),player={id:randomEventPlayerId(event),name,cards:[],createdAt:now,updatedAt:now};eventPlayers(event).push(player);event.version=Math.max(2,Number(event.version)||1);event.updatedAt=now;saveEvent(event);return eventAdminPlayersPayload(event.code);}
+function updateEventPlayer(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const name=normalizeEventPlayerName(payload.name);if(!name)throw new Error('Escribí el nombre del jugador.');player.name=name;player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
+function deleteEventPlayer(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const id=safeEventPlayerId(payload.playerId),index=eventPlayers(event).findIndex(player=>player.id===id);if(index<0)throw new Error('No encontramos ese jugador.');event.players.splice(index,1);event.version=Math.max(2,Number(event.version)||1);event.updatedAt=nowIso();saveEvent(event);eventPlayerPresence.delete(eventPresenceKey(event.code,id));return eventAdminPlayersPayload(event.code);}
+function linkEventPlayerCard(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const{lot,card}=eventCardLookupForAdmin(event,payload);const assigned=eventPlayerForCard(event,lot.code,card.globalNumber);if(assigned&&assigned.id!==player.id)throw new Error(`El cartón ${String(card.globalNumber).padStart(4,'0')} ya está vinculado a ${assigned.name}. Desvinculalo antes de reasignarlo.`);cleanEventPlayerCards(event,player);const key=eventCardRefKey(lot.code,card.globalNumber);if(!(player.cards||[]).some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key))player.cards.push({lotCode:lot.code,cardNumber:card.globalNumber});player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
+function unlinkEventPlayerCard(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const player=eventPlayerById(event,payload.playerId);if(!player)throw new Error('No encontramos ese jugador.');const lotCode=safeEventLotCode(payload.lotCode),cardNumber=Math.max(1,Math.round(Number(payload.cardNumber)||0));const key=eventCardRefKey(lotCode,cardNumber);player.cards=(player.cards||[]).filter(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)!==key);player.updatedAt=nowIso();event.version=Math.max(2,Number(event.version)||1);event.updatedAt=player.updatedAt;saveEvent(event);return eventAdminPlayersPayload(event.code);}
 function parseEventCsv(text){const source=String(text||'').replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');const first=(source.split('\n').find(line=>line.trim())||'');const candidates=[',',';','\t'];let delimiter=',',best=-1;for(const candidate of candidates){const count=(first.match(new RegExp(candidate==='\t'?'\\t':`\\${candidate}`,'g'))||[]).length;if(count>best){best=count;delimiter=candidate;}}const rows=[];let row=[],cell='',quoted=false;for(let i=0;i<=source.length;i++){const ch=i<source.length?source[i]:'\n';if(quoted){if(ch==='"'&&source[i+1]==='"'){cell+='"';i++;}else if(ch==='"')quoted=false;else cell+=ch;}else if(ch==='"')quoted=true;else if(ch===delimiter){row.push(cell);cell='';}else if(ch==='\n'){row.push(cell);cell='';if(row.some(value=>String(value).trim()))rows.push(row);row=[];}else cell+=ch;}return rows;}
 function eventCsvHeader(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase().replace(/\s+/g,'_');}
-function importEventPlayersCsv(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');const rows=parseEventCsv(payload.csvText);if(rows.length<2)throw new Error('El CSV no contiene filas para importar.');const headers=rows[0].map(eventCsvHeader),indexOf=(...names)=>{for(const name of names){const index=headers.indexOf(name);if(index>=0)return index;}return-1;};const nameIndex=indexOf('jugador','nombre','player','participante'),idIndex=indexOf('jugador_id','player_id','id'),cardIndex=indexOf('carton','card','nro_carton','numero_carton'),codeIndex=indexOf('codigo','code','codigo_privado'),lotIndex=indexOf('tanda','lot','lot_code');if(nameIndex<0&&idIndex<0)throw new Error('El CSV necesita una columna jugador/nombre o jugador_id.');if(cardIndex<0&&codeIndex<0)throw new Error('El CSV necesita una columna carton o codigo.');const working=deepCopy(event);working.players=Array.isArray(working.players)?working.players:[];let created=0,linked=0;const errors=[];for(let rowIndex=1;rowIndex<rows.length;rowIndex++){const cols=rows[rowIndex],line=rowIndex+1;try{const id=idIndex>=0?safeEventPlayerId(cols[idIndex]):'';const name=nameIndex>=0?normalizeEventPlayerName(cols[nameIndex]):'';let player=id?eventPlayerById(working,id):null;if(id&&!player)throw new Error(`jugador_id ${id} no existe`);if(!player&&name){const matches=eventPlayers(working).filter(item=>normalizedEventPlayerNameKey(item.name)===normalizedEventPlayerNameKey(name));if(matches.length>1)throw new Error(`hay más de un jugador llamado ${name}; usá jugador_id`);player=matches[0]||null;}if(!player){if(!name)throw new Error('falta el nombre del jugador');const now=nowIso();player={id:randomEventPlayerId(working),name,cards:[],createdAt:now,updatedAt:now};eventPlayers(working).push(player);created++;}const selector={};if(codeIndex>=0&&normalizeEventAccessCode(cols[codeIndex]))selector.accessCode=cols[codeIndex];else{selector.cardNumber=cardIndex>=0?cols[cardIndex]:'';selector.lotCode=lotIndex>=0?cols[lotIndex]:'';}const{lot,card}=eventCardLookupForAdmin(working,selector);const assigned=eventPlayerForCard(working,lot.code,card.globalNumber);if(assigned&&assigned.id!==player.id)throw new Error(`cartón ${String(card.globalNumber).padStart(4,'0')} ya asignado a ${assigned.name}`);const key=eventCardRefKey(lot.code,card.globalNumber);if(!(player.cards||[]).some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key)){player.cards.push({lotCode:lot.code,cardNumber:card.globalNumber});linked++;}player.updatedAt=nowIso();}catch(error){errors.push(`Línea ${line}: ${error.message}`);}}if(errors.length)throw new Error(`No se importó nada. Corregí el CSV:\n${errors.slice(0,8).join('\n')}${errors.length>8?`\n… y ${errors.length-8} error(es) más.`:''}`);event.players=working.players;event.version=Math.max(2,Number(event.version)||1);event.updatedAt=nowIso();saveEvent(event);return{...eventAdminPlayersPayload(event.code),import:{rows:rows.length-1,playersCreated:created,linksCreated:linked}};}
-function publicEventAccessPayload(accessCode){const found=eventCardLookupGlobal(accessCode);if(!found)throw new Error('No encontramos ese código de cartón.');const{event,lot,card}=found;const player=eventPlayerForCard(event,lot.code,card.globalNumber);let refs=player?(player.cards||[]):[{lotCode:lot.code,cardNumber:card.globalNumber}];const cards=refs.map(ref=>eventPlayerCardPayload(event,ref,false)).filter(Boolean).sort((a,b)=>a.lotCode.localeCompare(b.lotCode)||a.cardNumber-b.cardNumber);if(player)markEventPlayerPresence(event.code,player.id);return{phase:2,event:publicEvent(event),player:player?{id:player.id,name:player.name}:null,accessedCard:{lotCode:lot.code,cardNumber:card.globalNumber},cards,message:player?`Código reconocido. Tenés ${cards.length} cartón${cards.length===1?'':'es'} vinculado${cards.length===1?'':'s'}.`:'Código reconocido. Este cartón todavía no está vinculado a un jugador.'};}
-function heartbeatEventPlayer(accessCode){const found=eventCardLookupGlobal(accessCode);if(!found)throw new Error('No encontramos ese código de cartón.');const player=eventPlayerForCard(found.event,found.lot.code,found.card.globalNumber);if(player)markEventPlayerPresence(found.event.code,player.id);return{ok:true,playerId:player?.id||'',at:nowIso()};}
+function importEventPlayersCsv(payload={}){const event=loadEvent(payload.eventCode);if(!event)throw new Error('No encontramos ese evento.');assertEventEditable(event);const rows=parseEventCsv(payload.csvText);if(rows.length<2)throw new Error('El CSV no contiene filas para importar.');const headers=rows[0].map(eventCsvHeader),indexOf=(...names)=>{for(const name of names){const index=headers.indexOf(name);if(index>=0)return index;}return-1;};const nameIndex=indexOf('jugador','nombre','player','participante'),idIndex=indexOf('jugador_id','player_id','id'),cardIndex=indexOf('carton','card','nro_carton','numero_carton'),codeIndex=indexOf('codigo','code','codigo_privado'),lotIndex=indexOf('tanda','lot','lot_code');if(nameIndex<0&&idIndex<0)throw new Error('El CSV necesita una columna jugador/nombre o jugador_id.');if(cardIndex<0&&codeIndex<0)throw new Error('El CSV necesita una columna carton o codigo.');const working=deepCopy(event);working.players=Array.isArray(working.players)?working.players:[];let created=0,linked=0;const errors=[];for(let rowIndex=1;rowIndex<rows.length;rowIndex++){const cols=rows[rowIndex],line=rowIndex+1;try{const id=idIndex>=0?safeEventPlayerId(cols[idIndex]):'';const name=nameIndex>=0?normalizeEventPlayerName(cols[nameIndex]):'';let player=id?eventPlayerById(working,id):null;if(id&&!player)throw new Error(`jugador_id ${id} no existe`);if(!player&&name){const matches=eventPlayers(working).filter(item=>normalizedEventPlayerNameKey(item.name)===normalizedEventPlayerNameKey(name));if(matches.length>1)throw new Error(`hay más de un jugador llamado ${name}; usá jugador_id`);player=matches[0]||null;}if(!player){if(!name)throw new Error('falta el nombre del jugador');const now=nowIso();player={id:randomEventPlayerId(working),name,cards:[],createdAt:now,updatedAt:now};eventPlayers(working).push(player);created++;}const selector={};if(codeIndex>=0&&normalizeEventAccessCode(cols[codeIndex]))selector.accessCode=cols[codeIndex];else{selector.cardNumber=cardIndex>=0?cols[cardIndex]:'';selector.lotCode=lotIndex>=0?cols[lotIndex]:'';}const{lot,card}=eventCardLookupForAdmin(working,selector);const assigned=eventPlayerForCard(working,lot.code,card.globalNumber);if(assigned&&assigned.id!==player.id)throw new Error(`cartón ${String(card.globalNumber).padStart(4,'0')} ya asignado a ${assigned.name}`);const key=eventCardRefKey(lot.code,card.globalNumber);if(!(player.cards||[]).some(ref=>eventCardRefKey(ref.lotCode,ref.cardNumber)===key)){player.cards.push({lotCode:lot.code,cardNumber:card.globalNumber});linked++;}player.updatedAt=nowIso();}catch(error){errors.push(`Línea ${line}: ${error.message}`);}}if(errors.length)throw new Error(`No se importó nada. Corregí el CSV:\n${errors.slice(0,8).join('\n')}${errors.length>8?`\n… y ${errors.length-8} error(es) más.`:''}`);event.players=working.players;event.version=Math.max(2,Number(event.version)||1);event.updatedAt=nowIso();saveEvent(event);return{...eventAdminPlayersPayload(event.code),import:{rows:rows.length-1,playersCreated:created,linksCreated:linked}};}
+function publicEventAccessPayload(accessCode){const found=eventCardLookupGlobal(accessCode);if(!found)throw new Error('No encontramos ese código de cartón.');const{event,lot,card}=found;if(event.status==='archived')throw new Error('Este evento está archivado.');const player=eventPlayerForCard(event,lot.code,card.globalNumber);let refs=player?(player.cards||[]):[{lotCode:lot.code,cardNumber:card.globalNumber}];const cards=refs.map(ref=>eventPlayerCardPayload(event,ref,false)).filter(Boolean).sort((a,b)=>a.lotCode.localeCompare(b.lotCode)||a.cardNumber-b.cardNumber);if(player)markEventPlayerPresence(event.code,player.id);return{phase:2,event:publicEvent(event),player:player?{id:player.id,name:player.name}:null,accessedCard:{lotCode:lot.code,cardNumber:card.globalNumber},cards,message:player?`Código reconocido. Tenés ${cards.length} cartón${cards.length===1?'':'es'} vinculado${cards.length===1?'':'s'}.`:'Código reconocido. Este cartón todavía no está vinculado a un jugador.'};}
+function heartbeatEventPlayer(accessCode){const found=eventCardLookupGlobal(accessCode);if(!found)throw new Error('No encontramos ese código de cartón.');if(found.event.status==='archived')throw new Error('Este evento está archivado.');const player=eventPlayerForCard(found.event,found.lot.code,found.card.globalNumber);if(player)markEventPlayerPresence(found.event.code,player.id);return{ok:true,playerId:player?.id||'',at:nowIso()};}
 
 
 function normalizedGeneratedCount(value) {
@@ -8711,6 +8767,18 @@ async function dispatchAdminApi(req, res, url, session) {
     if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
     return sendJson(res, 200, createPremiumEvent(await readJson(req, 3_600_000)));
   }
+  if (url.pathname === '/api/admin/events/archive' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    return sendJson(res, 200, archivePremiumEvent(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/events/restore' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    return sendJson(res, 200, restorePremiumEvent(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/events/delete' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    return sendJson(res, 200, deletePremiumEvent(await readJson(req)));
+  }
   if (url.pathname === '/api/admin/events/lot/generate' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
     return sendJson(res, 200, createPremiumEventLot(await readJson(req)));
@@ -8913,12 +8981,12 @@ async function handleApi(req, res, url) {
 
     if (url.pathname === '/api/event/access-info' && req.method === 'GET') {
       try { return sendJson(res,200,publicEventAccessPayload(url.searchParams.get('codigo'))); }
-      catch(error){ const message=String(error?.message||'No se pudo verificar el código.'); return sendJson(res,message.includes('no válido')?400:404,{error:message}); }
+      catch(error){ const message=String(error?.message||'No se pudo verificar el código.'); const status=message.includes('no válido')?400:(message.includes('archivado')?410:404); return sendJson(res,status,{error:message}); }
     }
     if (url.pathname === '/api/event/heartbeat' && req.method === 'POST') {
       if(!consumeRate(req,'event-heartbeat',120,60*1000))return sendJson(res,429,{error:'Demasiadas solicitudes. Esperá un momento.'});
       try { const payload=await readJson(req); return sendJson(res,200,heartbeatEventPlayer(payload.codigo)); }
-      catch(error){ return sendJson(res,404,{error:String(error?.message||'No se pudo actualizar la conexión.')}); }
+      catch(error){ const message=String(error?.message||'No se pudo actualizar la conexión.'); return sendJson(res,message.includes('archivado')?410:404,{error:message}); }
     }
     if (url.pathname === '/api/community/state' && req.method === 'GET') return sendJson(res, 200, communityStatePayload(url.searchParams.get('visitorId')));
     if (url.pathname === '/api/community/resume' && req.method === 'GET') {

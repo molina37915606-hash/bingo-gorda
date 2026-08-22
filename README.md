@@ -119,3 +119,15 @@ Sobre la Fase 1 se agregó gestión persistente de jugadores y cartones. Un juga
 El panel `evento-admin.html` permite alta, corrección y baja de jugadores; vinculación/desvinculación por código privado o número de cartón; importación CSV atómica; vista grande de cada cartón; control de cartones sin asignar y presencia reciente del jugador. `evento.html` incorpora mosaico de cartones y vista grande anterior/siguiente. Las vinculaciones se guardan en los datos del Evento y no modifican la matriz ni el SHA-256 de la tanda.
 
 El CSV de control y los PDFs individuales descargados después de vincular jugadores incluyen el nombre asociado. La Transmisión Premium y el motor de partida del Evento se mantienen fuera de esta fase.
+
+
+## Modo Evento Premium · Fase 2.1
+
+Se agrega gestión segura del ciclo de vida de los eventos:
+
+- **Archivar evento:** conserva tandas, cartones, códigos y jugadores, pero bloquea nuevos accesos y modificaciones hasta restaurarlo.
+- **Restaurar evento:** devuelve un evento archivado al estado activo/borrador con todos sus datos intactos.
+- **Eliminar definitivamente:** sólo está habilitado para eventos archivados y exige escribir el código exacto `EV-XXXXXX`. Borra el evento, sus tandas y logos propios.
+- El panel separa **Eventos activos** y **Archivados** para reducir eliminaciones accidentales.
+
+El motor de partida continúa sin cambios en esta fase.

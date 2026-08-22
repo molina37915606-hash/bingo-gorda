@@ -1,0 +1,19 @@
+EL BINGO DE LA GORDA — MODO EVENTO PREMIUM — FASE 2.1
+
+Cambio incremental sobre Fase 2.
+
+NUEVO
+- Archivar eventos sin perder sus datos.
+- Restaurar eventos archivados.
+- Eliminar definitivamente sólo después de archivar.
+- Confirmación de borrado escribiendo el código exacto del evento.
+- Los códigos de cartón de un evento archivado quedan temporalmente inhabilitados.
+- Un evento archivado no admite nuevas tandas ni cambios de jugadores/cartones.
+- Al eliminar definitivamente se borran JSON de evento/tandas y logos propios.
+
+NO CAMBIA
+- Bingo 75/90.
+- Voz local.
+- Comunidad.
+- Transmisión/TV.
+- Bolillero Libre.

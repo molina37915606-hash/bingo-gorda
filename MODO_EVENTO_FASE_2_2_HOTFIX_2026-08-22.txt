@@ -1,0 +1,18 @@
+EL BINGO DE LA GORDA — MODO EVENTO PREMIUM — FASE 2.2 HOTFIX
+Fecha: 2026-08-22
+
+OBJETIVO
+Corregir el flujo visual de vinculación de cartones a jugadores detectado después de la Fase 2.1.
+
+CAMBIOS
+- Botón VINCULAR corregido en js/evento-admin.js.
+- Soporte confirmado para código privado y número de cartón.
+- Nuevo acceso ASIGNAR A… desde Cartones sin asignar.
+- Mensajes de error visibles y sin borrar el valor ingresado si falla la operación.
+- Prueba de regresión event-mode-phase2-2.js.
+
+NO CAMBIA
+- Motor Bingo 75/90.
+- Voz local ElevenLabs.
+- Bolillero Libre.
+- Transmisión/TV Premium (reservado para Fase 3).

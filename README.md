@@ -131,3 +131,12 @@ Se agrega gestión segura del ciclo de vida de los eventos:
 - El panel separa **Eventos activos** y **Archivados** para reducir eliminaciones accidentales.
 
 El motor de partida continúa sin cambios en esta fase.
+
+
+## Modo Evento Premium — Fase 2.2 Hotfix (2026-08-22)
+
+- Corrige el botón **VINCULAR** del gestor de jugadores: ahora obtiene los controles desde la fila real del jugador y ya no intenta usar selectores CSS como si fueran IDs.
+- Vinculación validada tanto por **código privado** como por **número de cartón**.
+- Agrega **ASIGNAR A…** directamente en la lista de cartones sin asignar para reducir pasos durante la preparación del evento.
+- Los errores de vinculación quedan visibles en el panel y el campo sólo se limpia después de una vinculación exitosa.
+- Incluye prueba de regresión específica `tests/event-mode-phase2-2.js`.

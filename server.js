@@ -2905,6 +2905,53 @@ function saveEventLogo(code, dataUrl) {
   fs.writeFileSync(file, buffer);
   return true;
 }
+function normalizePremiumEventGameConfig(modeValue, raw = {}) {
+  const mode = Number(modeValue) === 75 ? 75 : 90;
+  const is75 = mode === 75;
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const rawRules = source.rules && typeof source.rules === 'object' ? source.rules : source;
+  const line = rawRules.line === undefined ? true : Boolean(rawRules.line);
+  const rules = is75 ? {
+    ambocabeza:false,
+    line,
+    doubleLine:Boolean(rawRules.doubleLine),
+    tripleLine:Boolean(rawRules.tripleLine),
+    corners:Boolean(rawRules.corners),
+    bingo:true
+  } : {
+    ambocabeza:Boolean(rawRules.ambocabeza),
+    line,
+    doubleLine:false,
+    tripleLine:false,
+    corners:false,
+    bingo:true
+  };
+  const secondLine = !is75 && line && Boolean(source.secondLine ?? rawRules.secondLine);
+  return {
+    version:1,
+    rules,
+    secondLine,
+    linePrizeCount:!is75 && secondLine ? 2 : 1,
+    markingMode:source.markingMode === 'manual_only' ? 'manual_only' : 'normal',
+    claimMode:source.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
+    drawMode:source.drawMode === 'manual' ? 'manual' : 'automatic',
+    autoSeconds:Math.max(2, Math.min(60, Number(source.autoSeconds) || 6))
+  };
+}
+function premiumEventGameConfig(event) {
+  return normalizePremiumEventGameConfig(event?.mode, event?.gameConfig || {});
+}
+function configurePremiumEventGame(payload = {}) {
+  const event = loadEvent(payload.eventCode);
+  if (!event) throw new Error('No encontramos ese evento.');
+  assertEventEditable(event);
+  event.gameConfig = normalizePremiumEventGameConfig(event.mode, payload.gameConfig || payload);
+  event.version = Math.max(8, Number(event.version) || 1);
+  event.updatedAt = nowIso();
+  saveEvent(event);
+  return publicEvent(event);
+}
+
 function publicEvent(event) {
   return {
     version: Number(event?.version) || 1,
@@ -2915,6 +2962,7 @@ function publicEvent(event) {
     date: normalizeEventDate(event?.date),
     location: normalizeEventText(event?.location, 100),
     mode: Number(event?.mode) === 75 ? 75 : 90,
+    gameConfig: premiumEventGameConfig(event),
     colors: {
       primary: normalizeEventHex(event?.colors?.primary, '#6D238C'),
       secondary: normalizeEventHex(event?.colors?.secondary, '#D83A84'),
@@ -2965,6 +3013,7 @@ function createPremiumEvent(payload = {}) {
     date: normalizeEventDate(payload.date),
     location: normalizeEventText(payload.location, 100),
     mode: Number(payload.mode) === 75 ? 75 : 90,
+    gameConfig: normalizePremiumEventGameConfig(Number(payload.mode) === 75 ? 75 : 90, payload.gameConfig || {}),
     colors: {
       primary: normalizeEventHex(payload.colors?.primary, '#6D238C'),
       secondary: normalizeEventHex(payload.colors?.secondary, '#D83A84'),
@@ -3533,11 +3582,82 @@ function eventLiveAdminPayload(eventCode) {
   const preparation = premiumEventCurrentPreparation(event, workspace);
   return { phase:4, event:publicEvent(event), bound, room, preparation, ...eventPremiumDisplayUrls(event) };
 }
+function premiumEventRoomWorkspace(event, session = null) {
+  const existing = eventLiveWorkspace(event);
+  if (existing) return existing;
+  const selected = session?.workspaceId ? workspaces.get(session.workspaceId) : currentWorkspace();
+  if (selected && (!selected.state?.active || ['closed','finished'].includes(String(selected.state?.status || 'closed')))) return selected;
+  return freeOperationalWorkspace();
+}
+function initializePremiumEventOperationalRoom(event, workspace) {
+  const config = premiumEventGameConfig(event);
+  return workspaceContext.run(workspace, () => {
+    const now = nowIso();
+    const game = {
+      id:randomId('game'), number:1, mode:Number(event.mode)===75?75:90, rules:deepCopy(config.rules),
+      drawMode:config.drawMode, autoSeconds:config.autoSeconds, presenter:PRESENTER_ID,
+      theme:'clasico', phase:'READY', drawn:[], createdAt:now, updatedAt:now, cards:[]
+    };
+    replaceCurrentState({
+      ...blankState(), revision:0, active:true, status:'waiting', roomCode:uniqueRoomCode(6),
+      createdAt:now, updatedAt:now, round:1,
+      roomSettings:{
+        ...blankState().roomSettings,
+        playerAudioAllowed:true, playerAudioDefault:true,
+        linePrizeCount:Number(game.mode)===90 ? config.linePrizeCount : 1,
+        allowSamePlayerSecondLine:true,
+        claimMode:config.claimMode, tiePolicy:config.claimMode==='automatic_ties'?'same_ball':'first_claim',
+        gameType:'real', roomType:'alpha', roomOrigin:'event', hostName:event.name, roomName:event.name,
+        joinOpen:false, maxOpenPlayers:EVENT_MAX_PLAYERS, accessKey:'',
+        maxCardsPerPlayer:config.markingMode==='manual_only'?2:MAX_CARDS_PER_PLAYER,
+        markingMode:config.markingMode, claimAutoVerifySeconds:10, presenterVoiceGender:'female',
+        eventMode:true, eventCode:event.code,
+        broadcastToken:randomId('live'), broadcastAlias:freshBroadcastAlias(workspace.id),
+        transmission:normalizeTransmissionSettings()
+      },
+      waitingGame:{type:'both',leaderboard:[],leaderboards:{red_black:[],higher_lower:[]}},
+      drawOrder:createSecureDrawOrder(game.mode), game, players:[], cardReservations:{}, claims:[], eventLog:[],
+      chat:{enabled:true,locked:false,messages:[],mutedPlayerIds:[],lastSentAt:{}}
+    });
+    saveState(); broadcast();
+    return adminPayload();
+  });
+}
+function createPremiumEventOperationalRoom(payload = {}, session = null) {
+  const event = loadEvent(payload.eventCode);
+  if (!event) throw new Error('No encontramos ese evento.');
+  assertEventEditable(event);
+  const rows = premiumEventLinkedPlayers(event);
+  if (rows.length < (TEST_MODE ? 1 : MIN_PLAYERS)) throw new Error('Vinculá cartones a por lo menos 2 jugadores antes de crear la sala del Evento.');
+  const existing = eventLiveWorkspace(event);
+  if (existing && event.live?.active) {
+    const existingStatus = String(existing.state?.status || '');
+    if (['starting','playing','paused','verifying','resuming','finalizing'].includes(existingStatus)) {
+      if (session) session.workspaceId = existing.id;
+      return { ...eventLiveAdminPayload(event.code), created:false, reused:true, message:'La sala del Evento ya está en curso.' };
+    }
+  }
+  const workspace = premiumEventRoomWorkspace(event, session);
+  if (!workspace) throw new Error(`No hay una sala operativa libre entre las ${MAX_OPERATIONAL_ROOMS} disponibles.`);
+  initializePremiumEventOperationalRoom(event, workspace);
+  const live = activatePremiumEventLive({eventCode:event.code}, workspace);
+  if (session) {
+    session.workspaceId = workspace.id;
+    session.expiresAt = Date.now() + ADMIN_SESSION_TTL_MS;
+  }
+  const fresh = loadEvent(event.code);
+  fresh.live = { ...(fresh.live || {}), createdByEvent:true, roomOrigin:'event', updatedAt:nowIso() };
+  fresh.version = Math.max(8, Number(fresh.version) || 1);
+  fresh.updatedAt = nowIso();
+  saveEvent(fresh);
+  return { ...live, created:true, reused:false, message:'Sala del Evento creada y preparada.' };
+}
+
 function activatePremiumEventLive(payload = {}, workspace = currentWorkspace()) {
   const event = loadEvent(payload.eventCode);
   if (!event) throw new Error('No encontramos ese evento.');
   assertEventEditable(event);
-  if (!workspace?.state?.active || !workspace.state.game) throw new Error('Primero prepará una sala en el Admin general.');
+  if (!workspace?.state?.active || !workspace.state.game) throw new Error('Todavía no hay una sala operativa preparada para este Evento.');
   const roomMode = Number(workspace.state.game.mode) === 75 ? 75 : 90;
   if (roomMode !== Number(event.mode)) throw new Error(`El Evento es Bingo ${event.mode}, pero la sala actual es Bingo ${roomMode}.`);
   const preparation = preparePremiumEventRoom(event, workspace);
@@ -3629,12 +3749,12 @@ function premiumEventLinkedPlayers(event) {
 function premiumEventPreparationFingerprint(event, rows) {
   const lots = eventLotsFor(event).map(lot => ({ code:lot.code, hash:lot.hash, mode:lot.mode })).sort((a,b)=>a.code.localeCompare(b.code));
   const players = rows.map(row => ({ id:row.eventPlayer.id, name:row.eventPlayer.name, cards:row.refs.map(ref=>({lotCode:ref.lotCode,cardNumber:ref.cardNumber})).sort((a,b)=>premiumEventRoomCardKey(a.lotCode,a.cardNumber).localeCompare(premiumEventRoomCardKey(b.lotCode,b.cardNumber))) })).sort((a,b)=>a.id.localeCompare(b.id));
-  return crypto.createHash('sha256').update(JSON.stringify({ eventCode:event.code, mode:event.mode, lots, players })).digest('hex');
+  return crypto.createHash('sha256').update(JSON.stringify({ eventCode:event.code, mode:event.mode, gameConfig:premiumEventGameConfig(event), lots, players })).digest('hex');
 }
 function preparePremiumEventRoom(event, workspace = currentWorkspace()) {
   if (!event) throw new Error('No encontramos ese evento.');
   return workspaceContext.run(workspace, () => {
-    if (!state.active || !state.game) throw new Error('Primero prepará una sala en el Admin general.');
+    if (!state.active || !state.game) throw new Error('Todavía no hay una sala operativa preparada para este Evento.');
     if (state.status !== 'waiting' || (state.game.drawn || []).length) throw new Error('La tanda Evento sólo puede sincronizarse antes de la primera bolilla.');
     const roomMode = Number(state.game.mode) === 75 ? 75 : 90;
     if (roomMode !== Number(event.mode)) throw new Error(`El Evento es Bingo ${event.mode}, pero la sala actual es Bingo ${roomMode}.`);
@@ -3747,7 +3867,8 @@ function premiumEventPlayerLivePayloadFromContext(event, eventPlayer, accessedCa
   const baseRefs = eventPlayer ? (eventPlayer.cards || []) : (accessedCard ? [{lotCode:accessedCard.lotCode,cardNumber:accessedCard.cardNumber}] : []);
   if (!live || !roomPlayer) {
     const cards = baseRefs.map(ref=>eventPlayerCardPayload(event,ref,false)).filter(Boolean);
-    return { phase:4,event:publicEvent(event),live:false,player:eventPlayer?{id:eventPlayer.id,name:eventPlayer.name}:null,cards,room:null,message:eventPlayer?'Tus cartones están listos. Esperando que el conductor prepare la partida.':'Este cartón todavía no está vinculado a un jugador.' };
+    const resultAvailable=Boolean(eventPlayer&&premiumEventPlayerResultAvailable(event,eventPlayer.id));
+    return { phase:4,event:publicEvent(event),live:false,player:eventPlayer?{id:eventPlayer.id,name:eventPlayer.name}:null,cards,room:null,result:{available:resultAvailable},message:eventPlayer?'Tus cartones están listos. Esperando que el conductor prepare la partida.':'Este cartón todavía no está vinculado a un jugador.' };
   }
   syncAutoMarksForPlayer(roomPlayer);
   const readinessById = new Map(playerPrizeReadiness(roomPlayer).map(item=>[String(item.cardId),item]));
@@ -3766,6 +3887,7 @@ function premiumEventPlayerLivePayloadFromContext(event, eventPlayer, accessedCa
   }).filter(Boolean).sort((a,b)=>a.lotCode.localeCompare(b.lotCode)||a.cardNumber-b.cardNumber);
   const broadcast=broadcastPayload();
   const ownClaims=(state.claims||[]).filter(claim=>claim.playerId===roomPlayer.id).slice(-20).map(claim=>premiumEventClaim(event,claim));
+  const resultAvailable=Boolean(premiumEventPlayerResultAvailable(event,eventPlayer.id));
   return {
     phase:4,event:publicEvent(event),live:true,
     player:{id:eventPlayer.id,name:eventPlayer.name,autoMark:Boolean(roomPlayer.autoMark),markingMode:roomPlayer.autoMark?'automatic':'manual'},
@@ -3774,7 +3896,7 @@ function premiumEventPlayerLivePayloadFromContext(event, eventPlayer, accessedCa
       markingMode:state.roomSettings?.markingMode||'normal',claimMode:state.roomSettings?.claimMode||'manual',
       game:{mode:state.game.mode,rules:deepCopy(state.game.rules),drawn:[...(state.game.drawn||[])],lastBall:state.game.drawn?.at(-1)??null,lastDrawnAt:state.game.lastDrawnAt||null,phase:state.game.phase||''},
       pendingClaim:premiumEventClaim(event,broadcast.pendingClaim),latestConfirmed:premiumEventClaim(event,broadcast.latestConfirmed),bingoConfirmed:Boolean(broadcast.bingoConfirmed)},
-    ownClaims,notices:(roomPlayer.notices||[]).slice(-10),message:`${cards.length} cartón${cards.length===1?'':'es'} conectado${cards.length===1?'':'s'} a la partida.`
+    ownClaims,result:{available:resultAvailable},notices:(roomPlayer.notices||[]).slice(-10),message:`${cards.length} cartón${cards.length===1?'':'es'} conectado${cards.length===1?'':'s'} a la partida.`
   };
 }
 function premiumEventPlayerLivePayload(accessCode) {
@@ -3967,6 +4089,30 @@ function premiumEventResultFile(eventCode,runId,type) {
   const event=loadEvent(eventCode);if(!event)throw new Error('No encontramos ese evento.');const run=premiumEventRun(event,runId);if(!run)throw new Error('Este Evento todavía no tiene un cierre archivado.');const entry=premiumEventHistoricalEntry(run);if(!entry)throw new Error('No encontramos el archivo histórico de este Evento.');
   const map={pdf:[run.files?.eventActaPdf,'application/pdf',`${printableTitleFilename(event.name)||'EVENTO'}_${event.code}_ACTA.pdf`],csv:[run.files?.eventActaCsv,'text/csv; charset=utf-8',`${printableTitleFilename(event.name)||'EVENTO'}_${event.code}_ACTA.csv`],json:[run.files?.eventActaJson,'application/json; charset=utf-8',`${printableTitleFilename(event.name)||'EVENTO'}_${event.code}_ACTA.json`]};const choice=map[String(type||'pdf').toLowerCase()];if(!choice?.[0])throw new Error('Tipo de archivo Evento no válido.');const file=historicalFile(entry,choice[0]);if(!file)throw new Error('El archivo histórico del Evento no está disponible.');return{buffer:fs.readFileSync(file),contentType:choice[1],filename:choice[2]};
 }
+
+function premiumEventPlayerResultAvailable(event, playerId) {
+  const id=safeEventPlayerId(playerId);
+  if(!event||!id)return false;
+  const run=premiumEventRun(event,'');
+  if(!run)return false;
+  const entry=premiumEventHistoricalEntry(run);
+  if(!entry)return false;
+  const jsonFile=historicalFile(entry,run.files?.eventActaJson||'evento-acta.json');
+  if(!jsonFile)return false;
+  try{
+    const report=JSON.parse(fs.readFileSync(jsonFile,'utf8'));
+    return Array.isArray(report.participants)&&report.participants.some(p=>safeEventPlayerId(p.id)===id);
+  }catch{return false}
+}
+function premiumEventPlayerResultFile(accessCode) {
+  const found=premiumEventPlayerFromCode(accessCode);
+  if(!found.player)throw new Error('Este cartón todavía no está vinculado a un jugador.');
+  const event=found.event,run=premiumEventRun(event,'');
+  if(!run)throw new Error('El Evento todavía no tiene un acta final.');
+  if(!premiumEventPlayerResultAvailable(event,found.player.id))throw new Error('Este jugador no figura entre los participantes del acta final.');
+  return premiumEventResultFile(event.code,run.id,'pdf');
+}
+
 
 
 function normalizedGeneratedCount(value) {
@@ -9494,6 +9640,14 @@ async function dispatchAdminApi(req, res, url, session) {
     if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
     return sendJson(res, 200, deletePremiumEvent(await readJson(req)));
   }
+  if (url.pathname === '/api/admin/events/configure-game' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    return sendJson(res, 200, configurePremiumEventGame(await readJson(req)));
+  }
+  if (url.pathname === '/api/admin/events/room/create' && req.method === 'POST') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
+    return sendJson(res, 200, createPremiumEventOperationalRoom(await readJson(req), session));
+  }
   if (url.pathname === '/api/admin/events/live' && req.method === 'GET') {
     if (session.role !== 'owner') return sendJson(res, 403, { error:'Modo Evento está reservado al administrador principal.' });
     try { return sendJson(res, 200, eventLiveAdminPayload(url.searchParams.get('event'))); } catch(error) { return sendJson(res, 404, { error:String(error.message || error) }); }
@@ -9727,6 +9881,11 @@ async function handleApi(req, res, url) {
       if(!consumeRate(req,'event-heartbeat',120,60*1000))return sendJson(res,429,{error:'Demasiadas solicitudes. Esperá un momento.'});
       try { const payload=await readJson(req); return sendJson(res,200,heartbeatEventPlayer(payload.codigo)); }
       catch(error){ const message=String(error?.message||'No se pudo actualizar la conexión.'); return sendJson(res,message.includes('archivado')?410:404,{error:message}); }
+    }
+    if (url.pathname === '/api/event/result.pdf' && req.method === 'GET') {
+      if(!consumeRate(req,'event-result-pdf',30,60*1000))return sendJson(res,429,{error:'Demasiadas descargas. Esperá un momento.'});
+      try{const result=premiumEventPlayerResultFile(url.searchParams.get('codigo'));return sendBuffer(res,200,result.buffer,result.contentType,result.filename)}
+      catch(error){return sendJson(res,404,{error:String(error?.message||'El acta todavía no está disponible.')})}
     }
     if (url.pathname === '/api/event/player-state' && req.method === 'GET') {
       if(!consumeRate(req,'event-player-state',1200,60*1000))return sendJson(res,429,{error:'Demasiadas actualizaciones. Esperá un momento.'});

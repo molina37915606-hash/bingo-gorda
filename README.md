@@ -185,3 +185,12 @@ La integridad se protege verificando el SHA-256 de las tandas al cargarlas y con
 - El ranking se recalcula con cada bolilla y no altera probabilidades, reclamos ni validaciones.
 - El jugador Evento no ve datos de otros participantes: en `evento.html` sólo se destaca cuál de **sus propios cartones** está más cerca y cuánto le falta para la jugada objetivo.
 - Reclamos, ganador y cierre Premium conservan prioridad visual sobre la carrera.
+
+
+## Modo Evento Premium · Fase 5.2 (2026-08-22)
+
+- El Evento crea su propia sala operacional desde el Panel del Conductor; ya no requiere crear una partida auxiliar en Admin general.
+- Jugadas configurables por Evento, incluido **SOLO BINGO** en Bingo 75 y Bingo 90. Bingo permanece siempre activo.
+- Sala de espera del jugador: el código privado abre sus cartones antes del inicio y la pantalla pasa al juego en vivo automáticamente.
+- El código queda recordado sólo en el almacenamiento local de ese navegador/dispositivo. Al volver desde el mismo navegador no se pide otra vez; en otro dispositivo o navegador se debe ingresar o escanear nuevamente.
+- Al finalizar, un jugador participante puede descargar el Acta Premium oficial en PDF desde su pantalla.

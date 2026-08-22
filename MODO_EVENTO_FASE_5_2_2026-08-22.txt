@@ -1,0 +1,8 @@
+EL BINGO DE LA GORDA · MODO EVENTO PREMIUM · FASE 5.2
+
+- Sala operacional propia del Evento.
+- Configuración de jugadas por Evento, incluido SOLO BINGO.
+- Sala de espera para jugadores con cartones visibles antes del inicio.
+- Acceso recordado en el mismo navegador/dispositivo mediante almacenamiento local; otro dispositivo debe presentar nuevamente el código privado.
+- Acta Premium PDF descargable por participantes después del cierre.
+- No modifica Comunidad ni el flujo de partidas normales del Admin general.

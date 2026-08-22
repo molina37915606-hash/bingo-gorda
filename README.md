@@ -1,117 +1,107 @@
-# EL BINGO DE LA GORDA
+# El Bingo de la Gorda
 
-Plataforma web de Bingo 75 y Bingo 90 para celular, PC y TV. La interfaz de juego del jugador se mantiene como base aprobada. Esta entrega mantiene el motor aprobado, amplía la operación a hasta diez salas activas independientes, conserva el historial acumulativo y permite que los jugadores creen salas públicas gratuitas desde Comunidad.
+Software web para crear, administrar y jugar partidas recreativas de Bingo desde celular o computadora.
 
-## Accesos visuales de Comunidad
+La plataforma V6 funciona en modo **gratuito**: no vende cartones, no procesa apuestas, no registra transferencias de participación, no administra fondos de premios y no procesa pagos a ganadores. Los cartones son elementos de juego dentro de una sala.
 
-Los accesos principales de Comunidad usan iconografía propia de EL BINGO DE LA GORDA: DEMO con bot y cartones, CREAR SALA con mesa/bolillero y WHATSAPP con La Gorda. En móvil se presentan en una fila compacta de tres tarjetas táctiles; en pantallas mayores se amplían sin cambiar sus destinos ni lógica. Los recursos están optimizados como WebP transparentes y no modifican el motor del juego.
+## Funciones principales
 
-## Flujo de una partida
+- Bingo de 75 y 90 bolillas.
+- Salas administradas y salas públicas creadas desde Comunidad.
+- Comunidad gratuita con chat, salas, invitaciones y minijuegos.
+- Selección de cartones o asignación automática al iniciar.
+- Marcado manual o automático según la configuración de la sala.
+- Reclamo tradicional o detección automática con empates, elegible antes de iniciar.
+- Validación de Línea, Bingo y jugadas opcionales en el servidor.
+- Transmisión, TV y receptor Cast.
+- Recuperación de acceso de jugadores.
+- Historial, acta PDF/CSV/JSON y sello SHA-256 del sorteo.
+- Multisala y reinicio con persistencia.
+- Banner horizontal para sponsors en la vista del jugador: aparece 10 segundos al inicio y cada 10 bolillas, debajo de RECLAMAR.
+- Demo separada para probar el sistema.
 
-1. El Admin crea una partida gratuita o paga.
-2. Puede agregar jugadores mediante invitaciones privadas y/o abrir el link general reutilizable.
-3. En partidas pagas, el jugador indica nombre y cantidad de cartones, ve el total, la billetera/banco, el titular receptor y el alias, e informa DNI y nombre del titular que realizó la transferencia. No se suben comprobantes.
-4. El Admin verifica el dinero por fuera del sistema y confirma el pago manualmente.
-5. El Admin ve en tiempo real cartones solicitados, confirmados y asignados, con el dato destacado de cuántos cartones jugarán.
-6. El Admin cierra inscripciones sin iniciar el sorteo. Los jugadores ya registrados conservan su derecho a entrar o recuperar acceso.
-7. Al pulsar INICIAR SORTEO, el servidor asigna automáticamente los cartones faltantes de jugadores habilitados y mantiene un período de preparación/tutorial antes de la primera bolilla.
-8. El juego continúa con el mismo motor compartido por jugador, DEMO, Admin, Transmisión y TV.
+## Modelo gratuito
 
-## Accesos
+Todas las salas de Comunidad y las partidas programadas desde el administrador son gratuitas dentro del software.
 
-- Link privado individual: seguro, personal y compatible con vistas previas de WhatsApp sin consumir la invitación.
-- Link general de partida: se abre/cierra desde Admin; crea una sesión privada distinta para cada jugador.
-- Recuperación: link temporal de un solo uso generado por Admin. Puede utilizarse aunque la partida ya haya comenzado.
-- Un jugador previamente registrado puede abrir su link privado tarde y entrar a la partida en curso con los cartones que el servidor le asignó al inicio.
-- Si ese navegador ya tiene una sesión real en una partida iniciada, abrir Comunidad lo devuelve automáticamente a sus mismos cartones durante `starting`, `playing`, `paused`, `verifying`, `resuming` y `finalizing`. Un link explícito hacia otra mesa se respeta.
+El backend no acepta ni necesita precio por cartón, alias de cobro, medio de pago, estado de transferencia, importes asociados a jugadas ni datos de cobro del ganador. Los campos financieros de versiones antiguas se eliminan al cargar los archivos de datos.
 
-## Partidas pagas
+Antes de reescribir un archivo antiguo que contenga esos campos, V6 conserva una copia con sufijo `.pre-free-v6.bak` en el mismo directorio de datos.
 
-El Admin configura precio por cartón, billetera/banco, titular de la cuenta receptora, alias y WhatsApp de contacto. El jugador elige la cantidad, que fija la cantidad exacta de cartones a jugar una vez confirmado el pago. Antes de informar la transferencia puede corregir esa cantidad libremente. Si ya informó que transfirió, un cambio queda pendiente de revisión administrativa; después de confirmar el pago, solo el Admin puede modificar la cantidad. El formulario registra solamente los datos necesarios para identificar la transferencia: DNI y nombre del titular transferente.
+Las actas históricas ya archivadas se consideran registros cerrados y no se reescriben automáticamente.
 
-Estados operativos: PAGO PENDIENTE, TRANSFERENCIA INFORMADA y PAGO OK. Los pagos pendientes bloquean el inicio hasta que el Admin confirme o quite explícitamente al jugador.
+## Comunidad
 
-Los datos de transferencia no forman parte de Comunidad, Transmisión, chat ni actas públicas.
+Comunidad permite:
 
-## Preparación y tutorial
+- crear salas públicas gratuitas;
+- entrar como jugador solo cuando la persona elige **Ingresar a jugar**;
+- administrar una sala creada sin convertirse obligatoriamente en jugador;
+- compartir el enlace de ingreso;
+- iniciar/cancelar la sala según permisos;
+- recuperar accesos;
+- consultar transmisión;
+- programar partidas gratuitas desde Admin.
 
-INICIAR SORTEO es independiente de CERRAR INSCRIPCIONES. Durante el estado de preparación, el jugador ya ve su interfaz real de juego y puede recorrer un tutorial contextual por globos anclados a bolilla, cartones, marcado, RECLAMAR, premios, chat y herramientas. En móvil, cada globo calcula su posición usando el viewport visible para mantenerse dentro de la pantalla. Los premios activos se explican uno por uno y se resaltan temporalmente las casillas involucradas sin modificar el cartón ni sus marcas. El servidor controla el tiempo previo a la primera bolilla para mantener a todos sincronizados.
+El servidor fuerza este comportamiento gratuito aunque un cliente antiguo intente enviar campos financieros.
 
+## Jugadas y reclamos
 
-## Multisala e historial
+Las reglas de juego se configuran antes del inicio. Una vez iniciado el sorteo, las reglas relevantes quedan bloqueadas.
 
-El servidor mantiene hasta diez workspaces operativos persistentes (`Sala 1` a `Sala 10`) con estado, jugadores, SSE, temporizadores, chat, reclamos y transmisión independientes. Pueden estar esperando o jugando al mismo tiempo. Admin puede cambiar de una a otra sin detener las demás.
+### Reclamo tradicional
 
-Las partidas programadas oficiales pueden ocupar cualquiera de los lugares operativos. Una programación oficial ya vinculada a una sala en espera conserva la edición segura de hora, inscripción, intervalo y cartones. Las partidas oficiales próximas reservan capacidad con prioridad frente a las salas públicas creadas por jugadores.
+El jugador utiliza **RECLAMAR**. El servidor valida el cartón contra las bolillas oficiales y registra el orden de recepción de los reclamos.
 
-Al finalizar, cada partida se archiva en `BINGO_DATA_DIR/historial` con resultados, acta PDF/CSV, participantes, metadatos e integridad. Las canceladas dejan registro administrativo sin generar un acta oficial falsa. `BINGO_DATA_DIR` debe apuntar a almacenamiento persistente real en producción.
+### Automático + empates
 
-## Lobby de Comunidad: PÚBLICA / PRIVADA / OFICIAL
+Después de cada bolilla, el servidor revisa los cartones habilitados. Si dos o más cartones completan la misma jugada con esa misma extracción, todos quedan registrados como ganadores empatados para esa jugada.
 
-Comunidad funciona como lobby de mesas. Las salas **PÚBLICAS** y **PRIVADAS** pueden crearlas los jugadores y son siempre gratuitas; las **OFICIALES** solo se crean desde Admin/Agenda y se distinguen visualmente.
+## Publicidad y sponsors
 
-Al crear una sala, el jugador elige nombre, Bingo 75/90, máximo de jugadores, 1–2 cartones por persona, velocidad, qué jugadas se disputan y si empieza manualmente o queda programada. Una PRIVADA agrega una clave de 4–12 letras/números. Esa misma clave protege tanto el ingreso como la Transmisión y nunca se publica en el lobby. El código secreto del creador es independiente y sirve solo para recuperar su control desde otro dispositivo.
+El banner de sponsor es independiente de la mecánica del Bingo. No modifica cartones, probabilidades, jugadas, validaciones ni resultados.
 
-El inicio programado admite hasta 36 horas. Si faltan más de 2 horas existe solo una placa; a 2 horas se abre la sala de espera y a la hora indicada comienza automáticamente si hay al menos 2 jugadores. Las placas futuras no consumen uno de los diez lugares activos.
+La versión actual admite una imagen horizontal configurable desde Admin. La referencia de diseño es **1200 × 500 px**.
 
-Cualquier jugador dentro de una sala puede invitar por WhatsApp o copiar el link estable. Cada sala conserva chat, jugadores, bolillas, reclamos y Transmisión aislados. El chat general de Comunidad continúa separado del chat de cada sala.
+## Futuro Modo Evento Premium
 
-Al finalizar un Bingo, la partida se archiva inmediatamente como una entrada histórica independiente. Durante 3 minutos la sala queda abierta para **JUGAR OTRA PARTIDA**: los jugadores pueden anotarse y el creador puede abrir una nueva ronda manteniendo el mismo nombre, link, clave y chat, pero con cartones, bolillas, reclamos y acta nuevos. Si nadie continúa, la sala se cierra automáticamente y libera el lugar activo.
+La arquitectura prevista para Premium es la de un servicio de software: branding del evento, sponsors, personalización visual, capacidad y herramientas de organización. Premium no debe convertirse en un cobro por cartón ni quedar ligado al resultado de una partida.
 
-## Comunidad y agenda
+## Ejecución local
 
-El Admin puede programar futuras partidas indicando hora de inicio, modalidad, gratuita/paga, precio por cartón, minutos de inscripción y si desea automatización. Una sala previamente PREPARADA puede abrir inscripciones automáticamente (15 minutos antes por defecto), cerrarlas al llegar la hora, autoasignar cartones pendientes e iniciar el sorteo si se cumplen las condiciones. Si faltan jugadores o existe un bloqueo, no fuerza el inicio: registra el motivo y queda bajo control del Admin.
-
-En Comunidad móvil, la tarjeta principal cambia según el estado: próxima partida, inscripciones abiertas, por comenzar o en vivo. Cuando una sala oficial tiene el ingreso general abierto, el botón principal es ENTRAR A JUGAR y lleva directamente al formulario general. Las partidas programadas muestran horario y precio; las gratuitas muestran CARTÓN GRATIS. Demo, WhatsApp y Transmisión usan accesos compactos.
-
-El chat de Comunidad conserva mensajes, emojis, stickers y moderación, pero en móvil funciona como panel inferior desplazable similar al chat del jugador, sin ocupar permanentemente toda la pantalla.
-
-## Cobro de premios
-
-Al finalizar una partida real, cada jugador con uno o más premios confirmados ve un bloque propio para coordinar el cobro. Puede guardar alias, titular de la cuenta y billetera/banco opcional. Esos datos se asocian al jugador ganador, no a la persona que pagó la inscripción, y solo aparecen en su sesión y en Admin.
-
-El ganador puede abrir WhatsApp con un mensaje prearmado que identifica sala, premio y cartón. Los jugadores sin premio también conservan un acceso pequeño a WhatsApp para consultas. El WhatsApp de contacto/premios se configura por sala y, si se deja vacío, toma como respaldo el número configurado en Comunidad.
-
-Los datos de cobro del ganador no se publican en Comunidad, Transmisión, chat ni actas. Admin ve cada premio confirmado junto con el alias informado y puede copiarlo para realizar el pago por fuera del sistema.
-
-## Reglas preservadas
-
-- Reclamos siempre manuales; Automarcado solo marca.
-- En Manual no hay pista visual durante los primeros 20 segundos de un número salido sin marcar.
-- Durante verificación/pausa/reanudación el jugador permanece visualmente en su cartón.
-- Bingo 90 con dos líneas usa orden global de reclamos válidos; dos líneas válidas pueden adjudicarse sobre la misma bolilla.
-- Cartones exclusivos del lado servidor.
-- Integridad SHA-256, sello, acta y resultados oficiales se mantienen.
-- La interfaz del jugador, el motor y TV no fueron rediseñados. Transmisión conserva la vista completa y agrega adaptación para celular horizontal; en vertical muestra un aviso para girar el dispositivo.
-
-## Transmisión móvil horizontal
-
-En teléfonos, `transmision.html` se utiliza en orientación horizontal. En vertical aparece un aviso simple para girar el dispositivo y un acceso a pantalla completa. En horizontal se conserva la transmisión completa: Vero, bolilla actual, últimas bolillas, premio confirmado, carrera de hasta seis cartones, chat y overlays de reclamo/cierre/ganadores. El botón de pantalla completa intenta bloquear orientación horizontal cuando el navegador lo permite, pero el Bingo no depende de esa API. TV no fue modificada.
-
-## Desarrollo y pruebas
+Requiere Node.js 18 o superior.
 
 ```bash
+npm install
 npm start
+```
+
+Por defecto el servidor usa el puerto configurado en `PORT` o su valor interno de desarrollo.
+
+## Persistencia
+
+Para separar los datos del código puede definirse:
+
+```bash
+BINGO_DATA_DIR=/ruta/a/datos
+```
+
+El sistema conserva en ese directorio el estado operativo, la configuración de plataforma y los archivos generados por el historial.
+
+En el primer arranque de V6, si detecta estructuras financieras antiguas, crea una copia de seguridad antes de normalizarlas.
+
+## Pruebas
+
+```bash
 npm test
 ```
 
-Antes de publicar, configurar las variables de `.env.example`. En producción, `BINGO_DATA_DIR` debe apuntar a almacenamiento persistente.
-## Correcciones 2026-08-18
+La batería cubre acceso, administración, Comunidad, salas públicas, programación gratuita, Bingo 75/90, reclamos, reclamo automático con empates, recuperación, reinicio, móvil, transmisión, multisala, historial, publicidad y simulación.
 
-- Sala de espera comunitaria: solo quien creó la sala ve el detalle por jugador (nombre, cartones confirmados y estado Listo/Eligiendo). El inicio manual espera a que todos confirmen sus cartones.
-- Transmisión móvil horizontal: Bingo 90 vuelve a distribuir correctamente los seis cartones destacados; ya no heredan la misma posición de la vista vertical.
-- Salas creadas desde Comunidad: Bingo 90 y 75 permiten jugar **Solo Bingo**, sin obligación de Línea.
-- Sala de espera comunitaria: muestra cantidad de jugadores y total de cartones que jugarán la partida.
+## Principio de diseño
+
+La lógica crítica vive en el servidor. El cliente presenta el juego, pero no decide por sí solo qué cartón es válido, qué bolillas salieron ni quién completó una jugada ganadora.
 
 
-## Herramientas de Comunidad · Cartones PDF + Bolillero (2026-08-19)
-
-Comunidad incorpora dos accesos compactos en la barra superior: **CARTONES** y **BOLILLERO**.
-
-**Cartones PDF** genera de 1 a 10 series de 6 cartones por hoja. Bingo 90 usa A4 horizontal y Bingo 75 A4 vertical. Cada generación crea un lote único `LG-XXXXXX`; cada cartón queda identificado por lote, serie y número. El PDF usa el logo de EL BINGO DE LA GORDA en cada cartón, mantiene lote/serie discretos y deja la dirección web una sola vez al pie de la hoja. La dirección impresa se configura desde Admin > Comunidad.
-
-Los lotes se guardan en `BINGO_DATA_DIR/cartones`, por lo que en producción requieren almacenamiento persistente si se quiere volver a cargarlos después de un redeploy/reinicio de infraestructura.
-
-**Bolillero** es una herramienta independiente para jugar presencialmente en casa desde computadora o celular. Funciona sin cargar cartones o puede cargar un lote completo, una serie o un cartón generado por la plataforma. Incluye Vero, bolilla actual grande, últimas salidas, tablero completo, revisión del orden de salida, extracción manual/automática, pausa, voz/silencio, pantalla completa, anular última bolilla y recuperación local de la partida.
-
-En Bingo 75 permite configurar Línea, Doble Línea, Triple Línea, 4 Esquinas y/o Bingo. En Bingo 90 permite AmboCabeza, Línea, 2° Línea y/o Bingo. Al cantar un premio, el Bolillero pausa; sin cartones cargados la validación es manual y, con lote cargado, consulta al mismo motor de reglas del servidor para comprobar el cartón impreso.
+### Bolillero de Comunidad
+Incluye Modo Libre del 1 al 250, con máximo configurable de 1 a 10 apariciones por número y voz robótica del dispositivo.

@@ -77,9 +77,27 @@
     } finally { button.disabled = false; }
   }
 
+  function clampFreeMax(value) { return Math.max(2, Math.min(250, Math.trunc(Number(value) || 90))); }
+  function clampMaxOccurrences(value) { return Math.max(1, Math.min(10, Math.trunc(Number(value) || 1))); }
+  function selectedBolMode() {
+    const value = String($('bolMode')?.value || '90');
+    return value === 'free' ? 'free' : Number(value) === 75 ? 75 : 90;
+  }
+  function isFreeMode(mode = bol.mode) { return mode === 'free'; }
+  function totalDrawCount(state = bol) {
+    return isFreeMode(state.mode) ? clampFreeMax(state.freeMax) * clampMaxOccurrences(state.maxOccurrences) : Number(state.mode) === 75 ? 75 : 90;
+  }
+  function buildDrawOrder(mode, freeMax = 90, maxOccurrences = 1) {
+    if (mode === 'free') {
+      const max = clampFreeMax(freeMax), occurrences = clampMaxOccurrences(maxOccurrences);
+      return shuffle(Array.from({ length:max * occurrences }, (_, index) => (index % max) + 1));
+    }
+    const max = Number(mode) === 75 ? 75 : 90;
+    return shuffle(Array.from({ length:max }, (_, index) => index + 1));
+  }
   function defaultBolillero() {
     return {
-      version:3, active:false, finished:false, mode:90, drawMode:'manual', interval:8, sound:true, paused:false, title:'',
+      version:4, active:false, finished:false, mode:90, freeMax:90, maxOccurrences:1, drawMode:'manual', interval:8, sound:true, paused:false, title:'',
       rules:{ ambo:false, line:true, secondLine:false, doubleLine:false, tripleLine:false, corners:false, bingo:true },
       order:[], drawn:[], reviewIndex:-1, lotCode:'', loadedCards:[], closedPrizes:[], lineClaims:[], createdAt:'', updatedAt:''
     };
@@ -88,7 +106,8 @@
     try {
       const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
       if (!parsed || typeof parsed !== 'object') return defaultBolillero();
-      return { ...defaultBolillero(), ...parsed, title:cleanEventTitle(parsed.title), rules:{ ...defaultBolillero().rules, ...(parsed.rules || {}) }, drawn:Array.isArray(parsed.drawn)?parsed.drawn:[], order:Array.isArray(parsed.order)?parsed.order:[], loadedCards:Array.isArray(parsed.loadedCards)?parsed.loadedCards:[], closedPrizes:Array.isArray(parsed.closedPrizes)?parsed.closedPrizes:[], lineClaims:Array.isArray(parsed.lineClaims)?parsed.lineClaims:[] };
+      const mode = parsed.mode === 'free' ? 'free' : Number(parsed.mode) === 75 ? 75 : 90;
+      return { ...defaultBolillero(), ...parsed, mode, freeMax:clampFreeMax(parsed.freeMax), maxOccurrences:clampMaxOccurrences(parsed.maxOccurrences), title:cleanEventTitle(parsed.title), rules:{ ...defaultBolillero().rules, ...(parsed.rules || {}) }, drawn:Array.isArray(parsed.drawn)?parsed.drawn:[], order:Array.isArray(parsed.order)?parsed.order:[], loadedCards:isFreeMode(mode)?[]:(Array.isArray(parsed.loadedCards)?parsed.loadedCards:[]), closedPrizes:isFreeMode(mode)?[]:(Array.isArray(parsed.closedPrizes)?parsed.closedPrizes:[]), lineClaims:isFreeMode(mode)?[]:(Array.isArray(parsed.lineClaims)?parsed.lineClaims:[]) };
     } catch { return defaultBolillero(); }
   }
   let bol = loadBolilleroState();
@@ -102,10 +121,14 @@
     return out;
   }
   function setupModeUi() {
-    const mode = Number($('bolMode').value) === 75 ? 75 : 90;
+    const mode = selectedBolMode(), free = isFreeMode(mode);
     $('bolRules90').classList.toggle('hidden', mode !== 90);
     $('bolRules75').classList.toggle('hidden', mode !== 75);
+    $('bolFreeMaxField')?.classList.toggle('hidden', !free);
+    $('bolFreeRepeatField')?.classList.toggle('hidden', !free);
+    $('bolSetupCards')?.classList.toggle('hidden', free);
     $('bolIntervalField').classList.toggle('hidden', $('bolDrawMode').value !== 'automatic');
+    if ($('bolSoundStartText')) $('bolSoundStartText').textContent = free ? 'Voz robótica de bolillas activada' : 'Voz de bolillas activada';
   }
   function resetSetupCards() {
     setupLoadedCards = [];
@@ -191,7 +214,8 @@
     resetSetupCards();
     if ($('bolTitle')) $('bolTitle').value = bol.active ? cleanEventTitle(bol.title) : '';
     if (bol.active) {
-      $('bolResumeInfo').textContent = `${bol.title ? `${bol.title} · ` : ''}Bingo ${bol.mode} · ${bol.drawn.length} bolilla${bol.drawn.length===1?'':'s'} salidas${bol.loadedCards.length?` · ${bol.loadedCards.length} cartones`:''}`;
+      const modeInfo = isFreeMode(bol.mode) ? `Libre 1–${clampFreeMax(bol.freeMax)} · máx. ${clampMaxOccurrences(bol.maxOccurrences)} ${clampMaxOccurrences(bol.maxOccurrences)===1?'vez':'veces'} por número` : `Bingo ${bol.mode}`;
+      $('bolResumeInfo').textContent = `${bol.title ? `${bol.title} · ` : ''}${modeInfo} · ${bol.drawn.length} bolilla${bol.drawn.length===1?'':'s'} salidas${bol.loadedCards.length?` · ${bol.loadedCards.length} cartones`:''}`;
       show('bolResumeBox');
     } else hide('bolResumeBox');
     setupModeUi();
@@ -200,6 +224,7 @@
   }
   function closeBolSetup() { hide('bolSetupOverlay'); hide('bolCardsOverlay'); }
   function readRules(mode) {
+    if (mode === 'free') return { ambo:false, line:false, secondLine:false, doubleLine:false, tripleLine:false, corners:false, bingo:false };
     if (mode === 75) return {
       ambo:false,
       line:$('bol75Line').checked,
@@ -220,14 +245,17 @@
     };
   }
   function startBolillero() {
-    const mode = Number($('bolMode').value) === 75 ? 75 : 90;
+    const mode = selectedBolMode(), free = isFreeMode(mode);
     const rules = readRules(mode);
-    if (!Object.values(rules).some(Boolean)) return toast('Elegí al menos una jugada.');
-    if (setupLoadedCards.length && Number(setupLoadedCards[0]?.mode) !== mode) return toast(`Los cartones cargados son de Bingo ${setupLoadedCards[0]?.mode}.`);
-    const max = mode === 75 ? 75 : 90;
+    if (!free && !Object.values(rules).some(Boolean)) return toast('Elegí al menos una jugada.');
+    if (!free && setupLoadedCards.length && Number(setupLoadedCards[0]?.mode) !== mode) return toast(`Los cartones cargados son de Bingo ${setupLoadedCards[0]?.mode}.`);
+    const freeMax = clampFreeMax($('bolFreeMax')?.value);
+    const maxOccurrences = clampMaxOccurrences($('bolMaxOccurrences')?.value);
+    if ($('bolFreeMax')) $('bolFreeMax').value = String(freeMax);
+    if ($('bolMaxOccurrences')) $('bolMaxOccurrences').value = String(maxOccurrences);
     const title = cleanEventTitle($('bolTitle')?.value);
     if ($('bolTitle')) $('bolTitle').value = title;
-    bol = { ...defaultBolillero(), active:true, mode, title, drawMode:$('bolDrawMode').value === 'automatic'?'automatic':'manual', interval:Math.max(3,Math.min(30,Number($('bolInterval').value)||8)), sound:$('bolSoundStart').checked, rules, order:shuffle(Array.from({length:max},(_,i)=>i+1)), loadedCards:setupLoadedCards.map(card => ({...card})), lotCode:setupLotCode, reviewIndex:-1, createdAt:new Date().toISOString() };
+    bol = { ...defaultBolillero(), active:true, mode, freeMax, maxOccurrences, title, drawMode:$('bolDrawMode').value === 'automatic'?'automatic':'manual', interval:Math.max(3,Math.min(30,Number($('bolInterval').value)||8)), sound:$('bolSoundStart').checked, rules, order:buildDrawOrder(mode, freeMax, maxOccurrences), loadedCards:free?[]:setupLoadedCards.map(card => ({...card})), lotCode:free?'':setupLotCode, reviewIndex:-1, createdAt:new Date().toISOString() };
     boardView = 'numbers';
     saveBol();
     hide('bolSetupOverlay');
@@ -269,8 +297,8 @@
   }
   function drawNext() {
     if (!bol.active || bol.finished || bol.paused) return;
-    const next = bol.order.find(number => !bol.drawn.includes(number));
-    if (!next) { bol.finished = true; saveBol(); renderBolillero(); syncAutoTimer(); return; }
+    const next = isFreeMode(bol.mode) ? bol.order[bol.drawn.length] : bol.order.find(number => !bol.drawn.includes(number));
+    if (!Number.isFinite(next)) { bol.finished = true; saveBol(); renderBolillero(); syncAutoTimer(); return; }
     bol.drawn.push(next); bol.reviewIndex = -1; saveBol(); renderBolillero(); animateCurrentBall(); speak(next);
   }
   function undoLast() {
@@ -303,11 +331,21 @@
     else if (label.length >= 8) target.classList.add('medium');
   }
   function enabledPrizeTypes() {
+    if (isFreeMode(bol.mode)) return [];
     const order = bol.mode === 75 ? ['line','doubleLine','tripleLine','corners','bingo'] : ['ambo','line','secondLine','bingo'];
     return order.filter(type => bol.rules[type]);
   }
-  function ballClass(number) { return bol.drawn.includes(number) ? 'drawn' : ''; }
+  function drawCount(number) { return bol.drawn.reduce((count, value) => count + Number(value === number), 0); }
+  function ballClass(number) { return drawCount(number) ? 'drawn' : ''; }
   function boardMarkup() {
+    if (isFreeMode(bol.mode)) {
+      const max = clampFreeMax(bol.freeMax), maxOccurrences = clampMaxOccurrences(bol.maxOccurrences);
+      if (boardView === 'exit') {
+        if (!bol.drawn.length) return '<div class="bolBoardEmpty">Esperando primera bolilla…</div>';
+        return `<div class="bolExitGrid freeExit">${bol.drawn.map((number,index)=>`<div class="bolExit"><small>${index+1}°</small><b>${number}</b></div>`).join('')}</div>`;
+      }
+      return `<div class="bolNumberGrid freeNumbers">${Array.from({length:max},(_,i)=>i+1).map(number=>{const count=drawCount(number);return `<span class="bolNum ${count?'drawn':''} ${count>=maxOccurrences?'saturated':''}"><b>${number}</b>${count?`<small>×${count}</small>`:''}</span>`}).join('')}</div>`;
+    }
     const max = bol.mode === 75 ? 75 : 90;
     if (boardView === 'exit') {
       return `<div class="bolExitGrid">${Array.from({length:max},(_,index)=>{const number=bol.drawn[index];return number==null?'<div class="bolExit empty"><small>—</small><b>—</b></div>':`<div class="bolExit"><small>${index+1}°</small><b>${number}</b></div>`}).join('')}</div>`;
@@ -323,7 +361,8 @@
     $('bolBoardExitBtn').classList.toggle('active', boardView === 'exit');
     const board = $('bolBoard');
     board.classList.toggle('mode75', Number(bol.mode) === 75);
-    board.classList.toggle('mode90', Number(bol.mode) !== 75);
+    board.classList.toggle('mode90', !isFreeMode(bol.mode) && Number(bol.mode) !== 75);
+    board.classList.toggle('modeFree', isFreeMode(bol.mode));
     board.innerHTML = boardMarkup();
   }
   function openBoard() { $('bolBoardPanel').classList.add('mobileOpen'); }
@@ -332,21 +371,23 @@
     const viewedIndex = bol.reviewIndex < 0 ? bol.drawn.length - 1 : bol.reviewIndex;
     const current = viewedIndex >= 0 ? bol.drawn[viewedIndex] : '—';
     const isReview = bol.reviewIndex >= 0;
+    const free = isFreeMode(bol.mode), maxOccurrences = clampMaxOccurrences(bol.maxOccurrences);
+    $('bolilleroOverlay')?.classList.toggle('bolFreeActive', free);
     $('bolCustomTitle').textContent = cleanEventTitle(bol.title) || 'EL BINGO DE LA GORDA';
-    $('bolModeLabel').textContent = `BINGO ${bol.mode}`;
+    $('bolModeLabel').textContent = free ? `LIBRE 1–${clampFreeMax(bol.freeMax)} · MÁX. ${maxOccurrences} ${maxOccurrences===1?'VEZ':'VECES'}` : `BINGO ${bol.mode}`;
     $('bolStateLabel').textContent = bol.finished ? 'FINALIZADO' : bol.paused ? 'PAUSADO' : bol.drawMode === 'automatic' ? 'AUTOMÁTICO' : 'MANUAL';
     $('bolCurrent').textContent = current;
-    const totalBalls = Number(bol.mode) === 75 ? 75 : 90;
-    $('bolOrderLabel').textContent = bol.drawn.length ? `Bolilla ${viewedIndex + 1} de ${totalBalls}${isReview?' · REVISANDO':''}` : `Bolilla 0 de ${totalBalls}`;
+    const totalBalls = totalDrawCount(bol), drawWord = free ? 'Extracción' : 'Bolilla';
+    $('bolOrderLabel').textContent = bol.drawn.length ? `${drawWord} ${viewedIndex + 1} de ${totalBalls}${isReview?' · REVISANDO':''}` : `${drawWord} 0 de ${totalBalls}`;
     $('bolBackNow').classList.toggle('hidden', !isReview);
     $('bolLastBalls').innerHTML = bol.drawn.slice(-8).reverse().map((n,index)=>`<span class="bolLast ${index===0&&!isReview?'current':''}">${n}</span>`).join('') || '<small>Esperando primera bolilla…</small>';
     renderBoard();
-    $('bolLoadedInfo').textContent = bol.loadedCards.length ? `✓ ${bol.loadedCards.length} cartones cargados` : 'Sin cartones cargados';
-    $('bolLoadedInfo').classList.toggle('loaded', bol.loadedCards.length > 0);
+    $('bolLoadedInfo').textContent = free ? 'Modo libre · voz robótica del dispositivo' : bol.loadedCards.length ? `✓ ${bol.loadedCards.length} cartones cargados` : 'Sin cartones cargados';
+    $('bolLoadedInfo').classList.toggle('loaded', !free && bol.loadedCards.length > 0);
     renderLoadedAssistant();
     $('bolPrizeButtons').innerHTML = enabledPrizeTypes().map(type => `<button type="button" data-bol-claim="${type}" class="bolPrize ${bol.closedPrizes.includes(type)?'closed':''}" ${bol.closedPrizes.includes(type)?'disabled':''}>${bol.closedPrizes.includes(type)?'✓ ':''}${prizeLabel(type)}</button>`).join('');
     $('bolDrawBtn').disabled = bol.finished || bol.paused || bol.drawMode === 'automatic';
-    $('bolDrawBtn').textContent = bol.finished ? 'PARTIDA FINALIZADA' : bol.drawMode === 'automatic' ? 'SORTEO AUTOMÁTICO' : 'SACAR BOLILLA';
+    $('bolDrawBtn').textContent = bol.finished ? (free ? 'SORTEO COMPLETADO' : 'PARTIDA FINALIZADA') : bol.drawMode === 'automatic' ? 'SORTEO AUTOMÁTICO' : 'SACAR BOLILLA';
     $('bolPauseBtn').textContent = bol.paused ? '▶ REANUDAR' : '⏸ PAUSA';
     $('bolPauseBtn').classList.toggle('manualHidden', bol.drawMode !== 'automatic');
     $('bolSoundBtn').classList.toggle('muted', !bol.sound);

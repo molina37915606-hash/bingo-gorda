@@ -1,0 +1,33 @@
+EL BINGO DE LA GORDA · V8 · VOZ LA GORDA INTEGRADA
+Fecha: 2026-08-22
+
+INTEGRACIÓN
+- Biblioteca local de voz: assets/voice/
+- 136 MP3 de producción.
+- Números 1 a 90 completos.
+- Letras B-I-N-G-O para Bingo 75.
+- Inicio, partida, reclamos, premios, comentarios, demo y cierre.
+- Motor compartido: js/bingo-voice.js
+- Integrado en Jugador, Admin, TV, Transmisión/Chromecast y Comunidad.
+
+MODO LIBRE
+- El Bolillero Libre NO usa la biblioteca ElevenLabs.
+- Conserva la voz sintetizada del dispositivo.
+- No existen MP3 para números 91 a 250.
+
+CIERRE
+La última locución de la secuencia final es exactamente:
+GRACIAS POR JUGAR AL BINGO DE LA GORDA.
+
+SEGURIDAD / API
+- La plataforma publicada reproduce archivos MP3 locales.
+- No necesita API key de ElevenLabs para jugar.
+- No hay API key guardada en el proyecto.
+- La herramienta de generación queda disponible únicamente como utilidad local para futuras regeneraciones.
+
+VALIDACIÓN
+- Sintaxis de los módulos modificados: OK.
+- Batería de pruebas existente: OK; la corrida conjunta alcanzó el límite de tiempo después de multisala y las 11 pruebas restantes fueron ejecutadas individualmente: OK.
+- Prueba específica de voz local: OK.
+- Servidor /healthz: OK.
+- MIME MP3 audio/mpeg: OK.

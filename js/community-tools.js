@@ -12,6 +12,7 @@
   let announcementType = '';
   let announcementResumeAuto = false;
   let announcementTimer = null;
+  const bolVoice = window.BingoVoice?.create({ enabled:true }) || null;
 
   const api = async (url, options = {}) => {
     const response = await fetch(url, { credentials:'same-origin', headers:{ 'Content-Type':'application/json', ...(options.headers || {}) }, ...options });
@@ -111,6 +112,7 @@
     } catch { return defaultBolillero(); }
   }
   let bol = loadBolilleroState();
+  bolVoice?.setEnabled?.(bol.sound);
   function saveBol() {
     bol.updatedAt = new Date().toISOString();
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(bol)); } catch {}
@@ -256,6 +258,7 @@
     const title = cleanEventTitle($('bolTitle')?.value);
     if ($('bolTitle')) $('bolTitle').value = title;
     bol = { ...defaultBolillero(), active:true, mode, freeMax, maxOccurrences, title, drawMode:$('bolDrawMode').value === 'automatic'?'automatic':'manual', interval:Math.max(3,Math.min(30,Number($('bolInterval').value)||8)), sound:$('bolSoundStart').checked, rules, order:buildDrawOrder(mode, freeMax, maxOccurrences), loadedCards:free?[]:setupLoadedCards.map(card => ({...card})), lotCode:free?'':setupLotCode, reviewIndex:-1, createdAt:new Date().toISOString() };
+    bolVoice?.setEnabled?.(bol.sound); if (bol.sound && !free) bolVoice?.unlock?.();
     boardView = 'numbers';
     saveBol();
     hide('bolSetupOverlay');
@@ -266,6 +269,7 @@
   }
   function resumeBolillero() {
     bol = loadBolilleroState();
+    bolVoice?.setEnabled?.(bol.sound); if (bol.sound && !isFreeMode(bol.mode)) bolVoice?.unlock?.();
     boardView = 'numbers';
     hide('bolSetupOverlay');
     setBolilleroScreen(true);
@@ -283,9 +287,21 @@
     if (!bol.active || bol.finished || bol.paused || bol.drawMode !== 'automatic') return;
     autoTimer = setInterval(() => drawNext(), bol.interval * 1000);
   }
-  function speak(text) {
-    if (!bol.sound || !('speechSynthesis' in window)) return;
+  function browserSpeak(text) {
+    if (!bol.sound || !isFreeMode(bol.mode) || !('speechSynthesis' in window)) return;
     try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(String(text)); u.lang='es-AR'; u.rate=.9; speechSynthesis.speak(u); } catch {}
+  }
+  function speakBall(number) {
+    if (!bol.sound) return;
+    if (isFreeMode(bol.mode)) return browserSpeak(number);
+    bolVoice?.setEnabled?.(true);
+    bolVoice?.playBall?.(Number(number), Number(bol.mode), { priority:true });
+  }
+  function speakPrize(type, confirmed=false) {
+    if (!bol.sound || isFreeMode(bol.mode)) return;
+    bolVoice?.setEnabled?.(true);
+    if (confirmed) bolVoice?.playConfirmed?.(type, { mode:Number(bol.mode), prizeNumber:type==='secondLine'?2:1, priority:true });
+    else bolVoice?.playPrize?.(type, { mode:Number(bol.mode), prizeNumber:type==='secondLine'?2:1, confirmed:false, priority:true });
   }
   function animateCurrentBall() {
     const ball = $('bolCurrent');
@@ -299,14 +315,14 @@
     if (!bol.active || bol.finished || bol.paused) return;
     const next = isFreeMode(bol.mode) ? bol.order[bol.drawn.length] : bol.order.find(number => !bol.drawn.includes(number));
     if (!Number.isFinite(next)) { bol.finished = true; saveBol(); renderBolillero(); syncAutoTimer(); return; }
-    bol.drawn.push(next); bol.reviewIndex = -1; saveBol(); renderBolillero(); animateCurrentBall(); speak(next);
+    bol.drawn.push(next); bol.reviewIndex = -1; saveBol(); renderBolillero(); animateCurrentBall(); speakBall(next);
   }
   function undoLast() {
     if (!bol.drawn.length || !confirm('¿Anular la última bolilla?')) return;
     bol.drawn.pop(); bol.reviewIndex = -1; saveBol(); renderBolillero();
   }
   function togglePause() { bol.paused = !bol.paused; saveBol(); renderBolillero(); syncAutoTimer(); }
-  function toggleSound() { bol.sound = !bol.sound; if (!bol.sound && 'speechSynthesis' in window) speechSynthesis.cancel(); saveBol(); renderBolillero(); }
+  function toggleSound() { bol.sound = !bol.sound; bolVoice?.setEnabled?.(bol.sound); if (bol.sound && !isFreeMode(bol.mode)) bolVoice?.unlock?.(); if (!bol.sound) { bolVoice?.stop?.(true); if ('speechSynthesis' in window) speechSynthesis.cancel(); } saveBol(); renderBolillero(); }
   async function toggleFullscreen() {
     try { if (!document.fullscreenElement) await $('bolilleroOverlay').requestFullscreen(); else await document.exitFullscreen(); } catch { toast('Pantalla completa no está disponible en este navegador.'); }
   }
@@ -407,7 +423,7 @@
     fitAnnouncementLabel(announcementLabel);
     $('bolAnnouncementCheck').classList.toggle('hidden', bol.loadedCards.length === 0);
     show('bolAnnouncement');
-    speak(announcementLabel);
+    speakPrize(type, false);
     if (!bol.loadedCards.length) announcementTimer = setTimeout(() => closeAnnouncement(true), 1700);
   }
   function closeAnnouncement(resume = true) {
@@ -650,7 +666,7 @@
           ? ` Faltan ${progress.missing}.`
           : '';
       $('claimResult').innerHTML = `<b class="invalid">✕ NO ES VÁLIDO</b><span>Ese cartón todavía no completó esta jugada.${missing}</span>`;
-      speak('No es válido');
+      bolVoice?.playEvent?.('reclamo_no_valido',{ priority:true });
       return;
     }
     $('claimResult').innerHTML = `<b class="valid">✓ ${prizeDisplayLabel(claimType)} VÁLIDO</b><span>${loadedCardLabel(card)}</span>`;
@@ -662,6 +678,7 @@
     }
     if (!bol.closedPrizes.includes(claimType)) bol.closedPrizes.push(claimType);
     if (claimType === 'bingo') bol.finished = true;
+    speakPrize(claimType, true);
     saveBol();
     setTimeout(() => closeClaim(!bol.finished), 900);
   }

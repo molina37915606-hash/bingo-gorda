@@ -147,3 +147,20 @@ El motor de partida continúa sin cambios en esta fase.
 La Fase 3 agrega el **Panel del Conductor** y las pantallas **TV Premium / Transmisión Premium**. Un Evento se vincula explícitamente a una sala operacional existente; por debajo se reutiliza el mismo motor, estado, bolillero y endpoints de conducción. Las pantallas públicas usan un token de visualización propio y de solo lectura, sin exponer credenciales de administrador.
 
 La integración matemática de la tanda Evento con los cartones y jugadores operacionales de la sala se mantiene fuera de esta fase y queda reservada para Fase 4.
+
+
+## Modo Evento Premium · Fase 4
+
+La Fase 4 conecta matemáticamente la tanda con el motor real. Al **preparar/sincronizar** el Evento antes de la primera bolilla, la sala reemplaza sus cartones generados por las matrices exactas de los cartones vinculados del Evento y crea los jugadores operacionales correspondientes. El acceso por código privado utiliza esa misma sala para bolillas, marcado, reclamos, validación, pausa, reconexión y cierre.
+
+La integridad se protege verificando el SHA-256 de las tandas al cargarlas y congelando jugadores/cartones cuando la partida deja el estado `waiting`. Los límites operativos continúan siendo los del motor actual: hasta 60 jugadores, 250 cartones activos y 4 cartones por jugador (2 en SOLO MANUAL).
+
+
+## Modo Evento Premium · Fase 4.1
+
+- Tandas Evento de **6 a 1.000 cartones exactos**.
+- En Bingo 90, los 6 cartones por hoja son sólo maquetación de impresión: ya no forman series matemáticas.
+- Auditoría obligatoria de toda la tanda: 0 duplicados, códigos únicos, estructura válida, filas no idénticas ni con 4/5 números compartidos y máximo de 6/15 números comunes entre dos cartones Bingo 90 en tandas de hasta 500; para 501–1.000 el perfil de calidad usa un máximo explícito de 7/15. El límite elegido queda registrado en la auditoría.
+- La auditoría queda dentro de `tanda.json` y protegida por el SHA-256 de la tanda.
+- Modo Evento: hasta **150 jugadores** y **250 cartones activos por partida**. Una tanda puede tener hasta 1.000 cartones aunque sólo se vinculen/activen hasta 250 en una partida.
+- Salas normales y Comunidad conservan sus límites anteriores.

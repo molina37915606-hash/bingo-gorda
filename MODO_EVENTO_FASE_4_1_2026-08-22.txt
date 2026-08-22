@@ -1,0 +1,9 @@
+EL BINGO DE LA GORDA · MODO EVENTO PREMIUM · FASE 4.1
+
+Alta capacidad + diversidad global de cartones.
+- Hasta 1.000 cartones por tanda, cantidad exacta.
+- 6 cartones por hoja sólo como formato de impresión.
+- Bingo 90: 0 duplicados, máximo 6/15 números compartidos por par hasta 500; máximo 7/15 para 501–1.000, 0 filas idénticas y 0 filas con 4/5 números comunes.
+- Auditoría global incluida en tanda.json y SHA-256.
+- Hasta 150 jugadores Evento y 250 cartones activos por partida.
+- Salas normales/Comunidad no cambian.

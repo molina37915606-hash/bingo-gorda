@@ -1,0 +1,21 @@
+V9.0.1 - PANTALLA TV
+
+Admin principal:
+- Botón 📺 PANTALLA TV.
+- CARGAR / CAMBIAR IMAGEN: selecciona JPG, PNG o WebP y la publica inmediatamente.
+- COPIAR LINK: copia /pantalla.
+- ABRIR EN OTRA PESTAÑA.
+- QUITAR IMAGEN.
+
+TV:
+- /pantalla muestra únicamente la imagen sobre fondo negro.
+- La imagen ocupa toda la pantalla sin deformarse.
+- Tocar la imagen intenta activar pantalla completa.
+- Wake Lock se solicita cuando el navegador lo soporta.
+- La página consulta cambios automáticamente cada 2 segundos.
+
+Persistencia:
+- Imagen y metadata: BINGO_DATA_DIR/tv-screen.
+
+Validación adicional:
+- Campeonato público: prueba de carga 30 jugadores x 4 posiciones = 120 cartones OK.

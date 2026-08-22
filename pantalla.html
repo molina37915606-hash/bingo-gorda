@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Pantalla TV</title>
+<style>
+html,body{width:100%;height:100%;margin:0;background:#000;overflow:hidden}
+body{display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:manipulation}
+img{display:none;width:100vw;height:100vh;object-fit:contain;object-position:center;background:#000;-webkit-user-drag:none;user-select:none}
+body.ready img{display:block}
+:fullscreen body,:fullscreen img{cursor:none}
+</style>
+</head>
+<body aria-label="Pantalla TV. Tocá la imagen para pantalla completa.">
+<img id="screenImage" alt="">
+<script>
+(() => {
+'use strict';
+const img=document.getElementById('screenImage');
+let revision='';
+let wakeLock=null;
+async function requestWakeLock(){
+  try{if('wakeLock' in navigator){try{await wakeLock?.release?.()}catch{}wakeLock=await navigator.wakeLock.request('screen')}}catch{}
+}
+async function fullScreen(){
+  try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen?.()}catch{}
+  requestWakeLock();
+}
+async function refresh(){
+  try{
+    const r=await fetch('/api/tv-screen/state',{cache:'no-store'});
+    if(!r.ok)return;
+    const d=await r.json();
+    const next=String(d.updatedAt||'');
+    if(d.hasImage&&d.imageUrl){
+      if(next!==revision||!img.src){img.src=d.imageUrl;revision=next}
+      document.body.classList.add('ready');
+    }else{
+      img.removeAttribute('src');revision=next;document.body.classList.remove('ready');
+    }
+  }catch{}
+}
+document.body.addEventListener('click',fullScreen);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){requestWakeLock();refresh()}});
+img.addEventListener('contextmenu',e=>e.preventDefault());
+requestWakeLock();refresh();setInterval(refresh,2000);
+})();
+</script>
+</body>
+</html>

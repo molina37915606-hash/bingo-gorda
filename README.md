@@ -1,5 +1,21 @@
 # El Bingo de la Gorda
 
+## V9.0.1 · Pantalla TV
+
+Se agregó una herramienta simple para mostrar una placa o imagen fija en un televisor:
+
+- Admin principal: botón **📺 Pantalla TV**.
+- **CARGAR / CAMBIAR IMAGEN** sube la imagen inmediatamente; no requiere guardar otra configuración.
+- La imagen se adapta a 1920 × 1080 con fondo negro, sin recorte.
+- Link público estable: `/pantalla`.
+- `/pantalla` muestra únicamente la imagen, sin interfaz ni controles visibles.
+- Tocar la imagen intenta activar pantalla completa y Wake Lock cuando el navegador lo permite.
+- Si la imagen cambia desde Admin, la TV se actualiza automáticamente sin cambiar el link.
+- La imagen queda guardada en `BINGO_DATA_DIR/tv-screen`, por lo que persiste en reinicios cuando `BINGO_DATA_DIR` usa almacenamiento persistente.
+
+También se cerró la prueba de carga pendiente de Campeonato: **30 jugadores × 4 posiciones = 120 cartones**, con matrices únicas, cierre Primer Bingo +5, cambio de matrices en la siguiente ronda y conservación de puntos.
+
+
 Software web para crear, administrar y jugar partidas recreativas de Bingo desde celular o computadora.
 
 La plataforma V6 funciona en modo **gratuito**: no vende cartones, no procesa apuestas, no registra transferencias de participación, no administra fondos de premios y no procesa pagos a ganadores. Los cartones son elementos de juego dentro de una sala.
@@ -208,3 +224,18 @@ La integridad se protege verificando el SHA-256 de las tandas al cargarlas y con
 ## Modo Evento Premium · Fase 5.4
 
 Acceso fácil desde PDF, link general para compartir, respaldo/restauración exacta de eventos y tandas, y links de selección con reserva de cartones y confirmación manual del administrador.
+
+## V9 · Campeonato La Gorda 1.0 — Comunidad pública
+
+- Nuevo tipo de sala pública en **Comunidad → Crear sala → Campeonato**.
+- Campeonatos de **10, 20 o 30 rondas** en Bingo 90 o Bingo 75.
+- Cada jugador puede inscribirse con **1 a 4 posiciones de cartón**, hasta el máximo de la sala; no es obligatorio que todos tengan la misma cantidad.
+- Cada posición (C1/C2/C3/C4) acumula puntos de forma independiente durante todo el Campeonato.
+- Los jugadores **no eligen matrices**. El servidor genera y asigna una matriz nueva al azar a cada posición al comenzar cada ronda.
+- Reconectar durante una ronda conserva exactamente la misma matriz; sólo cambia al iniciar oficialmente la siguiente ronda.
+- Reutiliza el bolillero, la interfaz normal de jugador, marcado, voz, chat y Transmisión.
+- Puntuación matemática en servidor por números, Primera Línea, Segunda Línea y Bingo, según la extracción ordinal del logro.
+- El primer Bingo matemático activa **5 bolillas adicionales** y luego una ventana final de 20 segundos para el bonus de reacción cuando corresponda.
+- Entre rondas se muestran resultados de ronda y clasificación general; el creador inicia manualmente la ronda siguiente.
+- La última ronda vale x1 y el desempate usa el reglamento competitivo; pueden existir empates oficiales completos.
+- El reglamento implementado está documentado en `CAMPEONATO_LA_GORDA_REGLAMENTO_V3.md`.

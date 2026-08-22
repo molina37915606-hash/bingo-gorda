@@ -1,0 +1,7 @@
+V9.0.3 — CAMPEONATO DINÁMICO
+
+- Opciones nuevas: 3 / 5 / 7 rondas.
+- 5 rondas es el valor predeterminado y recomendado.
+- Las salas nuevas rechazan 10 / 20 / 30.
+- Persistencia compatible con Campeonatos anteriores de 10 / 20 / 30 rondas.
+- No cambia la puntuación, los reclamos, Bingo +5, matrices aleatorias ni la clasificación.

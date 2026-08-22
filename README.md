@@ -1,3 +1,10 @@
+## V9.0.3 — Campeonato dinámico
+
+- Campeonato público: 3 / 5 / 7 rondas.
+- 5 rondas queda como opción recomendada y predeterminada.
+- Salas nuevas ya no aceptan 10 / 20 / 30 rondas.
+- Campeonatos antiguos persistidos con 10 / 20 / 30 siguen siendo legibles y recuperables.
+
 # El Bingo de la Gorda
 
 ## V9.0.1 · Pantalla TV
@@ -228,7 +235,7 @@ Acceso fácil desde PDF, link general para compartir, respaldo/restauración exa
 ## V9 · Campeonato La Gorda 1.0 — Comunidad pública
 
 - Nuevo tipo de sala pública en **Comunidad → Crear sala → Campeonato**.
-- Campeonatos de **10, 20 o 30 rondas** en Bingo 90 o Bingo 75.
+- Campeonatos públicos de **3, 5 o 7 rondas** en Bingo 90 o Bingo 75; **5 rondas es el formato recomendado**.
 - Cada jugador puede inscribirse con **1 a 4 posiciones de cartón**, hasta el máximo de la sala; no es obligatorio que todos tengan la misma cantidad.
 - Cada posición (C1/C2/C3/C4) acumula puntos de forma independiente durante todo el Campeonato.
 - Los jugadores **no eligen matrices**. El servidor genera y asigna una matriz nueva al azar a cada posición al comenzar cada ronda.
@@ -239,3 +246,13 @@ Acceso fácil desde PDF, link general para compartir, respaldo/restauración exa
 - Entre rondas se muestran resultados de ronda y clasificación general; el creador inicia manualmente la ronda siguiente.
 - La última ronda vale x1 y el desempate usa el reglamento competitivo; pueden existir empates oficiales completos.
 - El reglamento implementado está documentado en `CAMPEONATO_LA_GORDA_REGLAMENTO_V3.md`.
+
+
+## V9.0.2 — Hotfix Reclamos Campeonato
+
+- En Campeonato manual, cada posición/cartón puede cantar **Primera Línea, Segunda Línea y Bingo**.
+- Las jugadas de Campeonato **no se cierran globalmente** cuando otro cartón canta: cada cartón conserva su propio estado de reclamo.
+- Cantar una Línea o Segunda Línea no pausa el bolillero ni abre verificación administrativa; el servidor valida matemáticamente la jugada y la registra al instante.
+- Los puntos principales siguen calculándose automáticamente por el servidor. El reclamo no cambia la bolilla matemática ni bloquea a otros cartones.
+- Bingo conserva el bonus de reacción +3/+2/+1 cuando el Campeonato es manual.
+- Si un jugador tiene varios Bingos propios habilitados al mismo tiempo, un toque de Bingo los registra juntos para no penalizar la segunda pulsación.

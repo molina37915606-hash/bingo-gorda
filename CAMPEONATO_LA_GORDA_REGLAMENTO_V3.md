@@ -2,7 +2,7 @@
 
 ## Reglamento competitivo v3 · implementación pública V9
 
-CAMPEONATO LA GORDA es un modo público de Comunidad disputado en 10, 20 o 30 rondas. No pertenece a Modo Evento.
+CAMPEONATO LA GORDA es un modo público de Comunidad disputado en 3, 5 o 7 rondas. No pertenece a Modo Evento.
 
 ### 1. Inscripción y posiciones competitivas
 
@@ -22,7 +22,7 @@ Actualizar la página, cerrar el navegador o reconectarse durante una misma rond
 
 ### 3. Rondas
 
-El Campeonato puede configurarse en 10, 20 o 30 rondas. Todas valen x1; la última no tiene multiplicador.
+El Campeonato puede configurarse en 3, 5 o 7 rondas. Todas valen x1; la última no tiene multiplicador.
 
 Cada ronda reinicia bolillero, secuencia de bolillas, puntos de ronda y logros de ronda. Los puntos acumulados, la posición competitiva y el historial permanecen.
 
@@ -193,8 +193,34 @@ Si todo continúa exactamente igual existe empate oficial. La reacción no se us
 
 ### 14. Final
 
-La última ronda vale x1. Al cerrar la ronda 10, 20 o 30, el servidor aplica los criterios de clasificación y declara campeón al C1/C2/C3/C4 ubicado en el primer puesto. Si todas las reglas de desempate continúan iguales, puede haber campeones empatados.
+La última ronda vale x1. Al cerrar la ronda 3, 5 o 7, el servidor aplica los criterios de clasificación y declara campeón al C1/C2/C3/C4 ubicado en el primer puesto. Si todas las reglas de desempate continúan iguales, puede haber campeones empatados.
 
 ### 15. Integridad
 
 Toda decisión competitiva se realiza en el servidor. El navegador no decide matrices, bolillas, logros ni puntos. Las matrices de cada ronda, secuencia de bolillas, hitos y clasificación deben quedar persistidos para recuperación y acta.
+
+
+---
+
+## Aclaración V9.0.2 — Cantes de Campeonato
+
+En modalidad manual, **cada cartón competitivo puede cantar su propia Primera Línea, Segunda Línea y Bingo** cuando la jugada exista matemáticamente.
+
+Un canto no adjudica ni cierra la categoría para los demás cartones. Que un cartón haya cantado Primera Línea no impide que todos los demás cartones canten su propia Primera Línea posteriormente. Lo mismo se aplica a Segunda Línea y Bingo.
+
+Los cantes de Línea y Segunda Línea no detienen el bolillero ni requieren verificación del administrador: el servidor conoce la matriz y la secuencia oficial, valida la jugada inmediatamente y registra el canto. La puntuación matemática ya obtenida por el cartón se conserva independientemente del momento del canto.
+
+El Bingo también es individual por cartón. En Campeonato manual, el canto de Bingo puede añadir únicamente el bonus de reacción reglamentario. Si un mismo jugador tiene más de un cartón con Bingo habilitado al mismo tiempo, un único toque puede registrar esos Bingos simultáneos para no generar una desventaja artificial por tener que realizar varias pulsaciones.
+
+
+---
+
+## Aclaración V9.0.3 — Duración dinámica
+
+Para Comunidad pública, los formatos oficiales disponibles son:
+
+- **3 rondas · Sprint:** más rápido y más impredecible.
+- **5 rondas · Recomendado:** equilibrio principal del modo.
+- **7 rondas · Extendido:** mayor peso de la regularidad sin convertir la sala en una sesión demasiado larga.
+
+Todas las rondas continúan valiendo x1. No existe multiplicador especial en la final.

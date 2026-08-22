@@ -46,6 +46,9 @@ const COMMUNITY_ROOM_RESERVATION_MS = Math.max(15 * 60 * 1000, Number(process.en
 const COMMUNITY_PUBLIC_OPEN_MS = Math.max(1_000, Number(process.env.BINGO_COMMUNITY_PUBLIC_OPEN_MS || 2 * 60 * 60 * 1000));
 const COMMUNITY_PUBLIC_MAX_AHEAD_MS = 36 * 60 * 60 * 1000;
 const COMMUNITY_PUBLIC_ESTIMATED_GAME_MS = 2 * 60 * 60 * 1000;
+const CHAMPIONSHIP_ROUND_OPTIONS = [3, 5, 7];
+const CHAMPIONSHIP_PERSISTED_ROUNDS = [3, 5, 7, 10, 20, 30];
+const CHAMPIONSHIP_DEFAULT_ROUNDS = 5;
 const COMMUNITY_FINISH_GRACE_MS = Math.max(TEST_MODE ? 150 : 15_000, Number(process.env.BINGO_COMMUNITY_FINISH_GRACE_MS || 3 * 60 * 1000));
 const COMMUNITY_ROOM_ACCESS_COOKIE = 'bingo_community_room_access';
 const COMMUNITY_ROOM_ACCESS_TTL_MS = 30 * 60 * 1000;
@@ -526,7 +529,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.communityStartMode = ['manual','scheduled'].includes(String(merged.roomSettings.communityStartMode || '')) ? String(merged.roomSettings.communityStartMode) : '';
     merged.roomSettings.communityAccessType = merged.roomSettings.communityAccessType === 'private' ? 'private' : 'public';
     merged.roomSettings.communityGameKind = merged.roomSettings.communityGameKind === 'championship' ? 'championship' : 'normal';
-    merged.roomSettings.championshipRounds = [10,20,30].includes(Number(merged.roomSettings.championshipRounds)) ? Number(merged.roomSettings.championshipRounds) : 0;
+    merged.roomSettings.championshipRounds = CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(merged.roomSettings.championshipRounds)) ? Number(merged.roomSettings.championshipRounds) : 0;
     merged.roomSettings.championshipReactionBonus = merged.roomSettings.communityGameKind === 'championship' && merged.roomSettings.championshipReactionBonus === true;
     merged.roomSettings.communityScheduleId = String(merged.roomSettings.communityScheduleId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
     merged.roomSettings.scheduledAt = String(merged.roomSettings.scheduledAt || '');
@@ -681,7 +684,7 @@ function normalizeCommunityPublicRoom(raw = {}) {
   const maxPlayers = Math.max(2, Math.min(30, Math.round(Number(raw.maxPlayers) || 20)));
   const maxCardsPerPlayer = Math.max(1, Math.min(4, Math.round(Number(raw.maxCardsPerPlayer) || 2)));
   const gameKind = raw.gameKind === 'championship' ? 'championship' : 'normal';
-  const championshipRounds = gameKind === 'championship' && [10,20,30].includes(Number(raw.championshipRounds)) ? Number(raw.championshipRounds) : 0;
+  const championshipRounds = gameKind === 'championship' && CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(raw.championshipRounds)) ? Number(raw.championshipRounds) : 0;
   const championshipReactionBonus = gameKind === 'championship' && raw.championshipReactionBonus !== false && raw.claimMode !== 'automatic_ties';
   const linePrizeCount = gameKind === 'championship' && mode === 90 ? 2 : (mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(raw.linePrizeCount) || 1))) : 1);
   const requestedRules = raw.rules && typeof raw.rules === 'object' ? raw.rules : {};
@@ -4375,7 +4378,7 @@ function championshipRoomEnabled() {
 }
 
 function createChampionshipState(payload = {}, mode = 90) {
-  const totalRounds = [10,20,30].includes(Number(payload.championshipRounds)) ? Number(payload.championshipRounds) : 10;
+  const totalRounds = CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(payload.championshipRounds)) ? Number(payload.championshipRounds) : CHAMPIONSHIP_DEFAULT_ROUNDS;
   return {
     enabled: true,
     version: 1,
@@ -4547,7 +4550,16 @@ function championshipPublicPayload(player = null) {
   const own = player ? all.filter(item => item.playerId === player.id).map(item => {
     const position = (champ.positions || []).find(pos => pos.id === item.positionId);
     const entry = championshipCurrentEntry(position);
-    return { ...item, bingoDetectedAt: entry?.bingoDetectedAt || null };
+    return {
+      ...item,
+      bingoDetectedAt: entry?.bingoDetectedAt || null,
+      lineClaimed: Boolean(entry?.lineClaimedAt),
+      lineClaimedAt: entry?.lineClaimedAt || null,
+      secondLineClaimed: Boolean(entry?.secondLineClaimedAt),
+      secondLineClaimedAt: entry?.secondLineClaimedAt || null,
+      bingoClaimed: Boolean(entry?.bingoClaimedAt || entry?.reactionClaimedAt),
+      bingoClaimedAt: entry?.bingoClaimedAt || entry?.reactionClaimedAt || null
+    };
   }) : [];
   const leader = all[0] || null;
   const firstBingo = Number(champ.firstBingoDrawnCount) || null;
@@ -4663,8 +4675,9 @@ function prepareChampionshipRound(roundNumber) {
       position.rounds ||= [];
       position.rounds.push({
         round, cardId:card.id, cardNumber:card.number, grid:deepCopy(card.grid), hitCount:0, hitPoints:0,
-        lineBall:null, linePoints:0, secondLineBall:null, secondLinePoints:0, bingoBall:null, bingoPoints:0,
-        bingoDetectedAt:null, bingoDetectedAtMs:0, reactionClaimedAt:null, reactionBonus:0, points:0
+        lineBall:null, linePoints:0, lineClaimedAt:null, secondLineBall:null, secondLinePoints:0, secondLineClaimedAt:null,
+        bingoBall:null, bingoPoints:0, bingoDetectedAt:null, bingoDetectedAtMs:0, bingoClaimedAt:null, reactionClaimedAt:null,
+        reactionBonus:0, claimEvents:[], points:0
       });
     } else {
       existing.cardId=card.id; existing.cardNumber=card.number; existing.grid=deepCopy(card.grid);
@@ -4739,29 +4752,87 @@ function processChampionshipAfterDraw() {
   return championshipPublicPayload();
 }
 
-function createChampionshipBingoClaim(player, payload = {}) {
+function createChampionshipClaim(player, payload = {}) {
   if (!championshipRoomEnabled() || !state.game || !state.championship) throw new Error('Esta sala no es un Campeonato.');
   const champ = state.championship;
-  if (!champ.reactionBonusEnabled) throw new Error('Este Campeonato no usa bonus de reacción. La puntuación se registra automáticamente.');
-  if (!['playing','finalizing'].includes(state.status) || !['playing','reaction'].includes(champ.stage)) throw new Error('La ventana para reclamar ya terminó.');
-  const cardId = String(payload.cardId || '');
-  if (cardId && !(player.cardIds || []).includes(cardId)) throw new Error('Ese cartón no pertenece al jugador.');
-  const nowMs = Date.now();
-  const claimed = [];
-  for (const position of (champ.positions || []).filter(item => item.playerId === player.id && !item.retired)) {
-    const entry = championshipCurrentEntry(position);
-    if (!entry?.bingoBall || entry.reactionClaimedAt) continue;
-    const deltaMs = Math.max(0, nowMs - (Number(entry.bingoDetectedAtMs) || nowMs));
-    entry.reactionBonus = championshipReactionPoints(deltaMs);
-    entry.reactionClaimedAt = nowIso();
-    entry.reactionDeltaMs = deltaMs;
-    recomputeChampionshipEntryPoints(entry, state.game.mode);
-    claimed.push({ positionId:position.id, label:`C${position.slot}`, bonus:entry.reactionBonus, deltaMs, bingoBall:entry.bingoBall });
+  if (state.roomSettings?.claimMode === 'automatic_ties' || !champ.reactionBonusEnabled) {
+    throw new Error('Este Campeonato usa puntuación automática y no requiere reclamos manuales.');
   }
-  if (!claimed.length) throw new Error('No tenés un Bingo nuevo habilitado para reclamar.');
-  logEvent('championship_bingo_reaction_claimed', { playerId:player.id, playerName:playerDisplayName(player), claimed });
-  saveState(); broadcast();
-  return { ok:true, championshipClaim:true, claimed, totalBonus:claimed.reduce((sum,item)=>sum+item.bonus,0), championship:championshipPublicPayload(player) };
+  if (!['playing','finalizing'].includes(state.status) || !['playing','reaction'].includes(champ.stage)) {
+    throw new Error('La ventana para cantar jugadas ya terminó.');
+  }
+  const requested = String(payload.type || '');
+  const type = ['line','secondLine','bingo'].includes(requested) ? requested : '';
+  if (!type) throw new Error('En Campeonato sólo se puede cantar Primera Línea, Segunda Línea o Bingo.');
+  const cardId = String(payload.cardId || '');
+  if (!cardId || !(player.cardIds || []).includes(cardId)) throw new Error('Ese cartón no pertenece al jugador.');
+  const position = (champ.positions || []).find(item => item.playerId === player.id && !item.retired && championshipCurrentEntry(item)?.cardId === cardId);
+  if (!position) throw new Error('No se encontró la posición competitiva de ese cartón.');
+  const entry = championshipCurrentEntry(position);
+  if (!entry) throw new Error('No se encontró la ronda actual de ese cartón.');
+  const now = nowIso();
+  const nowMs = Date.now();
+
+  const claimOne = (pos, currentEntry, claimType) => {
+    const config = claimType === 'line'
+      ? { ballKey:'lineBall', claimedKey:'lineClaimedAt', pointsKey:'linePoints', label:'PRIMERA LÍNEA' }
+      : claimType === 'secondLine'
+        ? { ballKey:'secondLineBall', claimedKey:'secondLineClaimedAt', pointsKey:'secondLinePoints', label:'SEGUNDA LÍNEA' }
+        : { ballKey:'bingoBall', claimedKey:'bingoClaimedAt', pointsKey:'bingoPoints', label:'BINGO' };
+    const ball = Number(currentEntry?.[config.ballKey]) || 0;
+    if (!ball) throw new Error(`${config.label}: ese cartón todavía no completó la jugada.`);
+    if (currentEntry?.[config.claimedKey] || (claimType === 'bingo' && currentEntry?.reactionClaimedAt)) {
+      throw new Error(`${config.label}: ese cartón ya cantó esta jugada.`);
+    }
+    let reactionBonus = 0;
+    let reactionDeltaMs = null;
+    if (claimType === 'bingo' && champ.reactionBonusEnabled) {
+      reactionDeltaMs = Math.max(0, nowMs - (Number(currentEntry.bingoDetectedAtMs) || nowMs));
+      reactionBonus = championshipReactionPoints(reactionDeltaMs);
+      currentEntry.reactionBonus = reactionBonus;
+      currentEntry.reactionClaimedAt = now;
+      currentEntry.reactionDeltaMs = reactionDeltaMs;
+    }
+    currentEntry[config.claimedKey] = now;
+    currentEntry.claimEvents = Array.isArray(currentEntry.claimEvents) ? currentEntry.claimEvents : [];
+    const event = {
+      id: randomId('champ_claim'), type:claimType, label:config.label, claimedAt:now, ball,
+      points:Math.max(0, Number(currentEntry?.[config.pointsKey]) || 0), reactionBonus,
+      reactionDeltaMs, positionId:pos.id, slot:pos.slot, cardId:currentEntry.cardId, cardNumber:currentEntry.cardNumber
+    };
+    currentEntry.claimEvents.push(event);
+    recomputeChampionshipEntryPoints(currentEntry, state.game.mode);
+    return event;
+  };
+
+  const claimed = [];
+  if (type === 'bingo') {
+    // Si un mismo jugador tiene varios Bingos ya habilitados, un solo toque los canta juntos
+    // para no castigar al segundo cartón por la velocidad de dos pulsaciones consecutivas.
+    for (const pos of (champ.positions || []).filter(item => item.playerId === player.id && !item.retired)) {
+      const currentEntry = championshipCurrentEntry(pos);
+      if (!currentEntry?.bingoBall || currentEntry.bingoClaimedAt || currentEntry.reactionClaimedAt) continue;
+      claimed.push(claimOne(pos, currentEntry, 'bingo'));
+    }
+    if (!claimed.length) throw new Error('No tenés un Bingo nuevo habilitado para cantar.');
+  } else {
+    claimed.push(claimOne(position, entry, type));
+  }
+
+  logEvent('championship_claimed', {
+    type, playerId:player.id, playerName:playerDisplayName(player),
+    claimed:claimed.map(item => ({ type:item.type, positionId:item.positionId, slot:item.slot, cardId:item.cardId, cardNumber:item.cardNumber, ball:item.ball, points:item.points, reactionBonus:item.reactionBonus }))
+  });
+  saveState();
+  broadcast();
+  return {
+    ok:true,
+    championshipClaim:true,
+    type,
+    claimed,
+    totalBonus:claimed.reduce((sum,item)=>sum+Math.max(0,Number(item.reactionBonus)||0),0),
+    championship:championshipPublicPayload(player)
+  };
 }
 
 function finishChampionshipRound() {
@@ -5069,7 +5140,7 @@ function createSimpleRoom(payload = {}) {
       communityStartMode: payload.roomOrigin === 'community' && payload.communityStartMode === 'scheduled' ? 'scheduled' : (payload.roomOrigin === 'community' ? 'manual' : ''),
       communityAccessType: payload.roomOrigin === 'community' && payload.communityAccessType === 'private' ? 'private' : 'public',
       communityGameKind: payload.roomOrigin === 'community' && payload.communityGameKind === 'championship' ? 'championship' : 'normal',
-      championshipRounds: payload.roomOrigin === 'community' && payload.communityGameKind === 'championship' && [10,20,30].includes(Number(payload.championshipRounds)) ? Number(payload.championshipRounds) : 0,
+      championshipRounds: payload.roomOrigin === 'community' && payload.communityGameKind === 'championship' && CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(payload.championshipRounds)) ? Number(payload.championshipRounds) : 0,
       championshipReactionBonus: payload.roomOrigin === 'community' && payload.communityGameKind === 'championship' && payload.championshipReactionBonus === true,
       // El acceso normal es exclusivamente mediante invitaciones privadas por jugador.
       joinOpen: false,
@@ -7802,7 +7873,7 @@ function processAutomaticClaimsForCurrentBall() {
 
 function createClaim(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
-  if (championshipRoomEnabled()) return createChampionshipBingoClaim(player, payload);
+  if (championshipRoomEnabled()) return createChampionshipClaim(player, payload);
   if (state.roomSettings?.claimMode === 'automatic_ties' && !payload?.automaticSystem) throw new Error('Esta partida usa reclamo automático. El servidor detecta las jugadas ganadoras y los empates.');
   const requested = String(payload.type || '');
   const type = PRIZE_TYPES.includes(requested) ? requested : 'line';
@@ -8662,7 +8733,7 @@ function accessRoomMetaMarkup(roomState) {
   const mode = Number(roomState?.game?.mode) === 75 ? 75 : 90;
   const championship = settings.communityGameKind === 'championship';
   if (championship) {
-    const rounds = [10,20,30].includes(Number(settings.championshipRounds)) ? Number(settings.championshipRounds) : 10;
+    const rounds = CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(settings.championshipRounds)) ? Number(settings.championshipRounds) : CHAMPIONSHIP_DEFAULT_ROUNDS;
     return `<div class="roomMeta"><span class="chip">🏆 CAMPEONATO</span><span class="chip">${mode} bolas</span><span class="chip">${rounds} rondas</span><span class="chip">GRATIS</span></div>`;
   }
   const lineCount = mode === 90 ? Math.max(1, Number(settings.linePrizeCount) || 1) : 1;
@@ -9243,7 +9314,7 @@ function publicRoomPayload(record) {
     creatorName: record.creatorName,
     mode: record.mode,
     gameKind: record.gameKind === 'championship' ? 'championship' : 'normal',
-    championshipRounds: record.gameKind === 'championship' ? ([10,20,30].includes(Number(record.championshipRounds)) ? Number(record.championshipRounds) : 10) : 0,
+    championshipRounds: record.gameKind === 'championship' ? (CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(record.championshipRounds)) ? Number(record.championshipRounds) : CHAMPIONSHIP_DEFAULT_ROUNDS) : 0,
     championshipReactionBonus: record.gameKind === 'championship' && Boolean(record.championshipReactionBonus),
     championship,
     maxPlayers: record.maxPlayers,
@@ -9401,7 +9472,12 @@ function createCommunityPublicRoom(payload = {}) {
   const maxCardsPerPlayer = Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
   const autoSeconds = Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
   const gameKind = payload.gameKind === 'championship' ? 'championship' : 'normal';
-  const championshipRounds = gameKind === 'championship' && [10,20,30].includes(Number(payload.championshipRounds)) ? Number(payload.championshipRounds) : 0;
+  let championshipRounds = 0;
+  if (gameKind === 'championship') {
+    const requestedRounds = Math.round(Number(payload.championshipRounds) || CHAMPIONSHIP_DEFAULT_ROUNDS);
+    if (!CHAMPIONSHIP_ROUND_OPTIONS.includes(requestedRounds)) throw new Error('Elegí 3, 5 o 7 rondas para el Campeonato.');
+    championshipRounds = requestedRounds;
+  }
   const championshipReactionBonus = gameKind === 'championship' && payload.championshipReactionBonus === true;
   const linePrizeCount = gameKind === 'championship' && mode === 90 ? 2 : (mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1);
   const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};

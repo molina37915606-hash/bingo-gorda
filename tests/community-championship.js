@@ -12,9 +12,10 @@ const playerJs = fs.readFileSync(path.join(root, 'js/player.js'), 'utf8');
 const serverSrc = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 
 assert(communityHtml.includes('privateRoomGameKind') && communityHtml.includes('CAMPEONATO'), 'Comunidad debe ofrecer Campeonato al crear sala.');
-assert(communityHtml.includes('privateRoomChampionshipRounds'), 'Comunidad debe permitir 10/20/30 rondas.');
+assert(communityHtml.includes('data-value="3"') && communityHtml.includes('data-value="5"') && communityHtml.includes('data-value="7"'), 'Comunidad debe permitir 3/5/7 rondas.');
+assert(communityHtml.includes('5 · RECOMENDADO'), '5 rondas debe mostrarse como formato recomendado.');
 assert(communityJs.includes("'championship'") && communityJs.includes('privateRoomGameKind'), 'Comunidad debe enviar/interpretar el tipo Campeonato.');
-assert(playerJs.includes('renderChampionshipResults') && playerJs.includes('RECLAMAR BINGO'), 'Jugador debe conservar reclamo normal y resultados entre rondas.');
+assert(playerJs.includes('renderChampionshipResults') && playerJs.includes("label:'PRIMERA LÍNEA'") && playerJs.includes("label:'SEGUNDA LÍNEA'"), 'Jugador Campeonato debe ofrecer sus cantes y resultados entre rondas.');
 assert(serverSrc.includes('function prepareChampionshipRound') && serverSrc.includes('function processChampionshipAfterDraw'), 'Servidor debe tener motor de Campeonato.');
 assert(serverSrc.includes('Math.min(mode, drawCount + 5)'), 'Primer Bingo debe cerrar exactamente cinco extracciones después, limitado por el bolillero.');
 
@@ -92,15 +93,22 @@ const cardSignature = card => JSON.stringify(card?.grid || []);
       method: 'POST',
       body: {
         visitorId: 'host-champ', name: 'Marta', roomName: 'Campeonato del barrio',
-        gameKind: 'championship', championshipRounds: 10, championshipReactionBonus: false,
+        gameKind: 'championship', championshipRounds: 5, championshipReactionBonus: false,
         mode: 90, maxPlayers: 10, maxCardsPerPlayer: 4, autoSeconds: 8,
         startMode: 'manual', accessType: 'public'
       }
     });
     assert.equal(created.gameKind, 'championship');
-    assert.equal(created.championshipRounds, 10);
+    assert.equal(created.championshipRounds, 5);
     assert.equal(created.kind, 'public', 'Campeonato debe ser una sala pública de Comunidad.');
     assert(created.roomCode && created.creatorCode);
+
+    const legacyNew = await raw('/api/community/public-room', {
+      method: 'POST',
+      body: { visitorId:'host-old-rounds', name:'Viejo', roomName:'No debe crear', gameKind:'championship', championshipRounds:10, mode:90, maxPlayers:10, maxCardsPerPlayer:2, autoSeconds:8, startMode:'manual', accessType:'public' }
+    });
+    assert(!legacyNew.response.ok, 'Una sala Campeonato nueva no debe aceptar 10/20/30 rondas.');
+    assert(String(legacyNew.data?.error||'').includes('3, 5 o 7'), 'El error debe explicar las rondas válidas.');
 
     const ana = await ok('/api/player/open-join', {
       method: 'POST', body: { roomCode: created.roomCode, name: 'Ana', cardCount: 1, deviceId: 'ana-champ' }
@@ -214,7 +222,7 @@ const cardSignature = card => JSON.stringify(card?.grid || []);
       method: 'POST',
       body: {
         visitorId: 'host-champ75', name: 'Nora', roomName: 'Campeonato 75',
-        gameKind: 'championship', championshipRounds: 10, championshipReactionBonus: true,
+        gameKind: 'championship', championshipRounds: 5, championshipReactionBonus: true,
         mode: 75, maxPlayers: 8, maxCardsPerPlayer: 2, autoSeconds: 8, startMode: 'manual', accessType: 'public'
       }
     });

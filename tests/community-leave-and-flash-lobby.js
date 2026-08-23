@@ -19,10 +19,40 @@ async function ok(url,opt={}){const x=await raw(url,opt);assert(x.r.ok,`${url}: 
 async function selectRoom(admin,roomCode){const list=await ok('/api/admin/workspaces',{token:admin});const room=list.rooms.find(x=>x.roomCode===roomCode);assert(room,`No se encontró sala ${roomCode}`);if(list.selectedWorkspaceId!==room.workspaceId)await ok('/api/admin/workspace/select',{method:'POST',token:admin,body:{workspaceId:room.workspaceId}})}
 async function waitPlaying(playerToken){for(let i=0;i<120;i++){const s=await ok('/api/player/state',{playerToken});if(s.status==='playing'||s.status==='finished')return s;await sleep(20)}throw new Error('No llegó a playing')}
 const nums = card => (card.grid||[]).flat().filter(Number.isFinite).map(Number);
+function playerTokenFromSetCookie(response){const header=response?.headers?.get('set-cookie')||'';const match=header.match(/(?:^|;\s*)bingo_player_session=([^;]+)/);return match?decodeURIComponent(match[1]):''}
 
 (async()=>{try{
   start();await ready();
   const admin=(await ok('/api/admin/login',{method:'POST',body:{password:''}})).token;
+
+  // Si el creador-jugador abandona y quedan jugadores, la titularidad pasa al primero que ingresó.
+  const transfer=await ok('/api/community/public-room',{method:'POST',body:{visitorId:'owner-transfer-host',name:'Titular Original',roomName:'Transferencia Titular',gameKind:'normal',mode:90,maxPlayers:4,maxCardsPerPlayer:1,autoSeconds:12,startMode:'manual',accessType:'public'}});
+  const creatorJoin=await raw('/api/community/creator-join-player',{method:'POST',body:{publicId:transfer.id,creatorCode:transfer.creatorCode,deviceId:'owner-transfer-creator',cardCount:1}});assert(creatorJoin.r.ok,JSON.stringify(creatorJoin.d));
+  const creatorToken=playerTokenFromSetCookie(creatorJoin.r);assert(creatorToken,'El ingreso del creador debe emitir sesión de jugador');
+  const first=await ok('/api/player/open-join',{method:'POST',body:{roomCode:transfer.roomCode,name:'Primero',cardCount:1,deviceId:'owner-transfer-first'}});
+  const second=await ok('/api/player/open-join',{method:'POST',body:{roomCode:transfer.roomCode,name:'Segundo',cardCount:1,deviceId:'owner-transfer-second'}});
+  let creatorState=await ok('/api/player/state',{playerToken:creatorToken});assert.equal(creatorState.communityRoom.isCreator,true);
+  const ownerLeft=await ok('/api/player/community-leave',{method:'POST',playerToken:creatorToken,body:{}});
+  assert(ownerLeft.left&&ownerLeft.wasCreator&&ownerLeft.ownershipTransferred&&!ownerLeft.roomClosed,'Debe transferir titularidad sin cerrar la sala');
+  assert.equal(ownerLeft.newOwner.playerName,'Primero','La titularidad debe ir al jugador restante que ingresó primero');
+  let firstState=await ok('/api/player/state',{playerToken:first.token});assert.equal(firstState.communityRoom.isCreator,true,'El sucesor debe recibir permisos reales de creador');assert.equal(firstState.communityRoom.canStart,true,'El nuevo titular debe poder iniciar');
+  let secondState=await ok('/api/player/state',{playerToken:second.token});assert.equal(secondState.communityRoom.isCreator,false);
+  const oldCreatorAccess=await raw('/api/community/creator-state',{method:'POST',body:{publicId:transfer.id,creatorCode:transfer.creatorCode}});assert.equal(oldCreatorAccess.r.status,400,'El código del titular anterior debe quedar invalidado');
+  let ownerLobby=await ok('/api/community/state?visitorId=owner-transfer-lobby');let ownerCard=ownerLobby.publicRooms.find(x=>x.id===transfer.id);assert(ownerCard);assert.equal(ownerCard.creatorName,'Primero','Comunidad debe mostrar al nuevo titular');
+
+  // La transferencia también debe encadenarse con la partida ya iniciada.
+  await ok('/api/player/community-start',{method:'POST',playerToken:first.token,body:{}});await waitPlaying(first.token);
+  const firstOwnerLeft=await ok('/api/player/community-leave',{method:'POST',playerToken:first.token,body:{}});assert(firstOwnerLeft.wasCreator&&firstOwnerLeft.ownershipTransferred&&!firstOwnerLeft.roomClosed);assert.equal(firstOwnerLeft.newOwner.playerName,'Segundo');
+  secondState=await ok('/api/player/state',{playerToken:second.token});assert.equal(secondState.communityRoom.isCreator,true,'El segundo jugador debe recibir la titularidad durante la partida');
+  const secondOwnerLeft=await ok('/api/player/community-leave',{method:'POST',playerToken:second.token,body:{}});assert(secondOwnerLeft.wasCreator&&secondOwnerLeft.roomClosed,'Si ya no queda otro jugador activo, la mesa en curso debe cerrarse');
+  ownerLobby=await ok('/api/community/state?visitorId=owner-transfer-lobby-closed');assert(!ownerLobby.publicRooms.some(x=>x.id===transfer.id),'La mesa cerrada por quedar vacía debe desaparecer del lobby');
+
+  // Si el creador es la última persona de la mesa, abandonar cierra la sala.
+  const empty=await ok('/api/community/public-room',{method:'POST',body:{visitorId:'owner-empty-host',name:'Solo Titular',roomName:'Sala Vacía',gameKind:'flash',mode:75,maxPlayers:4,maxCardsPerPlayer:1,autoSeconds:12,startMode:'manual',accessType:'private',accessKey:'VACIA77'}});
+  const emptyJoin=await raw('/api/community/creator-join-player',{method:'POST',body:{publicId:empty.id,creatorCode:empty.creatorCode,deviceId:'owner-empty-creator',cardCount:1}});assert(emptyJoin.r.ok,JSON.stringify(emptyJoin.d));
+  const emptyCreatorToken=playerTokenFromSetCookie(emptyJoin.r);assert(emptyCreatorToken);
+  const emptyLeft=await ok('/api/player/community-leave',{method:'POST',playerToken:emptyCreatorToken,body:{}});assert(emptyLeft.wasCreator&&emptyLeft.roomClosed&&!emptyLeft.ownershipTransferred,'Sin sucesor la sala debe cerrarse');
+  ownerLobby=await ok('/api/community/state?visitorId=owner-empty-lobby');assert(!ownerLobby.publicRooms.some(x=>x.id===empty.id),'La sala vacía cerrada debe desaparecer de Comunidad');
 
   // Pública normal: abandonar antes de empezar elimina al jugador y vuelve a liberar el cupo.
   const normal=await ok('/api/community/public-room',{method:'POST',body:{visitorId:'leave-normal-host',name:'Host Normal',roomName:'Salida Normal',gameKind:'normal',mode:90,maxPlayers:2,maxCardsPerPlayer:1,autoSeconds:12,startMode:'manual',accessType:'public'}});
@@ -65,5 +95,5 @@ const nums = card => (card.grid||[]).flat().filter(Number.isFinite).map(Number);
   assert(html.includes('id="leaveCommunityRoomBtn"')&&html.includes('ABANDONAR SALA'));
   assert(js.includes('/api/player/community-leave')&&js.includes('syncCommunityLeaveButton'));
 
-  console.log('PRUEBA SALIDA COMUNIDAD + FLASH LOBBY: OK · pública/privada · espera/juego · Flash desaparece al finalizar');
+  console.log('PRUEBA SALIDA COMUNIDAD + FLASH LOBBY: OK · transferencia/cierre de titularidad · pública/privada · espera/juego · Flash desaparece al finalizar');
 }catch(e){console.error(e);process.exitCode=1}finally{await stop();fs.rmSync(dataDir,{recursive:true,force:true})}})();

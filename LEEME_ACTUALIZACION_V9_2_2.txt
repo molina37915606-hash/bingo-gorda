@@ -1,0 +1,18 @@
+EL BINGO DE LA GORDA — ACTUALIZACIÓN V9.2.2
+Fecha: 2026-08-23
+
+Esta actualización se aplica sobre V9.2.1.
+
+CAMBIO PRINCIPAL
+Cuando el titular de una mesa de Comunidad usa ABANDONAR SALA:
+- si queda otro jugador activo, la titularidad pasa al que ingresó primero;
+- si no queda nadie, la mesa se cierra automáticamente.
+
+La regla funciona en salas públicas/privadas y en Normal, Flash y Campeonato.
+El nuevo titular recibe los permisos reales de creador. El código del titular anterior queda invalidado.
+
+INSTALACIÓN
+Reemplazá los archivos incluidos manteniendo la misma estructura de carpetas y reiniciá el servidor Node.js.
+
+RECOMENDADO
+Antes de actualizar, conservá una copia de tu V9.2.1 actual. También se entrega un ZIP completo V9.2.2 para respaldo.

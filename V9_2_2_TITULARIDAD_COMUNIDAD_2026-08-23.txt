@@ -1,0 +1,33 @@
+EL BINGO DE LA GORDA — V9.2.2
+Actualización: transferencia automática de titularidad en Comunidad
+Fecha: 2026-08-23
+
+REGLA NUEVA
+1. El botón ABANDONAR SALA sigue disponible en cualquier mesa creada desde Comunidad.
+2. Si abandona un jugador común, se mantiene el comportamiento de V9.2.1.
+3. Si abandona el titular/creador y queda al menos un jugador activo, la titularidad pasa automáticamente al jugador restante que ingresó primero.
+4. El nuevo titular recibe los permisos reales de administración de la mesa desde su sesión de jugador.
+5. El nombre del titular visible en Comunidad se actualiza.
+6. El código del titular anterior queda invalidado al transferirse la sala.
+7. Si el titular abandona y no queda ningún otro jugador activo, la mesa se cierra automáticamente.
+8. La regla se aplica a salas públicas y privadas y a Normal, Flash y Campeonato.
+9. Si la partida ya había comenzado, el registro competitivo del jugador que sale se conserva; la transferencia de titularidad no modifica cartones, marcas, puntos ni actas.
+
+ARCHIVOS PRINCIPALES MODIFICADOS
+- server.js
+- js/player.js
+- player.html
+- package.json
+- package-lock.json
+- README.md
+- tests/community-leave-and-flash-lobby.js
+- tests/community-championship-v4-interruption.js (prueba temporal robustecida)
+
+PRUEBAS
+- Transferencia antes de iniciar.
+- Transferencia con partida en curso.
+- Transferencias sucesivas.
+- Cierre automático cuando no queda sucesor.
+- Invalidación del código del titular anterior.
+- Lobby actualizado con el nuevo titular.
+- Compatibilidad con salas públicas/privadas, Flash y Campeonato.

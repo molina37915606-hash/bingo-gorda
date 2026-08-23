@@ -1,3 +1,14 @@
+## V9.2.2 — Titularidad automática al abandonar Comunidad
+
+- Si el **titular/creador que está jugando abandona la sala** y no queda ningún otro jugador activo, la mesa se cierra automáticamente y deja de mostrarse como activa en Comunidad.
+- Si queda al menos un jugador activo, la titularidad se transfiere automáticamente al **jugador restante que ingresó primero**.
+- La transferencia es real: el nuevo titular recibe los permisos para iniciar/cancelar la sala, avanzar rondas de Campeonato y abrir revancha cuando corresponda.
+- El nombre del creador mostrado en Comunidad se actualiza al nuevo titular.
+- El código del titular anterior se invalida al transferirse la sala, evitando que quien ya salió siga administrándola.
+- La regla es común a salas públicas y privadas y a las modalidades Normal, Flash y Campeonato.
+- Con una partida ya iniciada, la participación del jugador que sale se conserva para no alterar resultados; solo la titularidad pasa a otro jugador activo. Si no queda ninguno, la mesa se cierra.
+- Se amplió `tests/community-leave-and-flash-lobby.js` para cubrir transferencia antes y durante la partida, cierre de mesa vacía e invalidación del código anterior.
+
 ## V9.2.1 — Salida universal de Comunidad + limpieza de Flash
 
 - Nuevo botón **ABANDONAR SALA** en la vista del jugador para cualquier mesa creada desde Comunidad, sin depender de si es pública, privada, Bingo 75/90, Normal, Flash o Campeonato.

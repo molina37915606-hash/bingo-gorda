@@ -10433,6 +10433,64 @@ function cancelCommunityRoomFromPlayer(player) {
 }
 
 
+function communityOwnershipSuccessor(excludingPlayerId = '') {
+  const excluded = String(excludingPlayerId || '');
+  return (state.players || [])
+    .filter(item => !item?.virtual && item?.nameSet && String(item.id || '') !== excluded && item.sessionToken && !item.leftAt)
+    .slice()
+    .sort((a,b) => Number(a.slotNumber || 0) - Number(b.slotNumber || 0) || String(a.id || '').localeCompare(String(b.id || '')))[0] || null;
+}
+
+function transferCommunityOwnership(previousPlayer, nextPlayer) {
+  if (!nextPlayer) return null;
+  const previousName = playerDisplayName(previousPlayer);
+  const nextName = playerDisplayName(nextPlayer);
+  const publicId = String(state.roomSettings?.communityPublicId || '');
+  const record = publicId ? communityPublicRoomById(publicId) : null;
+  const replacementSecret = randomId('creator-transfer');
+  const replacementHash = crypto.createHash('sha256').update(replacementSecret).digest('hex');
+  state.communityCreatorPlayerId = String(nextPlayer.id || '');
+  state.roomSettings.hostName = nextName;
+  state.communityCreatorCodeHash = replacementHash;
+  nextPlayer.communityOwnershipReceivedAt = nowIso();
+  if (record) {
+    record.creatorName = nextName;
+    // El código del creador anterior deja de ser válido cuando transfiere la titularidad.
+    // El nuevo titular administra desde su propia sesión de jugador y puede recuperar esa sesión con sus mecanismos normales de acceso.
+    record.creatorCodeHash = replacementHash;
+    record.updatedAt = nowIso();
+    savePlatform();
+  }
+  logEvent('community_ownership_transferred', {
+    publicRoomId: publicId,
+    previousPlayerId: String(previousPlayer?.id || ''),
+    previousPlayerName: previousName,
+    nextPlayerId: String(nextPlayer.id || ''),
+    nextPlayerName: nextName
+  });
+  try { appendChatMessage({ role:'admin', text:`${nextName} ahora es titular de la sala.` }); } catch {}
+  return { playerId:String(nextPlayer.id || ''), playerName:nextName };
+}
+
+function closeCommunityRoomAfterCreatorLeavesEmpty(statusBeforeLeave = '') {
+  const publicId = String(state.roomSettings?.communityPublicId || '');
+  const record = publicId ? communityPublicRoomById(publicId) : null;
+  const wasFinished = statusBeforeLeave === 'finished';
+  const wasStarted = Boolean(state.startedAt) || !['waiting',''].includes(statusBeforeLeave);
+  const championshipInterrupted = !wasFinished && wasStarted && championshipRoomEnabled() ? interruptChampionship('creator_left_empty') : false;
+  if (!championshipInterrupted) state.closedReason = 'creator_left_empty';
+  state.roomSettings.joinOpen = false;
+  logEvent('community_room_closed_creator_left_empty', { publicRoomId:publicId, status:statusBeforeLeave, wasStarted });
+  closeRoom();
+  if (record) {
+    record.status = wasFinished ? 'finished' : 'cancelled';
+    record.endedAt = state.endedAt || nowIso();
+    record.updatedAt = nowIso();
+    savePlatform();
+  }
+  return { closed:true, championshipInterrupted, publicRoomId:publicId };
+}
+
 function leaveCommunityRoomFromPlayer(player) {
   if (state.roomSettings?.roomOrigin !== 'community') throw new Error('Esta acción solo está disponible en salas de Comunidad.');
   if (!player || !(state.players || []).some(item => String(item.id) === String(player.id))) throw new Error('No se encontró tu participación en esta sala.');
@@ -10441,14 +10499,17 @@ function leaveCommunityRoomFromPlayer(player) {
   const workspace = currentWorkspace();
   const statusBeforeLeave = String(state.status || '');
   const started = Boolean(state.startedAt) || statusBeforeLeave !== 'waiting';
+  const wasCreator = String(state.communityCreatorPlayerId || '') === playerId;
   let removedBeforeStart = false;
+  let ownershipTransferred = false;
+  let newOwner = null;
+  let roomClosed = false;
 
   if (!started) {
     const maxPlayers = Math.max(2, Math.min(MAX_PLAYERS, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS));
     const wasFull = state.players.length >= maxPlayers;
     releaseReservationsForPlayer(player);
     state.players = state.players.filter(item => String(item.id) !== playerId);
-    if (String(state.communityCreatorPlayerId || '') === playerId) state.communityCreatorPlayerId = null;
     if (wasFull && state.players.length < maxPlayers) state.roomSettings.joinOpen = true;
     updateCardDisplayNames();
     enforceAutoMarkPolicy();
@@ -10466,13 +10527,28 @@ function leaveCommunityRoomFromPlayer(player) {
     }
   }
 
-  logEvent('community_player_left', { playerId, playerName, status:statusBeforeLeave, removedBeforeStart });
-  saveState();
+  if (wasCreator) {
+    const successor = communityOwnershipSuccessor(playerId);
+    if (successor) {
+      newOwner = transferCommunityOwnership(player, successor);
+      ownershipTransferred = Boolean(newOwner);
+    } else {
+      state.communityCreatorPlayerId = null;
+      const closed = closeCommunityRoomAfterCreatorLeavesEmpty(statusBeforeLeave);
+      roomClosed = Boolean(closed?.closed);
+    }
+  }
+
+  logEvent('community_player_left', { playerId, playerName, status:statusBeforeLeave, removedBeforeStart, wasCreator, ownershipTransferred, newOwnerPlayerId:newOwner?.playerId || '', roomClosed });
+  if (!roomClosed) saveState();
   // Damos tiempo a que la respuesta HTTP llegue antes de invalidar la conexión SSE del mismo navegador.
   setTimeout(() => {
     try { workspaceContext.run(workspace, () => broadcast()); } catch {}
   }, 100);
-  return { ok:true, active:false, left:true, removedBeforeStart, returnToCommunity:true };
+  return {
+    ok:true, active:false, left:true, removedBeforeStart, returnToCommunity:true,
+    wasCreator, ownershipTransferred, newOwner, roomClosed
+  };
 }
 
 function processCommunityPublicRoomAutomation() {

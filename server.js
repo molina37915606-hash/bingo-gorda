@@ -4470,6 +4470,11 @@ function finalizeFlash(winnerPlayerId, winningBall = null) {
   const winner = flashLeaderboard().find(item => item.winner) || null;
   logEvent('flash_finished', { winnerPlayerId:state.flash.winnerPlayerId, winnerName:winner?.playerName||'', score:winner?.score||0, balls:state.game.drawn.length, winningBall:state.flash.winningBall });
   archiveCurrentResults();
+  // A diferencia del Campeonato, Flash no conserva una tarjeta de resultado en Comunidad.
+  // Sincronizamos el registro igual para que el historial quede consistente y el lobby pueda ocultarlo de inmediato.
+  syncCommunityPublicRecordFromState('finished');
+  saveState();
+  broadcast();
   return flashPublicPayload();
 }
 
@@ -9956,10 +9961,12 @@ function communityPublicRoomsPayload() {
     .filter(Boolean)
     .filter(item => {
       if (['waiting','starting','playing','verifying','paused','resuming','finalizing'].includes(item.status)) return true;
-      if (item.status === 'finished' && ['championship','flash'].includes(item.gameKind)) {
+      if (item.status === 'finished' && item.gameKind === 'championship') {
         const ended = new Date(item.endedAt || 0).getTime();
         return Number.isFinite(ended) && ended > 0 && now - ended <= CHAMPIONSHIP_RESULTS_VISIBILITY_MS;
       }
+      // Flash es una partida instantánea: al terminar desaparece del lobby de Comunidad.
+      if (item.status === 'finished' && item.gameKind === 'flash') return false;
       if (item.status !== 'scheduled' || !item.startsAt) return false;
       const starts = new Date(item.startsAt).getTime();
       return Number.isFinite(starts) && starts > now - 10 * 60_000;
@@ -10423,6 +10430,49 @@ function cancelCommunityRoomFromPlayer(player) {
   logEvent('community_public_room_cancelled_by_creator', { publicRoomId:state.roomSettings?.communityPublicId || '', wasStarted });
   closeRoom();
   return { active:false, closedReason:state.closedReason, returnToCommunity:true, cancelled:true, wasStarted, championshipInterrupted };
+}
+
+
+function leaveCommunityRoomFromPlayer(player) {
+  if (state.roomSettings?.roomOrigin !== 'community') throw new Error('Esta acción solo está disponible en salas de Comunidad.');
+  if (!player || !(state.players || []).some(item => String(item.id) === String(player.id))) throw new Error('No se encontró tu participación en esta sala.');
+  const playerId = String(player.id || '');
+  const playerName = playerDisplayName(player);
+  const workspace = currentWorkspace();
+  const statusBeforeLeave = String(state.status || '');
+  const started = Boolean(state.startedAt) || statusBeforeLeave !== 'waiting';
+  let removedBeforeStart = false;
+
+  if (!started) {
+    const maxPlayers = Math.max(2, Math.min(MAX_PLAYERS, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS));
+    const wasFull = state.players.length >= maxPlayers;
+    releaseReservationsForPlayer(player);
+    state.players = state.players.filter(item => String(item.id) !== playerId);
+    if (String(state.communityCreatorPlayerId || '') === playerId) state.communityCreatorPlayerId = null;
+    if (wasFull && state.players.length < maxPlayers) state.roomSettings.joinOpen = true;
+    updateCardDisplayNames();
+    enforceAutoMarkPolicy();
+    refreshAllOffers();
+    removedBeforeStart = true;
+  } else {
+    // Una partida ya iniciada no se reescribe: conservamos cartón, marcas y resultados
+    // para no alterar Flash, Campeonato ni actas. Solo cerramos la sesión del jugador.
+    player.sessionToken = null;
+    player.sessionDeviceId = '';
+    player.openJoinDeviceId = '';
+    player.leftAt = nowIso();
+    if (state.communityRematch?.readyPlayerIds) {
+      state.communityRematch.readyPlayerIds = state.communityRematch.readyPlayerIds.filter(id => String(id) !== playerId);
+    }
+  }
+
+  logEvent('community_player_left', { playerId, playerName, status:statusBeforeLeave, removedBeforeStart });
+  saveState();
+  // Damos tiempo a que la respuesta HTTP llegue antes de invalidar la conexión SSE del mismo navegador.
+  setTimeout(() => {
+    try { workspaceContext.run(workspace, () => broadcast()); } catch {}
+  }, 100);
+  return { ok:true, active:false, left:true, removedBeforeStart, returnToCommunity:true };
 }
 
 function processCommunityPublicRoomAutomation() {
@@ -11787,6 +11837,11 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/community-start' && req.method === 'POST') return sendJson(res, 200, startCommunityRoomFromPlayer(player));
         if (url.pathname === '/api/player/championship-next-round' && req.method === 'POST') return sendJson(res, 200, beginNextChampionshipRound(player));
         if (url.pathname === '/api/player/community-cancel' && req.method === 'POST') return sendJson(res, 200, cancelCommunityRoomFromPlayer(player));
+        if (url.pathname === '/api/player/community-leave' && req.method === 'POST') {
+          const result = leaveCommunityRoomFromPlayer(player);
+          clearPlayerSessionCookie(req, res);
+          return sendJson(res, 200, result);
+        }
         if (url.pathname === '/api/player/community-rematch' && req.method === 'POST') return sendJson(res, 200, communityRematchFromPlayer(player));
         if (url.pathname === '/api/player/chat' && req.method === 'POST') {
           if (!consumeRate(req, `chat-${player.id}`, 30, 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados mensajes. Esperá un momento.' });

@@ -1,3 +1,12 @@
+## V9.2.1 — Salida universal de Comunidad + limpieza de Flash
+
+- Nuevo botón **ABANDONAR SALA** en la vista del jugador para cualquier mesa creada desde Comunidad, sin depender de si es pública, privada, Bingo 75/90, Normal, Flash o Campeonato.
+- Si se abandona antes de iniciar, el jugador se elimina de la mesa y libera su cupo/cartones para otra persona.
+- Si se abandona con la partida ya iniciada, se cierra la sesión del jugador pero se conserva su participación para no alterar resultados, cartones, Flash, Campeonato ni actas.
+- Abandonar una sala no la cancela, incluso si quien sale es quien la creó; la administración sigue disponible con el código de creador.
+- Las partidas **Flash finalizadas desaparecen inmediatamente del lobby de Comunidad**. Campeonato conserva su ventana de resultados/acta.
+- Prueba automatizada: `tests/community-leave-and-flash-lobby.js`.
+
 ## V9.2.0 — Modo Flash en Comunidad
 
 - Nueva modalidad **⚡ Flash** disponible al crear salas desde Comunidad.

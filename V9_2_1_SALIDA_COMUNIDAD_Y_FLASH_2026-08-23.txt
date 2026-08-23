@@ -1,0 +1,26 @@
+EL BINGO DE LA GORDA — V9.2.1
+Actualización: salida universal de Comunidad + limpieza de Flash
+Fecha: 2026-08-23
+
+CAMBIOS
+1. Se agregó el botón ABANDONAR SALA a la vista del jugador.
+2. La acción funciona en cualquier mesa originada en Comunidad: pública o privada, Bingo 75/90 y cualquier modalidad admitida (Normal, Flash o Campeonato).
+3. Antes de iniciar: el jugador se retira por completo y libera su cupo/cartones. Si la sala se había cerrado automáticamente por estar llena, vuelve a admitir ingresos.
+4. Con la partida iniciada: se invalida la sesión del jugador y sale de la sala, pero su cartón, marcas y participación se conservan para no modificar resultados ni actas ya en curso.
+5. Si quien abandona es el creador, la mesa NO se cancela. El código de creador sigue sirviendo para administrar la sala.
+6. Una partida Flash finalizada deja de mostrarse inmediatamente en el lobby de Comunidad. La persistencia/historial interno se mantiene.
+7. Campeonato mantiene su comportamiento previo de mostrar temporalmente el resultado/acta al finalizar.
+
+ARCHIVOS PRINCIPALES MODIFICADOS
+- server.js
+- player.html
+- js/player.js
+- css/platform.css
+- package.json
+- package-lock.json
+- README.md
+- tests/community-leave-and-flash-lobby.js
+
+PRUEBAS
+- Nueva regresión: tests/community-leave-and-flash-lobby.js
+- Incluida también en npm test.

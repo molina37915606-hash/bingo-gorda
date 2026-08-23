@@ -1,0 +1,18 @@
+EL BINGO DE LA GORDA — ACTUALIZACIÓN V9.2.1
+Fecha: 2026-08-23
+
+Este paquete contiene solamente los archivos que deben reemplazarse/agregarse sobre V9.2.0.
+
+Aplicación:
+1. Hacé una copia de seguridad de tu instalación V9.2.0.
+2. Descomprimí este ZIP sobre la carpeta raíz del proyecto, conservando las rutas.
+3. Permití reemplazar los archivos existentes.
+4. Reiniciá el servidor Node.js.
+
+Cambios principales:
+- Botón ABANDONAR SALA universal para cualquier mesa de Comunidad.
+- Funciona en salas públicas o privadas y en cualquier modalidad admitida.
+- Antes de iniciar libera el cupo/cartones; después de iniciar conserva el registro competitivo y cierra la sesión.
+- Flash finalizado desaparece inmediatamente del lobby de Comunidad.
+
+No requiere instalar dependencias nuevas.

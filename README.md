@@ -1,3 +1,16 @@
+## V9.2.0 — Modo Flash en Comunidad
+
+- Nueva modalidad **⚡ Flash** disponible al crear salas desde Comunidad.
+- Exactamente **1 cartón por jugador**.
+- Se extraen **10 bolas iniciales** y cada número real acertado vale **1 punto**. En Bingo 75, el centro LIBRE no suma.
+- Gana quien tenga más aciertos tras la décima bola.
+- Si dos o más jugadores empatan en el máximo, sólo ellos pasan a **muerte súbita**: se extrae una bola por vez y gana cuando exactamente uno de los finalistas marca esa bola.
+- Si excepcionalmente se agotara el bolillero sin romper el empate, el servidor entrega cartones nuevos a los finalistas y abre una nueva serie de muerte súbita.
+- El conteo es oficial y automático del servidor: Flash no usa reclamos, premios de Línea/Bingo ni velocidad de reacción.
+- Integrado en jugador, creador, lobby de Comunidad, TV, Transmisión, persistencia y acta.
+- Prueba automatizada: `tests/community-flash.js`.
+- Reglamento específico: `MODO_FLASH_REGLAMENTO_V1.md`.
+
 ## V9.1.0 — Campeonato La Gorda V4
 
 - Campeonato reconstruido con un único reglamento vigente de **3, 5 o 7 rondas**.

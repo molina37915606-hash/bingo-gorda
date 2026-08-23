@@ -14,7 +14,7 @@ assert(playerJs.includes('CANTADO'), 'El anuncio visual de Campeonato debe decir
 assert(!playerJs.includes('reactionBonusEnabled'), 'V4 no debe depender de bonus de reacción.');
 assert(transmissionJs.includes('showChampionshipAnnouncement') && transmissionJs.includes('champ.announcements'), 'Transmisión debe mostrar los cantes públicos del Campeonato.');
 assert(serverSrc.includes('announcements: []'), 'Campeonato debe persistir anuncios públicos.');
-assert(serverSrc.includes("gameKind === 'championship' ? 'manual'"), 'Campeonato debe usar canto manual incluso sin bonus de reacción.');
+assert(serverSrc.includes("['championship','flash'].includes(gameKind) ? 'manual'"), 'Campeonato y Flash deben forzar el modo manual del sistema de reclamos; Flash no expone cantes.');
 
 const port = 59110 + Math.floor(Math.random() * 80);
 const base = `http://127.0.0.1:${port}`;

@@ -1,0 +1,21 @@
+EL BINGO DE LA GORDA — ACTUALIZACIÓN V9.1.0 → V9.2.0
+
+Contenido: Modo Flash para salas de Comunidad.
+
+Reglas Flash:
+- 1 cartón por jugador.
+- 10 bolas iniciales.
+- 1 punto por número real acertado.
+- Gana el puntaje máximo único.
+- Si empatan los líderes, sólo ellos pasan a muerte súbita bola por bola.
+- Gana cuando exactamente un finalista marca una bola extra.
+- Sin reclamos, premios de Línea/Bingo ni bonus de reacción.
+- Bingo 75 y Bingo 90.
+
+Aplicación:
+1. Hacer copia de seguridad de V9.1.0.
+2. Copiar el contenido de este ZIP sobre la raíz del proyecto y reemplazar los archivos existentes.
+3. Eliminar los archivos indicados en ARCHIVOS_A_ELIMINAR.txt si todavía existen.
+4. Ejecutar npm install si corresponde y reiniciar el servidor.
+
+Incluye servidor, Comunidad, jugador, TV, Transmisión, reglamento, acta y pruebas.

@@ -1,0 +1,13 @@
+V9.2.0 — MODO FLASH
+
+Nueva modalidad de Comunidad:
+- 1 cartón por jugador.
+- 10 bolas iniciales.
+- 1 punto por número real acertado.
+- Gana el puntaje máximo único.
+- Empate: sólo los líderes pasan a muerte súbita bola por bola.
+- Gana cuando exactamente un finalista marca la bola extra.
+- Sin reclamos ni bonus de reacción.
+- Integrado en servidor, jugador, creador, lobby, TV, Transmisión, persistencia y acta.
+
+Reglamento: MODO_FLASH_REGLAMENTO_V1.md

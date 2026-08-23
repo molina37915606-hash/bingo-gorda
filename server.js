@@ -51,6 +51,7 @@ const CHAMPIONSHIP_ROUND_OPTIONS = [3, 5, 7];
 const CHAMPIONSHIP_PERSISTED_ROUNDS = CHAMPIONSHIP_ROUND_OPTIONS;
 const CHAMPIONSHIP_DEFAULT_ROUNDS = 5;
 const CHAMPIONSHIP_SCORE = Object.freeze({ hit:1, line:10, secondLine:20, bingo:60, firstBingo:15, tiebreakMinimumBalls:10 });
+const FLASH_MINIMUM_BALLS = 10;
 const COMMUNITY_FINISH_GRACE_MS = Math.max(TEST_MODE ? 150 : 15_000, Number(process.env.BINGO_COMMUNITY_FINISH_GRACE_MS || 3 * 60 * 1000));
 const COMMUNITY_ROOM_ACCESS_COOKIE = 'bingo_community_room_access';
 const COMMUNITY_ROOM_ACCESS_TTL_MS = 30 * 60 * 1000;
@@ -356,6 +357,7 @@ function blankState() {
     communityAccessKeyHash: null,
     communityRematch: null,
     championship: null,
+    flash: null,
     createdAt: null,
     startedAt: null,
     endedAt: null,
@@ -517,6 +519,16 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       merged.championship.finalizedAt = merged.championship.finalizedAt || null;
       merged.championship.finalActaSha256 = /^[a-f0-9]{64}$/i.test(String(merged.championship.finalActaSha256 || '')) ? String(merged.championship.finalActaSha256).toLowerCase() : '';
     }
+    merged.flash = parsed.flash && typeof parsed.flash === 'object' && parsed.flash.enabled ? {
+      ...parsed.flash, enabled:true, version:1, minimumBalls:FLASH_MINIMUM_BALLS,
+      stage:['registration','starting','playing','sudden_death','finished'].includes(String(parsed.flash.stage||'')) ? String(parsed.flash.stage) : 'registration',
+      contenderPlayerIds:Array.isArray(parsed.flash.contenderPlayerIds) ? [...new Set(parsed.flash.contenderPlayerIds.map(String))].slice(0, MAX_PLAYERS) : [],
+      winnerPlayerId:String(parsed.flash.winnerPlayerId||''),
+      initialScores:parsed.flash.initialScores && typeof parsed.flash.initialScores === 'object' ? parsed.flash.initialScores : {},
+      suddenDeathSeries:Math.max(0, Number(parsed.flash.suddenDeathSeries)||0),
+      suddenDeathSeriesDrawn:Math.max(0, Number(parsed.flash.suddenDeathSeriesDrawn)||0),
+      seriesHistory:Array.isArray(parsed.flash.seriesHistory) ? parsed.flash.seriesHistory.filter(Array.isArray).map(series => series.map(Number).filter(Number.isFinite)) : []
+    } : null;
     merged.closedReason = String(parsed.closedReason || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 80);
     if (legacyChampionshipState) {
       merged.active = false;
@@ -543,7 +555,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.communityPublicId = String(merged.roomSettings.communityPublicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
     merged.roomSettings.communityStartMode = ['manual','scheduled'].includes(String(merged.roomSettings.communityStartMode || '')) ? String(merged.roomSettings.communityStartMode) : '';
     merged.roomSettings.communityAccessType = merged.roomSettings.communityAccessType === 'private' ? 'private' : 'public';
-    merged.roomSettings.communityGameKind = merged.roomSettings.communityGameKind === 'championship' ? 'championship' : 'normal';
+    merged.roomSettings.communityGameKind = ['championship','flash'].includes(merged.roomSettings.communityGameKind) ? merged.roomSettings.communityGameKind : 'normal';
     merged.roomSettings.championshipRounds = CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(merged.roomSettings.championshipRounds)) ? Number(merged.roomSettings.championshipRounds) : 0;
     delete merged.roomSettings.championshipReactionBonus;
     merged.roomSettings.communityScheduleId = String(merged.roomSettings.communityScheduleId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
@@ -697,13 +709,15 @@ function normalizeCommunityPublicRoom(raw = {}) {
   const startsIso = startsAt && Number.isFinite(startsAt.getTime()) ? startsAt.toISOString() : '';
   const mode = Number(raw.mode) === 75 ? 75 : 90;
   const maxPlayers = Math.max(2, Math.min(30, Math.round(Number(raw.maxPlayers) || 20)));
-  const maxCardsPerPlayer = Math.max(1, Math.min(4, Math.round(Number(raw.maxCardsPerPlayer) || 2)));
-  const gameKind = raw.gameKind === 'championship' ? 'championship' : 'normal';
+  const gameKind = ['championship','flash'].includes(raw.gameKind) ? raw.gameKind : 'normal';
+  const maxCardsPerPlayer = gameKind === 'flash' ? 1 : Math.max(1, Math.min(4, Math.round(Number(raw.maxCardsPerPlayer) || 2)));
   const championshipRounds = gameKind === 'championship' && CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(raw.championshipRounds)) ? Number(raw.championshipRounds) : 0;
   const linePrizeCount = gameKind === 'championship' && mode === 90 ? 2 : (mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(raw.linePrizeCount) || 1))) : 1);
   const requestedRules = raw.rules && typeof raw.rules === 'object' ? raw.rules : {};
   const rules = gameKind === 'championship'
     ? championshipRulesFor(mode)
+    : gameKind === 'flash'
+      ? roomRulesFor(mode, { ambocabeza:false, line:false, doubleLine:false, tripleLine:false, corners:false, bingo:false })
     : (mode === 90
       ? roomRulesFor(90, { ambocabeza:Boolean(requestedRules.ambocabeza), line:requestedRules.line !== false, bingo:true })
       : roomRulesFor(75, { line:requestedRules.line !== false, corners:Boolean(requestedRules.corners), doubleLine:Boolean(requestedRules.doubleLine), tripleLine:Boolean(requestedRules.tripleLine), bingo:true }));
@@ -2061,7 +2075,7 @@ function broadcastPayload() {
   return {
     active: true, version: APP_PUBLIC_VERSION, status: state.status, pauseReason: state.pauseReason || null, roomCode: state.roomCode, round: state.round, demo: Boolean(currentWorkspace().isDemo || state.demo),
     playersTotal: state.players.length, playersReady: state.players.filter(player => player.selectionConfirmed).length, playersConnected: connectedPlayerIds().size,
-    roomSettings: state.roomSettings, transition: state.transition, publicClaims: publicClaimsPayload(), markingPolicy: markingPolicyPayload(), championship: championshipPublicPayload(null),
+    roomSettings: state.roomSettings, transition: state.transition, publicClaims: publicClaimsPayload(), markingPolicy: markingPolicyPayload(), championship: championshipPublicPayload(null), flash: flashPublicPayload(null),
     adminPresence: adminPresencePayload(), integrity: publicIntegrityPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES) },
     game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: PRESENTER_ID, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, drawTimestamps: state.game.drawTimestamps || {}, lastDrawnAt: state.game.lastDrawnAt || null, total: state.game.mode },
@@ -2225,6 +2239,7 @@ function playerPayload(player) {
     endedAt: state.endedAt || null,
     roomSettings: state.roomSettings,
     championship: championshipPublicPayload(player),
+    flash: flashPublicPayload(player),
     playerAd: currentWorkspace().isDemo ? { enabled:false, imageUrl:'', durationMs:10000, everyBalls:10 } : playerAdPublicPayload(),
     waitingGame: waitingGamePayload(),
     markingPolicy: markingPolicyPayload(),
@@ -4391,6 +4406,147 @@ function championshipRoomEnabled() {
   return Boolean(state?.active && state.roomSettings?.roomOrigin === 'community' && state.roomSettings?.communityGameKind === 'championship' && state.championship?.enabled);
 }
 
+function flashRoomEnabled() {
+  return Boolean(state?.active && state.roomSettings?.roomOrigin === 'community' && state.roomSettings?.communityGameKind === 'flash' && state.flash?.enabled);
+}
+
+function createFlashState() {
+  return {
+    enabled:true, version:1, stage:'registration', minimumBalls:FLASH_MINIMUM_BALLS,
+    contenderPlayerIds:[], winnerPlayerId:'', initialScores:{}, startedAt:null, finishedAt:null,
+    suddenDeathStartedAt:null, suddenDeathSeries:0, suddenDeathSeriesDrawn:0, seriesHistory:[], winningBall:null
+  };
+}
+
+function flashPlayerCard(player) {
+  const cardId = String(player?.cardIds?.[0] || '');
+  return cardId ? state.game?.cards?.find(card => String(card.id) === cardId) || null : null;
+}
+
+function flashInitialScore(player) {
+  const card = flashPlayerCard(player);
+  if (!card) return 0;
+  const first = new Set((state.game?.drawn || []).slice(0, FLASH_MINIMUM_BALLS).map(Number));
+  return cardNumbers(card).reduce((sum, number) => sum + (first.has(Number(number)) ? 1 : 0), 0);
+}
+
+function flashLeaderboard() {
+  if (!state.flash?.enabled) return [];
+  const contenders = new Set((state.flash.contenderPlayerIds || []).map(String));
+  return (state.players || []).filter(player => player?.nameSet && !player.virtual && player.selectionConfirmed && flashPlayerCard(player)).map(player => {
+    const card = flashPlayerCard(player);
+    const hasLockedScore = Object.prototype.hasOwnProperty.call(state.flash.initialScores || {}, player.id);
+    const score = hasLockedScore
+      ? Math.max(0, Number(state.flash.initialScores[player.id]) || 0)
+      : flashInitialScore(player);
+    return {
+      playerId:player.id, playerName:playerDisplayName(player), cardId:card.id, cardNumber:Number(card.eventCardNumber)||card.number,
+      score, contender:contenders.has(String(player.id)), winner:String(state.flash.winnerPlayerId||'') === String(player.id)
+    };
+  }).sort((a,b) => Number(b.score)-Number(a.score) || String(a.playerName).localeCompare(String(b.playerName),'es') || String(a.playerId).localeCompare(String(b.playerId)));
+}
+
+function flashPublicPayload(player = null) {
+  if (!state.flash?.enabled) return null;
+  const leaderboard = flashLeaderboard();
+  const own = player ? leaderboard.find(item => String(item.playerId) === String(player.id)) || null : null;
+  return {
+    enabled:true, version:1, stage:state.flash.stage, minimumBalls:FLASH_MINIMUM_BALLS,
+    drawnCount:Array.isArray(state.game?.drawn) ? state.game.drawn.length : 0,
+    totalDrawnCount:(Array.isArray(state.flash.seriesHistory) ? state.flash.seriesHistory.reduce((sum, series) => sum + (Array.isArray(series) ? series.length : 0), 0) : 0) + (Array.isArray(state.game?.drawn) ? state.game.drawn.length : 0),
+    initialComplete:Object.keys(state.flash.initialScores || {}).length > 0,
+    suddenDeath:state.flash.stage === 'sudden_death', contenderPlayerIds:[...(state.flash.contenderPlayerIds||[])],
+    winnerPlayerId:String(state.flash.winnerPlayerId||''), winningBall:Number(state.flash.winningBall)||null, suddenDeathSeries:Math.max(0, Number(state.flash.suddenDeathSeries)||0), suddenDeathSeriesDrawn:Math.max(0, Number(state.flash.suddenDeathSeriesDrawn)||0), seriesHistory:deepCopy(state.flash.seriesHistory || []),
+    leaderboard:leaderboard.slice(0,10), fullLeaderboard:leaderboard, own,
+    winner:leaderboard.find(item => item.winner) || null, finished:state.flash.stage === 'finished'
+  };
+}
+
+function finalizeFlash(winnerPlayerId, winningBall = null) {
+  if (!state.flash?.enabled) return null;
+  clearAutomaticDrawTimer(); clearWorkspaceTransitionTimer();
+  state.flash.stage = 'finished'; state.flash.winnerPlayerId = String(winnerPlayerId||''); state.flash.finishedAt = nowIso(); state.flash.winningBall = Number(winningBall)||null;
+  state.status = 'finished'; state.pauseReason = null; state.endedAt = state.flash.finishedAt; state.transition = null; state.game.phase = 'FLASH_FINISHED';
+  const winner = flashLeaderboard().find(item => item.winner) || null;
+  logEvent('flash_finished', { winnerPlayerId:state.flash.winnerPlayerId, winnerName:winner?.playerName||'', score:winner?.score||0, balls:state.game.drawn.length, winningBall:state.flash.winningBall });
+  archiveCurrentResults();
+  return flashPublicPayload();
+}
+
+function resetFlashSuddenDeathSeries() {
+  if (!flashRoomEnabled()) return null;
+  const contenderIds = new Set((state.flash?.contenderPlayerIds || []).map(String));
+  const contenders = (state.players || []).filter(player => contenderIds.has(String(player.id)) && player?.nameSet && !player.virtual);
+  if (contenders.length < 2) return contenders[0] ? finalizeFlash(contenders[0].id, null) : null;
+  const usedCardIds = new Set();
+  for (const player of contenders) {
+    const available = (state.game?.cards || []).filter(card => !usedCardIds.has(String(card.id)));
+    const picked = available[Math.floor(Math.random() * available.length)] || state.game.cards[Math.floor(Math.random() * state.game.cards.length)];
+    if (!picked) continue;
+    usedCardIds.add(String(picked.id));
+    player.cardIds = [picked.id];
+    player.selectedCardIds = [picked.id];
+    player.selectionConfirmed = true;
+    player.autoMark = true;
+    player.markingModeChosen = true;
+    player.marks = { [picked.id]: [] };
+  }
+  state.flash.seriesHistory = Array.isArray(state.flash.seriesHistory) ? state.flash.seriesHistory : [];
+  state.flash.seriesHistory.push([...(state.game.drawn || [])]);
+  state.game.drawn = [];
+  state.game.lastBall = null;
+  state.game.lastDrawnAt = null;
+  state.game.drawTimestamps = {};
+  state.drawOrder = createSecureDrawOrder(state.game.mode);
+  state.flash.suddenDeathSeries = Math.max(1, Number(state.flash.suddenDeathSeries) || 1) + 1;
+  state.flash.suddenDeathSeriesDrawn = 0;
+  state.game.phase = state.game.drawMode === 'automatic' ? 'FLASH_SUDDEN_DEATH' : 'FLASH_SUDDEN_DEATH_READY';
+  logEvent('flash_sudden_death_series_reset', { series:state.flash.suddenDeathSeries, contenderPlayerIds:[...contenderIds] });
+  return flashPublicPayload();
+}
+
+function processFlashAfterDraw() {
+  if (!flashRoomEnabled() || !state.game || state.status !== 'playing') return null;
+  const flash = state.flash;
+  const drawCount = state.game.drawn.length;
+  if (!['playing','sudden_death'].includes(flash.stage)) flash.stage = drawCount >= FLASH_MINIMUM_BALLS ? 'sudden_death' : 'playing';
+  if (flash.stage === 'sudden_death' && Number(flash.suddenDeathSeries || 1) > 1) {
+    flash.suddenDeathSeriesDrawn = Math.max(0, Number(flash.suddenDeathSeriesDrawn) || 0) + 1;
+    const ball = Number(state.game.drawn.at(-1));
+    const contenderIds = new Set((flash.contenderPlayerIds || []).map(String));
+    const hitPlayers = (state.players || []).filter(player => contenderIds.has(String(player.id)) && cardNumbers(flashPlayerCard(player)).includes(ball));
+    logEvent('flash_sudden_death_ball', { ball, series:Number(flash.suddenDeathSeries)||1, hitPlayerIds:hitPlayers.map(player=>player.id), contenders:[...contenderIds] });
+    if (hitPlayers.length === 1) return finalizeFlash(hitPlayers[0].id, ball);
+    if (state.game.drawn.length >= state.game.mode) return resetFlashSuddenDeathSeries();
+    return flashPublicPayload();
+  }
+  if (drawCount < FLASH_MINIMUM_BALLS) return flashPublicPayload();
+  if (drawCount === FLASH_MINIMUM_BALLS) {
+    const board = flashLeaderboard();
+    flash.initialScores = Object.fromEntries(board.map(item => [item.playerId, item.score]));
+    const topScore = Math.max(0, ...board.map(item => Number(item.score)||0));
+    const leaders = board.filter(item => Number(item.score) === topScore);
+    flash.contenderPlayerIds = leaders.map(item => item.playerId);
+    logEvent('flash_initial_ten_completed', { topScore, contenderPlayerIds:flash.contenderPlayerIds });
+    if (leaders.length === 1) return finalizeFlash(leaders[0].playerId, null);
+    flash.stage = 'sudden_death';
+    flash.suddenDeathStartedAt = nowIso();
+    flash.suddenDeathSeries = 1;
+    flash.suddenDeathSeriesDrawn = 0;
+    state.game.phase = 'FLASH_SUDDEN_DEATH';
+    return flashPublicPayload();
+  }
+  if (flash.stage !== 'sudden_death') return flashPublicPayload();
+  flash.suddenDeathSeriesDrawn = Math.max(0, Number(flash.suddenDeathSeriesDrawn) || 0) + 1;
+  const ball = Number(state.game.drawn.at(-1));
+  const contenderIds = new Set((flash.contenderPlayerIds || []).map(String));
+  const hitPlayers = (state.players || []).filter(player => contenderIds.has(String(player.id)) && cardNumbers(flashPlayerCard(player)).includes(ball));
+  logEvent('flash_sudden_death_ball', { ball, series:Number(flash.suddenDeathSeries)||1, hitPlayerIds:hitPlayers.map(player=>player.id), contenders:[...contenderIds] });
+  if (hitPlayers.length === 1) return finalizeFlash(hitPlayers[0].id, ball);
+  if (state.game.drawn.length >= state.game.mode) return resetFlashSuddenDeathSeries();
+  return flashPublicPayload();
+}
+
 function createChampionshipState(payload = {}, mode = 90) {
   const totalRounds = CHAMPIONSHIP_ROUND_OPTIONS.includes(Number(payload.championshipRounds)) ? Number(payload.championshipRounds) : CHAMPIONSHIP_DEFAULT_ROUNDS;
   return {
@@ -5320,9 +5476,10 @@ function createSimpleRoom(payload = {}) {
   const communitySchedule = communityScheduleId ? communityScheduledGames().find(item => item.id === communityScheduleId) : null;
   if (communityScheduleId && !communitySchedule) throw new Error('La partida programada ya no existe. Volvé a abrir la Agenda.');
   // Final: 4 cartones por defecto. Solo Manual fuerza máximo 2.
-  const roomMaxCards = markingMode === 'manual_only'
+  const communityGameKind = payload.roomOrigin === 'community' && ['championship','flash'].includes(payload.communityGameKind) ? payload.communityGameKind : 'normal';
+  const roomMaxCards = communityGameKind === 'flash' ? 1 : (markingMode === 'manual_only'
     ? 2
-    : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(payload.maxCardsPerPlayer) || 4));
+    : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(payload.maxCardsPerPlayer) || 4)));
   replaceCurrentState({
     ...blankState(), revision: 0, active: true, status: 'waiting', roomCode: uniqueRoomCode(6), createdAt: nowIso(), updatedAt: nowIso(), round: 1,
     roomSettings: {
@@ -5337,7 +5494,7 @@ function createSimpleRoom(payload = {}) {
       communityPublicId: payload.roomOrigin === 'community' ? String(payload.communityPublicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100) : '',
       communityStartMode: payload.roomOrigin === 'community' && payload.communityStartMode === 'scheduled' ? 'scheduled' : (payload.roomOrigin === 'community' ? 'manual' : ''),
       communityAccessType: payload.roomOrigin === 'community' && payload.communityAccessType === 'private' ? 'private' : 'public',
-      communityGameKind: payload.roomOrigin === 'community' && payload.communityGameKind === 'championship' ? 'championship' : 'normal',
+      communityGameKind,
       championshipRounds: payload.roomOrigin === 'community' && payload.communityGameKind === 'championship' && CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(payload.championshipRounds)) ? Number(payload.championshipRounds) : 0,
       // El acceso normal es exclusivamente mediante invitaciones privadas por jugador.
       joinOpen: false,
@@ -5357,7 +5514,8 @@ function createSimpleRoom(payload = {}) {
     waitingGame: { type: 'both', leaderboard: [], leaderboards: { red_black: [], higher_lower: [] } },
     drawOrder: createSecureDrawOrder(game.mode), game, players: [], cardReservations: {}, claims: [], eventLog: [],
     chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} },
-    championship: payload.roomOrigin === 'community' && payload.communityGameKind === 'championship' ? createChampionshipState(payload, game.mode) : null
+    championship: communityGameKind === 'championship' ? createChampionshipState(payload, game.mode) : null,
+    flash: communityGameKind === 'flash' ? createFlashState() : null
   });
   if (communitySchedule) {
     communitySchedule.mode = Number(game.mode) === 75 ? 75 : 90;
@@ -5719,6 +5877,25 @@ function broadcastRaceForCard(card, analysis, prizes) {
 function highlightedBroadcastCards() {
   if (!state.game || state.roomSettings?.transmission?.showCards === false) return [];
   const connected = connectedPlayerIds();
+  if (flashRoomEnabled()) {
+    const board = flashLeaderboard();
+    const drawn = new Set((state.game.drawn || []).map(Number));
+    let lastScore = null, rank = 0;
+    return board.map((item, index) => {
+      const score = Math.max(0, Number(item.score) || 0);
+      if (lastScore === null || score !== lastScore) rank = index + 1;
+      lastScore = score;
+      const player = state.players.find(candidate => String(candidate.id) === String(item.playerId));
+      const card = flashPlayerCard(player);
+      return card ? {
+        playerId:item.playerId, playerName:item.playerName, connected:connected.has(item.playerId), cardId:card.id,
+        cardNumber:item.cardNumber, grid:card.grid, mode:card.mode, rank, score:-score,
+        flash:true, flashScore:score, flashContender:Boolean(item.contender), flashWinner:Boolean(item.winner),
+        racePrizeType:'flash', racePrizeNumber:1, racePrizeLabel:'PUNTOS FLASH', raceMissing:0,
+        lineMissing:0, bingoMissing:0, marked:cardNumbers(card).filter(number => drawn.has(Number(number)))
+      } : null;
+    }).filter(Boolean).slice(0, 6);
+  }
   const prizes = prizeStatusPayload();
   const rows = [];
   for (const player of state.players) for (const cardId of player.cardIds || []) {
@@ -6793,12 +6970,13 @@ function drawNextBall(source = 'manual') {
   syncAllAutoMarks();
   let automaticAwards = [];
   if (championshipRoomEnabled()) processChampionshipAfterDraw();
+  else if (flashRoomEnabled()) processFlashAfterDraw();
   else {
     automaticAwards = processAutomaticClaimsForCurrentBall();
     if (!automaticAwards.length) scheduleVirtualPlayerClaims();
   }
   scheduleSimulatedAiChat();
-  if (!championshipRoomEnabled() && state.game.drawn.length >= state.game.mode && state.status === 'playing') {
+  if (!championshipRoomEnabled() && !flashRoomEnabled() && state.game.drawn.length >= state.game.mode && state.status === 'playing') {
     const graceMs = currentWorkspace().isDemo
       ? Math.max(CLAIM_QUEUE_WINDOW_MS, DEMO_CLAIM_WINDOW_MS + 600)
       : FINAL_CLAIM_GRACE_MS;
@@ -6826,10 +7004,11 @@ function setTestDrawOrder(payload = {}) {
   const beforeFirstBall = !(state.game?.drawn || []).length;
   const demoBeforeFirstBall = currentWorkspace().isDemo && state.status === 'starting' && beforeFirstBall;
   const championshipBeforeFirstBall = championshipRoomEnabled() && ['starting','playing'].includes(state.status) && beforeFirstBall;
-  if (!state.active || !state.game || (state.status !== 'waiting' && !demoBeforeFirstBall && !championshipBeforeFirstBall)) throw new Error('El orden de prueba solo puede fijarse antes de la primera bolilla.');
+  const flashBeforeFirstBall = flashRoomEnabled() && ['starting','playing'].includes(state.status) && beforeFirstBall;
+  if (!state.active || !state.game || (state.status !== 'waiting' && !demoBeforeFirstBall && !championshipBeforeFirstBall && !flashBeforeFirstBall)) throw new Error('El orden de prueba solo puede fijarse antes de la primera bolilla.');
   const prefix = uniqueNumbers(payload.sequence || []).filter(number => number >= 1 && number <= state.game.mode);
   state.drawOrder = createSecureDrawOrder(state.game.mode, prefix);
-  if (championshipBeforeFirstBall && state.game?.integrity) state.game.integrity.drawOrderCommitment = crypto.createHash('sha256').update(state.drawOrder.join(',')).digest('hex');
+  if ((championshipBeforeFirstBall || flashBeforeFirstBall) && state.game?.integrity) state.game.integrity.drawOrderCommitment = crypto.createHash('sha256').update(state.drawOrder.join(',')).digest('hex');
   state.testDrawOrderFixed = true;
   logEvent('test_draw_order_set', { prefix });
   saveState();
@@ -7026,6 +7205,11 @@ function completeTransition() {
       state.championship.roundStartedAt ||= nowIso();
       state.championship.updatedAt = nowIso();
     }
+    if (flashRoomEnabled()) {
+      state.flash.stage = 'playing';
+      state.flash.startedAt ||= nowIso();
+      state.game.phase = state.game.drawMode === 'automatic' ? 'FLASH_DRAWING' : 'FLASH_READY';
+    }
     logEvent(type === 'start' ? 'game_started' : 'game_resumed', { round: state.round, mode: state.game.drawMode });
   }
   state.transition = null;
@@ -7063,8 +7247,11 @@ function startRoom(payload = {}) {
     const eligible = playerEligibleForRound(player);
     player.excludedFromRound = !eligible;
     if (!eligible) continue;
-    // No activar Automarcado sin decisión del jugador. Si aún no eligió, comienza Manual.
-    if (!player.markingModeChosen) {
+    // Flash siempre usa marcado oficial del servidor. En los demás modos se respeta la elección del jugador.
+    if (flashRoomEnabled()) {
+      player.markingModeChosen = true;
+      player.autoMark = true;
+    } else if (!player.markingModeChosen) {
       player.markingModeChosen = true;
       player.autoMark = false;
     }
@@ -7254,6 +7441,8 @@ function archiveCurrentResults() {
     round: state.round,
     mode: state.game.mode,
     claimMode: state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
+    gameKind: ['championship','flash'].includes(state.roomSettings?.communityGameKind) ? state.roomSettings.communityGameKind : 'normal',
+    flash: state.flash?.enabled ? { winnerPlayerId:String(state.flash.winnerPlayerId||''), winningBall:Number(state.flash.winningBall)||null, leaderboard:deepCopy(flashLeaderboard()) } : null,
     createdAt: state.createdAt,
     startedAt: state.startedAt,
     endedAt: state.endedAt,
@@ -7405,6 +7594,8 @@ function finishRoom(payload = {}) {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status === 'finished') return adminPayload();
   if (!['playing', 'paused', 'verifying', 'finalizing'].includes(state.status)) throw new Error('El sorteo todavía no comenzó.');
+
+  if (flashRoomEnabled()) throw new Error('El Modo Flash termina automáticamente al definir un ganador.');
 
   if (forceSimulation) {
     clearWorkspaceTransitionTimer(workspace);
@@ -8095,6 +8286,7 @@ function processAutomaticClaimsForCurrentBall() {
 function createClaim(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
   if (championshipRoomEnabled()) return createChampionshipClaim(player, payload);
+  if (flashRoomEnabled()) throw new Error('En Modo Flash no hay reclamos: los aciertos se cuentan automáticamente.');
   if (state.roomSettings?.claimMode === 'automatic_ties' && !payload?.automaticSystem) throw new Error('Esta partida usa reclamo automático. El servidor detecta las jugadas ganadoras y los empates.');
   const requested = String(payload.type || '');
   const type = PRIZE_TYPES.includes(requested) ? requested : 'line';
@@ -8424,6 +8616,7 @@ function actaPayload() {
     markingPolicy: markingPolicyPayload(),
     championship: state.championship?.enabled ? deepCopy({ ...state.championship, leaderboard:championshipLeaderboard(), roundLeaderboard:championshipRoundLeaderboard() }) : null,
     championshipReport: state.championship?.enabled ? championshipReportPayload() : null,
+    flash: state.flash?.enabled ? deepCopy(flashPublicPayload(null)) : null,
     categories: Object.fromEntries(Object.entries(categories).map(([key, category]) => [key, { ...category, status: !category.enabled ? 'not_drawn' : category.winners.length ? 'confirmed' : 'no_confirmed_winner' }]))
   };
 }
@@ -8501,8 +8694,41 @@ function claimAuditResultLabel(alert) {
   return alert?.resolutionReason || alert?.status || '—';
 }
 
+function flashActaCsv() {
+  const acta = actaPayload();
+  const flash = acta.flash || {};
+  const board = Array.isArray(flash.fullLeaderboard) && flash.fullLeaderboard.length ? flash.fullLeaderboard : (flash.leaderboard || []);
+  const winner = flash.winner || board.find(item => item.winner) || null;
+  const lines = [
+    ['MODO FLASH - RESULTADO OFICIAL'],
+    ['Sala', acta.roomCode],
+    ['Bingo', acta.mode],
+    ['Jugadores', acta.totalPlayers],
+    ['Regla', '1 cartón por jugador · 10 bolas · 1 punto por número · empate = muerte súbita'],
+    ['Inicio', formatLocalTimestamp(acta.startedAt)],
+    ['Finalización', formatLocalTimestamp(acta.endedAt)],
+    ['Ganador', winner?.playerName || ''],
+    ['Puntos de las 10 bolas', winner?.score ?? ''],
+    ['Bola ganadora de muerte súbita', flash.winningBall || ''],
+    [],
+    ['CLASIFICACIÓN DE LAS 10 BOLAS'],
+    ['PUESTO','JUGADOR','CARTÓN','PUNTOS','GANADOR'],
+    ...board.map((item,index)=>[index+1,item.playerName,item.cardNumber,item.score,item.winner?'SÍ':'']),
+    [],
+    ['SERIE INICIAL / SERIES DE MUERTE SÚBITA']
+  ];
+  const historical = Array.isArray(flash.seriesHistory) ? flash.seriesHistory : [];
+  historical.forEach((series,index)=>lines.push([index===0?'SERIE INICIAL + MUERTE SÚBITA':`SERIE EXTRA ${index+1}`,(series||[]).join(' · ')]));
+  lines.push([historical.length?'SERIE FINAL':'BOLILLAS', (acta.balls||[]).map(row=>row.number).join(' · ')]);
+  lines.push([],['JUGADORES Y CARTONES'],['JUGADOR','CARTÓN']);
+  for (const item of board) lines.push([item.playerName,item.cardNumber]);
+  const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  return '\ufeff' + lines.map(row => row.map(quote).join(';')).join('\r\n');
+}
+
 function actaCsv() {
   if (championshipRoomEnabled()) return championshipActaCsv();
+  if (flashRoomEnabled()) return flashActaCsv();
   const acta = actaPayload();
   const lines = [
     ['LA GORDA - BINGO ONLINE - RESULTADOS'],
@@ -8795,7 +9021,7 @@ function buildResultsPdf() {
   rect(0, 82, PAGE_W, 9, COLORS.pink);
   rect(19, 10, 70, 70, COLORS.white, '#F2D3E2', 1);
   image(24, 15, 60, 60);
-  text('RESULTADOS OFICIALES DEL SORTEO', 101, 18, 20, { bold: true, color: COLORS.white, maxWidth: 390 });
+  text(state.flash?.enabled ? 'MODO FLASH - RESULTADO OFICIAL' : 'RESULTADOS OFICIALES DEL SORTEO', 101, 18, 20, { bold: true, color: COLORS.white, maxWidth: 390 });
   text(acta.demo ? 'DEMOSTRACIÓN - SIN VALIDEZ OFICIAL' : 'LA GORDA - BINGO ONLINE', 101, 47, 11, { bold: true, color: '#F7DDF0' });
   text(`Sala ${acta.roomCode}  ·  Juego ${acta.gameNumber}  ·  Bingo ${acta.mode}`, 101, 65, 8.5, { color: '#E8D7EE' });
 
@@ -8870,35 +9096,47 @@ function buildResultsPdf() {
 
   const gridBottom = gridY + rows * cellH + Math.max(0, rows - 1) * gap;
   const legendY = gridBottom + 7;
-  text('MARCAS DE CANTO:', 24, legendY, 7, { bold: true, color: COLORS.ink });
-  const legend = acta.mode === 90 ? [
-    ['A', 'AmboCabeza', '#147D64'],
-    ['L1', 'Primera línea', COLORS.purple2],
-    ['L2', 'Segunda línea', COLORS.gold],
-    ['B', 'Bingo', COLORS.pink]
-  ] : [
-    ['L', 'Línea', COLORS.purple2],
-    ['L2', 'Doble línea', '#C58B00'],
-    ['L3', 'Triple línea', '#7443A8'],
-    ['4E', '4 esquinas', '#147D64'],
-    ['B', 'Bingo', COLORS.pink]
-  ];
-  let lx = 111;
-  legend.forEach(([tag, label, color]) => {
-    rect(lx, legendY - 1, 16, 10, color);
-    text(tag, lx + 8, legendY, 5.5, { bold: true, color: COLORS.white, align: 'center' });
-    text(label, lx + 20, legendY, 6.2, { color: COLORS.muted });
-    lx += acta.mode === 90 ? (tag === 'A' ? 94 : tag === 'B' ? 65 : 104) : (tag === 'B' ? 57 : 90);
-  });
-  text('La marca se ubica sobre la última bolilla sorteada al momento del canto.', 818, legendY, 6.7, { color: COLORS.muted, align: 'right' });
+  if (acta.flash?.enabled) {
+    text('REGLA FLASH:', 24, legendY, 7, { bold: true, color: COLORS.ink });
+    text('1 cartón · 10 bolas · 1 punto por número · empate = muerte súbita hasta un único ganador', 105, legendY, 6.7, { color: COLORS.muted, maxWidth: 700 });
+  } else {
+    text('MARCAS DE CANTO:', 24, legendY, 7, { bold: true, color: COLORS.ink });
+    const legend = acta.mode === 90 ? [
+      ['A', 'AmboCabeza', '#147D64'],
+      ['L1', 'Primera línea', COLORS.purple2],
+      ['L2', 'Segunda línea', COLORS.gold],
+      ['B', 'Bingo', COLORS.pink]
+    ] : [
+      ['L', 'Línea', COLORS.purple2],
+      ['L2', 'Doble línea', '#C58B00'],
+      ['L3', 'Triple línea', '#7443A8'],
+      ['4E', '4 esquinas', '#147D64'],
+      ['B', 'Bingo', COLORS.pink]
+    ];
+    let lx = 111;
+    legend.forEach(([tag, label, color]) => {
+      rect(lx, legendY - 1, 16, 10, color);
+      text(tag, lx + 8, legendY, 5.5, { bold: true, color: COLORS.white, align: 'center' });
+      text(label, lx + 20, legendY, 6.2, { color: COLORS.muted });
+      lx += acta.mode === 90 ? (tag === 'A' ? 94 : tag === 'B' ? 65 : 104) : (tag === 'B' ? 57 : 90);
+    });
+    text('La marca se ubica sobre la última bolilla sorteada al momento del canto.', 818, legendY, 6.7, { color: COLORS.muted, align: 'right' });
+  }
 
   const winnersTitleY = legendY + 20;
-  text('CARTONES GANADORES', 24, winnersTitleY, 11, { bold: true, color: COLORS.ink });
+  text(acta.flash?.enabled ? 'RESULTADO DEL MODO FLASH' : 'CARTONES GANADORES', 24, winnersTitleY, 11, { bold: true, color: COLORS.ink });
   line(171, winnersTitleY + 7, 818, winnersTitleY + 7, '#DCCFE2', .8);
 
   const blocksY = winnersTitleY + 20;
   const categoryColors = { ambo: '#147D64', line1: COLORS.purple2, line2: '#C58B00', line: COLORS.purple2, doubleLine: '#C58B00', tripleLine: '#7443A8', corners: '#147D64', bingo: COLORS.pink };
-  const categories = Object.entries(acta.categories).map(([key, category]) => ({ key, label: String(category.label || key).toUpperCase(), color: categoryColors[key] || COLORS.purple2, enabled: category.enabled, winners: category.winners }));
+  let categories = Object.entries(acta.categories).map(([key, category]) => ({ key, label: String(category.label || key).toUpperCase(), color: categoryColors[key] || COLORS.purple2, enabled: category.enabled, winners: category.winners }));
+  if (acta.flash?.enabled) {
+    const flashWinner = acta.flash.winner || (acta.flash.fullLeaderboard || []).find(item => item.winner) || null;
+    const player = flashWinner ? state.players.find(item => String(item.id) === String(flashWinner.playerId)) : null;
+    const card = player ? flashPlayerCard(player) : null;
+    const winningNumbers = card ? cardNumbers(card).filter(number => (state.game?.drawn || []).includes(number)) : [];
+    categories = [{ key:'flash', label:'GANADOR FLASH', color:COLORS.purple2, enabled:true, winners:flashWinner && card ? [{ ...flashWinner, type:'flash', playerName:flashWinner.playerName, cardNumber:flashWinner.cardNumber, claimedAt:acta.endedAt, receivedSequence:'—', ballOrder:acta.flash.winningBall ? (state.game?.drawn || []).lastIndexOf(acta.flash.winningBall)+1 : 10, ballNumber:acta.flash.winningBall || (state.game?.drawn || [])[9] || null, mode:acta.mode, grid:deepCopy(card.grid), winningNumbers }] : [] }];
+  }
   const blockGap = categories.length > 4 ? 6 : 9;
   const blockW = (794 - blockGap * (categories.length - 1)) / Math.max(1, categories.length);
   const blockH = Math.max(145, 571 - blocksY);
@@ -9105,6 +9343,7 @@ function accessRoomMetaMarkup(roomState) {
     const rounds = CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(settings.championshipRounds)) ? Number(settings.championshipRounds) : CHAMPIONSHIP_DEFAULT_ROUNDS;
     return `<div class="roomMeta"><span class="chip">🏆 CAMPEONATO</span><span class="chip">${mode} bolas</span><span class="chip">${rounds} rondas</span><span class="chip">GRATIS</span></div>`;
   }
+  if (settings.communityGameKind === 'flash') return `<div class="roomMeta"><span class="chip">⚡ FLASH</span><span class="chip">${mode} bolas</span><span class="chip">1 cartón</span><span class="chip">10 bolas + muerte súbita</span></div>`;
   const lineCount = mode === 90 ? Math.max(1, Number(settings.linePrizeCount) || 1) : 1;
   const marking = settings.markingMode === 'manual_only' ? 'Manual' : 'Manual / automático';
   return `<div class="roomMeta"><span class="chip">${mode} bolas</span><span class="chip">${lineCount} línea${lineCount === 1 ? '' : 's'}</span><span class="chip">GRATIS</span><span class="chip">${marking}</span></div>`;
@@ -9674,6 +9913,7 @@ function publicRoomPayload(record) {
   const joinOpen = Boolean(waiting && room.roomSettings?.joinOpen);
   const broadcastAlias = room ? normalizeBroadcastAlias(room.roomSettings?.broadcastAlias) : '';
   const championship = room?.championship?.enabled && workspace ? workspaceContext.run(workspace, () => championshipPublicPayload(null)) : null;
+  const flash = room?.flash?.enabled && workspace ? workspaceContext.run(workspace, () => flashPublicPayload(null)) : null;
   return {
     id: record.id,
     kind: record.accessType === 'private' ? 'private' : 'public',
@@ -9682,9 +9922,10 @@ function publicRoomPayload(record) {
     name: record.name,
     creatorName: record.creatorName,
     mode: record.mode,
-    gameKind: record.gameKind === 'championship' ? 'championship' : 'normal',
+    gameKind: ['championship','flash'].includes(record.gameKind) ? record.gameKind : 'normal',
     championshipRounds: record.gameKind === 'championship' ? (CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(record.championshipRounds)) ? Number(record.championshipRounds) : CHAMPIONSHIP_DEFAULT_ROUNDS) : 0,
     championship,
+    flash,
     maxPlayers: record.maxPlayers,
     maxCardsPerPlayer: record.maxCardsPerPlayer,
     autoSeconds: record.autoSeconds,
@@ -9715,7 +9956,7 @@ function communityPublicRoomsPayload() {
     .filter(Boolean)
     .filter(item => {
       if (['waiting','starting','playing','verifying','paused','resuming','finalizing'].includes(item.status)) return true;
-      if (item.status === 'finished' && item.gameKind === 'championship') {
+      if (item.status === 'finished' && ['championship','flash'].includes(item.gameKind)) {
         const ended = new Date(item.endedAt || 0).getTime();
         return Number.isFinite(ended) && ended > 0 && now - ended <= CHAMPIONSHIP_RESULTS_VISIBILITY_MS;
       }
@@ -9803,7 +10044,7 @@ function openCommunityPublicRoom(record, { autoJoinCreator = false, deviceId = '
       hostName: record.creatorName,
       roomName: record.name,
       communityPublicId: record.id,
-      communityGameKind: record.gameKind === 'championship' ? 'championship' : 'normal',
+      communityGameKind: ['championship','flash'].includes(record.gameKind) ? record.gameKind : 'normal',
       championshipRounds: record.gameKind === 'championship' ? record.championshipRounds : 0,
         communityStartMode: record.startMode,
       communityAccessType: record.accessType,
@@ -9842,18 +10083,19 @@ function createCommunityPublicRoom(payload = {}) {
   const roomName = normalizeCommunityRoomName(payload.roomName, creatorName);
   const mode = Number(payload.mode) === 75 ? 75 : 90;
   const maxPlayers = Math.max(2, Math.min(availability.maxPlayers, Math.round(Number(payload.maxPlayers) || Math.min(20, availability.maxPlayers))));
-  const maxCardsPerPlayer = Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
+  const requestedGameKind = ['championship','flash'].includes(payload.gameKind) ? payload.gameKind : 'normal';
+  const maxCardsPerPlayer = requestedGameKind === 'flash' ? 1 : Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
   const autoSeconds = Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
-  const gameKind = payload.gameKind === 'championship' ? 'championship' : 'normal';
+  const gameKind = requestedGameKind;
   let championshipRounds = 0;
   if (gameKind === 'championship') {
     const requestedRounds = Math.round(Number(payload.championshipRounds) || CHAMPIONSHIP_DEFAULT_ROUNDS);
     if (!CHAMPIONSHIP_ROUND_OPTIONS.includes(requestedRounds)) throw new Error('Elegí 3, 5 o 7 rondas para el Campeonato.');
     championshipRounds = requestedRounds;
   }
-  const linePrizeCount = gameKind === 'championship' && mode === 90 ? 2 : (mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1);
+  const linePrizeCount = gameKind === 'championship' && mode === 90 ? 2 : (gameKind === 'flash' ? 1 : (mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1));
   const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};
-  const rules = gameKind === 'championship' ? championshipRulesFor(mode) : (mode === 90
+  const rules = gameKind === 'championship' ? championshipRulesFor(mode) : gameKind === 'flash' ? roomRulesFor(mode, { ambocabeza:false, line:false, doubleLine:false, tripleLine:false, corners:false, bingo:false }) : (mode === 90
     ? roomRulesFor(90, { ambocabeza:Boolean(requestedRules.ambocabeza), line:requestedRules.line !== false, bingo:true })
     : roomRulesFor(75, { line:requestedRules.line !== false, corners:Boolean(requestedRules.corners), doubleLine:Boolean(requestedRules.doubleLine), tripleLine:Boolean(requestedRules.tripleLine), bingo:true }));
   const accessType = payload.accessType === 'private' ? 'private' : 'public';
@@ -9875,7 +10117,7 @@ function createCommunityPublicRoom(payload = {}) {
   const record = normalizeCommunityPublicRoom({
     id: randomId('public'), name:roomName, creatorName, creatorCodeHash, accessType, accessKeyHash, accessKeyAdmin:accessKey, startMode, startsAt,
     mode, gameKind, championshipRounds, maxPlayers, maxCardsPerPlayer, autoSeconds,
-    claimMode: gameKind === 'championship' ? 'manual' : (payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual'), linePrizeCount, rules,
+    claimMode: ['championship','flash'].includes(gameKind) ? 'manual' : (payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual'), linePrizeCount, rules,
     status:'scheduled', createdAt:nowIso(), updatedAt:nowIso()
   });
   communityPublicRooms().push(record);
@@ -10000,6 +10242,32 @@ function championshipOrganizerFromHistorical(record) {
   };
 }
 
+function flashResultFromHistoricalRoom(roomCode) {
+  const entry = historyEntryByRoomCode(roomCode);
+  if (!entry) return null;
+  const actaFile = historicalFile(entry, entry.files?.actaJson || 'acta.json');
+  if (!actaFile) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(actaFile, 'utf8'));
+    return parsed?.flash || null;
+  } catch { return null; }
+}
+
+function flashOrganizerFromHistorical(record) {
+  if (!record || record.gameKind !== 'flash' || record.status !== 'finished') return null;
+  const flash = flashResultFromHistoricalRoom(record.roomCode);
+  if (!flash?.enabled) return null;
+  const leaderboard = Array.isArray(flash.fullLeaderboard) && flash.fullLeaderboard.length ? flash.fullLeaderboard : (Array.isArray(flash.leaderboard) ? flash.leaderboard : []);
+  return {
+    token:'', organizer:true, roomCode:record.roomCode || '', publicId:record.id, status:'finished',
+    name:record.name, mode:record.mode, gameKind:'flash', championshipRounds:0, claimMode:'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
+    playerCount:leaderboard.length, cardCount:leaderboard.length, pendingSelectionPlayers:0, players:[], canStart:false, joinOpen:false,
+    enterUrl:communityPublicShareUrl(record.id), shareUrl:communityPublicShareUrl(record.id), transmissionUrl:'',
+    flash:{ ...flash, enabled:true, finished:true, stage:'finished', leaderboard:leaderboard.slice(0,10), fullLeaderboard:leaderboard },
+    actaAvailable:false
+  };
+}
+
 function communityCreatorActa(payload = {}) {
   const publicId = String(payload.publicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0,100);
   const record = communityPublicRoomById(publicId);
@@ -10048,6 +10316,8 @@ function recoverCommunityCreator(payload = {}) {
     }
     const historical = championshipOrganizerFromHistorical(record);
     if (historical) return historical;
+    const historicalFlash = flashOrganizerFromHistorical(record);
+    if (historicalFlash) return historicalFlash;
     throw new Error('La sala todavía no está disponible.');
   }
   return workspaceContext.run(workspace, () => {
@@ -10062,7 +10332,7 @@ function recoverCommunityCreator(payload = {}) {
       }));
     return {
       token:'', organizer:true, roomCode:state.roomCode, publicId:record.id, status:state.status,
-      name:record.name, mode:record.mode, gameKind:record.gameKind||'normal', championshipRounds:Number(record.championshipRounds)||0, championship:championshipPublicPayload(null), claimMode:state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
+      name:record.name, mode:record.mode, gameKind:record.gameKind||'normal', championshipRounds:Number(record.championshipRounds)||0, championship:championshipPublicPayload(null), flash:flashPublicPayload(null), claimMode:state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
       playerCount:summary.registeredPlayers, cardCount:summary.playingCards,
       pendingSelectionPlayers:players.filter(item => !item.ready).length, players,
       enterUrl:communityPublicShareUrl(record.id), shareUrl:communityPublicShareUrl(record.id),
@@ -10086,7 +10356,7 @@ function joinCommunityCreatorAsPlayer(req, res, payload = {}) {
       if (state.status !== 'waiting' || !state.roomSettings?.joinOpen) throw new Error('La partida ya no acepta jugadores nuevos.');
       const joined = openJoinPlayer({
         name:record.creatorName,
-        cardCount:record.gameKind === 'championship' ? Math.max(1, Math.min(record.maxCardsPerPlayer, Number(payload.cardCount)||1)) : record.maxCardsPerPlayer,
+        cardCount:record.gameKind === 'championship' ? Math.max(1, Math.min(record.maxCardsPerPlayer, Number(payload.cardCount)||1)) : (record.gameKind === 'flash' ? 1 : record.maxCardsPerPlayer),
         deviceId:String(payload.deviceId || randomId('device')).slice(0,120),
         communityAccessGranted:true
       });
@@ -10262,7 +10532,7 @@ function restartCommunityRoomForRematch(creatorPlayer) {
   createSimpleRoom({
     mode:record.mode, cardCount:normalizedGeneratedCount(Math.max(25, Math.min(100, record.maxPlayers * record.maxCardsPerPlayer + 20))),
     autoSeconds:record.autoSeconds, rules:record.rules, linePrizeCount:record.linePrizeCount, claimMode:record.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
-    markingMode:'normal', maxCardsPerPlayer:record.maxCardsPerPlayer, roomOrigin:'community',
+    markingMode:'normal', maxCardsPerPlayer:record.gameKind==='flash'?1:record.maxCardsPerPlayer, roomOrigin:'community', communityGameKind:['championship','flash'].includes(record.gameKind)?record.gameKind:'normal',
     hostName:record.creatorName, roomName:record.name, communityPublicId:record.id, communityStartMode:'manual', communityAccessType:record.accessType,
     maxOpenPlayers:record.maxPlayers
   });
@@ -10326,7 +10596,8 @@ function createCommunityPrivateRoom(payload = {}) {
   const hostName = normalizeCommunityName(payload.name);
   const mode = Number(payload.mode) === 75 ? 75 : 90;
   const maxPlayers = Math.max(2, Math.min(availability.maxPlayers, Math.round(Number(payload.maxPlayers) || Math.min(20, availability.maxPlayers))));
-  const maxCardsPerPlayer = Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
+  const requestedGameKind = ['championship','flash'].includes(payload.gameKind) ? payload.gameKind : 'normal';
+  const maxCardsPerPlayer = requestedGameKind === 'flash' ? 1 : Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
   const autoSeconds = Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
   const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1;
   const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};

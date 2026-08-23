@@ -1,0 +1,32 @@
+EL BINGO DE LA GORDA — V9.2.7
+PREMIOS VISIBLES + ANUNCIOS SINCRONIZADOS
+Fecha: 2026-08-23
+
+OBJETIVO
+Que cada jugador sepa qué premios disputa desde Comunidad y durante la espera, y que AUTO + EMPATES se sienta como un Bingo real: bolilla, pausa, canto, cartel y ganadores, todos al mismo tiempo.
+
+REGLA DE INFORMACIÓN
+La lista de premios se calcula en el servidor desde el modo, las reglas y la cantidad de líneas configuradas. Esa misma lista se entrega al lobby y a cada jugador para evitar diferencias entre pantallas.
+
+SECUENCIA AUTOMÁTICA
+1. Se extrae y anuncia la bolilla.
+2. El servidor detecta todas las jugadas que se completaron con esa bolilla.
+3. Se detiene temporalmente el bolillero.
+4. Se espera una pausa breve de entrada.
+5. Se anuncia el premio a todos los clientes.
+6. Se muestra el cartel y ganador/es durante un tiempo legible.
+7. Si la misma bolilla produjo varios premios distintos, se anuncian en secuencia.
+8. Si no hubo Bingo, se reanuda la partida.
+9. Si hubo Bingo, se inicia el cierre final después del anuncio.
+
+EMPATES
+Todos los ganadores de un mismo premio y una misma bolilla comparten el anuncio. La interfaz indica EMPATE y muestra los nombres/cartones juntos.
+
+SEGURIDAD DE ESTADO
+Durante prizeAnnouncement el estado es PAUSED con pauseReason=automatic_prize. No se permite DRAW ni RESUME manual hasta completar la secuencia.
+
+TIEMPOS DE PRODUCCIÓN
+- Pausa inicial aproximada: 1,5 s.
+- Cartel de premio aproximado: 4,2 s.
+- Separación entre premios de la misma bolilla: 0,85 s.
+Los tests usan tiempos reducidos para mantener la suite rápida.

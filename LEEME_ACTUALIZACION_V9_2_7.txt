@@ -1,0 +1,44 @@
+EL BINGO DE LA GORDA — ACTUALIZACIÓN V9.2.7
+Fecha: 2026-08-23
+
+PREMIOS SIEMPRE VISIBLES + ANUNCIOS AUTOMÁTICOS SINCRONIZADOS
+
+Esta actualización se aplica sobre V9.2.6.
+
+1. PREMIOS VISIBLES ANTES DE JUGAR
+- Comunidad muestra en cada mesa normal los premios realmente habilitados.
+- Ejemplos: SE JUEGA POR: LÍNEA + BINGO / AMBO CABEZA + 2 LÍNEAS + BINGO.
+- La selección de cartones y la sala de espera muestran la misma información.
+- Bingo 75 contempla 4 Esquinas, Línea, Doble Línea, Triple Línea y Bingo según la configuración real.
+- Flash conserva su objetivo propio y Campeonato conserva sus reglas propias.
+
+2. AUTO + EMPATES CON RITMO NATURAL
+- La bolilla ganadora sale y se canta normalmente.
+- El servidor congela el bolillero cuando detecta un premio automático.
+- Después de una breve pausa, todos reciben el mismo anuncio sincronizado.
+- El anuncio muestra el premio y todos los ganadores de esa misma bolilla.
+- Si hay empate, los ganadores se presentan juntos; nunca se anuncia uno antes de descubrir al otro.
+- Mientras el anuncio está activo no puede salir otra bolilla y tampoco se puede forzar REANUDAR desde administración.
+- Al terminar el anuncio, la partida continúa si quedan premios pendientes.
+- Si el premio es Bingo, recién después del anuncio comienza el cierre/extracción final habitual.
+
+3. ALCANCE
+La secuencia es genérica para los premios automáticos configurables:
+- Ambo Cabeza
+- Línea / Primera Línea / Segunda Línea
+- 4 Esquinas
+- Doble Línea
+- Triple Línea
+- Bingo
+
+4. PANTALLAS SINCRONIZADAS
+- Jugador
+- Modo TV
+- Transmisión
+- Estado del servidor compartido por todos los clientes
+
+5. PRUEBAS
+- Se amplió tests/automatic-claims-ties.js para validar pausa, bloqueo de nueva bolilla, anuncio, empate agrupado y continuación/cierre.
+- Se agregó tests/community-prizes-announcements.js para validar premios visibles y presencia del anuncio sincronizado en Jugador, TV y Transmisión.
+
+No modifica la lógica de desconexión, titularidad, Cartones al azar, limpieza de salas vacías ni links directos introducida en V9.2.4–V9.2.6.

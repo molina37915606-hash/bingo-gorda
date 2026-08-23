@@ -1,0 +1,14 @@
+EL BINGO DE LA GORDA — RESPALDO COMPLETO V9.2.7
+Fecha: 2026-08-23
+
+Este ZIP es un respaldo completo e independiente del proyecto hasta V9.2.7.
+
+Incluye acumulativamente:
+- V9.2.4: inscriptos persistentes ante desconexión + Cartones al azar.
+- V9.2.5: cierre de salas manuales 0/N luego de 5 minutos sin actividad.
+- V9.2.6: links directos a mesas públicas y privadas con credencial de invitado.
+- V9.2.7: premios visibles en Comunidad/espera + secuencia sincronizada de premios automáticos.
+
+V9.2.7 no fue subida a GitHub durante esta preparación.
+
+Ver SHA256SUMS_RESPALDO.txt para validar la integridad de los archivos del respaldo.

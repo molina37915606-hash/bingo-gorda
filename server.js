@@ -95,6 +95,9 @@ const LARGE_ROOM_NOTICE_TITLE = 'CRITERIO DE GANADORES';
 const LARGE_ROOM_NOTICE_TEXT = 'Si varios cartones completan la misma jugada con una misma bolilla, tendrá prioridad el reclamo que sea recibido y validado primero por el servidor central. Los reclamos válidos recibidos posteriormente quedarán registrados en el acta como “VÁLIDA POSTERIOR”, conservando su orden de recepción. Este procedimiento permite determinar de forma objetiva y transparente la prioridad entre reclamos simultáneos.';
 const RESUME_SEQUENCE_MS = Math.max(100, Number(process.env.BINGO_RESUME_SEQUENCE_MS || 5_000));
 const CLAIM_AUTO_RESUME_MS = Math.max(1_000, Number(process.env.BINGO_CLAIM_AUTO_RESUME_MS || 5_000));
+const AUTO_PRIZE_LEAD_IN_MS = Math.max(TEST_MODE ? 35 : 500, Number(process.env.BINGO_AUTO_PRIZE_LEAD_IN_MS || (TEST_MODE ? 70 : 1500)));
+const AUTO_PRIZE_SHOW_MS = Math.max(TEST_MODE ? 80 : 1800, Number(process.env.BINGO_AUTO_PRIZE_SHOW_MS || (TEST_MODE ? 140 : 4200)));
+const AUTO_PRIZE_BETWEEN_MS = Math.max(TEST_MODE ? 25 : 300, Number(process.env.BINGO_AUTO_PRIZE_BETWEEN_MS || (TEST_MODE ? 55 : 850)));
 const ADMIN_CONTINGENCY_MS = Math.max(TEST_MODE ? 100 : 5_000, Number(process.env.BINGO_ADMIN_CONTINGENCY_MS || 60_000));
 const FINAL_BALLS_SEQUENCE_MS = Math.max(250, Number(process.env.BINGO_FINAL_BALLS_SEQUENCE_MS || 8_000));
 const FINAL_BALLS_LEAD_IN_MS = Math.max(250, Number(process.env.BINGO_FINAL_BALLS_LEAD_IN_MS || 5_500));
@@ -412,6 +415,7 @@ function blankState() {
     adminMessage: null,
     adminContingency: { disconnectedSince: null, activatesAt: null, autoVerificationActive: false, activatedAt: null },
     transition: null,
+    prizeAnnouncement: null,
     pauseReason: null,
     deviceTransferRequests: [],
     testEvent: null,
@@ -496,6 +500,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       claims: parsed.claims || [],
       eventLog: parsed.eventLog || [],
       transition: parsed.transition || null,
+      prizeAnnouncement: parsed.prizeAnnouncement && typeof parsed.prizeAnnouncement === 'object' ? parsed.prizeAnnouncement : null,
       pauseReason: parsed.pauseReason || null,
       deviceTransferRequests: Array.isArray(parsed.deviceTransferRequests) ? parsed.deviceTransferRequests : [],
       adminContingency: { ...defaults.adminContingency, ...(parsed.adminContingency || {}) }
@@ -1814,6 +1819,49 @@ function prizeStatusPayload() {
   };
 }
 
+
+function activePrizeLabelsFor(modeValue = state.game?.mode, rulesValue = state.game?.rules, linePrizeCountValue = state.roomSettings?.linePrizeCount) {
+  const mode = Number(modeValue) === 75 ? 75 : 90;
+  const rules = rulesValue && typeof rulesValue === 'object' ? rulesValue : {};
+  const labels = [];
+  if (mode === 90) {
+    if (rules.ambocabeza) labels.push('AMBO CABEZA');
+    if (rules.line) labels.push(Math.max(1, Math.min(2, Number(linePrizeCountValue) || 1)) === 2 ? '2 LÍNEAS' : 'LÍNEA');
+    if (rules.bingo !== false) labels.push('BINGO');
+  } else {
+    if (rules.corners) labels.push('4 ESQUINAS');
+    if (rules.line) labels.push('LÍNEA');
+    if (rules.doubleLine) labels.push('DOBLE LÍNEA');
+    if (rules.tripleLine) labels.push('TRIPLE LÍNEA');
+    if (rules.bingo !== false) labels.push('BINGO');
+  }
+  return labels;
+}
+
+function automaticPrizeAnnouncementPayload() {
+  const announcement = state.prizeAnnouncement;
+  if (!announcement || typeof announcement !== 'object') return null;
+  const items = Array.isArray(announcement.items) ? announcement.items : [];
+  const currentIndex = Math.max(0, Math.min(Math.max(0, items.length - 1), Number(announcement.currentIndex) || 0));
+  const cleanItem = item => item ? {
+    id: String(item.id || ''),
+    type: item.type,
+    prizeNumber: Number(item.prizeNumber) || 1,
+    prizeLabel: String(item.prizeLabel || prizeLabelFor(item.type, item.prizeNumber, state.game?.mode)),
+    winners: (Array.isArray(item.winners) ? item.winners : []).map(winner => ({
+      claimId: String(winner.claimId || ''), playerId: String(winner.playerId || ''), playerName: String(winner.playerName || ''),
+      cardId: String(winner.cardId || ''), cardNumber: winner.cardNumber
+    }))
+  } : null;
+  return {
+    id: String(announcement.id || ''), batchId: String(announcement.batchId || ''), ball: announcement.ball ?? null,
+    drawnCount: Number(announcement.drawnCount) || 0, stage: String(announcement.stage || 'lead_in'),
+    currentIndex, totalItems: items.length, createdAt: announcement.createdAt || null,
+    announceAt: announcement.announceAt || null, showStartedAt: announcement.showStartedAt || null, showEndsAt: announcement.showEndsAt || null,
+    current: cleanItem(items[currentIndex]), items: items.map(cleanItem).filter(Boolean)
+  };
+}
+
 function assignmentTimerPayload() {
   const timer = state.assignmentTimer || blankState().assignmentTimer;
   let remainingMs = Number(timer.remainingMs);
@@ -1924,7 +1972,9 @@ function publicClaimsPayload() {
         resolvedAt: claim.resolvedAt || null,
         resolutionReason: claim.resolutionReason || null,
         prizeNumber: claim.prizeNumber || 1,
-        prizeLabel: claim.prizeLabel || prizeLabelFor(claim.type, claim.prizeNumber, state.game?.mode)
+        prizeLabel: claim.prizeLabel || prizeLabelFor(claim.type, claim.prizeNumber, state.game?.mode),
+        automatic: Boolean(claim.automatic),
+        tieGroupId: claim.tieGroupId || null
       };
       if (claim.status === 'confirmed') {
         const card = state.game?.cards?.find(item => item.id === claim.cardId);
@@ -2077,12 +2127,12 @@ function broadcastPayload() {
   return {
     active: true, version: APP_PUBLIC_VERSION, status: state.status, pauseReason: state.pauseReason || null, roomCode: state.roomCode, round: state.round, demo: Boolean(currentWorkspace().isDemo || state.demo),
     playersTotal: state.players.length, playersReady: state.players.filter(player => player.selectionConfirmed).length, playersConnected: connectedPlayerIds().size,
-    roomSettings: state.roomSettings, transition: state.transition, publicClaims: publicClaimsPayload(), markingPolicy: markingPolicyPayload(), championship: championshipPublicPayload(null), flash: flashPublicPayload(null),
+    roomSettings: state.roomSettings, transition: state.transition, prizeAnnouncement: automaticPrizeAnnouncementPayload(), prizeLabels: activePrizeLabelsFor(), publicClaims: publicClaimsPayload(), markingPolicy: markingPolicyPayload(), championship: championshipPublicPayload(null), flash: flashPublicPayload(null),
     adminPresence: adminPresencePayload(), integrity: publicIntegrityPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES) },
     game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: PRESENTER_ID, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, drawTimestamps: state.game.drawTimestamps || {}, lastDrawnAt: state.game.lastDrawnAt || null, total: state.game.mode },
     pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, eventPlayerId: pendingClaim.eventPlayerId || '', eventLotCode: pendingClaim.eventLotCode || '', eventCardNumber: pendingClaim.eventCardNumber || null, createdAt: pendingClaim.createdAt } : null,
-    latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, eventPlayerId: latestConfirmed.eventPlayerId || '', eventLotCode: latestConfirmed.eventLotCode || '', eventCardNumber: latestConfirmed.eventCardNumber || null, prizeNumber: latestConfirmed.prizeNumber || 1, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt } : null,
+    latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, eventPlayerId: latestConfirmed.eventPlayerId || '', eventLotCode: latestConfirmed.eventLotCode || '', eventCardNumber: latestConfirmed.eventCardNumber || null, prizeNumber: latestConfirmed.prizeNumber || 1, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt, automatic: Boolean(latestConfirmed.automatic), tieGroupId: latestConfirmed.tieGroupId || null } : null,
     bingoConfirmed: prizeStatusPayload().bingo.closed,
     finalExtraction: finalExtractionPayload(),
     finalShowcase: finalShowcasePayload(),
@@ -2169,6 +2219,8 @@ function adminPayload() {
     bingoConfirmed: prizeStatusPayload().bingo.closed,
     adminMessage: state.adminMessage,
     transition: state.transition,
+    prizeAnnouncement: automaticPrizeAnnouncementPayload(),
+    prizeLabels: activePrizeLabelsFor(),
     deviceTransferRequests: (state.deviceTransferRequests || []).filter(request => request.status === 'pending'),
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
     accessContext: currentAccessContext(),
@@ -2259,6 +2311,8 @@ function playerPayload(player) {
     bingoConfirmed: prizeStatusPayload().bingo.closed,
     adminMessage: state.adminMessage,
     transition: state.transition,
+    prizeAnnouncement: automaticPrizeAnnouncementPayload(),
+    prizeLabels: activePrizeLabelsFor(),
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
     readiness: playerPrizeReadiness(player),
     publicClaims: publicClaimsPayload(),
@@ -2276,6 +2330,7 @@ function playerPayload(player) {
       playerCount: registrationSummaryPayload().registeredPlayers,
       cardCount: registrationSummaryPayload().playingCards,
       maxPlayers: Math.max(2, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS),
+      prizeLabels: activePrizeLabelsFor(),
       creatorPlayers: communityCreatorPlayersPayload(player),
       pendingSelectionPlayers: state.players.filter(item => item?.nameSet && !item.virtual && !item.selectionConfirmed).length,
       isManualCreator: state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && String(state.communityCreatorPlayerId || '') === String(player.id || ''),
@@ -4466,7 +4521,7 @@ function flashPublicPayload(player = null) {
 
 function finalizeFlash(winnerPlayerId, winningBall = null) {
   if (!state.flash?.enabled) return null;
-  clearAutomaticDrawTimer(); clearWorkspaceTransitionTimer();
+  clearAutomaticDrawTimer(); clearWorkspaceTransitionTimer(); clearAutomaticPrizeAnnouncementTimer();
   state.flash.stage = 'finished'; state.flash.winnerPlayerId = String(winnerPlayerId||''); state.flash.finishedAt = nowIso(); state.flash.winningBall = Number(winningBall)||null;
   state.status = 'finished'; state.pauseReason = null; state.endedAt = state.flash.finishedAt; state.transition = null; state.game.phase = 'FLASH_FINISHED';
   const winner = flashLeaderboard().find(item => item.winner) || null;
@@ -6553,6 +6608,7 @@ function configureRoom(payload) {
     },
     adminMessage: null,
     transition: null,
+    prizeAnnouncement: null,
     pauseReason: null,
     deviceTransferRequests: [],
     testEvent: null,
@@ -7002,7 +7058,8 @@ function drawNextBall(source = 'manual') {
   }
   saveState();
   broadcast();
-  if (state.status === 'finalizing' && state.transition?.type === 'final-balls') scheduleTransition();
+  if (state.status === 'paused' && state.pauseReason === 'automatic_prize' && state.prizeAnnouncement) scheduleAutomaticPrizeAnnouncement();
+  else if (state.status === 'finalizing' && state.transition?.type === 'final-balls') scheduleTransition();
   else if (state.transition?.type === 'last-ball-claim-window') scheduleTransition();
   else if (state.status === 'paused' && state.pauseReason === 'claim' && automaticTieClaimsEnabled()) scheduleClaimAutoResume();
   else if (state.status === 'playing') scheduleAutomaticDraw();
@@ -7036,6 +7093,115 @@ function updateDrawSettings(payload = {}) {
   broadcast();
   if (state.status === 'playing') scheduleAutomaticDraw();
   return adminPayload();
+}
+
+const automaticPrizeAnnouncementTimers = new Map();
+
+function clearAutomaticPrizeAnnouncementTimer(workspace = currentWorkspace()) {
+  const timer = automaticPrizeAnnouncementTimers.get(workspace.id);
+  if (timer) clearTimeout(timer);
+  automaticPrizeAnnouncementTimers.delete(workspace.id);
+}
+
+function beginAutomaticPrizeAnnouncementShow(workspace = currentWorkspace()) {
+  clearAutomaticPrizeAnnouncementTimer(workspace);
+  const announcement = state.prizeAnnouncement;
+  if (!state.active || !state.game || state.status !== 'paused' || state.pauseReason !== 'automatic_prize' || !announcement) return;
+  const items = Array.isArray(announcement.items) ? announcement.items : [];
+  if (!items.length) return finishAutomaticPrizeAnnouncement(workspace);
+  announcement.currentIndex = Math.max(0, Math.min(items.length - 1, Number(announcement.currentIndex) || 0));
+  announcement.stage = 'showing';
+  announcement.showStartedAt = nowIso();
+  announcement.showEndsAt = new Date(Date.now() + AUTO_PRIZE_SHOW_MS).toISOString();
+  logEvent('automatic_prize_announcement_showing', { announcementId:announcement.id, itemId:items[announcement.currentIndex]?.id || '', type:items[announcement.currentIndex]?.type || '', winnerCount:(items[announcement.currentIndex]?.winners || []).length });
+  saveState();
+  broadcast();
+  const timer = setTimeout(() => workspaceContext.run(workspace, () => advanceAutomaticPrizeAnnouncement(workspace)), AUTO_PRIZE_SHOW_MS);
+  automaticPrizeAnnouncementTimers.set(workspace.id, timer);
+}
+
+function scheduleAutomaticPrizeAnnouncement(workspace = currentWorkspace()) {
+  clearAutomaticPrizeAnnouncementTimer(workspace);
+  const announcement = state.prizeAnnouncement;
+  if (!state.active || !announcement || state.status !== 'paused' || state.pauseReason !== 'automatic_prize') return;
+  if (announcement.stage === 'showing') {
+    const due = new Date(announcement.showEndsAt || 0).getTime();
+    const timer = setTimeout(() => workspaceContext.run(workspace, () => advanceAutomaticPrizeAnnouncement(workspace)), Math.max(0, (Number.isFinite(due) ? due : Date.now()) - Date.now()));
+    automaticPrizeAnnouncementTimers.set(workspace.id, timer);
+    return;
+  }
+  const due = new Date(announcement.announceAt || 0).getTime();
+  const timer = setTimeout(() => workspaceContext.run(workspace, () => beginAutomaticPrizeAnnouncementShow(workspace)), Math.max(0, (Number.isFinite(due) ? due : Date.now()) - Date.now()));
+  automaticPrizeAnnouncementTimers.set(workspace.id, timer);
+}
+
+function advanceAutomaticPrizeAnnouncement(workspace = currentWorkspace()) {
+  clearAutomaticPrizeAnnouncementTimer(workspace);
+  const announcement = state.prizeAnnouncement;
+  if (!state.active || !announcement || state.status !== 'paused' || state.pauseReason !== 'automatic_prize') return;
+  const items = Array.isArray(announcement.items) ? announcement.items : [];
+  const nextIndex = (Number(announcement.currentIndex) || 0) + 1;
+  if (nextIndex < items.length) {
+    announcement.currentIndex = nextIndex;
+    announcement.stage = 'lead_in';
+    announcement.announceAt = new Date(Date.now() + AUTO_PRIZE_BETWEEN_MS).toISOString();
+    announcement.showStartedAt = null;
+    announcement.showEndsAt = null;
+    saveState();
+    broadcast();
+    scheduleAutomaticPrizeAnnouncement(workspace);
+    return;
+  }
+  finishAutomaticPrizeAnnouncement(workspace);
+}
+
+function finishAutomaticPrizeAnnouncement(workspace = currentWorkspace()) {
+  clearAutomaticPrizeAnnouncementTimer(workspace);
+  const announcement = state.prizeAnnouncement;
+  if (!announcement) return;
+  const hadBingo = Boolean(announcement.hasBingo || (announcement.items || []).some(item => item.type === 'bingo'));
+  const resumeMode = announcement.resumeMode === 'manual' ? 'manual' : 'automatic';
+  const announcementId = announcement.id;
+  state.prizeAnnouncement = null;
+  state.pauseReason = null;
+  if (hadBingo) {
+    const startedAt = nowIso();
+    const remainingInitial = Math.max(0, Number(state.game.mode || 0) - state.game.drawn.length);
+    const timing = finalExtractionTiming(remainingInitial);
+    const now = Date.now();
+    state.status = 'finalizing';
+    state.game.phase = 'BINGO_CONFIRMED';
+    state.transition = {
+      id: randomId('transition'), type: 'final-balls', startedAt,
+      initialDrawnCount: state.game.drawn.length, remainingInitial,
+      intervalMs: timing.intervalMs, leadInEndsAt: new Date(now + timing.leadInMs).toISOString(),
+      endsAt: new Date(now + timing.totalMs).toISOString()
+    };
+    const bingoClaims = confirmedClaims('bingo').filter(claim => claim.tieGroupId === announcement.batchId || claim.claimWindowId === announcement.batchId);
+    logEvent('bingo_confirmed_final_extraction', { claimIds:bingoClaims.map(claim => claim.id), tieCount:bingoClaims.length, remainingBalls:remainingInitial, leadInMs:timing.leadInMs, intervalMs:timing.intervalMs, automatic:true, afterAnnouncement:true });
+    logEvent('automatic_prize_announcement_completed', { announcementId, bingo:true });
+    saveState();
+    broadcast();
+    scheduleTransition();
+    return;
+  }
+  state.status = 'playing';
+  state.game.drawMode = resumeMode;
+  state.game.phase = resumeMode === 'automatic' ? 'DRAWING' : 'READY';
+  logEvent('automatic_prize_announcement_completed', { announcementId, bingo:false, resumeMode });
+  saveState();
+  broadcast();
+  if (state.game.drawn.length >= state.game.mode) {
+    state.status = 'finished';
+    state.game.phase = 'ROUND_END';
+    state.endedAt = nowIso();
+    logEvent('game_finished', { round:state.round, balls:state.game.drawn.length, automatic:true, afterPrizeAnnouncement:true });
+    archiveCurrentResults();
+    saveState();
+    broadcast();
+    return;
+  }
+  if (resumeMode === 'automatic') scheduleAutomaticDraw();
 }
 
 const claimAutoResumeTimers = new Map();
@@ -7308,9 +7474,10 @@ function pauseRoom() {
 
 function resumeRoom(payload = {}) {
   const wasClaimPause = state.pauseReason === 'claim';
-  clearClaimAutoResume(currentWorkspace(), payload?.automaticAfterClaim ? '' : 'manual_resume');
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   if (state.status !== 'paused') throw new Error('La partida no está pausada.');
+  if (state.pauseReason === 'automatic_prize' && state.prizeAnnouncement) throw new Error('Esperá a que termine el anuncio automático del premio.');
+  clearClaimAutoResume(currentWorkspace(), payload?.automaticAfterClaim ? '' : 'manual_resume');
   clearAutomaticDrawTimer();
   const mode = payload.mode === 'manual' ? 'manual' : payload.mode === 'automatic' ? 'automatic' : state.game.drawMode;
   state.game.drawMode = mode;
@@ -7749,6 +7916,7 @@ function sendTestEvent(payload) {
 
 function newRoomState() {
   clearClaimAutoResume(currentWorkspace());
+  clearAutomaticPrizeAnnouncementTimer();
   if (state.active && state.status !== 'finished') throw new Error('Primero finalizá el sorteo actual antes de crear una sala nueva.');
   if (state.active) logEvent('new_room_requested');
   replaceCurrentState(blankState());
@@ -7761,6 +7929,7 @@ function closeRoom() {
   clearAutomaticDrawTimer();
   clearClaimAutoResume(currentWorkspace());
   clearWorkspaceTransitionTimer();
+  clearAutomaticPrizeAnnouncementTimer();
   logEvent('room_closed');
   state.endedAt ||= nowIso();
   if (state.roomCode && state.status !== 'finished' && !state.historyArchiveId) archiveCancelledRoom();
@@ -7772,6 +7941,7 @@ function closeRoom() {
 }
 
 function restoreBackup(payload) {
+  clearAutomaticPrizeAnnouncementTimer();
   const raw = payload?.backup?.state || payload?.backup || payload?.state;
   if (!raw || typeof raw !== 'object') throw new Error('La copia de seguridad no es válida.');
   if (!raw.active || !raw.game) throw new Error('La copia no contiene una sala activa.');
@@ -8303,34 +8473,35 @@ function processAutomaticClaimsForCurrentBall() {
   if (!awarded.length) return awarded;
   clearWorkspaceTransitionTimer();
   clearAutomaticDrawTimer();
+  clearClaimAutoResume();
   state.claimWindow = null;
   state.transition = null;
-  state.pauseReason = 'claim';
-  const bingoWinners = awarded.filter(claim => claim.type === 'bingo');
+  const grouped = [];
+  for (const claim of awarded) {
+    const key = `${claim.type}:${Number(claim.prizeNumber) || 1}`;
+    let item = grouped.find(entry => entry.key === key);
+    if (!item) {
+      item = { key, id:randomId('prize_item'), type:claim.type, prizeNumber:Number(claim.prizeNumber)||1, prizeLabel:claim.prizeLabel || prizeLabelFor(claim.type, claim.prizeNumber, state.game.mode), winners:[] };
+      grouped.push(item);
+    }
+    item.winners.push({ claimId:claim.id, playerId:claim.playerId, playerName:claim.playerName, cardId:claim.cardId, cardNumber:claim.cardNumber });
+  }
+  const now = Date.now();
+  state.status = 'paused';
+  state.game.phase = 'PAUSED';
+  state.pauseReason = 'automatic_prize';
+  state.prizeAnnouncement = {
+    id: randomId('prize_announcement'), batchId, ball: state.game.drawn.at(-1) ?? null, drawnCount: state.game.drawn.length,
+    stage:'lead_in', currentIndex:0, createdAt:resolvedAt, announceAt:new Date(now + AUTO_PRIZE_LEAD_IN_MS).toISOString(),
+    showStartedAt:null, showEndsAt:null, resumeMode:state.game.drawMode === 'manual' ? 'manual' : 'automatic',
+    items: grouped.map(({key,...item}) => item), hasBingo: awarded.some(claim => claim.type === 'bingo')
+  };
   logEvent('automatic_claim_batch_confirmed', {
     batchId, ball: state.game.drawn.at(-1) ?? null, drawnCount: state.game.drawn.length,
+    announcementId:state.prizeAnnouncement.id,
     winners: awarded.map(claim => ({ claimId:claim.id, type:claim.type, prizeNumber:claim.prizeNumber, playerId:claim.playerId, cardId:claim.cardId }))
   });
-  if (bingoWinners.length) {
-    const startedAt = nowIso();
-    const remainingInitial = Math.max(0, Number(state.game.mode || 0) - state.game.drawn.length);
-    const timing = finalExtractionTiming(remainingInitial);
-    const now = Date.now();
-    state.status = 'finalizing';
-    state.game.phase = 'BINGO_CONFIRMED';
-    state.transition = {
-      id: randomId('transition'), type: 'final-balls', startedAt,
-      initialDrawnCount: state.game.drawn.length,
-      remainingInitial,
-      intervalMs: timing.intervalMs,
-      leadInEndsAt: new Date(now + timing.leadInMs).toISOString(),
-      endsAt: new Date(now + timing.totalMs).toISOString()
-    };
-    logEvent('bingo_confirmed_final_extraction', { claimIds:bingoWinners.map(claim => claim.id), tieCount:bingoWinners.length, remainingBalls:remainingInitial, leadInMs:timing.leadInMs, intervalMs:timing.intervalMs, automatic:true });
-  } else {
-    state.status = 'paused';
-    state.game.phase = 'PAUSED';
-  }
+  logEvent('automatic_prize_announcement_scheduled', { announcementId:state.prizeAnnouncement.id, items:grouped.length, leadInMs:AUTO_PRIZE_LEAD_IN_MS, showMs:AUTO_PRIZE_SHOW_MS });
   return awarded;
 }
 
@@ -10012,6 +10183,7 @@ function publicRoomPayload(record) {
     claimMode: record.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
     linePrizeCount: record.linePrizeCount,
     rules: record.rules,
+    prizeLabels: activePrizeLabelsFor(record.mode, record.rules, record.linePrizeCount),
     startMode: record.startMode,
     startsAt: record.startsAt || '',
     opensAt: record.startMode === 'scheduled' && record.startsAt ? new Date(new Date(record.startsAt).getTime() - COMMUNITY_PUBLIC_OPEN_MS).toISOString() : '',
@@ -10063,6 +10235,7 @@ function officialLobbyRoomsPayload() {
       id: `official-${state.roomCode || workspace.id}`,
       kind: 'official', accessType: 'official', requiresKey: false,
       name: 'EL BINGO DE LA GORDA', mode: Number(state.game?.mode) === 75 ? 75 : 90,
+      prizeLabels: activePrizeLabelsFor(),
       status: state.status, startsAt: scheduledAt, playerCount: (state.players || []).length,
       maxPlayers: Math.max(2, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS),
       joinOpen: state.status === 'waiting' && Boolean(state.roomSettings?.joinOpen),
@@ -12636,7 +12809,7 @@ setInterval(() => {
   for (const [token, expiresAt] of masterSessions) if (expiresAt <= now) masterSessions.delete(token);
   for (const workspace of [...workspaces.values()]) {
     if (workspace.isDemo && ((workspace.expiresAt && workspace.expiresAt <= now) || (workspace.lastActivityAt && now - workspace.lastActivityAt > DEMO_IDLE_TTL_MS))) {
-      clearAutomaticDrawTimer(workspace); clearWorkspaceTransitionTimer(workspace); clearClaimAutoResume(workspace); clearDemoAutomationTimers(workspace); clearDemoStartTimer(workspace); workspaces.delete(workspace.id);
+      clearAutomaticDrawTimer(workspace); clearWorkspaceTransitionTimer(workspace); clearAutomaticPrizeAnnouncementTimer(workspace); clearClaimAutoResume(workspace); clearDemoAutomationTimers(workspace); clearDemoStartTimer(workspace); workspaces.delete(workspace.id);
       try { fs.rmSync(path.dirname(workspace.stateFile), { recursive: true, force: true }); } catch {}
       continue;
     }
@@ -12656,7 +12829,8 @@ for (const workspace of workspaces.values()) workspaceContext.run(workspace, () 
   scheduleTransition();
   if (workspace.isDemo && state.active && state.status === 'waiting' && ensureDemoStartFlow()?.phase === 'countdown') scheduleDemoStartCountdown(workspace);
   if (state.active && state.game && state.status === 'playing' && state.game.drawMode === 'automatic') scheduleAutomaticDraw();
-  if (state.active && state.game && state.status === 'paused' && state.pauseReason === 'claim' && state.game.drawMode === 'automatic' && !confirmedClaims('bingo').length) scheduleClaimAutoResume();
+  if (state.active && state.game && state.status === 'paused' && state.pauseReason === 'automatic_prize' && state.prizeAnnouncement) scheduleAutomaticPrizeAnnouncement();
+  else if (state.active && state.game && state.status === 'paused' && state.pauseReason === 'claim' && state.game.drawMode === 'automatic' && !confirmedClaims('bingo').length) scheduleClaimAutoResume();
   if (state.active && state.game && !['closed','finished','waiting'].includes(state.status) && adminConnectionCount(workspace) === 0) markAdminDisconnected(workspace);
 });
 

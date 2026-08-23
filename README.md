@@ -1,3 +1,15 @@
+## V9.2.7 — Premios visibles + anuncios automáticos sincronizados
+
+- Cada mesa normal muestra en **Comunidad** los premios que realmente están habilitados: por ejemplo `SE JUEGA POR: LÍNEA + BINGO` o `AMBO CABEZA + 2 LÍNEAS + BINGO`.
+- La misma lista permanece visible al **elegir cartones** y dentro de la **sala de espera**.
+- En `AUTO + EMPATES`, una bolilla que completa un premio ya no salta de inmediato al resultado: el servidor hace una pausa breve y congela el bolillero.
+- Después de la pausa se dispara un único anuncio sincronizado para Jugador, TV y Transmisión, con canto del premio, cartel y ganador/es.
+- Los empates de la misma bolilla se resuelven antes de anunciar: todos los ganadores se muestran juntos.
+- La secuencia es genérica para Ambo Cabeza, Línea/Segunda Línea, 4 Esquinas, Doble Línea, Triple Línea y Bingo.
+- No puede salir otra bolilla ni forzarse una reanudación mientras el anuncio automático está activo.
+- Si quedan premios, la partida continúa al terminar el cartel; si fue Bingo, el cierre/extracción final comienza recién después del anuncio.
+- Se amplió `tests/automatic-claims-ties.js` y se agregó `tests/community-prizes-announcements.js`.
+
 ## V9.2.6 — Links directos a mesas públicas y privadas
 
 - El link compartido de una **mesa pública** abre directamente el ingreso de esa mesa; ya no deja al invitado solamente en Comunidad.

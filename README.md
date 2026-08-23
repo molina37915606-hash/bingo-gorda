@@ -1,3 +1,13 @@
+## V9.0.5 — Final persistente + Acta completa del Campeonato
+
+- Al terminar la última ronda, el Campeonato queda en una **pantalla final persistente**: no expulsa al jugador ni desaparece inmediatamente.
+- Jugadores: campeón, podio, Top 10, clasificación completa, resumen de todas las rondas y **DESCARGAR ACTA COMPLETA PDF**.
+- Creador desde Comunidad: **RESULTADOS / ACTA** con PDF, CSV y JSON aun si el creador nunca ingresó como jugador.
+- Los Campeonatos finalizados permanecen visibles temporalmente en Comunidad para que el creador pueda volver a abrir sus resultados.
+- El PDF incluye portada, campeón/podio, resumen de todas las rondas, secuencia oficial de bolillas por ronda, Top de cada ronda, clasificación final, puntos por ronda y SHA-256 de cierre.
+- CSV y JSON guardan el detalle de auditoría, incluidas matrices asignadas por ronda, timestamps, hitos y puntuaciones.
+- El resultado final se congela con SHA-256 antes de archivar los archivos y sobrevive a reinicios del servidor.
+
 ## V9.0.4 — Cantes públicos del Campeonato
 
 - En Campeonato, **RECLAMAR** queda disponible para cantar Primera Línea, Segunda Línea y Bingo aunque el bonus de reacción esté desactivado.

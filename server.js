@@ -46,6 +46,7 @@ const COMMUNITY_ROOM_RESERVATION_MS = Math.max(15 * 60 * 1000, Number(process.en
 const COMMUNITY_PUBLIC_OPEN_MS = Math.max(1_000, Number(process.env.BINGO_COMMUNITY_PUBLIC_OPEN_MS || 2 * 60 * 60 * 1000));
 const COMMUNITY_PUBLIC_MAX_AHEAD_MS = 36 * 60 * 60 * 1000;
 const COMMUNITY_PUBLIC_ESTIMATED_GAME_MS = 2 * 60 * 60 * 1000;
+const CHAMPIONSHIP_RESULTS_VISIBILITY_MS = Math.max(10 * 60_000, Number(process.env.BINGO_CHAMPIONSHIP_RESULTS_VISIBILITY_MS || 2 * 60 * 60_000));
 const CHAMPIONSHIP_ROUND_OPTIONS = [3, 5, 7];
 const CHAMPIONSHIP_PERSISTED_ROUNDS = [3, 5, 7, 10, 20, 30];
 const CHAMPIONSHIP_DEFAULT_ROUNDS = 5;
@@ -508,6 +509,13 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       createdAt: String(parsed.communityRematch.createdAt || '')
     } : null;
     merged.championship = parsed.championship && typeof parsed.championship === 'object' ? parsed.championship : null;
+    if (merged.championship?.enabled) {
+      merged.championship.version = Math.max(2, Number(merged.championship.version) || 1);
+      merged.championship.roundHistory = Array.isArray(merged.championship.roundHistory) ? merged.championship.roundHistory : [];
+      merged.championship.announcements = Array.isArray(merged.championship.announcements) ? merged.championship.announcements : [];
+      merged.championship.finalizedAt = merged.championship.finalizedAt || null;
+      merged.championship.finalActaSha256 = /^[a-f0-9]{64}$/i.test(String(merged.championship.finalActaSha256 || '')) ? String(merged.championship.finalActaSha256).toLowerCase() : '';
+    }
     merged.closedReason = String(parsed.closedReason || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 80);
     if (merged.active && !parsed.status) merged.status = merged.game?.drawn?.length ? 'playing' : 'waiting';
     if (!['closed', 'waiting', 'starting', 'playing', 'verifying', 'paused', 'resuming', 'finalizing', 'finished'].includes(merged.status)) merged.status = 'closed';
@@ -4381,7 +4389,7 @@ function createChampionshipState(payload = {}, mode = 90) {
   const totalRounds = CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(payload.championshipRounds)) ? Number(payload.championshipRounds) : CHAMPIONSHIP_DEFAULT_ROUNDS;
   return {
     enabled: true,
-    version: 1,
+    version: 2,
     mode: Number(mode) === 75 ? 75 : 90,
     totalRounds,
     currentRound: 0,
@@ -4389,6 +4397,9 @@ function createChampionshipState(payload = {}, mode = 90) {
     reactionBonusEnabled: payload.championshipReactionBonus === true,
     positions: [],
     announcements: [],
+    roundHistory: [],
+    finalizedAt: null,
+    finalActaSha256: '',
     firstBingoDrawnCount: null,
     closingDrawnCount: null,
     roundStartedAt: null,
@@ -4509,8 +4520,11 @@ function championshipLeaderboard() {
       points: stats.totalPoints,
       roundPoints: Math.max(0, Number(entry?.points) || 0),
       bingos: stats.bingos,
+      bingoPoints: stats.bingoPoints,
       secondLines: stats.secondLines,
+      secondLinePoints: stats.secondLinePoints,
       lines: stats.lines,
+      linePoints: stats.linePoints,
       hits: stats.hits,
       bestBingo: Number.isFinite(stats.bestBingo) ? stats.bestBingo : null,
       cardId: entry?.cardId || '',
@@ -4587,7 +4601,16 @@ function championshipPublicPayload(player = null) {
     betweenRounds:champ.stage === 'results',
     finished:champ.stage === 'finished',
     leaderboard:all.slice(0,10),
+    fullLeaderboard:champ.stage === 'finished' ? all : [],
     roundLeaderboard:roundTop.slice(0,10),
+    roundSummaries:(Array.isArray(champ.roundHistory)?champ.roundHistory:[]).map(item=>({
+      round:Number(item.round)||0, startedAt:item.startedAt||null, endedAt:item.endedAt||null,
+      drawCount:Number(item.drawCount)||0, firstBingoDrawnCount:Number(item.firstBingoDrawnCount)||null,
+      closingDrawnCount:Number(item.closingDrawnCount)||null, leader:item.leader||null,
+      roundLeader:item.roundLeader||null, announcementsCount:Number(item.announcementsCount)||0
+    })),
+    finalActaSha256:String(champ.finalActaSha256||''),
+    finalizedAt:champ.finalizedAt||null,
     announcements,
     leader,
     ownPositions:own,
@@ -4850,6 +4873,102 @@ function createChampionshipClaim(player, payload = {}) {
   };
 }
 
+
+function captureChampionshipRoundHistory() {
+  if (!state.championship?.enabled || !state.game) return null;
+  const champ = state.championship;
+  champ.roundHistory = Array.isArray(champ.roundHistory) ? champ.roundHistory : [];
+  const round = Number(champ.currentRound) || Number(state.round) || 1;
+  const roundBoard = championshipRoundLeaderboard();
+  const overall = championshipLeaderboard();
+  const balls = officialBallRows().map(row => ({ order:Number(row.order)||0, number:Number(row.number)||0, at:row.at||null }));
+  const announcements = (Array.isArray(champ.announcements) ? champ.announcements : [])
+    .filter(item => Number(item?.round) === round)
+    .map(item => ({
+      id:String(item?.id||''), type:String(item?.type||''), label:String(item?.label||''), playerName:String(item?.playerName||''),
+      positionId:String(item?.positionId||''), positionLabel:String(item?.positionLabel||''), ball:Number(item?.ball)||0,
+      points:Math.max(0,Number(item?.points)||0), reactionBonus:Math.max(0,Number(item?.reactionBonus)||0), createdAt:item?.createdAt||null
+    }));
+  const entry = {
+    round,
+    startedAt:champ.roundStartedAt || null,
+    endedAt:champ.roundEndedAt || nowIso(),
+    drawCount:balls.length,
+    balls,
+    firstBingoDrawnCount:Number(champ.firstBingoDrawnCount)||null,
+    closingDrawnCount:Number(champ.closingDrawnCount)||null,
+    announcementsCount:announcements.length,
+    announcements,
+    roundLeader:roundBoard[0] ? deepCopy(roundBoard[0]) : null,
+    leader:overall[0] ? deepCopy(overall[0]) : null,
+    roundLeaderboard:deepCopy(roundBoard),
+    standings:deepCopy(overall)
+  };
+  champ.roundHistory = champ.roundHistory.filter(item => Number(item?.round) !== round);
+  champ.roundHistory.push(entry);
+  champ.roundHistory.sort((a,b)=>Number(a.round)-Number(b.round));
+  return entry;
+}
+
+function championshipReportPayload() {
+  if (!state.championship?.enabled) return null;
+  const champ = state.championship;
+  const leaderboard = championshipLeaderboard();
+  const positions = (champ.positions || []).filter(position => !position.retired).slice().sort(championshipComparePositions).map(position => {
+    const stats = championshipPositionStats(position);
+    const final = leaderboard.find(item => item.positionId === position.id) || null;
+    return {
+      positionId:position.id,
+      playerId:position.playerId,
+      playerName:position.playerName,
+      slot:Number(position.slot)||1,
+      label:`C${Number(position.slot)||1}`,
+      rank:final?.rank || null,
+      tied:Boolean(final?.tied),
+      stats:{...stats,bestBingo:Number.isFinite(stats.bestBingo)?stats.bestBingo:null},
+      rounds:deepCopy(Array.isArray(position.rounds)?position.rounds:[])
+    };
+  });
+  return {
+    reportVersion:1,
+    championshipVersion:Number(champ.version)||2,
+    roomCode:state.roomCode,
+    roomName:state.roomSettings?.roomName||'',
+    hostName:state.roomSettings?.hostName||'',
+    mode:Number(state.game?.mode)===75?75:90,
+    totalRounds:Number(champ.totalRounds)||0,
+    completedRounds:Number(champ.completedRounds)||0,
+    reactionBonusEnabled:Boolean(champ.reactionBonusEnabled),
+    createdAt:state.createdAt||champ.createdAt||null,
+    startedAt:state.startedAt||null,
+    endedAt:state.endedAt||champ.finalizedAt||null,
+    finalizedAt:champ.finalizedAt||null,
+    totals:{
+      players:new Set(positions.map(item=>item.playerId)).size,
+      positions:positions.length,
+      announcements:(Array.isArray(champ.announcements)?champ.announcements:[]).length
+    },
+    championPositionIds:Array.isArray(champ.championPositionIds)?[...champ.championPositionIds]:[],
+    officialTie:(Array.isArray(champ.championPositionIds)?champ.championPositionIds.length:0)>1,
+    leaderboard:deepCopy(leaderboard),
+    rounds:deepCopy(Array.isArray(champ.roundHistory)?champ.roundHistory:[]),
+    positions,
+    finalActaSha256:String(champ.finalActaSha256||'')
+  };
+}
+
+function sealChampionshipFinalActa() {
+  if (!state.championship?.enabled) return '';
+  const champ = state.championship;
+  champ.finalizedAt ||= state.endedAt || nowIso();
+  const report = championshipReportPayload();
+  if (!report) return '';
+  report.finalActaSha256 = '';
+  champ.finalActaSha256 = crypto.createHash('sha256').update(JSON.stringify(report)).digest('hex');
+  champ.version = Math.max(2, Number(champ.version)||1);
+  return champ.finalActaSha256;
+}
+
 function finishChampionshipRound() {
   if (!championshipRoomEnabled() || !state.championship) return false;
   const champ = state.championship;
@@ -4865,6 +4984,7 @@ function finishChampionshipRound() {
     const entry = championshipCurrentEntry(position);
     if (entry) { entry.finalRankAfterRound = ranks.get(position.id) || null; entry.endedAt = champ.roundEndedAt; }
   }
+  captureChampionshipRoundHistory();
   if (Number(champ.currentRound) >= Number(champ.totalRounds)) {
     champ.stage = 'finished';
     champ.championPositionIds = leaderboard.filter(item => Number(item.rank) === 1).map(item => item.positionId);
@@ -4873,8 +4993,12 @@ function finishChampionshipRound() {
     state.pauseReason = null;
     state.endedAt = champ.roundEndedAt;
     state.game.phase = 'CHAMPIONSHIP_FINISHED';
-    logEvent('championship_finished', { rounds:champ.totalRounds, championPositionId:champ.championPositionId, championPositionIds:champ.championPositionIds, officialTie:champ.championPositionIds.length>1, points:leaderboard[0]?.points||0 });
-    try { archiveCurrentResults(); } catch (error) { logEvent('championship_archive_error',{message:String(error?.message||error)}); }
+    champ.finalizedAt = state.endedAt;
+    sealChampionshipFinalActa();
+    // Primero se congela y persiste el estado competitivo; después se escriben los archivos históricos.
+    saveState();
+    logEvent('championship_finished', { rounds:champ.totalRounds, championPositionId:champ.championPositionId, championPositionIds:champ.championPositionIds, officialTie:champ.championPositionIds.length>1, points:leaderboard[0]?.points||0, finalActaSha256:champ.finalActaSha256 });
+    try { const archived=archiveCurrentResults(); if(archived?.id) champ.finalArchiveId=archived.id; } catch (error) { logEvent('championship_archive_error',{message:String(error?.message||error)}); }
     syncCommunityPublicRecordFromState('finished');
   } else {
     champ.stage = 'results';
@@ -8217,6 +8341,7 @@ function actaPayload() {
     demo: Boolean(state.demo || currentWorkspace().isDemo),
     markingPolicy: markingPolicyPayload(),
     championship: state.championship?.enabled ? deepCopy({ ...state.championship, leaderboard:championshipLeaderboard(), roundLeaderboard:championshipRoundLeaderboard() }) : null,
+    championshipReport: state.championship?.enabled ? championshipReportPayload() : null,
     categories: Object.fromEntries(Object.entries(categories).map(([key, category]) => [key, { ...category, status: !category.enabled ? 'not_drawn' : category.winners.length ? 'confirmed' : 'no_confirmed_winner' }]))
   };
 }
@@ -8295,6 +8420,7 @@ function claimAuditResultLabel(alert) {
 }
 
 function actaCsv() {
+  if (championshipRoomEnabled()) return championshipActaCsv();
   const acta = actaPayload();
   const lines = [
     ['LA GORDA - BINGO ONLINE - RESULTADOS'],
@@ -8329,6 +8455,59 @@ function actaCsv() {
     ['JUGADOR', 'CÓDIGO', 'CARTONES ASIGNADOS', 'CANTIDAD'],
     ...acta.participants.map(participant => [participant.name, participant.code, participant.cardNumbers.join(' · '), participant.cardNumbers.length])
   ];
+  const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  return '\ufeff' + lines.map(row => row.map(quote).join(';')).join('\r\n');
+}
+
+
+function championshipActaCsv() {
+  const report = championshipReportPayload();
+  if (!report) throw new Error('No hay un Campeonato disponible.');
+  const lines = [
+    ['CAMPEONATO LA GORDA - ACTA COMPLETA'],
+    ['Sala', report.roomCode],
+    ['Nombre', report.roomName],
+    ['Creador', report.hostName],
+    ['Bingo', report.mode],
+    ['Rondas', report.totalRounds],
+    ['Rondas completadas', report.completedRounds],
+    ['Jugadores', report.totals.players],
+    ['Posiciones competitivas', report.totals.positions],
+    ['Bonus de reacción', report.reactionBonusEnabled ? 'ACTIVO' : 'INACTIVO'],
+    ['Inicio', formatLocalTimestamp(report.startedAt)],
+    ['Finalización', formatLocalTimestamp(report.endedAt)],
+    ['SHA-256 acta final', report.finalActaSha256 || ''],
+    [],
+    ['CLASIFICACIÓN FINAL'],
+    ['PUESTO','JUGADOR','POSICIÓN','PUNTOS','BINGOS','PUNTOS BINGO','SEGUNDAS LÍNEAS','PUNTOS 2ª LÍNEA','PRIMERAS LÍNEAS','PUNTOS LÍNEA','NÚMEROS','MEJOR BINGO'],
+    ...report.leaderboard.map(item => [item.rank,item.playerName,item.label,item.points,item.bingos,item.bingoPoints ?? '',item.secondLines,item.secondLinePoints ?? '',item.lines,item.linePoints ?? '',item.hits,item.bestBingo ?? '']),
+    [],
+    ['PUNTOS POR RONDA'],
+    ['PUESTO','JUGADOR','POSICIÓN',...Array.from({length:report.totalRounds},(_,i)=>`R${i+1}`),'TOTAL'],
+    ...report.positions.map(position => {
+      const byRound = new Map((position.rounds||[]).map(item=>[Number(item.round),item]));
+      return [position.rank,position.playerName,position.label,...Array.from({length:report.totalRounds},(_,i)=>Math.max(0,Number(byRound.get(i+1)?.points)||0)),position.stats.totalPoints];
+    }),
+    []
+  ];
+  for (const round of report.rounds || []) {
+    lines.push([`RONDA ${round.round}`]);
+    lines.push(['Inicio',formatLocalTimestamp(round.startedAt)],['Finalización',formatLocalTimestamp(round.endedAt)],['Bolillas extraídas',round.drawCount],['Primer Bingo matemático (salida)',round.firstBingoDrawnCount ?? ''],['Cierre reglamentario (salida)',round.closingDrawnCount ?? '']);
+    lines.push(['SECUENCIA DE BOLILLAS'],[(round.balls||[]).map(item=>item.number).join(' · ')]);
+    lines.push(['RESULTADO DE LA RONDA'],['PUESTO','JUGADOR','POSICIÓN','PUNTOS','BINGO','2ª LÍNEA','1ª LÍNEA','NÚMEROS']);
+    for (const item of round.roundLeaderboard || []) lines.push([item.rank,item.playerName,item.label,item.roundPoints,item.bingoBall||'',item.secondLineBall||'',item.lineBall||'',item.hitCount]);
+    lines.push(['CANTES'],['JUGADOR','POSICIÓN','JUGADA','BOLILLA','PUNTOS','REACCIÓN','HORA']);
+    for (const item of round.announcements || []) lines.push([item.playerName,item.positionLabel,item.label,item.ball,item.points,item.reactionBonus,formatLocalTimeMs(item.createdAt)]);
+    lines.push([]);
+  }
+  lines.push(['DETALLE DE POSICIONES Y MATRICES']);
+  lines.push(['JUGADOR','POSICIÓN','RONDA','PUNTOS','NÚMEROS','LÍNEA BOLILLA','2ª LÍNEA BOLILLA','BINGO BOLILLA','REACCIÓN','MATRIZ']);
+  for (const position of report.positions) {
+    for (const round of position.rounds || []) {
+      const matrix=(round.grid||[]).map(row=>(row||[]).map(v=>v==null?'-':v).join(' ')).join(' / ');
+      lines.push([position.playerName,position.label,round.round,round.points,round.hitCount,round.lineBall||'',round.secondLineBall||'',round.bingoBall||'',round.reactionBonus||0,matrix]);
+    }
+  }
   const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
   return '\ufeff' + lines.map(row => row.map(quote).join(';')).join('\r\n');
 }
@@ -8394,8 +8573,89 @@ function hexRgb(hex) {
   return [parseInt(clean.slice(0, 2), 16) / 255, parseInt(clean.slice(2, 4), 16) / 255, parseInt(clean.slice(4, 6), 16) / 255];
 }
 
+
+function buildChampionshipActaPdf() {
+  if (state.status !== 'finished' || !championshipRoomEnabled()) throw new Error('El acta completa se habilita al finalizar el Campeonato.');
+  const report = championshipReportPayload();
+  const PAGE_W=842, PAGE_H=595;
+  const colors={ink:'#28131A',muted:'#766268',wine:'#641B2A',wine2:'#3A0D16',gold:'#C79A46',cream:'#FBF6EF',pale:'#F4E9E5',line:'#D9C6C0',white:'#FFFFFF',green:'#277A57'};
+  const logo={buffer:fs.readFileSync(path.join(ROOT,'assets','logo-pdf.jpg')),width:360,height:360};
+  const pages=[];
+  const makePage=(title,subtitle='')=>{
+    const commands=[]; const canvas=premiumPdfCanvas(commands,PAGE_W,PAGE_H,colors); const {rect,text,image}=canvas;
+    rect(0,0,PAGE_W,PAGE_H,colors.cream); rect(0,0,PAGE_W,88,colors.wine2); rect(0,84,PAGE_W,4,colors.gold);
+    rect(24,12,60,60,colors.white,'#EAD8D2',.6); image(29,17,50,50);
+    text(title,101,20,18,{bold:true,color:colors.white,maxWidth:570});
+    if(subtitle)text(subtitle,101,49,8.5,{color:'#E7CDD2',maxWidth:590});
+    text(`Sala ${report.roomCode} · Bingo ${report.mode} · ${report.totalRounds} rondas`,818,65,7,{color:'#E7CDD2',align:'right'});
+    return{commands,canvas};
+  };
+  const footer=(canvas,pageNo,label='ACTA OFICIAL DE CAMPEONATO')=>{const{text}=canvas;text(label,24,579,6,{bold:true,color:colors.muted});text(`Página ${pageNo}`,818,579,6,{color:colors.muted,align:'right'});};
+  const row=(canvas,y,cells,widths,opts={})=>{const{rect,text}=canvas;let x=24;const h=opts.height||20;cells.forEach((cell,i)=>{const w=widths[i];rect(x,y,w,h,opts.fill||colors.white,colors.line,.45);text(cell,x+5,y+5,opts.size||7,{bold:Boolean(opts.bold),color:opts.color||colors.ink,maxWidth:w-10,align:opts.align?.[i]});x+=w;});return y+h;};
+  // Portada y podio
+  {
+    const {commands,canvas}=makePage('CAMPEONATO LA GORDA - ACTA COMPLETA',`${report.roomName||'Sala pública'} · Finalizado ${formatLocalTimestamp(report.endedAt)}`); const{rect,text}=canvas;
+    const champion=report.leaderboard?.[0];
+    rect(24,108,794,86,'#FFF9E9',colors.gold,1.3);
+    text(report.officialTie?'CAMPEONES OFICIALES':'CAMPEÓN OFICIAL',421,118,10,{bold:true,color:colors.wine,align:'center'});
+    text(champion?`${champion.playerName} · ${champion.label}`:'Sin campeón',421,140,25,{bold:true,color:colors.wine2,align:'center',maxWidth:720});
+    text(champion?`${champion.points} PUNTOS`:'',421,174,14,{bold:true,color:colors.gold,align:'center'});
+    const meta=[['JUGADORES',report.totals.players],['POSICIONES',report.totals.positions],['RONDAS',report.completedRounds],['DURACIÓN',formatDuration(report.startedAt,report.endedAt)]];
+    meta.forEach((m,i)=>{const x=24+i*200;rect(x,211,194,54,colors.white,colors.line,.6);text(m[0],x+97,220,6.5,{bold:true,color:colors.muted,align:'center'});text(m[1],x+97,237,13,{bold:true,color:colors.wine,align:'center',maxWidth:180});});
+    text('PODIO',24,286,10,{bold:true,color:colors.wine});
+    let y=306; for(const item of (report.leaderboard||[]).slice(0,3)){y=row(canvas,y,[`${item.rank}º`,`${item.playerName} · ${item.label}`,`${item.points} pts`,`${item.bingos} Bingo${item.bingos===1?'':'s'}`],[52,390,130,222],{height:28,size:9,bold:item.rank===1,fill:item.rank===1?'#FFF4D6':colors.white});}
+    text('RESUMEN POR RONDA',24,394,10,{bold:true,color:colors.wine});
+    y=412; for(const r of (report.rounds||[]).slice(0,7)){const leader=r.roundLeader?`${r.roundLeader.playerName} · ${r.roundLeader.label} (+${r.roundLeader.roundPoints})`:'-';y=row(canvas,y,[`R${r.round}`,`${r.drawCount} bolillas`,`1er Bingo: ${r.firstBingoDrawnCount||'-'}`,leader],[55,110,145,484],{height:18,size:6.5});}
+    text(`SHA-256 ACTA FINAL: ${report.finalActaSha256||'PENDIENTE'}`,24,552,6.2,{color:colors.muted,maxWidth:760}); footer(canvas,pages.length+1); pages.push(commands.join('\n'));
+  }
+  // Página por ronda
+  for(const round of report.rounds||[]){
+    const {commands,canvas}=makePage(`RONDA ${round.round} DE ${report.totalRounds}`,`Inicio ${formatLocalTime(round.startedAt)} · Fin ${formatLocalTime(round.endedAt)} · ${round.drawCount} bolillas`); const{rect,text}=canvas;
+    text(`Primer Bingo matemático: salida ${round.firstBingoDrawnCount||'-'} · Cierre reglamentario: salida ${round.closingDrawnCount||'-'}`,24,103,8,{bold:true,color:colors.wine,maxWidth:780});
+    text('SECUENCIA DE BOLILLAS',24,126,8,{bold:true,color:colors.muted});
+    const balls=round.balls||[], cols=15, cellW=50, gap=3, startX=24, startY=145, cellH=22;
+    for(let i=0;i<balls.length;i++){const r=Math.floor(i/cols),c=i%cols,x=startX+c*(cellW+gap),y=startY+r*(cellH+3);rect(x,y,cellW,cellH,colors.white,colors.line,.45);text(String(balls[i].number),x+cellW/2,y+5,8.5,{bold:true,color:colors.wine2,align:'center'});text(String(i+1),x+4,y+3,4.8,{color:colors.muted});}
+    const ballRows=Math.max(1,Math.ceil(Math.max(1,balls.length)/cols)); let y=startY+ballRows*(cellH+3)+14;
+    text('TOP 10 DE LA RONDA',24,y,8,{bold:true,color:colors.muted}); y+=16;
+    y=row(canvas,y,['#','JUGADOR / POSICIÓN','PTS','BINGO','2ª LÍNEA','LÍNEA','NÚM.'],[36,300,65,90,100,100,103],{height:18,size:6.3,bold:true,fill:colors.pale});
+    for(const item of (round.roundLeaderboard||[]).slice(0,10)){y=row(canvas,y,[item.rank,`${item.playerName} · ${item.label}`,item.roundPoints,item.bingoBall||'-',item.secondLineBall||'-',item.lineBall||'-',item.hitCount],[36,300,65,90,100,100,103],{height:18,size:6.4});}
+    const cantes=(round.announcements||[]).length; text(`${cantes} canto${cantes===1?'':'s'} registrado${cantes===1?'':'s'} en esta ronda.`,24,558,6.3,{color:colors.muted}); footer(canvas,pages.length+1,`RONDA ${round.round} · CAMPEONATO LA GORDA`); pages.push(commands.join('\n'));
+  }
+  // Clasificación completa paginada
+  const standings=report.leaderboard||[], perPage=22;
+  for(let offset=0;offset<standings.length;offset+=perPage){
+    const {commands,canvas}=makePage('CLASIFICACIÓN FINAL',`${offset+1}-${Math.min(offset+perPage,standings.length)} de ${standings.length} posiciones`); let y=108;
+    y=row(canvas,y,['#','JUGADOR / POSICIÓN','PUNTOS','BINGOS','2ª LÍNEAS','LÍNEAS','NÚMEROS','MEJOR BINGO'],[38,292,80,70,82,70,78,84],{height:20,size:6.4,bold:true,fill:colors.pale});
+    for(const item of standings.slice(offset,offset+perPage)){y=row(canvas,y,[item.rank,`${item.playerName} · ${item.label}`,item.points,item.bingos,item.secondLines,item.lines,item.hits,item.bestBingo||'-'],[38,292,80,70,82,70,78,84],{height:19,size:6.4,fill:item.rank===1?'#FFF4D6':colors.white});}
+    footer(canvas,pages.length+1); pages.push(commands.join('\n'));
+  }
+  // Matriz completa de puntos por ronda, en bloques de hasta 7 rondas
+  const roundChunks=[]; for(let start=1;start<=report.totalRounds;start+=7)roundChunks.push(Array.from({length:Math.min(7,report.totalRounds-start+1)},(_,i)=>start+i));
+  const positions=report.positions||[];
+  for(const chunk of roundChunks){
+    for(let offset=0;offset<positions.length;offset+=22){
+      const {commands,canvas}=makePage('PUNTOS POR RONDA',`Rondas ${chunk[0]}-${chunk.at(-1)} · ${offset+1}-${Math.min(offset+22,positions.length)} de ${positions.length} posiciones`);let y=108;
+      const roundW=58, widths=[38,290,...chunk.map(()=>roundW),80]; const headers=['#','JUGADOR / POSICIÓN',...chunk.map(r=>`R${r}`),'TOTAL'];
+      y=row(canvas,y,headers,widths,{height:20,size:6.4,bold:true,fill:colors.pale});
+      for(const pos of positions.slice(offset,offset+22)){const by=new Map((pos.rounds||[]).map(r=>[Number(r.round),r]));const cells=[pos.rank,`${pos.playerName} · ${pos.label}`,...chunk.map(r=>Math.max(0,Number(by.get(r)?.points)||0)),pos.stats.totalPoints];y=row(canvas,y,cells,widths,{height:19,size:6.4,fill:pos.rank===1?'#FFF4D6':colors.white});}
+      footer(canvas,pages.length+1);pages.push(commands.join('\n'));
+    }
+  }
+  // Auditoría final resumida
+  {
+    const {commands,canvas}=makePage('AUDITORÍA Y TRAZABILIDAD','Las matrices completas y timestamps quedan además incluidos en ACTA JSON/CSV del creador.');const{rect,text}=canvas;
+    text('REGLAS COMPETITIVAS APLICADAS',24,110,9,{bold:true,color:colors.wine});
+    const rules=[`Cada número acertado suma 1 punto.`,`Primera Línea, Segunda Línea y Bingo puntúan según la bolilla matemática.`,`Primer Bingo matemático + 5 bolillas, limitado por el bolillero.`,`Cantes manuales no bloquean a otros cartones ni alteran la puntuación matemática.`,`Bonus de reacción Bingo: ${report.reactionBonusEnabled?'ACTIVO (+3/+2/+1)':'INACTIVO'}.`,`Matrices nuevas asignadas al azar por el servidor en cada ronda.`];
+    let y=136;for(const line of rules){rect(24,y,794,30,colors.white,colors.line,.5);text('-',35,y+7,10,{bold:true,color:colors.gold});text(line,52,y+8,8,{color:colors.ink,maxWidth:750});y+=36;}
+    text('INTEGRIDAD DEL CIERRE',24,376,9,{bold:true,color:colors.wine});rect(24,400,794,92,'#FFF9E9',colors.gold,.8);text('SHA-256 del acta competitiva congelada',38,416,7,{bold:true,color:colors.muted});text(report.finalActaSha256||'No disponible',38,437,9,{bold:true,color:colors.wine2,maxWidth:760});text(`Finalizado: ${formatLocalTimestamp(report.finalizedAt||report.endedAt)}`,38,462,7,{color:colors.muted});text('Este sello identifica el estado final de rondas, puntos, clasificación y matrices almacenadas por el servidor.',38,478,6.4,{color:colors.muted,maxWidth:750});
+    footer(canvas,pages.length+1);pages.push(commands.join('\n'));
+  }
+  return pdfDocumentFromStreams(pages,PAGE_W,PAGE_H,logo,`CHAMPIONSHIP:${report.roomCode};SHA256:${report.finalActaSha256||''}`);
+}
+
 function buildResultsPdf() {
   if (state.status !== 'finished') throw new Error('Los resultados estarán disponibles cuando finalice el sorteo.');
+  if (championshipRoomEnabled()) return buildChampionshipActaPdf();
   const acta = actaPayload();
   const PAGE_W = 842;
   const PAGE_H = 595;
@@ -8700,7 +8960,7 @@ function resultsFilename() {
 }
 
 function actaPdf() {
-  return buildResultsPdf();
+  return championshipRoomEnabled() ? buildChampionshipActaPdf() : buildResultsPdf();
 }
 
 function sendBuffer(res, status, buffer, contentType, filename, disposition = 'attachment') {
@@ -9349,7 +9609,9 @@ function publicRoomPayload(record) {
     transmissionAvailable: Boolean(room && broadcastAlias),
     transmissionUrl: room && broadcastAlias && record.accessType !== 'private' ? `/v/${encodeURIComponent(broadcastAlias)}` : '',
     shareUrl: communityPublicShareUrl(record.id),
-    roundNumber: Math.max(1, Number(record.roundNumber) || 1)
+    roundNumber: Math.max(1, Number(record.roundNumber) || 1),
+    endedAt: room?.endedAt || record.endedAt || '',
+    championshipActaAvailable: Boolean(record.gameKind === 'championship' && status === 'finished' && (room || record.roomCode))
   };
 }
 
@@ -9360,6 +9622,10 @@ function communityPublicRoomsPayload() {
     .filter(Boolean)
     .filter(item => {
       if (['waiting','starting','playing','verifying','paused','resuming','finalizing'].includes(item.status)) return true;
+      if (item.status === 'finished' && item.gameKind === 'championship') {
+        const ended = new Date(item.endedAt || 0).getTime();
+        return Number.isFinite(ended) && ended > 0 && now - ended <= CHAMPIONSHIP_RESULTS_VISIBILITY_MS;
+      }
       if (item.status !== 'scheduled' || !item.startsAt) return false;
       const starts = new Date(item.startsAt).getTime();
       return Number.isFinite(starts) && starts > now - 10 * 60_000;
@@ -9584,6 +9850,71 @@ function cancelCommunityPublicRoom(payload = {}) {
   return { ok:true, publicId:record.id, status:'cancelled', wasStarted:false, message:'Sala cancelada.' };
 }
 
+function championshipReportFromHistoricalRoom(roomCode) {
+  const entry = historyEntryByRoomCode(roomCode);
+  if (!entry) return null;
+  const actaFile = historicalFile(entry, entry.files?.actaJson || 'acta.json');
+  if (!actaFile) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(actaFile, 'utf8'));
+    return parsed?.championshipReport || parsed?.championship?.report || null;
+  } catch { return null; }
+}
+
+function championshipOrganizerFromHistorical(record) {
+  if (!record || record.gameKind !== 'championship' || record.status !== 'finished') return null;
+  const report = championshipReportFromHistoricalRoom(record.roomCode);
+  if (!report) return null;
+  const leaderboard = Array.isArray(report.leaderboard) ? report.leaderboard : [];
+  const playerNames = new Set((Array.isArray(report.positions) ? report.positions : []).map(item => String(item.playerName || '')).filter(Boolean));
+  return {
+    token:'', organizer:true, roomCode:record.roomCode || report.roomCode || '', publicId:record.id, status:'finished',
+    name:record.name, mode:record.mode, gameKind:'championship', championshipRounds:Number(report.totalRounds || record.championshipRounds)||0,
+    championshipReactionBonus:Boolean(record.championshipReactionBonus), claimMode:'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
+    playerCount:playerNames.size, cardCount:Number(report.totalPositions)||leaderboard.length, pendingSelectionPlayers:0, players:[], canStart:false, joinOpen:false,
+    enterUrl:communityPublicShareUrl(record.id), shareUrl:communityPublicShareUrl(record.id), transmissionUrl:'',
+    championship:{
+      enabled:true, stage:'finished', finished:true, currentRound:Number(report.totalRounds)||Number(record.championshipRounds)||0,
+      totalRounds:Number(report.totalRounds)||Number(record.championshipRounds)||0, completedRounds:Number(report.totalRounds)||0,
+      leaderboard:leaderboard.slice(0,10), fullLeaderboard:leaderboard,
+      roundSummaries:(Array.isArray(report.rounds)?report.rounds:[]).map(r=>({round:Number(r.round)||0,startedAt:r.startedAt||'',endedAt:r.endedAt||'',drawCount:Number(r.drawCount)||0,firstBingoDrawnCount:Number(r.firstBingoDrawnCount)||0,closingDrawnCount:Number(r.closingDrawnCount)||0,leader:r.standingsAfterRound?.[0]||null,roundLeader:r.roundLeaderboard?.[0]||null,announcementsCount:Array.isArray(r.announcements)?r.announcements.length:0})),
+      finalActaSha256:String(report.finalActaSha256||''), finalizedAt:report.finalizedAt||record.endedAt||''
+    },
+    actaAvailable:true
+  };
+}
+
+function communityCreatorActa(payload = {}) {
+  const publicId = String(payload.publicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0,100);
+  const record = communityPublicRoomById(publicId);
+  verifyCommunityCreatorCode(record, payload.creatorCode);
+  if (record?.gameKind !== 'championship' || record.status !== 'finished') throw new Error('El acta completa se habilita al finalizar el Campeonato.');
+  const type = ['pdf','csv','json'].includes(String(payload.type || '').toLowerCase()) ? String(payload.type).toLowerCase() : 'pdf';
+  const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
+  if (workspace?.state?.active && workspace.state.status === 'finished' && workspace.state.championship?.enabled) {
+    return workspaceContext.run(workspace, () => {
+      if (type === 'pdf') return { buffer:actaPdf(), contentType:'application/pdf', filename:`LA_GORDA_Campeonato_${state.roomCode || 'sala'}_ACTA.pdf` };
+      if (type === 'csv') return { buffer:Buffer.from(championshipActaCsv(), 'utf8'), contentType:'text/csv; charset=utf-8', filename:`LA_GORDA_Campeonato_${state.roomCode || 'sala'}_ACTA.csv` };
+      return { buffer:Buffer.from(JSON.stringify(championshipReportPayload(), null, 2), 'utf8'), contentType:'application/json; charset=utf-8', filename:`LA_GORDA_Campeonato_${state.roomCode || 'sala'}_ACTA.json` };
+    });
+  }
+  const entry = historyEntryByRoomCode(record.roomCode);
+  if (!entry) throw new Error('No se encontró el acta archivada del Campeonato.');
+  if (type === 'pdf') {
+    const file = historicalFile(entry, entry.files?.actaPdf || 'acta.pdf');
+    if (!file) throw new Error('No se encontró el PDF del acta.');
+    return { buffer:fs.readFileSync(file), contentType:'application/pdf', filename:`LA_GORDA_Campeonato_${entry.roomCode}_ACTA.pdf` };
+  }
+  if (type === 'csv') {
+    const file = historicalFile(entry, entry.files?.actaCsv || 'acta.csv');
+    if (!file) throw new Error('No se encontró el CSV del acta.');
+    return { buffer:fs.readFileSync(file), contentType:'text/csv; charset=utf-8', filename:`LA_GORDA_Campeonato_${entry.roomCode}_ACTA.csv` };
+  }
+  const report = championshipReportFromHistoricalRoom(entry.roomCode);
+  if (!report) throw new Error('No se encontró el JSON del acta.');
+  return { buffer:Buffer.from(JSON.stringify(report, null, 2), 'utf8'), contentType:'application/json; charset=utf-8', filename:`LA_GORDA_Campeonato_${entry.roomCode}_ACTA.json` };
+}
+
 function recoverCommunityCreator(payload = {}) {
   const publicId = String(payload.publicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0,100);
   const roomCode = String(payload.roomCode || '').trim().toUpperCase();
@@ -9599,6 +9930,8 @@ function recoverCommunityCreator(payload = {}) {
         shareUrl:communityPublicShareUrl(record.id), transmissionUrl:''
       };
     }
+    const historical = championshipOrganizerFromHistorical(record);
+    if (historical) return historical;
     throw new Error('La sala todavía no está disponible.');
   }
   return workspaceContext.run(workspace, () => {
@@ -9618,7 +9951,8 @@ function recoverCommunityCreator(payload = {}) {
       pendingSelectionPlayers:players.filter(item => !item.ready).length, players,
       enterUrl:communityPublicShareUrl(record.id), shareUrl:communityPublicShareUrl(record.id),
       transmissionUrl:shortBroadcastUrlFor(), joinOpen:Boolean(state.status === 'waiting' && state.roomSettings?.joinOpen),
-      canStart:state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && summary.registeredPlayers >= 2
+      canStart:state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && summary.registeredPlayers >= 2,
+      actaAvailable:Boolean(championshipRoomEnabled() && state.status === 'finished')
     };
   });
 }
@@ -9770,7 +10104,7 @@ function startNextChampionshipRoundFromCreator(payload = {}) {
 
 function prepareCommunityRematchWindow() {
   if (state.roomSettings?.roomOrigin !== 'community' || state.status !== 'finished') return null;
-  if (championshipRoomEnabled()) { state.communityRematch = { disabled:true, reason:'championship' }; return state.communityRematch; }
+  if (championshipRoomEnabled()) { state.communityRematch = { disabled:true, reason:'championship', expiresAt:new Date(Date.now() + CHAMPIONSHIP_RESULTS_VISIBILITY_MS).toISOString(), createdAt:nowIso() }; return state.communityRematch; }
   // El flujo histórico de revancha depende de que el creador sea jugador.
   // Si el creador organizó sin entrar como jugador, no ofrecemos revancha,
   // pero conservamos el plazo de cierre para liberar el workspace automáticamente.
@@ -10748,6 +11082,7 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/resolve' && req.method === 'POST') return sendJson(res, 200, resolveClaim(await readJson(req)));
   if (url.pathname === '/api/admin/acta' && req.method === 'GET') return sendJson(res, 200, actaPayload());
   if (url.pathname === '/api/admin/acta.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(actaCsv(), 'utf8'), 'text/csv; charset=utf-8', `LA_GORDA_Acta_${state.roomCode || 'sala'}.csv`);
+  if (url.pathname === '/api/admin/acta.json' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(JSON.stringify(actaPayload(), null, 2), 'utf8'), 'application/json; charset=utf-8', `LA_GORDA_Acta_${state.roomCode || 'sala'}.json`);
   if (url.pathname === '/api/admin/participants.csv' && req.method === 'GET') return sendBuffer(res, 200, Buffer.from(participantsCsv(), 'utf8'), 'text/csv; charset=utf-8', `LA_GORDA_Jugadores_${state.roomCode || 'sala'}.csv`);
   if (url.pathname === '/api/admin/acta.pdf' && req.method === 'GET') return sendBuffer(res, 200, actaPdf(), 'application/pdf', `LA_GORDA_Acta_${state.roomCode || 'sala'}.pdf`);
   if (url.pathname === '/api/admin/backup' && req.method === 'GET') {
@@ -10875,6 +11210,11 @@ async function handleApi(req, res, url) {
       const organizerState = recoverCommunityCreator(await readJson(req));
       const { token, ...safeOrganizerState } = organizerState;
       return sendJson(res, 200, safeOrganizerState);
+    }
+    if (url.pathname === '/api/community/creator-acta' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-creator-acta', 60, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiadas descargas. Esperá un momento.' });
+      const download = communityCreatorActa(await readJson(req));
+      return sendBuffer(res, 200, download.buffer, download.contentType, download.filename);
     }
     if (url.pathname === '/api/community/creator-join-player' && req.method === 'POST') {
       if (!consumeRate(req, 'community-creator-join-player', 20, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
@@ -11027,6 +11367,16 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/acta.pdf' && req.method === 'GET') {
           if (state.status !== 'finished') throw new Error('El acta se habilita al finalizar la partida.');
           return sendBuffer(res, 200, actaPdf(), 'application/pdf', `LA_GORDA_Acta_${state.roomCode || 'sala'}.pdf`);
+        }
+        if (url.pathname === '/api/player/championship-acta.csv' && req.method === 'GET') {
+          if (!championshipRoomEnabled() || state.status !== 'finished') throw new Error('El acta del Campeonato todavía no está disponible.');
+          if (String(state.communityCreatorPlayerId||'') !== String(player.id||'')) throw new Error('La descarga CSV está reservada a quien creó el Campeonato.');
+          return sendBuffer(res, 200, Buffer.from(championshipActaCsv(), 'utf8'), 'text/csv; charset=utf-8', `LA_GORDA_Campeonato_${state.roomCode || 'sala'}_ACTA.csv`);
+        }
+        if (url.pathname === '/api/player/championship-acta.json' && req.method === 'GET') {
+          if (!championshipRoomEnabled() || state.status !== 'finished') throw new Error('El acta del Campeonato todavía no está disponible.');
+          if (String(state.communityCreatorPlayerId||'') !== String(player.id||'')) throw new Error('La descarga JSON está reservada a quien creó el Campeonato.');
+          return sendBuffer(res, 200, Buffer.from(JSON.stringify(championshipReportPayload(), null, 2), 'utf8'), 'application/json; charset=utf-8', `LA_GORDA_Campeonato_${state.roomCode || 'sala'}_ACTA.json`);
         }
         if (readOnlyPreview) return sendJson(res, 403, { error: 'Vista previa del administrador: modo solo lectura.' });
         if (url.pathname === '/api/player/reserve' && req.method === 'POST') return sendJson(res, 200, reserveCard(player, await readJson(req)));

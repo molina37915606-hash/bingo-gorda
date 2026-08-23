@@ -239,3 +239,27 @@ La puntuación del Campeonato y el canto son mecanismos separados:
 - el canto no pausa el bolillero, no abre verificación y no cierra la jugada para otros cartones;
 - cada canto válido genera un anuncio visible para todos los jugadores de la sala y para las vistas públicas de TV/Transmisión;
 - el bonus de reacción, si está habilitado, sólo afecta al Bingo y nunca determina la validez del canto.
+
+---
+
+## Aclaración V9.0.5 — Cierre persistente y Acta completa
+
+Al terminar la última ronda, el Campeonato no abandona automáticamente la sala. El estado competitivo pasa a **FINALIZADO** y queda disponible para que los participantes consulten el resultado y descarguen el acta.
+
+El Acta PDF oficial debe resumir el Campeonato completo y no solamente la última ronda. Como mínimo incluye:
+
+- campeón y podio;
+- clasificación final completa;
+- puntos obtenidos en cada ronda;
+- resumen de las 3, 5 o 7 rondas;
+- secuencia oficial de bolillas de cada ronda;
+- bolilla del primer Bingo matemático y cierre reglamentario +5;
+- principales resultados de cada ronda;
+- sello SHA-256 del cierre competitivo.
+
+La exportación CSV/JSON conserva además la información detallada de auditoría, incluidas las matrices aleatorias asignadas a cada C1/C2/C3/C4 en cada ronda, timestamps, cantes e hitos matemáticos.
+
+Antes de presentar el resultado final al público, el servidor debe persistir el estado completo y generar el sello SHA-256. Un reinicio posterior no puede cambiar la clasificación ni regenerar las matrices de las rondas terminadas.
+
+El PDF puede ser descargado por los participantes al finalizar. El creador de la sala dispone además de CSV y JSON desde Comunidad aunque haya actuado únicamente como organizador y nunca haya ingresado como jugador.
+

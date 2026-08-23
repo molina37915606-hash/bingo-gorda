@@ -1,0 +1,7 @@
+V9.0.5 — FINAL PERSISTENTE + ACTA COMPLETA DE CAMPEONATO
+
+- Pantalla final persistente para jugadores.
+- PDF completo con resumen de todas las rondas.
+- CSV/JSON de auditoría para el creador.
+- Resultados/Acta recuperables desde Comunidad.
+- SHA-256 de cierre y persistencia tras reinicio.

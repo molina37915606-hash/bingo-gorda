@@ -1,0 +1,21 @@
+EL BINGO DE LA GORDA — ACTUALIZACIÓN V9.2.4
+Fecha: 2026-08-23
+
+OBJETIVO
+Corregir la representación de jugadores inscriptos en Comunidad y agregar asignación inmediata de cartones al azar.
+
+CAMBIOS
+1. Comunidad cuenta jugadores inscriptos, no conexiones activas.
+   - Desconectarse, cambiar de app, minimizar, cerrar pestaña o perder Internet NO reduce 1/30 a 0/30.
+   - Solo ABANDONAR SALA confirmado libera el lugar antes de iniciar.
+2. Nueva opción 🎲 CARTONES AL AZAR en la elección de cartones.
+   - Asigna exactamente la cantidad elegida al ingresar.
+   - Se confirma en una sola operación del servidor.
+   - No repite cartones entre jugadores y respeta las reglas de diversidad.
+   - La selección manual sigue disponible.
+
+PRUEBA NUEVA
+- tests/community-registration-random-cards.js
+
+BASE
+Aplicar sobre V9.2.3 o utilizar el respaldo completo V9.2.4.

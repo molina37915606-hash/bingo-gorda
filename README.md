@@ -1,3 +1,13 @@
+## V9.2.4 — Inscriptos persistentes + Cartones al azar
+
+- La Comunidad muestra la cantidad de **jugadores inscriptos**, no la cantidad de conexiones SSE activas.
+- Si un jugador cambia de app, minimiza, cierra la pestaña o pierde Internet, sigue contando en la mesa: `1 / 30` continúa siendo `1 / 30`.
+- Solo `ABANDONAR SALA`, con confirmación explícita, libera el lugar antes de iniciar y reduce el contador.
+- En la pantalla de elección se agrega **🎲 CARTONES AL AZAR**. El servidor asigna y confirma exactamente la cantidad de cartones que el jugador eligió al ingresar.
+- La asignación aleatoria se resuelve en el servidor, sin repetir cartones entre jugadores y respetando la diversidad matemática vigente.
+- La selección manual continúa disponible sin cambios.
+- Nueva regresión automatizada: `tests/community-registration-random-cards.js`.
+
 ## V9.2.3 — Desconectarse no es abandonar
 
 - `ABANDONAR SALA` es una acción explícita y exclusiva del botón del jugador.
@@ -75,7 +85,7 @@ La plataforma V6 funciona en modo **gratuito**: no vende cartones, no procesa ap
 - Bingo de 75 y 90 bolillas.
 - Salas administradas y salas públicas creadas desde Comunidad.
 - Comunidad gratuita con chat, salas, invitaciones y minijuegos.
-- Selección de cartones o asignación automática al iniciar.
+- Selección manual de cartones, asignación inmediata al azar o asignación automática al iniciar.
 - Marcado manual o automático según la configuración de la sala.
 - Reclamo tradicional o detección automática con empates, elegible antes de iniciar.
 - Validación de Línea, Bingo y jugadas opcionales en el servidor.

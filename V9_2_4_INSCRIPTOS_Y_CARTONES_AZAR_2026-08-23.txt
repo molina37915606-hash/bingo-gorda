@@ -1,0 +1,19 @@
+V9.2.4 — INSCRIPTOS PERSISTENTES Y CARTONES AL AZAR
+Fecha: 2026-08-23
+
+COMUNIDAD
+El contador visible de una mesa representa inscripciones reales. La conexión SSE solo indica presencia técnica y no debe alterar el cupo mostrado. Mientras el jugador no ejecute ABANDONAR SALA de forma explícita, conserva su registro, su lugar y su titularidad.
+
+CARTONES AL AZAR
+En la pantalla de elección normal se incorpora un botón para confirmar de inmediato una selección aleatoria. La cantidad asignada es exactamente `allowedCardCount`, es decir, la cantidad elegida al ingresar. La operación se realiza en el servidor para evitar colisiones entre jugadores concurrentes.
+
+ARCHIVOS PRINCIPALES MODIFICADOS
+- server.js
+- js/player.js
+- package.json
+- package-lock.json
+- README.md
+- tests/community-registration-random-cards.js
+
+COMPATIBILIDAD
+No se elimina la elección manual. Campeonato conserva su asignación propia de matrices por ronda y no usa este botón.

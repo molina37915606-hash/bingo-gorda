@@ -8045,6 +8045,47 @@ function renewOffers(player) {
   return playerPayload(player);
 }
 
+function chooseRandomCards(player) {
+  if (!state.active || !state.game) throw new Error('La sala no está activa.');
+  if (!selectionIsOpen()) throw new Error('La elección de cartones ya está cerrada.');
+  if (player.selectionConfirmed) throw new Error('Tus cartones ya están confirmados.');
+  if (championshipRoomEnabled()) throw new Error('En Campeonato los cartones se asignan automáticamente al comenzar cada ronda.');
+  purgeExpiredReservations();
+  // La cantidad fue elegida al ingresar a la sala. El botón AL AZAR debe respetarla
+  // exactamente y confirmar todo en una única operación del servidor para evitar duplicados.
+  const requiredCount = authorizedCardCount(player);
+  releaseReservationsForPlayer(player);
+  const available = availableCardIdsFor(player);
+  const chosen = diverseCardSelection(available, requiredCount, []);
+  if (chosen.length < requiredCount) throw new Error(`No quedan ${requiredCount} cartón${requiredCount === 1 ? '' : 'es'} disponibles para asignar al azar.`);
+  assertPlayerCardDiversity(chosen);
+  player.cardIds = chosen;
+  player.selectionConfirmed = true;
+  if (state.roomSettings?.markingMode === 'manual_only') { player.autoMark = false; player.markingModeChosen = true; }
+  player.offeredCardIds = [];
+  player.reservedCardIds = [];
+  player.marks = Object.fromEntries(chosen.map(cardId => [cardId, []]));
+  syncAutoMarksForPlayer(player);
+  enforceAutoMarkPolicy();
+  updateCardDisplayNames();
+  refreshAllOffers();
+  logEvent('cards_selected_random', { playerId: player.id, playerName: playerDisplayName(player), requestedCards: requiredCount, cardIds: chosen });
+  let demoShouldSchedule = false;
+  if (currentWorkspace().isDemo && player.demoHuman) {
+    const flow = ensureDemoStartFlow();
+    if (flow?.tutorialResolved) {
+      flow.phase = 'countdown';
+      flow.error = null;
+      flow.countdownEndsAt = new Date(Date.now() + DEMO_READY_COUNTDOWN_MS).toISOString();
+      demoShouldSchedule = true;
+    }
+  }
+  saveState();
+  broadcast();
+  if (demoShouldSchedule) scheduleDemoStartCountdown();
+  return playerPayload(player);
+}
+
 function setPlayerName(player, payload) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
   if (state.status !== 'waiting' && state.status !== 'starting') throw new Error('El nombre solo puede confirmarse antes de iniciar el sorteo.');
@@ -9919,6 +9960,10 @@ function publicRoomPayload(record) {
   const broadcastAlias = room ? normalizeBroadcastAlias(room.roomSettings?.broadcastAlias) : '';
   const championship = room?.championship?.enabled && workspace ? workspaceContext.run(workspace, () => championshipPublicPayload(null)) : null;
   const flash = room?.flash?.enabled && workspace ? workspaceContext.run(workspace, () => flashPublicPayload(null)) : null;
+  // Comunidad muestra inscriptos, no conexiones activas. Una desconexión SSE, cambio de app
+  // o pestaña cerrada no altera este número; solo un abandono explícito elimina al jugador
+  // antes de comenzar. Usamos el mismo resumen de inscripción que ve el creador.
+  const registrationSummary = room && workspace ? workspaceContext.run(workspace, () => registrationSummaryPayload()) : null;
   return {
     id: record.id,
     kind: record.accessType === 'private' ? 'private' : 'public',
@@ -9942,7 +9987,7 @@ function publicRoomPayload(record) {
     opensAt: record.startMode === 'scheduled' && record.startsAt ? new Date(new Date(record.startsAt).getTime() - COMMUNITY_PUBLIC_OPEN_MS).toISOString() : '',
     roomCode: record.accessType === 'private' ? '' : (room?.roomCode || record.roomCode || ''),
     status: status || 'scheduled',
-    playerCount: room ? (room.players || []).length : 0,
+    playerCount: registrationSummary ? registrationSummary.registeredPlayers : 0,
     joinOpen,
     joinUrl: joinOpen && record.accessType !== 'private' ? `/jugador?sala=${encodeURIComponent(room.roomCode)}&directo=1` : '',
     transmissionAvailable: Boolean(room && broadcastAlias),
@@ -11898,6 +11943,7 @@ async function handleApi(req, res, url) {
         if (readOnlyPreview) return sendJson(res, 403, { error: 'Vista previa del administrador: modo solo lectura.' });
         if (url.pathname === '/api/player/reserve' && req.method === 'POST') return sendJson(res, 200, reserveCard(player, await readJson(req)));
         if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
+        if (url.pathname === '/api/player/random-cards' && req.method === 'POST') return sendJson(res, 200, chooseRandomCards(player));
         if (url.pathname === '/api/player/name' && req.method === 'POST') return sendJson(res, 200, setPlayerName(player, await readJson(req)));
         if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
         if (url.pathname === '/api/player/demo/tutorial' && req.method === 'POST') return sendJson(res, 200, resolveDemoTutorial(player, await readJson(req)));

@@ -1,0 +1,42 @@
+EL BINGO DE LA GORDA - ACTUALIZACION V9.0.5 -> V9.1.0
+CAMPEONATO V4 - 2026-08-23
+
+Este ZIP contiene SOLO los archivos nuevos o modificados para pasar de la version V9.0.5 al Campeonato V4/V9.1.0.
+
+Aplicacion manual:
+1. Hacer una copia de seguridad de la carpeta actual.
+2. Copiar el contenido de este ZIP sobre la raiz del proyecto V9.0.5, respetando las carpetas.
+3. Reemplazar los archivos cuando el sistema lo solicite.
+4. Eliminar los archivos enumerados en ARCHIVOS_A_ELIMINAR_V9_1_0.txt.
+5. Ejecutar npm install si corresponde y reiniciar el servidor.
+
+Reglas V4 principales:
+- 3, 5 o 7 rondas.
+- Numero +1; Primera Linea +10; Segunda Linea +20; Bingo +60; Primer Bingo +15.
+- Sin al menos un Bingo, una posicion no puede ser Campeona.
+- Sin bonus por velocidad de reaccion.
+- Empate final elegible: cartones nuevos, 10 bolas y luego muerte subita bola por bola.
+- Campeonato interrumpido: se conserva lo jugado pero queda SIN CAMPEON OFICIAL.
+
+Archivos incluidos en esta actualizacion:
+  - README.md
+  - comunidad.html
+  - css/platform.css
+  - js/community.js
+  - js/player.js
+  - js/transmision.js
+  - js/tv.js
+  - package-lock.json
+  - package.json
+  - player.html
+  - reglamento.html
+  - server.js
+  - tests/community-championship-claims.js
+  - tests/community-championship-final-acta.js
+  - tests/community-championship-load.js
+  - tests/community-championship-public-claims.js
+  - tests/community-championship.js
+  - CAMPEONATO_LA_GORDA_REGLAMENTO_V4.md
+  - V9_1_0_CAMPEONATO_V4_2026-08-23.txt
+  - tests/community-championship-v4-interruption.js
+  - tests/community-championship-v4-tiebreak.js

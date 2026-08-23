@@ -1,30 +1,13 @@
-## V9.0.5 — Final persistente + Acta completa del Campeonato
+## V9.1.0 — Campeonato La Gorda V4
 
-- Al terminar la última ronda, el Campeonato queda en una **pantalla final persistente**: no expulsa al jugador ni desaparece inmediatamente.
-- Jugadores: campeón, podio, Top 10, clasificación completa, resumen de todas las rondas y **DESCARGAR ACTA COMPLETA PDF**.
-- Creador desde Comunidad: **RESULTADOS / ACTA** con PDF, CSV y JSON aun si el creador nunca ingresó como jugador.
-- Los Campeonatos finalizados permanecen visibles temporalmente en Comunidad para que el creador pueda volver a abrir sus resultados.
-- El PDF incluye portada, campeón/podio, resumen de todas las rondas, secuencia oficial de bolillas por ronda, Top de cada ronda, clasificación final, puntos por ronda y SHA-256 de cierre.
-- CSV y JSON guardan el detalle de auditoría, incluidas matrices asignadas por ronda, timestamps, hitos y puntuaciones.
-- El resultado final se congela con SHA-256 antes de archivar los archivos y sobrevive a reinicios del servidor.
-
-## V9.0.4 — Cantes públicos del Campeonato
-
-- En Campeonato, **RECLAMAR** queda disponible para cantar Primera Línea, Segunda Línea y Bingo aunque el bonus de reacción esté desactivado.
-- La puntuación sigue siendo automática y matemática; el canto es una acción manual/social independiente.
-- Cada posición C1/C2/C3/C4 puede cantar cada jugada una vez por ronda; ningún canto cierra la categoría para los demás.
-- Cuando un jugador canta, el anuncio se distribuye a todos los jugadores conectados y también a Transmisión/TV.
-- Los cantes no pausan el bolillero ni disparan verificación administrativa.
-- El bonus +3/+2/+1 continúa aplicándose únicamente a Bingo cuando está habilitado.
-
-## V9.0.3 — Campeonato dinámico
-
-- Campeonato público: 3 / 5 / 7 rondas.
-- 5 rondas queda como opción recomendada y predeterminada.
-- Salas nuevas ya no aceptan 10 / 20 / 30 rondas.
-- Campeonatos antiguos persistidos con 10 / 20 / 30 siguen siendo legibles y recuperables.
-
-# El Bingo de la Gorda
+- Campeonato reconstruido con un único reglamento vigente de **3, 5 o 7 rondas**.
+- Puntuación fija: número +1, Primera Línea +10, Segunda Línea +20, Bingo +60 y primer Bingo +15.
+- Para ser Campeón Oficial es obligatorio haber conseguido al menos un Bingo.
+- Los cantes siguen siendo manuales y públicos, pero no otorgan puntos ni dependen de la velocidad de reacción.
+- Empate final por el primer puesto: cartones nuevos, 10 bolillas y, si sigue igual, muerte súbita bola por bola hasta un Campeón único.
+- Campeonato interrumpido: se conserva lo disputado como **INCOMPLETO · SIN CAMPEÓN OFICIAL**.
+- Acta final y vistas de jugador, creador, TV y Transmisión alineadas con V4.
+- Reglamento vigente: `CAMPEONATO_LA_GORDA_REGLAMENTO_V4.md`.
 
 ## V9.0.1 · Pantalla TV
 
@@ -251,27 +234,16 @@ La integridad se protege verificando el SHA-256 de las tandas al cargarlas y con
 
 Acceso fácil desde PDF, link general para compartir, respaldo/restauración exacta de eventos y tandas, y links de selección con reserva de cartones y confirmación manual del administrador.
 
-## V9 · Campeonato La Gorda 1.0 — Comunidad pública
+## Campeonato La Gorda V4
 
-- Nuevo tipo de sala pública en **Comunidad → Crear sala → Campeonato**.
-- Campeonatos públicos de **3, 5 o 7 rondas** en Bingo 90 o Bingo 75; **5 rondas es el formato recomendado**.
-- Cada jugador puede inscribirse con **1 a 4 posiciones de cartón**, hasta el máximo de la sala; no es obligatorio que todos tengan la misma cantidad.
-- Cada posición (C1/C2/C3/C4) acumula puntos de forma independiente durante todo el Campeonato.
-- Los jugadores **no eligen matrices**. El servidor genera y asigna una matriz nueva al azar a cada posición al comenzar cada ronda.
-- Reconectar durante una ronda conserva exactamente la misma matriz; sólo cambia al iniciar oficialmente la siguiente ronda.
-- Reutiliza el bolillero, la interfaz normal de jugador, marcado, voz, chat y Transmisión.
-- Puntuación matemática en servidor por números, Primera Línea, Segunda Línea y Bingo, según la extracción ordinal del logro.
-- El primer Bingo matemático activa **5 bolillas adicionales** y luego una ventana final de 20 segundos para el bonus de reacción cuando corresponda.
-- Entre rondas se muestran resultados de ronda y clasificación general; el creador inicia manualmente la ronda siguiente.
-- La última ronda vale x1 y el desempate usa el reglamento competitivo; pueden existir empates oficiales completos.
-- El reglamento implementado está documentado en `CAMPEONATO_LA_GORDA_REGLAMENTO_V3.md`.
-
-
-## V9.0.2 — Hotfix Reclamos Campeonato
-
-- En Campeonato manual, cada posición/cartón puede cantar **Primera Línea, Segunda Línea y Bingo**.
-- Las jugadas de Campeonato **no se cierran globalmente** cuando otro cartón canta: cada cartón conserva su propio estado de reclamo.
-- Cantar una Línea o Segunda Línea no pausa el bolillero ni abre verificación administrativa; el servidor valida matemáticamente la jugada y la registra al instante.
-- Los puntos principales siguen calculándose automáticamente por el servidor. El reclamo no cambia la bolilla matemática ni bloquea a otros cartones.
-- Bingo conserva el bonus de reacción +3/+2/+1 cuando el Campeonato es manual.
-- Si un jugador tiene varios Bingos propios habilitados al mismo tiempo, un toque de Bingo los registra juntos para no penalizar la segunda pulsación.
+- Formatos oficiales: **3, 5 o 7 rondas**; mínimo 2 jugadores.
+- Cada C1/C2/C3/C4 es una posición competitiva independiente.
+- Cada ronda normal asigna una matriz nueva al azar; la posición y el puntaje acumulado se conservan.
+- Puntuación fija: **número +1 · Primera Línea +10 · Segunda Línea +20 · Bingo +60 · primer Bingo +15**.
+- El primer Bingo activa exactamente **5 bolillas adicionales**. Si varias posiciones hacen Bingo con la misma bolilla que activa el cierre, todas reciben el +15.
+- Los cantes son manuales/sociales y no otorgan puntos, no pausan el bolillero y no dependen de la latencia.
+- Para ser Campeón Oficial es obligatorio haber conseguido **al menos un Bingo** durante las rondas normales.
+- La clasificación oficial usa elegibilidad y puntaje total; no existen criterios ocultos de desempate.
+- Empate por el primer puesto elegible: **cartones nuevos + 10 bolillas**. Si persiste, muerte súbita bola por bola con los mismos cartones y bolillero hasta un ganador único.
+- Un Campeonato interrumpido después de comenzar queda **INCOMPLETO · SIN CAMPEÓN OFICIAL**.
+- Reglamento único: `CAMPEONATO_LA_GORDA_REGLAMENTO_V4.md`.

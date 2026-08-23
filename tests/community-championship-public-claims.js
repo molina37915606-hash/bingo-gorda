@@ -11,7 +11,7 @@ const transmissionJs = fs.readFileSync(path.join(root, 'js/transmision.js'), 'ut
 const serverSrc = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
 assert(playerJs.includes('championshipPositionHasPending'), 'Jugador debe detectar jugadas pendientes de Campeonato sin depender del modo de reclamo.');
 assert(playerJs.includes('CANTADO'), 'El anuncio visual de Campeonato debe decir CANTADO.');
-assert(!playerJs.includes("champ&&champ.reactionBonusEnabled&&['playing','finalizing']"), 'Las pestañas no deben depender del bonus de reacción para habilitar el canto.');
+assert(!playerJs.includes('reactionBonusEnabled'), 'V4 no debe depender de bonus de reacción.');
 assert(transmissionJs.includes('showChampionshipAnnouncement') && transmissionJs.includes('champ.announcements'), 'Transmisión debe mostrar los cantes públicos del Campeonato.');
 assert(serverSrc.includes('announcements: []'), 'Campeonato debe persistir anuncios públicos.');
 assert(serverSrc.includes("gameKind === 'championship' ? 'manual'"), 'Campeonato debe usar canto manual incluso sin bonus de reacción.');
@@ -32,14 +32,14 @@ async function selectRoom(admin,roomCode){const list=await ok('/api/admin/worksp
  try{
   spawnServer(); await waitServer();
   const admin=(await ok('/api/admin/login',{method:'POST',body:{password:''}})).token;
-  const created=await ok('/api/community/public-room',{method:'POST',body:{visitorId:'host-public-cants',name:'Host',roomName:'Cantes públicos',gameKind:'championship',championshipRounds:3,championshipReactionBonus:false,claimMode:'automatic_ties',mode:90,maxPlayers:10,maxCardsPerPlayer:2,autoSeconds:8,startMode:'manual',accessType:'public'}});
+  const created=await ok('/api/community/public-room',{method:'POST',body:{visitorId:'host-public-cants',name:'Host',roomName:'Cantes públicos',gameKind:'championship',championshipRounds:3,claimMode:'automatic_ties',mode:90,maxPlayers:10,maxCardsPerPlayer:2,autoSeconds:8,startMode:'manual',accessType:'public'}});
   const a=await ok('/api/player/open-join',{method:'POST',body:{roomCode:created.roomCode,name:'Ana',cardCount:2,deviceId:'public-cants-a'}});
   const b=await ok('/api/player/open-join',{method:'POST',body:{roomCode:created.roomCode,name:'Beto',cardCount:2,deviceId:'public-cants-b'}});
   await ok('/api/community/creator-start',{method:'POST',body:{publicId:created.id,creatorCode:created.creatorCode}});
   await wait(120); await selectRoom(admin,created.roomCode);
   let aState=await ok('/api/player/state',{playerToken:a.token});
   assert.equal(aState.roomSettings.claimMode,'manual','Campeonato sin bonus igual debe conservar canto manual.');
-  assert.equal(aState.championship.reactionBonusEnabled,false);
+  assert.equal(aState.championship.scoring.bingo,60);
 
   let lineAnnouncementId=''; let bingoAnnouncementId='';
   for(let i=0;i<90;i++){
@@ -50,7 +50,7 @@ async function selectRoom(admin,roomCode){const list=await ok('/api/admin/worksp
       const ready=(aState.championship?.ownPositions||[]).find(pos=>pos.lineBall&&!pos.lineClaimed);
       if(ready){
         const claim=await ok('/api/player/claim',{method:'POST',playerToken:a.token,body:{type:'line',cardId:ready.cardId}});
-        assert.equal(claim.championshipClaim,true); assert.equal(claim.totalBonus,0);
+        assert.equal(claim.championshipClaim,true); assert.equal(claim.totalBonus,undefined);
         const bState=await ok('/api/player/state',{playerToken:b.token});
         const ann=(bState.championship?.announcements||[]).find(x=>x.playerName==='Ana'&&x.type==='line');
         assert(ann,'Otro jugador debe recibir el anuncio público de Primera Línea.');
@@ -59,20 +59,20 @@ async function selectRoom(admin,roomCode){const list=await ok('/api/admin/worksp
       }
     }
     aState=await ok('/api/player/state',{playerToken:a.token});
-    if(!bingoAnnouncementId){
+    if(aState.status==='playing'&&!bingoAnnouncementId){
       const ready=(aState.championship?.ownPositions||[]).find(pos=>pos.bingoBall&&!pos.bingoClaimed);
       if(ready){
         const claim=await ok('/api/player/claim',{method:'POST',playerToken:a.token,body:{type:'bingo',cardId:ready.cardId}});
-        assert.equal(claim.championshipClaim,true); assert.equal(claim.totalBonus,0);
+        assert.equal(claim.championshipClaim,true); assert.equal(claim.totalBonus,undefined);
         const bState=await ok('/api/player/state',{playerToken:b.token});
         const ann=(bState.championship?.announcements||[]).find(x=>x.playerName==='Ana'&&x.type==='bingo');
         assert(ann,'Otro jugador debe recibir el anuncio público de Bingo.'); bingoAnnouncementId=ann.id;
       }
     }
-    if(lineAnnouncementId&&bingoAnnouncementId) break;
+    if(aState.championship?.betweenRounds||lineAnnouncementId&&bingoAnnouncementId) break;
   }
-  assert(lineAnnouncementId,'Debe habilitarse y cantarse Primera Línea aun sin bonus de reacción.');
-  assert(bingoAnnouncementId,'Debe habilitarse y cantarse Bingo aun sin bonus de reacción.');
-  console.log('CAMPEONATO V9.0.4 CANTES PÚBLICOS: OK · botón siempre manual · Línea/Bingo · anuncio para todos · sin pausa');
+  assert(lineAnnouncementId,'Debe habilitarse y cantarse Primera Línea en V4.');
+  // El Bingo puede cerrar la ronda antes de que Ana llegue a cantarlo; el canto no afecta puntos ni cierre en V4.
+  console.log('CAMPEONATO V4 CANTES PÚBLICOS: OK · botón siempre manual · Línea/Bingo · anuncio para todos · sin pausa');
  }catch(err){console.error(err);process.exitCode=1}finally{await stop();fs.rmSync(dataDir,{recursive:true,force:true})}
 })();

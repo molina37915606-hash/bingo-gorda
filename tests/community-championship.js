@@ -18,6 +18,7 @@ assert(communityJs.includes("'championship'") && communityJs.includes('privateRo
 assert(playerJs.includes('renderChampionshipResults') && playerJs.includes("label:'PRIMERA LÍNEA'") && playerJs.includes("label:'SEGUNDA LÍNEA'"), 'Jugador Campeonato debe ofrecer sus cantes y resultados entre rondas.');
 assert(serverSrc.includes('function prepareChampionshipRound') && serverSrc.includes('function processChampionshipAfterDraw'), 'Servidor debe tener motor de Campeonato.');
 assert(serverSrc.includes('Math.min(mode, drawCount + 5)'), 'Primer Bingo debe cerrar exactamente cinco extracciones después, limitado por el bolillero.');
+assert(serverSrc.includes('return Number(B.eligible) - Number(A.eligible)'), 'La clasificación V4 debe anteponer elegibilidad por Bingo a cualquier diferencia de puntos.');
 
 const port = 58900 + Math.floor(Math.random() * 80);
 const base = `http://127.0.0.1:${port}`;
@@ -93,7 +94,7 @@ const cardSignature = card => JSON.stringify(card?.grid || []);
       method: 'POST',
       body: {
         visitorId: 'host-champ', name: 'Marta', roomName: 'Campeonato del barrio',
-        gameKind: 'championship', championshipRounds: 5, championshipReactionBonus: false,
+        gameKind: 'championship', championshipRounds: 5,
         mode: 90, maxPlayers: 10, maxCardsPerPlayer: 4, autoSeconds: 8,
         startMode: 'manual', accessType: 'public'
       }
@@ -158,28 +159,28 @@ const cardSignature = card => JSON.stringify(card?.grid || []);
     assert(!late.response.ok, 'No debe aceptar competidores nuevos después del comienzo.');
 
     // Extraer hasta que el primer Bingo matemático active +5 y la ronda se cierre.
-    let finalizingState = null;
+    let closedRoundState = null;
     for (let i = 0; i < 90; i++) {
       const draw = await raw('/api/admin/draw', { method: 'POST', token: admin, body: { source: 'championship-test' } });
       if (!draw.response.ok) break;
       anaState = await ok('/api/player/state', { playerToken: ana.token });
-      if (anaState.status === 'finalizing' && anaState.championship.stage === 'reaction') {
-        finalizingState = anaState;
+      if (anaState.championship.betweenRounds) {
+        closedRoundState = anaState;
         break;
       }
     }
-    assert(finalizingState, 'La ronda debe entrar en ventana final después de primer Bingo +5.');
-    const first = finalizingState.championship.firstBingoDrawnCount;
-    const closing = finalizingState.championship.closingDrawnCount;
+    assert(closedRoundState, 'La ronda debe cerrarse al completar primer Bingo +5.');
+    const first = closedRoundState.championship.firstBingoDrawnCount;
+    const closing = closedRoundState.championship.closingDrawnCount;
     assert(first > 0 && closing > 0);
     assert.equal(closing, Math.min(90, first + 5), 'El cierre debe ser exactamente primer Bingo +5, limitado a 90.');
-    assert.equal(finalizingState.game.drawn.length, closing, 'No debe extraer una bolilla adicional al cierre reglamentario.');
-    assert.equal(finalizingState.championship.finalBallsRemaining, 0);
+    assert.equal(closedRoundState.game.drawn.length, closing, 'No debe extraer una bolilla adicional al cierre reglamentario.');
+    assert.equal(closedRoundState.championship.finalBallsRemaining, 0);
 
     const afterCloseDraw = await raw('/api/admin/draw', { method: 'POST', token: admin, body: { source: 'must-fail' } });
-    assert(!afterCloseDraw.response.ok, 'El bolillero debe bloquear nuevas extracciones durante la ventana final.');
+    assert(!afterCloseDraw.response.ok, 'El bolillero debe bloquear nuevas extracciones al terminar la ronda.');
 
-    await wait(240);
+    await wait(40);
     anaState = await ok('/api/player/state', { playerToken: ana.token });
     betoState = await ok('/api/player/state', { playerToken: beto.token });
     assert.equal(anaState.status, 'paused');
@@ -217,12 +218,12 @@ const cardSignature = card => JSON.stringify(card?.grid || []);
     assert.equal(recoveredAfterRestart.player.cards[0].id, round2CardId, 'No debe regenerar el cartón por reiniciar el servidor.');
     assert.equal(cardSignature(recoveredAfterRestart.player.cards[0]), round2Grid, 'La matriz debe persistir exactamente tras reinicio.');
 
-    // Bingo 75 + bonus de reacción: misma filosofía, tablas propias y centro libre.
+    // Bingo 75: misma puntuación fija, centro libre y cantes sin bonus de reacción.
     const created75 = await ok('/api/community/public-room', {
       method: 'POST',
       body: {
         visitorId: 'host-champ75', name: 'Nora', roomName: 'Campeonato 75',
-        gameKind: 'championship', championshipRounds: 5, championshipReactionBonus: true,
+        gameKind: 'championship', championshipRounds: 5,
         mode: 75, maxPlayers: 8, maxCardsPerPlayer: 2, autoSeconds: 8, startMode: 'manual', accessType: 'public'
       }
     });
@@ -231,33 +232,34 @@ const cardSignature = card => JSON.stringify(card?.grid || []);
     await ok('/api/community/creator-start', { method:'POST', body:{publicId:created75.id,creatorCode:created75.creatorCode} });
     await wait(150);
     await selectRoom(admin, created75.roomCode);
-    let reactionClaim = null;
+    let bingoClaim = null;
     let state75a = null, state75b = null;
     for (let i=0;i<75;i++) {
       const draw=await raw('/api/admin/draw',{method:'POST',token:admin,body:{source:'championship-75-test'}});
       if(!draw.response.ok) break;
       state75a=await ok('/api/player/state',{playerToken:p75a.token});
       state75b=await ok('/api/player/state',{playerToken:p75b.token});
-      if(!reactionClaim){
-        const candidate=[[p75a.token,state75a],[p75b.token,state75b]].find(([,st])=>(st.championship?.ownPositions||[]).some(pos=>pos.bingoBall&&!pos.reactionClaimed));
+      if(!bingoClaim){
+        const candidate=[[p75a.token,state75a],[p75b.token,state75b]].map(([token,st])=>[token,st,(st.championship?.ownPositions||[]).find(pos=>pos.bingoBall&&!pos.bingoClaimed)]).find(([, ,pos])=>pos);
         if(candidate){
-          const [token,st]=candidate;
-          reactionClaim=await ok('/api/player/claim',{method:'POST',playerToken:token,body:{type:'bingo',cardId:st.player.cards[0].id}});
-          assert.equal(reactionClaim.championshipClaim,true);
-          assert(reactionClaim.claimed.length>=1,'Un toque debe registrar todos los Bingos propios habilitados.');
-          assert(reactionClaim.totalBonus>=1&&reactionClaim.totalBonus<=reactionClaim.claimed.length*3,'El bonus de reacción debe ser pequeño y positivo al reclamar inmediatamente.');
+          const [token,st,pos]=candidate;
+          bingoClaim=await ok('/api/player/claim',{method:'POST',playerToken:token,body:{type:'bingo',cardId:pos.cardId}});
+          assert.equal(bingoClaim.championshipClaim,true);
+          assert(bingoClaim.claimed.length>=1,'Un toque debe registrar los Bingos propios habilitados.');
+          assert.equal(bingoClaim.totalBonus,undefined,'V4 no debe exponer bonus de reacción.');
         }
       }
-      if(state75a.status==='finalizing') break;
+      if(state75a.championship?.betweenRounds) break;
     }
     state75a=await ok('/api/player/state',{playerToken:p75a.token});
     assert.equal(state75a.game.mode,75);
-    assert.equal(state75a.championship.reactionBonusEnabled,true);
+    assert.equal(state75a.championship.scoring.bingo,60);
+    assert.equal(state75a.championship.scoring.firstBingo,15);
     assert(state75a.championship.firstBingoDrawnCount>0,'Bingo 75 debe detectar su primer Bingo matemático.');
     assert.equal(state75a.championship.closingDrawnCount,Math.min(75,state75a.championship.firstBingoDrawnCount+5));
-    assert(reactionClaim,'Debe existir al menos un reclamo de reacción válido en Bingo 75.');
+    assert(bingoClaim,'Debe existir al menos un canto de Bingo válido en Bingo 75 antes del cierre.');
 
-    console.log('PRUEBA CAMPEONATO PÚBLICO V9: OK · Comunidad pública + 1–4 posiciones + matrices aleatorias por ronda + puntos persistentes + reinicio + Bingo 90/75 + reacción + primer Bingo +5');
+    console.log('PRUEBA CAMPEONATO V4: OK · 3/5/7 + posiciones + matrices aleatorias + puntos fijos + requisito Bingo + cantes sociales + primer Bingo +5');
   } catch (error) {
     console.error(error);
     process.exitCode = 1;

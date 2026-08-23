@@ -26,14 +26,14 @@ async function waitServer(){for(let i=0;i<180;i++){try{if((await fetch(base+'/he
 async function raw(pathname,{method='GET',body,token,playerToken}={}){const response=await fetch(base+pathname,{method,headers:{...(body!==undefined?{'Content-Type':'application/json'}:{}),...(token?{'X-Admin-Token':token}:{}),...(playerToken?{'X-Player-Token':playerToken}:{})},body:body===undefined?undefined:JSON.stringify(body)});const data=await response.json().catch(()=>({}));return{response,data}}
 async function ok(pathname,opt={}){const out=await raw(pathname,opt);assert(out.response.ok,`${pathname}: ${out.response.status} ${JSON.stringify(out.data)}`);return out.data}
 async function selectRoom(admin,roomCode){const list=await ok('/api/admin/workspaces',{token:admin});const room=list.rooms.find(x=>x.roomCode===roomCode);assert(room);if(list.selectedWorkspaceId!==room.workspaceId)await ok('/api/admin/workspace/select',{method:'POST',token:admin,body:{workspaceId:room.workspaceId}})}
-async function finishRound(admin, playerToken){for(let i=0;i<90;i++){const draw=await raw('/api/admin/draw',{method:'POST',token:admin,body:{source:'v905-final-acta'}});if(!draw.response.ok)break;const state=await ok('/api/player/state',{playerToken});if(state.status==='finalizing'&&state.championship?.stage==='reaction')break;}await wait(260);return ok('/api/player/state',{playerToken});}
+async function finishRound(admin, playerToken){for(let i=0;i<100;i++){const draw=await raw('/api/admin/draw',{method:'POST',token:admin,body:{source:'v4-final-acta'}});const state=await ok('/api/player/state',{playerToken});if(state.championship?.betweenRounds||state.status==='finished')return state;if(state.championship?.inTiebreak){for(let j=0;j<90&&state.status!=='finished';j++){const t=await raw('/api/admin/draw',{method:'POST',token:admin,body:{source:'v4-tiebreak'}});if(!t.response.ok)break;const ts=await ok('/api/player/state',{playerToken});if(ts.status==='finished')return ts;}}if(!draw.response.ok)break;}return ok('/api/player/state',{playerToken});}
 async function creatorDownload(created,type){const response=await fetch(base+'/api/community/creator-acta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({publicId:created.id,creatorCode:created.creatorCode,type})});if(!response.ok){const text=await response.text();assert.fail(`creator acta ${type}: ${response.status} ${text}`)}return {response,buffer:Buffer.from(await response.arrayBuffer())}}
 
 (async()=>{
  try{
   spawnServer();await waitServer();
   let admin=(await ok('/api/admin/login',{method:'POST',body:{password:''}})).token;
-  const created=await ok('/api/community/public-room',{method:'POST',body:{visitorId:'host-v905',name:'Organizador',roomName:'Final y acta V905',gameKind:'championship',championshipRounds:3,championshipReactionBonus:true,mode:90,maxPlayers:8,maxCardsPerPlayer:2,autoSeconds:8,startMode:'manual',accessType:'public'}});
+  const created=await ok('/api/community/public-room',{method:'POST',body:{visitorId:'host-v905',name:'Organizador',roomName:'Final y acta V905',gameKind:'championship',championshipRounds:3,mode:90,maxPlayers:8,maxCardsPerPlayer:2,autoSeconds:8,startMode:'manual',accessType:'public'}});
   // El organizador NO entra como jugador: igual debe poder descargar CSV/JSON/PDF al final.
   const a=await ok('/api/player/open-join',{method:'POST',body:{roomCode:created.roomCode,name:'Ana',cardCount:2,deviceId:'v905-a'}});
   const b=await ok('/api/player/open-join',{method:'POST',body:{roomCode:created.roomCode,name:'Beto',cardCount:1,deviceId:'v905-b'}});
@@ -58,6 +58,6 @@ async function creatorDownload(created,type){const response=await fetch(base+'/a
   await stop();spawnServer();await waitServer();admin=(await ok('/api/admin/login',{method:'POST',body:{password:''}})).token;
   const afterRestart=await ok('/api/community/creator-state',{method:'POST',body:{publicId:created.id,creatorCode:created.creatorCode}});assert.equal(afterRestart.status,'finished');assert.equal(afterRestart.championship.roundSummaries.length,3);
   const jsonAfter=await creatorDownload(created,'json');assert.equal(JSON.parse(jsonAfter.buffer.toString('utf8')).finalActaSha256,report.finalActaSha256);
-  console.log(`CAMPEONATO V9.0.5 FINAL + ACTA: OK · 3 rondas · final persistente · PDF/CSV/JSON · SHA · reinicio · SAMPLE=${samplePdf}`);
+  console.log(`CAMPEONATO V4 FINAL + ACTA: OK · 3 rondas · final persistente · PDF/CSV/JSON · SHA · reinicio · SAMPLE=${samplePdf}`);
  }catch(err){console.error(err);process.exitCode=1}finally{await stop();if(process.exitCode)console.error('DATA_DIR conservado para diagnóstico:',dataDir);else fs.rmSync(dataDir,{recursive:true,force:true})}
 })();

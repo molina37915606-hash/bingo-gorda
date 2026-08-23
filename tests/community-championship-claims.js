@@ -28,7 +28,7 @@ async function selectRoom(admin,roomCode){const list=await ok('/api/admin/worksp
  try{
   spawnServer(); await waitServer();
   const admin=(await ok('/api/admin/login',{method:'POST',body:{password:''}})).token;
-  const created=await ok('/api/community/public-room',{method:'POST',body:{visitorId:'host-claims',name:'Host',roomName:'Campeonato Reclamos',gameKind:'championship',championshipRounds:5,championshipReactionBonus:true,mode:90,maxPlayers:10,maxCardsPerPlayer:2,autoSeconds:8,startMode:'manual',accessType:'public'}});
+  const created=await ok('/api/community/public-room',{method:'POST',body:{visitorId:'host-claims',name:'Host',roomName:'Campeonato Reclamos',gameKind:'championship',championshipRounds:5,mode:90,maxPlayers:10,maxCardsPerPlayer:2,autoSeconds:8,startMode:'manual',accessType:'public'}});
   const a=await ok('/api/player/open-join',{method:'POST',body:{roomCode:created.roomCode,name:'Ana',cardCount:2,deviceId:'claims-a'}});
   const b=await ok('/api/player/open-join',{method:'POST',body:{roomCode:created.roomCode,name:'Beto',cardCount:2,deviceId:'claims-b'}});
   await ok('/api/community/creator-start',{method:'POST',body:{publicId:created.id,creatorCode:created.creatorCode}});
@@ -87,6 +87,6 @@ async function selectRoom(admin,roomCode){const list=await ok('/api/admin/worksp
   const totalLineClaimed=[...aState.championship.ownPositions,...bState.championship.ownPositions].filter(x=>x.lineClaimed).length;
   assert(totalLineClaimed>=2,'La Línea debe poder ser cantada por múltiples cartones del Campeonato.');
 
-  console.log('HOTFIX RECLAMOS CAMPEONATO V9.0.2: OK · Línea/Segunda Línea/Bingo por cartón · sin cierre global · sin pausa de bolillero');
+  console.log('CAMPEONATO V4 RECLAMOS: OK · Línea/Segunda Línea/Bingo por cartón · sin cierre global · sin pausa de bolillero');
  }catch(err){console.error(err);process.exitCode=1}finally{await stop();fs.rmSync(dataDir,{recursive:true,force:true})}
 })();

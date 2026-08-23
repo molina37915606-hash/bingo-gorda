@@ -48,8 +48,9 @@ const COMMUNITY_PUBLIC_MAX_AHEAD_MS = 36 * 60 * 60 * 1000;
 const COMMUNITY_PUBLIC_ESTIMATED_GAME_MS = 2 * 60 * 60 * 1000;
 const CHAMPIONSHIP_RESULTS_VISIBILITY_MS = Math.max(10 * 60_000, Number(process.env.BINGO_CHAMPIONSHIP_RESULTS_VISIBILITY_MS || 2 * 60 * 60_000));
 const CHAMPIONSHIP_ROUND_OPTIONS = [3, 5, 7];
-const CHAMPIONSHIP_PERSISTED_ROUNDS = [3, 5, 7, 10, 20, 30];
+const CHAMPIONSHIP_PERSISTED_ROUNDS = CHAMPIONSHIP_ROUND_OPTIONS;
 const CHAMPIONSHIP_DEFAULT_ROUNDS = 5;
+const CHAMPIONSHIP_SCORE = Object.freeze({ hit:1, line:10, secondLine:20, bingo:60, firstBingo:15, tiebreakMinimumBalls:10 });
 const COMMUNITY_FINISH_GRACE_MS = Math.max(TEST_MODE ? 150 : 15_000, Number(process.env.BINGO_COMMUNITY_FINISH_GRACE_MS || 3 * 60 * 1000));
 const COMMUNITY_ROOM_ACCESS_COOKIE = 'bingo_community_room_access';
 const COMMUNITY_ROOM_ACCESS_TTL_MS = 30 * 60 * 1000;
@@ -383,7 +384,6 @@ function blankState() {
       communityAccessType: 'public',
       communityGameKind: 'normal',
       championshipRounds: 0,
-      championshipReactionBonus: false,
       joinOpen: true,
       maxOpenPlayers: 60,
       communityScheduleId: '',
@@ -508,15 +508,22 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       readyPlayerIds: Array.isArray(parsed.communityRematch.readyPlayerIds) ? [...new Set(parsed.communityRematch.readyPlayerIds.map(String))].slice(0, MAX_PLAYERS) : [],
       createdAt: String(parsed.communityRematch.createdAt || '')
     } : null;
-    merged.championship = parsed.championship && typeof parsed.championship === 'object' ? parsed.championship : null;
+    const legacyChampionshipState = Boolean(parsed.championship?.enabled && Number(parsed.championship?.version) !== 4);
+    merged.championship = !legacyChampionshipState && parsed.championship && typeof parsed.championship === 'object' ? parsed.championship : null;
     if (merged.championship?.enabled) {
-      merged.championship.version = Math.max(2, Number(merged.championship.version) || 1);
+      merged.championship.version = 4;
       merged.championship.roundHistory = Array.isArray(merged.championship.roundHistory) ? merged.championship.roundHistory : [];
       merged.championship.announcements = Array.isArray(merged.championship.announcements) ? merged.championship.announcements : [];
       merged.championship.finalizedAt = merged.championship.finalizedAt || null;
       merged.championship.finalActaSha256 = /^[a-f0-9]{64}$/i.test(String(merged.championship.finalActaSha256 || '')) ? String(merged.championship.finalActaSha256).toLowerCase() : '';
     }
     merged.closedReason = String(parsed.closedReason || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 80);
+    if (legacyChampionshipState) {
+      merged.active = false;
+      merged.status = 'closed';
+      merged.closedReason = 'championship_v4_required';
+      merged.roomSettings.joinOpen = false;
+    }
     if (merged.active && !parsed.status) merged.status = merged.game?.drawn?.length ? 'playing' : 'waiting';
     if (!['closed', 'waiting', 'starting', 'playing', 'verifying', 'paused', 'resuming', 'finalizing', 'finished'].includes(merged.status)) merged.status = 'closed';
     merged.roomSettings.linePrizeCount = Math.max(1, Math.min(2, Number(merged.roomSettings.linePrizeCount) || 1));
@@ -538,7 +545,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.communityAccessType = merged.roomSettings.communityAccessType === 'private' ? 'private' : 'public';
     merged.roomSettings.communityGameKind = merged.roomSettings.communityGameKind === 'championship' ? 'championship' : 'normal';
     merged.roomSettings.championshipRounds = CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(merged.roomSettings.championshipRounds)) ? Number(merged.roomSettings.championshipRounds) : 0;
-    merged.roomSettings.championshipReactionBonus = merged.roomSettings.communityGameKind === 'championship' && merged.roomSettings.championshipReactionBonus === true;
+    delete merged.roomSettings.championshipReactionBonus;
     merged.roomSettings.communityScheduleId = String(merged.roomSettings.communityScheduleId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
     merged.roomSettings.scheduledAt = String(merged.roomSettings.scheduledAt || '');
     merged.roomSettings.scheduledRegistrationMinutes = Math.max(1, Math.min(120, Number(merged.roomSettings.scheduledRegistrationMinutes) || 15));
@@ -693,7 +700,6 @@ function normalizeCommunityPublicRoom(raw = {}) {
   const maxCardsPerPlayer = Math.max(1, Math.min(4, Math.round(Number(raw.maxCardsPerPlayer) || 2)));
   const gameKind = raw.gameKind === 'championship' ? 'championship' : 'normal';
   const championshipRounds = gameKind === 'championship' && CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(raw.championshipRounds)) ? Number(raw.championshipRounds) : 0;
-  const championshipReactionBonus = gameKind === 'championship' && raw.championshipReactionBonus !== false && raw.claimMode !== 'automatic_ties';
   const linePrizeCount = gameKind === 'championship' && mode === 90 ? 2 : (mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(raw.linePrizeCount) || 1))) : 1);
   const requestedRules = raw.rules && typeof raw.rules === 'object' ? raw.rules : {};
   const rules = gameKind === 'championship'
@@ -712,7 +718,7 @@ function normalizeCommunityPublicRoom(raw = {}) {
     roundNumber: Math.max(1, Math.round(Number(raw.roundNumber) || 1)),
     startMode: raw.startMode === 'scheduled' ? 'scheduled' : 'manual',
     startsAt: startsIso,
-    mode, maxPlayers, maxCardsPerPlayer, gameKind, championshipRounds, championshipReactionBonus,
+    mode, maxPlayers, maxCardsPerPlayer, gameKind, championshipRounds,
     autoSeconds: Math.max(4, Math.min(20, Math.round(Number(raw.autoSeconds) || 8))),
     claimMode: raw.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
     linePrizeCount, rules,
@@ -4386,18 +4392,18 @@ function championshipRoomEnabled() {
 }
 
 function createChampionshipState(payload = {}, mode = 90) {
-  const totalRounds = CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(payload.championshipRounds)) ? Number(payload.championshipRounds) : CHAMPIONSHIP_DEFAULT_ROUNDS;
+  const totalRounds = CHAMPIONSHIP_ROUND_OPTIONS.includes(Number(payload.championshipRounds)) ? Number(payload.championshipRounds) : CHAMPIONSHIP_DEFAULT_ROUNDS;
   return {
     enabled: true,
-    version: 2,
+    version: 4,
     mode: Number(mode) === 75 ? 75 : 90,
     totalRounds,
     currentRound: 0,
     stage: 'registration',
-    reactionBonusEnabled: payload.championshipReactionBonus === true,
     positions: [],
     announcements: [],
     roundHistory: [],
+    tiebreak: null,
     finalizedAt: null,
     finalActaSha256: '',
     firstBingoDrawnCount: null,
@@ -4406,49 +4412,15 @@ function createChampionshipState(payload = {}, mode = 90) {
     roundEndedAt: null,
     completedRounds: 0,
     championPositionId: '',
-    championPositionIds: [],
     createdAt: nowIso(),
     updatedAt: nowIso()
   };
 }
 
-function championshipPointsFor(mode, type, ball) {
-  const n = Math.max(1, Number(ball) || 1);
-  if (Number(mode) === 75) {
-    if (type === 'line') {
-      if (n <= 20) return 10; if (n <= 25) return 9; if (n <= 30) return 8; if (n <= 35) return 7; if (n <= 40) return 6;
-      if (n <= 45) return 5; if (n <= 50) return 4; if (n <= 55) return 3; if (n <= 60) return 2; return 1;
-    }
-    if (type === 'secondLine') {
-      if (n <= 30) return 15; if (n <= 35) return 14; if (n <= 40) return 12; if (n <= 45) return 10; if (n <= 50) return 8;
-      if (n <= 55) return 6; if (n <= 60) return 4; if (n <= 65) return 2; return 1;
-    }
-    if (type === 'bingo') {
-      if (n <= 58) return 25; if (n <= 61) return 23; if (n <= 64) return 20; if (n <= 67) return 17;
-      if (n <= 70) return 14; if (n <= 72) return 11; if (n <= 74) return 8; return 5;
-    }
-    return 0;
-  }
-  if (type === 'line') {
-    if (n <= 35) return 10; if (n <= 40) return 9; if (n <= 45) return 8; if (n <= 50) return 7; if (n <= 55) return 6;
-    if (n <= 60) return 5; if (n <= 65) return 4; if (n <= 70) return 3; if (n <= 75) return 2; return 1;
-  }
-  if (type === 'secondLine') {
-    if (n <= 50) return 15; if (n <= 55) return 14; if (n <= 60) return 12; if (n <= 65) return 10; if (n <= 70) return 8;
-    if (n <= 75) return 6; if (n <= 80) return 4; if (n <= 85) return 2; return 1;
-  }
-  if (type === 'bingo') {
-    if (n <= 55) return 25; if (n <= 60) return 23; if (n <= 65) return 20; if (n <= 70) return 17; if (n <= 75) return 14;
-    if (n <= 80) return 11; if (n <= 85) return 8; return 5;
-  }
-  return 0;
-}
-
-function championshipReactionPoints(deltaMs) {
-  const ms = Math.max(0, Number(deltaMs) || 0);
-  if (ms <= 5000) return 3;
-  if (ms <= 10000) return 2;
-  if (ms <= 20000) return 1;
+function championshipPointsFor(mode, type) {
+  if (type === 'line') return CHAMPIONSHIP_SCORE.line;
+  if (type === 'secondLine') return CHAMPIONSHIP_SCORE.secondLine;
+  if (type === 'bingo') return CHAMPIONSHIP_SCORE.bingo;
   return 0;
 }
 
@@ -4464,40 +4436,43 @@ function championshipPositionStats(position) {
   const bingoRounds = rounds.filter(item => Number(item.bingoBall) > 0);
   const secondRounds = rounds.filter(item => Number(item.secondLineBall) > 0);
   const lineRounds = rounds.filter(item => Number(item.lineBall) > 0);
-  const bestBingo = bingoRounds.length ? Math.min(...bingoRounds.map(item => Number(item.bingoBall))) : Infinity;
   return {
     totalPoints,
+    eligible: bingoRounds.length > 0,
     bingos: bingoRounds.length,
     bingoPoints: bingoRounds.reduce((sum,item)=>sum+Math.max(0,Number(item.bingoPoints)||0),0),
+    firstBingoBonuses: rounds.filter(item=>Number(item.firstBingoBonus)>0).length,
+    firstBingoBonusPoints: rounds.reduce((sum,item)=>sum+Math.max(0,Number(item.firstBingoBonus)||0),0),
     secondLines: secondRounds.length,
     secondLinePoints: secondRounds.reduce((sum,item)=>sum+Math.max(0,Number(item.secondLinePoints)||0),0),
     lines: lineRounds.length,
     linePoints: lineRounds.reduce((sum,item)=>sum+Math.max(0,Number(item.linePoints)||0),0),
-    hits: rounds.reduce((sum,item)=>sum+Math.max(0,Number(item.hitCount)||0),0),
-    bestBingo
+    hits: rounds.reduce((sum,item)=>sum+Math.max(0,Number(item.hitCount)||0),0)
   };
 }
 
 function championshipCompareOfficialStats(A, B) {
-  return B.totalPoints - A.totalPoints
-    || B.bingos - A.bingos
-    || B.bingoPoints - A.bingoPoints
-    || B.secondLines - A.secondLines
-    || B.secondLinePoints - A.secondLinePoints
-    || B.lines - A.lines
-    || B.linePoints - A.linePoints
-    || B.hits - A.hits
-    || A.bestBingo - B.bestBingo;
+  return Number(B.eligible) - Number(A.eligible)
+    || B.totalPoints - A.totalPoints;
 }
 
 function championshipComparePositions(a, b) {
   const result = championshipCompareOfficialStats(championshipPositionStats(a), championshipPositionStats(b));
-  return result || String(a.id || '').localeCompare(String(b.id || ''));
+  if (result) return result;
+  const winnerId = String(state.championship?.tiebreak?.winnerPositionId || state.championship?.championPositionId || '');
+  if (winnerId) {
+    if (String(a.id) === winnerId && String(b.id) !== winnerId) return -1;
+    if (String(b.id) === winnerId && String(a.id) !== winnerId) return 1;
+  }
+  return String(a.id || '').localeCompare(String(b.id || ''));
 }
 
 function championshipOfficiallyTied(a, b) {
   if (!a || !b) return false;
-  return championshipCompareOfficialStats(championshipPositionStats(a), championshipPositionStats(b)) === 0;
+  if (championshipCompareOfficialStats(championshipPositionStats(a), championshipPositionStats(b)) !== 0) return false;
+  const winnerId = String(state.championship?.tiebreak?.winnerPositionId || state.championship?.championPositionId || '');
+  if (winnerId && (String(a.id) === winnerId || String(b.id) === winnerId)) return false;
+  return true;
 }
 
 function championshipLeaderboard() {
@@ -4518,22 +4493,24 @@ function championshipLeaderboard() {
       rank,
       tied: Boolean((index > 0 && championshipOfficiallyTied(position, sorted[index - 1])) || (index + 1 < sorted.length && championshipOfficiallyTied(position, sorted[index + 1]))),
       points: stats.totalPoints,
+      eligible: Boolean(stats.eligible),
+      champion: String(state.championship?.championPositionId||'') === String(position.id),
       roundPoints: Math.max(0, Number(entry?.points) || 0),
       bingos: stats.bingos,
       bingoPoints: stats.bingoPoints,
+      firstBingoBonuses: stats.firstBingoBonuses,
+      firstBingoBonusPoints: stats.firstBingoBonusPoints,
       secondLines: stats.secondLines,
       secondLinePoints: stats.secondLinePoints,
       lines: stats.lines,
       linePoints: stats.linePoints,
       hits: stats.hits,
-      bestBingo: Number.isFinite(stats.bestBingo) ? stats.bestBingo : null,
       cardId: entry?.cardId || '',
       cardNumber: entry?.cardNumber || '',
       lineBall: entry?.lineBall || null,
       secondLineBall: entry?.secondLineBall || null,
       bingoBall: entry?.bingoBall || null,
-      reactionBonus: Math.max(0, Number(entry?.reactionBonus) || 0),
-      reactionClaimed: Boolean(entry?.reactionClaimedAt)
+      firstBingoBonus: Math.max(0, Number(entry?.firstBingoBonus) || 0)
     };
   });
 }
@@ -4545,11 +4522,11 @@ function championshipRoundLeaderboard() {
     return {
       positionId: position.id, playerId: position.playerId, playerName: position.playerName, slot: position.slot, label:`C${position.slot}`,
       roundPoints: Math.max(0, Number(entry?.points) || 0), totalPoints: championshipPositionStats(position).totalPoints,
-      bingoBall: entry?.bingoBall || null, bingoPoints:Math.max(0,Number(entry?.bingoPoints)||0),
+      bingoBall: entry?.bingoBall || null, bingoPoints:Math.max(0,Number(entry?.bingoPoints)||0), firstBingoBonus:Math.max(0,Number(entry?.firstBingoBonus)||0),
       secondLineBall: entry?.secondLineBall || null, secondLinePoints:Math.max(0,Number(entry?.secondLinePoints)||0),
       lineBall: entry?.lineBall || null, linePoints:Math.max(0,Number(entry?.linePoints)||0), hitCount:Math.max(0,Number(entry?.hitCount)||0)
     };
-  }).sort((a,b)=>b.roundPoints-a.roundPoints || b.bingoPoints-a.bingoPoints || b.secondLinePoints-a.secondLinePoints || b.linePoints-a.linePoints || b.hitCount-a.hitCount || String(a.positionId).localeCompare(String(b.positionId)));
+  }).sort((a,b)=>b.roundPoints-a.roundPoints || String(a.positionId).localeCompare(String(b.positionId)));
   let rank = 0;
   return sorted.map((item,index)=>{
     if (index === 0 || item.roundPoints !== sorted[index-1].roundPoints) rank = index + 1;
@@ -4566,21 +4543,22 @@ function championshipPublicPayload(player = null) {
     id:String(item?.id||''), round:Number(item?.round)||Number(champ.currentRound)||1, type:String(item?.type||''),
     label:String(item?.label||''), playerId:String(item?.playerId||''), playerName:String(item?.playerName||''),
     positionId:String(item?.positionId||''), slot:Number(item?.slot)||1, positionLabel:String(item?.positionLabel||`C${Number(item?.slot)||1}`),
-    cardId:String(item?.cardId||''), cardNumber:item?.cardNumber??'', ball:Number(item?.ball)||0, points:Math.max(0,Number(item?.points)||0),
-    reactionBonus:Math.max(0,Number(item?.reactionBonus)||0), createdAt:String(item?.createdAt||'')
+    cardId:String(item?.cardId||''), cardNumber:item?.cardNumber??'', ball:Number(item?.ball)||0, points:Math.max(0,Number(item?.points)||0), createdAt:String(item?.createdAt||'')
   }));
   const own = player ? all.filter(item => item.playerId === player.id).map(item => {
     const position = (champ.positions || []).find(pos => pos.id === item.positionId);
     const entry = championshipCurrentEntry(position);
+    const tie = champ.stage === 'tiebreak' ? (champ.tiebreak?.contenders || []).find(x => x.positionId === item.positionId) : null;
     return {
       ...item,
+      ...(tie ? { cardId:tie.cardId, cardNumber:tie.cardNumber, roundPoints:0, tiebreakHits:Math.max(0,Number(tie.hits)||0), tiebreakActive:(champ.tiebreak?.activePositionIds||[]).includes(item.positionId) } : {}),
       bingoDetectedAt: entry?.bingoDetectedAt || null,
       lineClaimed: Boolean(entry?.lineClaimedAt),
       lineClaimedAt: entry?.lineClaimedAt || null,
       secondLineClaimed: Boolean(entry?.secondLineClaimedAt),
       secondLineClaimedAt: entry?.secondLineClaimedAt || null,
-      bingoClaimed: Boolean(entry?.bingoClaimedAt || entry?.reactionClaimedAt),
-      bingoClaimedAt: entry?.bingoClaimedAt || entry?.reactionClaimedAt || null
+      bingoClaimed: Boolean(entry?.bingoClaimedAt),
+      bingoClaimedAt: entry?.bingoClaimedAt || null
     };
   }) : [];
   const leader = all[0] || null;
@@ -4589,16 +4567,17 @@ function championshipPublicPayload(player = null) {
   const drawnCount = state.game?.drawn?.length || 0;
   return {
     enabled:true,
-    version:Number(champ.version)||1,
-    totalRounds:Number(champ.totalRounds)||10,
+    version:4,
+    totalRounds:Number(champ.totalRounds)||CHAMPIONSHIP_DEFAULT_ROUNDS,
     currentRound:Number(champ.currentRound)||1,
     completedRounds:Number(champ.completedRounds)||0,
     stage:String(champ.stage||'registration'),
-    reactionBonusEnabled:Boolean(champ.reactionBonusEnabled),
+    scoring:{...CHAMPIONSHIP_SCORE},
     firstBingoDrawnCount:firstBingo,
     closingDrawnCount:closing,
     finalBallsRemaining:closing ? Math.max(0, closing - drawnCount) : null,
     betweenRounds:champ.stage === 'results',
+    inTiebreak:champ.stage === 'tiebreak',
     finished:champ.stage === 'finished',
     leaderboard:all.slice(0,10),
     fullLeaderboard:champ.stage === 'finished' ? all : [],
@@ -4609,6 +4588,14 @@ function championshipPublicPayload(player = null) {
       closingDrawnCount:Number(item.closingDrawnCount)||null, leader:item.leader||null,
       roundLeader:item.roundLeader||null, announcementsCount:Number(item.announcementsCount)||0
     })),
+    tiebreak:champ.tiebreak ? {
+      series:Number(champ.tiebreak.series)||1, minimumBalls:CHAMPIONSHIP_SCORE.tiebreakMinimumBalls,
+      drawnCount:Number(champ.tiebreak.drawnCount)||0, suddenDeath:Boolean(champ.tiebreak.suddenDeath),
+      activePositionIds:Array.isArray(champ.tiebreak.activePositionIds)?[...champ.tiebreak.activePositionIds]:[],
+      winnerPositionId:String(champ.tiebreak.winnerPositionId||''),
+      contenders:(Array.isArray(champ.tiebreak.contenders)?champ.tiebreak.contenders:[]).map(item=>({positionId:String(item.positionId||''),playerId:String(item.playerId||''),playerName:String(item.playerName||''),slot:Number(item.slot)||1,label:`C${Number(item.slot)||1}`,cardId:String(item.cardId||''),cardNumber:item.cardNumber??'',hits:Math.max(0,Number(item.hits)||0),active:(champ.tiebreak.activePositionIds||[]).includes(item.positionId)})),
+      history:deepCopy(Array.isArray(champ.tiebreak.history)?champ.tiebreak.history:[])
+    } : null,
     finalActaSha256:String(champ.finalActaSha256||''),
     finalizedAt:champ.finalizedAt||null,
     announcements,
@@ -4622,12 +4609,12 @@ function championshipPublicPayload(player = null) {
 
 function recomputeChampionshipEntryPoints(entry, mode) {
   if (!entry) return 0;
-  entry.hitPoints = Math.max(0, Number(entry.hitCount) || 0);
-  entry.linePoints = entry.lineBall ? championshipPointsFor(mode, 'line', entry.lineBall) : 0;
-  entry.secondLinePoints = entry.secondLineBall ? championshipPointsFor(mode, 'secondLine', entry.secondLineBall) : 0;
-  entry.bingoPoints = entry.bingoBall ? championshipPointsFor(mode, 'bingo', entry.bingoBall) : 0;
-  entry.reactionBonus = Math.max(0, Math.min(3, Number(entry.reactionBonus) || 0));
-  entry.points = entry.hitPoints + entry.linePoints + entry.secondLinePoints + entry.bingoPoints + entry.reactionBonus;
+  entry.hitPoints = Math.max(0, Number(entry.hitCount) || 0) * CHAMPIONSHIP_SCORE.hit;
+  entry.linePoints = entry.lineBall ? championshipPointsFor(mode, 'line') : 0;
+  entry.secondLinePoints = entry.secondLineBall ? championshipPointsFor(mode, 'secondLine') : 0;
+  entry.bingoPoints = entry.bingoBall ? championshipPointsFor(mode, 'bingo') : 0;
+  entry.firstBingoBonus = entry.bingoBall ? Math.max(0, Number(entry.firstBingoBonus) || 0) : 0;
+  entry.points = entry.hitPoints + entry.linePoints + entry.secondLinePoints + entry.bingoPoints + entry.firstBingoBonus;
   return entry.points;
 }
 
@@ -4654,7 +4641,7 @@ function ensureChampionshipPositions() {
 function prepareChampionshipRound(roundNumber) {
   if (!state.championship?.enabled || !state.game) throw new Error('Esta sala no es un Campeonato.');
   const champ = state.championship;
-  const round = Math.max(1, Math.min(Number(champ.totalRounds)||10, Number(roundNumber)||1));
+  const round = Math.max(1, Math.min(Number(champ.totalRounds)||CHAMPIONSHIP_DEFAULT_ROUNDS, Number(roundNumber)||1));
   const positions = ensureChampionshipPositions().filter(position => !position.retired);
   if (positions.length < (TEST_MODE ? 1 : 2)) throw new Error('Se necesitan al menos 2 cartones competitivos para iniciar el Campeonato.');
   if (positions.length > MAX_ACTIVE_CARDS) throw new Error(`El Campeonato supera el máximo de ${MAX_ACTIVE_CARDS} cartones activos.`);
@@ -4708,8 +4695,8 @@ function prepareChampionshipRound(roundNumber) {
       position.rounds.push({
         round, cardId:card.id, cardNumber:card.number, grid:deepCopy(card.grid), hitCount:0, hitPoints:0,
         lineBall:null, linePoints:0, lineClaimedAt:null, secondLineBall:null, secondLinePoints:0, secondLineClaimedAt:null,
-        bingoBall:null, bingoPoints:0, bingoDetectedAt:null, bingoDetectedAtMs:0, bingoClaimedAt:null, reactionClaimedAt:null,
-        reactionBonus:0, claimEvents:[], points:0
+        bingoBall:null, bingoPoints:0, bingoDetectedAt:null, bingoClaimedAt:null, firstBingoBonus:0,
+        claimEvents:[], points:0
       });
     } else {
       existing.cardId=card.id; existing.cardNumber=card.number; existing.grid=deepCopy(card.grid);
@@ -4738,14 +4725,132 @@ function lockChampionshipRoundIntegrity() {
   };
 }
 
-function processChampionshipAfterDraw() {
-  if (!championshipRoomEnabled() || !state.game || !['playing','finalizing'].includes(state.status)) return null;
+function championshipPositionById(positionId) {
+  return (state.championship?.positions || []).find(item => String(item.id) === String(positionId)) || null;
+}
+
+function prepareChampionshipTiebreak(positionIds, options = {}) {
+  if (!state.championship?.enabled || !state.game) throw new Error('No se puede preparar el desempate.');
   const champ = state.championship;
+  const ids = [...new Set((positionIds || []).map(String))].filter(Boolean);
+  if (ids.length < 2) throw new Error('El desempate requiere al menos dos posiciones.');
+  const positions = ids.map(championshipPositionById).filter(Boolean);
+  if (positions.length < 2) throw new Error('No se encontraron las posiciones empatadas.');
+  const mode = Number(state.game.mode) === 75 ? 75 : 90;
+  const cards = shuffle(generateDiverseCardsServer(positions.length, mode, championshipRulesFor(mode)));
+  const history = Array.isArray(options.history) ? options.history : (Array.isArray(champ.tiebreak?.history) ? champ.tiebreak.history : []);
+  const series = Math.max(1, Number(options.series) || Number(champ.tiebreak?.series || 0) + 1);
+  const byPlayer = new Map(state.players.map(player => [player.id, player]));
+  const contenders = positions.map((position, index) => {
+    const card = cards[index];
+    card.championshipTiebreakPositionId = position.id;
+    card.championshipPositionId = position.id;
+    card.championshipSlot = position.slot;
+    card.championshipLabel = `C${position.slot}`;
+    card.championshipPlayerName = position.playerName;
+    return { positionId:position.id, playerId:position.playerId, playerName:position.playerName, slot:position.slot, cardId:card.id, cardNumber:card.number, grid:deepCopy(card.grid), hits:0 };
+  });
+  state.game.cards = cards;
+  state.game.drawn = [];
+  state.game.drawTimestamps = {};
+  state.game.lastDrawnAt = null;
+  state.game.phase = 'CHAMPIONSHIP_TIEBREAK';
+  state.game.integrity = null;
+  state.drawOrder = createSecureDrawOrder(mode);
+  state.claims = [];
+  state.claimSequence = 0;
+  state.claimWindow = null;
+  state.transition = null;
+  state.cardReservations = {};
+  champ.stage = 'tiebreak';
+  champ.tiebreak = { enabled:true, series, minimumBalls:CHAMPIONSHIP_SCORE.tiebreakMinimumBalls, startedAt:nowIso(), drawnCount:0, suddenDeath:false, activePositionIds:positions.map(item=>item.id), contenders, history, winnerPositionId:'' };
+  for (const player of state.players) {
+    const own = contenders.filter(item => item.playerId === player.id);
+    player.cardIds = own.map(item => item.cardId);
+    player.marks = Object.fromEntries(player.cardIds.map(cardId => [cardId, []]));
+    player.selectionConfirmed = true;
+  }
+  updateCardDisplayNames();
+  state.status = 'playing';
+  state.pauseReason = null;
+  champ.updatedAt = nowIso();
+  lockChampionshipRoundIntegrity();
+  logEvent('championship_tiebreak_started', { series, positionIds:positions.map(item=>item.id), minimumBalls:CHAMPIONSHIP_SCORE.tiebreakMinimumBalls });
+  saveState();
+  broadcast();
+  return championshipPublicPayload();
+}
+
+function finalizeChampionship(winnerPositionId, meta = {}) {
+  const champ = state.championship;
+  if (!champ?.enabled) return false;
+  clearAutomaticDrawTimer();
+  clearWorkspaceTransitionTimer();
+  state.transition = null;
+  champ.stage = 'finished';
+  champ.championPositionId = String(winnerPositionId || '');
+  if (champ.tiebreak) {
+    champ.tiebreak.winnerPositionId = champ.championPositionId;
+    champ.tiebreak.finishedAt = nowIso();
+  }
+  state.status = 'finished';
+  state.pauseReason = null;
+  state.endedAt = nowIso();
+  state.game.phase = 'CHAMPIONSHIP_FINISHED';
+  champ.finalizedAt = state.endedAt;
+  champ.updatedAt = state.endedAt;
+  sealChampionshipFinalActa();
+  saveState();
+  const winner = championshipLeaderboard().find(item => item.positionId === champ.championPositionId) || null;
+  logEvent('championship_finished', { rounds:champ.totalRounds, championPositionId:champ.championPositionId, points:winner?.points||0, tiebreak:Boolean(meta.tiebreak), finalActaSha256:champ.finalActaSha256 });
+  try { const archived=archiveCurrentResults(); if(archived?.id) champ.finalArchiveId=archived.id; } catch (error) { logEvent('championship_archive_error',{message:String(error?.message||error)}); }
+  syncCommunityPublicRecordFromState('finished');
+  saveState();
+  broadcast();
+  return true;
+}
+
+function processChampionshipTiebreakAfterDraw() {
+  const champ = state.championship;
+  const tb = champ?.tiebreak;
+  if (!tb?.enabled || champ.stage !== 'tiebreak' || !state.game) return null;
+  const drawCount = state.game.drawn.length;
+  tb.drawnCount = drawCount;
+  for (const contender of tb.contenders || []) {
+    const card = state.game.cards.find(item => item.id === contender.cardId);
+    contender.hits = card ? analyzeCard(card, state.game.drawn, []).markedCount : 0;
+  }
+  if (drawCount < CHAMPIONSHIP_SCORE.tiebreakMinimumBalls) {
+    champ.updatedAt = nowIso();
+    return championshipPublicPayload();
+  }
+  const activeIds = new Set((tb.activePositionIds || []).map(String));
+  const active = (tb.contenders || []).filter(item => activeIds.has(String(item.positionId)));
+  const maxHits = Math.max(...active.map(item => Number(item.hits)||0));
+  const leaders = active.filter(item => Number(item.hits)||0 === maxHits);
+  if (leaders.length === 1) {
+    finalizeChampionship(leaders[0].positionId, { tiebreak:true });
+    return championshipPublicPayload();
+  }
+  tb.activePositionIds = leaders.map(item => item.positionId);
+  tb.suddenDeath = true;
+  champ.updatedAt = nowIso();
+  if (drawCount >= Number(state.game.mode)) {
+    const history = [...(tb.history || []), { series:Number(tb.series)||1, balls:drawCount, result:(tb.contenders||[]).map(item=>({positionId:item.positionId,playerName:item.playerName,slot:item.slot,hits:Number(item.hits)||0})), unresolvedPositionIds:[...tb.activePositionIds] }];
+    prepareChampionshipTiebreak(tb.activePositionIds, { series:Number(tb.series||1)+1, history });
+  }
+  return championshipPublicPayload();
+}
+
+function processChampionshipAfterDraw() {
+  if (!championshipRoomEnabled() || !state.game || state.status !== 'playing') return null;
+  const champ = state.championship;
+  if (champ.stage === 'tiebreak') return processChampionshipTiebreakAfterDraw();
+  if (champ.stage !== 'playing' && champ.stage !== 'prepared') return null;
   const drawCount = state.game.drawn.length;
   const mode = Number(state.game.mode) === 75 ? 75 : 90;
   const drawAt = state.game.lastDrawnAt || nowIso();
-  const drawAtMs = new Date(drawAt).getTime() || Date.now();
-  let newBingos = 0;
+  const newBingoEntries = [];
   for (const position of champ.positions || []) {
     if (position.retired) continue;
     const entry = championshipCurrentEntry(position);
@@ -4759,27 +4864,24 @@ function processChampionshipAfterDraw() {
     if (!entry.bingoBall && analysis.hasBingo) {
       entry.bingoBall = drawCount;
       entry.bingoDetectedAt = drawAt;
-      entry.bingoDetectedAtMs = drawAtMs;
-      newBingos += 1;
+      newBingoEntries.push(entry);
     }
     recomputeChampionshipEntryPoints(entry, mode);
   }
-  if (!champ.firstBingoDrawnCount && newBingos > 0) {
+  if (!champ.firstBingoDrawnCount && newBingoEntries.length > 0) {
     champ.firstBingoDrawnCount = drawCount;
     champ.closingDrawnCount = Math.min(mode, drawCount + 5);
-    logEvent('championship_first_bingo', { round:champ.currentRound, ballOrder:drawCount, ballNumber:state.game.drawn.at(-1), closingDrawnCount:champ.closingDrawnCount });
+    for (const entry of newBingoEntries) {
+      entry.firstBingoBonus = CHAMPIONSHIP_SCORE.firstBingo;
+      recomputeChampionshipEntryPoints(entry, mode);
+    }
+    logEvent('championship_first_bingo', { round:champ.currentRound, ballOrder:drawCount, ballNumber:state.game.drawn.at(-1), closingDrawnCount:champ.closingDrawnCount, bonus:CHAMPIONSHIP_SCORE.firstBingo, simultaneous:newBingoEntries.length });
   }
-  if (champ.closingDrawnCount && drawCount >= champ.closingDrawnCount && champ.stage !== 'reaction' && champ.stage !== 'results' && champ.stage !== 'finished') {
-    const graceMs = TEST_MODE ? 140 : 20_000;
-    champ.stage = 'reaction';
-    state.status = 'finalizing';
-    state.pauseReason = null;
-    state.game.phase = 'CHAMPIONSHIP_REACTION_WINDOW';
-    state.transition = { id:randomId('transition'), type:'championship-round-claim-window', startedAt:nowIso(), endsAt:new Date(Date.now()+graceMs).toISOString() };
-    logEvent('championship_round_reaction_window', { round:champ.currentRound, balls:drawCount, graceMs });
-  } else if (champ.stage === 'prepared') {
-    champ.stage = 'playing';
+  if (champ.closingDrawnCount && drawCount >= champ.closingDrawnCount) {
+    finishChampionshipRound();
+    return championshipPublicPayload();
   }
+  if (champ.stage === 'prepared') champ.stage = 'playing';
   champ.updatedAt = nowIso();
   return championshipPublicPayload();
 }
@@ -4787,9 +4889,7 @@ function processChampionshipAfterDraw() {
 function createChampionshipClaim(player, payload = {}) {
   if (!championshipRoomEnabled() || !state.game || !state.championship) throw new Error('Esta sala no es un Campeonato.');
   const champ = state.championship;
-  if (!['playing','finalizing'].includes(state.status) || !['playing','reaction'].includes(champ.stage)) {
-    throw new Error('La ventana para cantar jugadas ya terminó.');
-  }
+  if (state.status !== 'playing' || champ.stage !== 'playing') throw new Error('La ronda no está habilitada para cantar jugadas.');
   const requested = String(payload.type || '');
   const type = ['line','secondLine','bingo'].includes(requested) ? requested : '';
   if (!type) throw new Error('En Campeonato sólo se puede cantar Primera Línea, Segunda Línea o Bingo.');
@@ -4800,7 +4900,6 @@ function createChampionshipClaim(player, payload = {}) {
   const entry = championshipCurrentEntry(position);
   if (!entry) throw new Error('No se encontró la ronda actual de ese cartón.');
   const now = nowIso();
-  const nowMs = Date.now();
 
   const claimOne = (pos, currentEntry, claimType) => {
     const config = claimType === 'line'
@@ -4810,69 +4909,33 @@ function createChampionshipClaim(player, payload = {}) {
         : { ballKey:'bingoBall', claimedKey:'bingoClaimedAt', pointsKey:'bingoPoints', label:'BINGO' };
     const ball = Number(currentEntry?.[config.ballKey]) || 0;
     if (!ball) throw new Error(`${config.label}: ese cartón todavía no completó la jugada.`);
-    if (currentEntry?.[config.claimedKey] || (claimType === 'bingo' && currentEntry?.reactionClaimedAt)) {
-      throw new Error(`${config.label}: ese cartón ya cantó esta jugada.`);
-    }
-    let reactionBonus = 0;
-    let reactionDeltaMs = null;
-    if (claimType === 'bingo' && champ.reactionBonusEnabled) {
-      reactionDeltaMs = Math.max(0, nowMs - (Number(currentEntry.bingoDetectedAtMs) || nowMs));
-      reactionBonus = championshipReactionPoints(reactionDeltaMs);
-      currentEntry.reactionBonus = reactionBonus;
-      currentEntry.reactionClaimedAt = now;
-      currentEntry.reactionDeltaMs = reactionDeltaMs;
-    }
+    if (currentEntry?.[config.claimedKey]) throw new Error(`${config.label}: ese cartón ya cantó esta jugada.`);
     currentEntry[config.claimedKey] = now;
     currentEntry.claimEvents = Array.isArray(currentEntry.claimEvents) ? currentEntry.claimEvents : [];
-    const event = {
-      id: randomId('champ_claim'), type:claimType, label:config.label, claimedAt:now, ball,
-      points:Math.max(0, Number(currentEntry?.[config.pointsKey]) || 0), reactionBonus,
-      reactionDeltaMs, positionId:pos.id, slot:pos.slot, cardId:currentEntry.cardId, cardNumber:currentEntry.cardNumber
-    };
+    const basePoints = Math.max(0, Number(currentEntry?.[config.pointsKey]) || 0);
+    const eventPoints = claimType === 'bingo' ? basePoints + Math.max(0, Number(currentEntry.firstBingoBonus)||0) : basePoints;
+    const event = { id:randomId('champ_claim'), type:claimType, label:config.label, claimedAt:now, ball, points:eventPoints, positionId:pos.id, slot:pos.slot, cardId:currentEntry.cardId, cardNumber:currentEntry.cardNumber };
     currentEntry.claimEvents.push(event);
-    recomputeChampionshipEntryPoints(currentEntry, state.game.mode);
     return event;
   };
 
   const claimed = [];
   if (type === 'bingo') {
-    // Si un mismo jugador tiene varios Bingos ya habilitados, un solo toque los canta juntos
-    // para no castigar al segundo cartón por la velocidad de dos pulsaciones consecutivas.
     for (const pos of (champ.positions || []).filter(item => item.playerId === player.id && !item.retired)) {
       const currentEntry = championshipCurrentEntry(pos);
-      if (!currentEntry?.bingoBall || currentEntry.bingoClaimedAt || currentEntry.reactionClaimedAt) continue;
+      if (!currentEntry?.bingoBall || currentEntry.bingoClaimedAt) continue;
       claimed.push(claimOne(pos, currentEntry, 'bingo'));
     }
     if (!claimed.length) throw new Error('No tenés un Bingo nuevo habilitado para cantar.');
-  } else {
-    claimed.push(claimOne(position, entry, type));
-  }
+  } else claimed.push(claimOne(position, entry, type));
 
   champ.announcements = Array.isArray(champ.announcements) ? champ.announcements : [];
-  for (const item of claimed) {
-    champ.announcements.push({
-      id: randomId('champ_announce'), round:Number(champ.currentRound)||1, type:item.type, label:item.label,
-      playerId:player.id, playerName:playerDisplayName(player), positionId:item.positionId, slot:item.slot, positionLabel:`C${item.slot}`,
-      cardId:item.cardId, cardNumber:item.cardNumber, ball:item.ball, points:item.points, reactionBonus:item.reactionBonus, createdAt:now
-    });
-  }
+  for (const item of claimed) champ.announcements.push({ id:randomId('champ_announce'), round:Number(champ.currentRound)||1, type:item.type, label:item.label, playerId:player.id, playerName:playerDisplayName(player), positionId:item.positionId, slot:item.slot, positionLabel:`C${item.slot}`, cardId:item.cardId, cardNumber:item.cardNumber, ball:item.ball, points:item.points, createdAt:now });
   if (champ.announcements.length > 120) champ.announcements = champ.announcements.slice(-120);
-  logEvent('championship_claimed', {
-    type, playerId:player.id, playerName:playerDisplayName(player),
-    claimed:claimed.map(item => ({ type:item.type, positionId:item.positionId, slot:item.slot, cardId:item.cardId, cardNumber:item.cardNumber, ball:item.ball, points:item.points, reactionBonus:item.reactionBonus }))
-  });
-  saveState();
-  broadcast();
-  return {
-    ok:true,
-    championshipClaim:true,
-    type,
-    claimed,
-    totalBonus:claimed.reduce((sum,item)=>sum+Math.max(0,Number(item.reactionBonus)||0),0),
-    championship:championshipPublicPayload(player)
-  };
+  logEvent('championship_claimed', { type, playerId:player.id, playerName:playerDisplayName(player), claimed:claimed.map(item => ({ type:item.type, positionId:item.positionId, slot:item.slot, cardId:item.cardId, cardNumber:item.cardNumber, ball:item.ball, points:item.points })) });
+  saveState(); broadcast();
+  return { ok:true, championshipClaim:true, type, claimed, championship:championshipPublicPayload(player) };
 }
-
 
 function captureChampionshipRoundHistory() {
   if (!state.championship?.enabled || !state.game) return null;
@@ -4887,7 +4950,7 @@ function captureChampionshipRoundHistory() {
     .map(item => ({
       id:String(item?.id||''), type:String(item?.type||''), label:String(item?.label||''), playerName:String(item?.playerName||''),
       positionId:String(item?.positionId||''), positionLabel:String(item?.positionLabel||''), ball:Number(item?.ball)||0,
-      points:Math.max(0,Number(item?.points)||0), reactionBonus:Math.max(0,Number(item?.reactionBonus)||0), createdAt:item?.createdAt||null
+      points:Math.max(0,Number(item?.points)||0), createdAt:item?.createdAt||null
     }));
   const entry = {
     round,
@@ -4925,20 +4988,20 @@ function championshipReportPayload() {
       label:`C${Number(position.slot)||1}`,
       rank:final?.rank || null,
       tied:Boolean(final?.tied),
-      stats:{...stats,bestBingo:Number.isFinite(stats.bestBingo)?stats.bestBingo:null},
+      stats:{...stats},
       rounds:deepCopy(Array.isArray(position.rounds)?position.rounds:[])
     };
   });
   return {
-    reportVersion:1,
-    championshipVersion:Number(champ.version)||2,
+    reportVersion:2,
+    championshipVersion:4,
     roomCode:state.roomCode,
     roomName:state.roomSettings?.roomName||'',
     hostName:state.roomSettings?.hostName||'',
     mode:Number(state.game?.mode)===75?75:90,
     totalRounds:Number(champ.totalRounds)||0,
     completedRounds:Number(champ.completedRounds)||0,
-    reactionBonusEnabled:Boolean(champ.reactionBonusEnabled),
+    scoring:{...CHAMPIONSHIP_SCORE},
     createdAt:state.createdAt||champ.createdAt||null,
     startedAt:state.startedAt||null,
     endedAt:state.endedAt||champ.finalizedAt||null,
@@ -4948,8 +5011,8 @@ function championshipReportPayload() {
       positions:positions.length,
       announcements:(Array.isArray(champ.announcements)?champ.announcements:[]).length
     },
-    championPositionIds:Array.isArray(champ.championPositionIds)?[...champ.championPositionIds]:[],
-    officialTie:(Array.isArray(champ.championPositionIds)?champ.championPositionIds.length:0)>1,
+    championPositionId:String(champ.championPositionId||''),
+    tiebreak:deepCopy(champ.tiebreak||null),
     leaderboard:deepCopy(leaderboard),
     rounds:deepCopy(Array.isArray(champ.roundHistory)?champ.roundHistory:[]),
     positions,
@@ -4965,7 +5028,7 @@ function sealChampionshipFinalActa() {
   if (!report) return '';
   report.finalActaSha256 = '';
   champ.finalActaSha256 = crypto.createHash('sha256').update(JSON.stringify(report)).digest('hex');
-  champ.version = Math.max(2, Number(champ.version)||1);
+  champ.version = 4;
   return champ.finalActaSha256;
 }
 
@@ -4986,28 +5049,24 @@ function finishChampionshipRound() {
   }
   captureChampionshipRoundHistory();
   if (Number(champ.currentRound) >= Number(champ.totalRounds)) {
-    champ.stage = 'finished';
-    champ.championPositionIds = leaderboard.filter(item => Number(item.rank) === 1).map(item => item.positionId);
-    champ.championPositionId = champ.championPositionIds[0] || '';
-    state.status = 'finished';
-    state.pauseReason = null;
-    state.endedAt = champ.roundEndedAt;
-    state.game.phase = 'CHAMPIONSHIP_FINISHED';
-    champ.finalizedAt = state.endedAt;
-    sealChampionshipFinalActa();
-    // Primero se congela y persiste el estado competitivo; después se escriben los archivos históricos.
-    saveState();
-    logEvent('championship_finished', { rounds:champ.totalRounds, championPositionId:champ.championPositionId, championPositionIds:champ.championPositionIds, officialTie:champ.championPositionIds.length>1, points:leaderboard[0]?.points||0, finalActaSha256:champ.finalActaSha256 });
-    try { const archived=archiveCurrentResults(); if(archived?.id) champ.finalArchiveId=archived.id; } catch (error) { logEvent('championship_archive_error',{message:String(error?.message||error)}); }
-    syncCommunityPublicRecordFromState('finished');
-  } else {
-    champ.stage = 'results';
-    state.status = 'paused';
-    state.pauseReason = 'championship_round_end';
-    state.game.phase = 'CHAMPIONSHIP_RESULTS';
-    logEvent('championship_round_finished', { round:champ.currentRound, leader:leaderboard[0]||null });
-    syncCommunityPublicRecordFromState('playing');
+    const eligible = championshipLeaderboard().filter(item => item.eligible);
+    const topPoints = eligible.length ? Number(eligible[0].points)||0 : null;
+    const tied = eligible.filter(item => Number(item.points) === topPoints);
+    if (tied.length > 1) {
+      logEvent('championship_final_tie', { points:topPoints, positionIds:tied.map(item=>item.positionId) });
+      prepareChampionshipTiebreak(tied.map(item=>item.positionId));
+      syncCommunityPublicRecordFromState('playing');
+      return true;
+    }
+    finalizeChampionship(tied[0]?.positionId || '', { tiebreak:false });
+    return true;
   }
+  champ.stage = 'results';
+  state.status = 'paused';
+  state.pauseReason = 'championship_round_end';
+  state.game.phase = 'CHAMPIONSHIP_RESULTS';
+  logEvent('championship_round_finished', { round:champ.currentRound, leader:leaderboard[0]||null });
+  syncCommunityPublicRecordFromState('playing');
   saveState(); broadcast();
   return true;
 }
@@ -5280,7 +5339,6 @@ function createSimpleRoom(payload = {}) {
       communityAccessType: payload.roomOrigin === 'community' && payload.communityAccessType === 'private' ? 'private' : 'public',
       communityGameKind: payload.roomOrigin === 'community' && payload.communityGameKind === 'championship' ? 'championship' : 'normal',
       championshipRounds: payload.roomOrigin === 'community' && payload.communityGameKind === 'championship' && CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(payload.championshipRounds)) ? Number(payload.championshipRounds) : 0,
-      championshipReactionBonus: payload.roomOrigin === 'community' && payload.communityGameKind === 'championship' && payload.championshipReactionBonus === true,
       // El acceso normal es exclusivamente mediante invitaciones privadas por jugador.
       joinOpen: false,
       maxOpenPlayers: Math.max(2, Math.min(MAX_PLAYERS, Number(payload.maxOpenPlayers) || MAX_PLAYERS)),
@@ -6757,7 +6815,6 @@ function drawNextBall(source = 'manual') {
   saveState();
   broadcast();
   if (state.status === 'finalizing' && state.transition?.type === 'final-balls') scheduleTransition();
-  else if (state.transition?.type === 'championship-round-claim-window') scheduleTransition();
   else if (state.transition?.type === 'last-ball-claim-window') scheduleTransition();
   else if (state.status === 'paused' && state.pauseReason === 'claim' && automaticTieClaimsEnabled()) scheduleClaimAutoResume();
   else if (state.status === 'playing') scheduleAutomaticDraw();
@@ -6766,10 +6823,13 @@ function drawNextBall(source = 'manual') {
 
 function setTestDrawOrder(payload = {}) {
   if (!TEST_MODE) throw new Error('Esta función solo está disponible durante pruebas automáticas.');
-  const demoBeforeFirstBall = currentWorkspace().isDemo && state.status === 'starting' && !(state.game?.drawn || []).length;
-  if (!state.active || !state.game || (state.status !== 'waiting' && !demoBeforeFirstBall)) throw new Error('El orden de prueba solo puede fijarse antes de la primera bolilla.');
+  const beforeFirstBall = !(state.game?.drawn || []).length;
+  const demoBeforeFirstBall = currentWorkspace().isDemo && state.status === 'starting' && beforeFirstBall;
+  const championshipBeforeFirstBall = championshipRoomEnabled() && ['starting','playing'].includes(state.status) && beforeFirstBall;
+  if (!state.active || !state.game || (state.status !== 'waiting' && !demoBeforeFirstBall && !championshipBeforeFirstBall)) throw new Error('El orden de prueba solo puede fijarse antes de la primera bolilla.');
   const prefix = uniqueNumbers(payload.sequence || []).filter(number => number >= 1 && number <= state.game.mode);
   state.drawOrder = createSecureDrawOrder(state.game.mode, prefix);
+  if (championshipBeforeFirstBall && state.game?.integrity) state.game.integrity.drawOrderCommitment = crypto.createHash('sha256').update(state.drawOrder.join(',')).digest('hex');
   state.testDrawOrderFixed = true;
   logEvent('test_draw_order_set', { prefix });
   saveState();
@@ -6919,10 +6979,6 @@ function completeTransition() {
   clearWorkspaceTransitionTimer();
   if (!state.active || !state.transition) return;
   const type = state.transition.type;
-  if (type === 'championship-round-claim-window') {
-    finishChampionshipRound();
-    return;
-  }
   if (type === 'last-ball-claim-window') {
     if (state.claims.some(claim => claim.status === 'pending')) return;
     state.status = 'finished';
@@ -7292,6 +7348,11 @@ function archiveCancelledRoom() {
   };
   const dir = archiveFolderForState('cancelled');
   fs.mkdirSync(dir, { recursive: true });
+  const championshipSnapshot = state.championship?.enabled ? championshipReportPayload() : null;
+  if (championshipSnapshot && state.championship?.stage === 'interrupted') {
+    meta.championshipIncomplete = true;
+    meta.files.championshipJson = 'campeonato_incompleto.json';
+  }
   const summary = {
     roomCode: state.roomCode,
     status: 'cancelled',
@@ -7302,6 +7363,16 @@ function archiveCancelledRoom() {
     startedAt: state.startedAt,
     cancelledAt: endedAt,
     cancelReason: String(state.closedReason || 'closed').slice(0, 80),
+    championship: championshipSnapshot ? {
+      version: 4,
+      incomplete: state.championship?.stage === 'interrupted',
+      stage: state.championship?.stage || '',
+      completedRounds: Number(state.championship?.completedRounds) || 0,
+      interruptedRound: Number(state.championship?.interruptedRound) || null,
+      interruptedDrawCount: Number(state.championship?.interruptedDrawCount) || 0,
+      championPositionId: '',
+      leaderboard: deepCopy(championshipSnapshot.leaderboard || [])
+    } : null,
     players: (state.players || []).map(player => ({
       name: playerDisplayName(player),
       cardCount: (player.cardIds || []).length,
@@ -7309,6 +7380,17 @@ function archiveCancelledRoom() {
     }))
   };
   writeAtomic(path.join(dir, 'resumen.json'), JSON.stringify(summary, null, 2));
+  if (championshipSnapshot && state.championship?.stage === 'interrupted') {
+    writeAtomic(path.join(dir, 'campeonato_incompleto.json'), JSON.stringify({
+      ...championshipSnapshot,
+      status: 'incomplete',
+      interruptedAt: state.championship.interruptedAt || endedAt,
+      interruptedRound: Number(state.championship.interruptedRound) || null,
+      interruptedDrawCount: Number(state.championship.interruptedDrawCount) || 0,
+      championPositionId: '',
+      notice: 'CAMPEONATO INCOMPLETO · SIN CAMPEÓN OFICIAL'
+    }, null, 2));
+  }
   writeAtomic(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
   state.historyArchiveId = meta.id;
   syncCommunityPublicRecordFromState('cancelled');
@@ -8464,7 +8546,7 @@ function championshipActaCsv() {
   const report = championshipReportPayload();
   if (!report) throw new Error('No hay un Campeonato disponible.');
   const lines = [
-    ['CAMPEONATO LA GORDA - ACTA COMPLETA'],
+    ['CAMPEONATO LA GORDA V4 - ACTA COMPLETA'],
     ['Sala', report.roomCode],
     ['Nombre', report.roomName],
     ['Creador', report.hostName],
@@ -8473,14 +8555,15 @@ function championshipActaCsv() {
     ['Rondas completadas', report.completedRounds],
     ['Jugadores', report.totals.players],
     ['Posiciones competitivas', report.totals.positions],
-    ['Bonus de reacción', report.reactionBonusEnabled ? 'ACTIVO' : 'INACTIVO'],
+    ['Puntuación', 'Número +1 · Primera Línea +10 · Segunda Línea +20 · Bingo +60 · Primer Bingo +15'],
+    ['Elegibilidad', 'Para ser Campeón es obligatorio haber conseguido al menos un Bingo'],
     ['Inicio', formatLocalTimestamp(report.startedAt)],
     ['Finalización', formatLocalTimestamp(report.endedAt)],
-    ['SHA-256 acta final', report.finalActaSha256 || ''],
+    ['Sello SHA-256 del resultado competitivo', report.finalActaSha256 || ''],
     [],
     ['CLASIFICACIÓN FINAL'],
-    ['PUESTO','JUGADOR','POSICIÓN','PUNTOS','BINGOS','PUNTOS BINGO','SEGUNDAS LÍNEAS','PUNTOS 2ª LÍNEA','PRIMERAS LÍNEAS','PUNTOS LÍNEA','NÚMEROS','MEJOR BINGO'],
-    ...report.leaderboard.map(item => [item.rank,item.playerName,item.label,item.points,item.bingos,item.bingoPoints ?? '',item.secondLines,item.secondLinePoints ?? '',item.lines,item.linePoints ?? '',item.hits,item.bestBingo ?? '']),
+    ['PUESTO','JUGADOR','POSICIÓN','ELEGIBLE','PUNTOS','BINGOS','BONUS 1ER BINGO','SEGUNDAS LÍNEAS','PRIMERAS LÍNEAS','NÚMEROS'],
+    ...report.leaderboard.map(item => [item.rank,item.playerName,item.label,item.eligible?'SÍ':'NO',item.points,item.bingos,item.firstBingoBonusPoints ?? 0,item.secondLines,item.lines,item.hits]),
     [],
     ['PUNTOS POR RONDA'],
     ['PUESTO','JUGADOR','POSICIÓN',...Array.from({length:report.totalRounds},(_,i)=>`R${i+1}`),'TOTAL'],
@@ -8494,18 +8577,29 @@ function championshipActaCsv() {
     lines.push([`RONDA ${round.round}`]);
     lines.push(['Inicio',formatLocalTimestamp(round.startedAt)],['Finalización',formatLocalTimestamp(round.endedAt)],['Bolillas extraídas',round.drawCount],['Primer Bingo matemático (salida)',round.firstBingoDrawnCount ?? ''],['Cierre reglamentario (salida)',round.closingDrawnCount ?? '']);
     lines.push(['SECUENCIA DE BOLILLAS'],[(round.balls||[]).map(item=>item.number).join(' · ')]);
-    lines.push(['RESULTADO DE LA RONDA'],['PUESTO','JUGADOR','POSICIÓN','PUNTOS','BINGO','2ª LÍNEA','1ª LÍNEA','NÚMEROS']);
-    for (const item of round.roundLeaderboard || []) lines.push([item.rank,item.playerName,item.label,item.roundPoints,item.bingoBall||'',item.secondLineBall||'',item.lineBall||'',item.hitCount]);
-    lines.push(['CANTES'],['JUGADOR','POSICIÓN','JUGADA','BOLILLA','PUNTOS','REACCIÓN','HORA']);
-    for (const item of round.announcements || []) lines.push([item.playerName,item.positionLabel,item.label,item.ball,item.points,item.reactionBonus,formatLocalTimeMs(item.createdAt)]);
+    lines.push(['RESULTADO DE LA RONDA'],['PUESTO','JUGADOR','POSICIÓN','PUNTOS','BINGO','BONUS 1ER BINGO','2ª LÍNEA','1ª LÍNEA','NÚMEROS']);
+    for (const item of round.roundLeaderboard || []) lines.push([item.rank,item.playerName,item.label,item.roundPoints,item.bingoBall||'',item.firstBingoBonus||0,item.secondLineBall||'',item.lineBall||'',item.hitCount]);
+    lines.push(['CANTES'],['JUGADOR','POSICIÓN','JUGADA','BOLILLA','PUNTOS','HORA']);
+    for (const item of round.announcements || []) lines.push([item.playerName,item.positionLabel,item.label,item.ball,item.points,formatLocalTimeMs(item.createdAt)]);
+    lines.push([]);
+  }
+  if (report.tiebreak?.enabled) {
+    lines.push(['DESEMPATE FINAL']);
+    lines.push(['Serie',report.tiebreak.series],['Mínimo de bolillas',report.tiebreak.minimumBalls||CHAMPIONSHIP_SCORE.tiebreakMinimumBalls],['Bolillas de la serie final',report.tiebreak.drawnCount||0],['Muerte súbita',report.tiebreak.suddenDeath?'SÍ':'NO']);
+    lines.push(['JUGADOR','POSICIÓN','ACIERTOS','GANADOR']);
+    for (const item of report.tiebreak.contenders || []) lines.push([item.playerName,`C${item.slot}`,item.hits,String(item.positionId)===String(report.championPositionId)?'SÍ':'']);
+    for (const old of report.tiebreak.history || []) {
+      lines.push([`SERIE ${old.series} SIN RESOLVER`,`${old.balls} bolillas`]);
+      for (const item of old.result || []) lines.push([item.playerName,`C${item.slot}`,item.hits,'']);
+    }
     lines.push([]);
   }
   lines.push(['DETALLE DE POSICIONES Y MATRICES']);
-  lines.push(['JUGADOR','POSICIÓN','RONDA','PUNTOS','NÚMEROS','LÍNEA BOLILLA','2ª LÍNEA BOLILLA','BINGO BOLILLA','REACCIÓN','MATRIZ']);
+  lines.push(['JUGADOR','POSICIÓN','RONDA','PUNTOS','NÚMEROS','LÍNEA BOLILLA','2ª LÍNEA BOLILLA','BINGO BOLILLA','BONUS 1ER BINGO','MATRIZ']);
   for (const position of report.positions) {
     for (const round of position.rounds || []) {
       const matrix=(round.grid||[]).map(row=>(row||[]).map(v=>v==null?'-':v).join(' ')).join(' / ');
-      lines.push([position.playerName,position.label,round.round,round.points,round.hitCount,round.lineBall||'',round.secondLineBall||'',round.bingoBall||'',round.reactionBonus||0,matrix]);
+      lines.push([position.playerName,position.label,round.round,round.points,round.hitCount,round.lineBall||'',round.secondLineBall||'',round.bingoBall||'',round.firstBingoBonus||0,matrix]);
     }
   }
   const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -8597,7 +8691,7 @@ function buildChampionshipActaPdf() {
     const {commands,canvas}=makePage('CAMPEONATO LA GORDA - ACTA COMPLETA',`${report.roomName||'Sala pública'} · Finalizado ${formatLocalTimestamp(report.endedAt)}`); const{rect,text}=canvas;
     const champion=report.leaderboard?.[0];
     rect(24,108,794,86,'#FFF9E9',colors.gold,1.3);
-    text(report.officialTie?'CAMPEONES OFICIALES':'CAMPEÓN OFICIAL',421,118,10,{bold:true,color:colors.wine,align:'center'});
+    text('CAMPEÓN OFICIAL',421,118,10,{bold:true,color:colors.wine,align:'center'});
     text(champion?`${champion.playerName} · ${champion.label}`:'Sin campeón',421,140,25,{bold:true,color:colors.wine2,align:'center',maxWidth:720});
     text(champion?`${champion.points} PUNTOS`:'',421,174,14,{bold:true,color:colors.gold,align:'center'});
     const meta=[['JUGADORES',report.totals.players],['POSICIONES',report.totals.positions],['RONDAS',report.completedRounds],['DURACIÓN',formatDuration(report.startedAt,report.endedAt)]];
@@ -8606,7 +8700,7 @@ function buildChampionshipActaPdf() {
     let y=306; for(const item of (report.leaderboard||[]).slice(0,3)){y=row(canvas,y,[`${item.rank}º`,`${item.playerName} · ${item.label}`,`${item.points} pts`,`${item.bingos} Bingo${item.bingos===1?'':'s'}`],[52,390,130,222],{height:28,size:9,bold:item.rank===1,fill:item.rank===1?'#FFF4D6':colors.white});}
     text('RESUMEN POR RONDA',24,394,10,{bold:true,color:colors.wine});
     y=412; for(const r of (report.rounds||[]).slice(0,7)){const leader=r.roundLeader?`${r.roundLeader.playerName} · ${r.roundLeader.label} (+${r.roundLeader.roundPoints})`:'-';y=row(canvas,y,[`R${r.round}`,`${r.drawCount} bolillas`,`1er Bingo: ${r.firstBingoDrawnCount||'-'}`,leader],[55,110,145,484],{height:18,size:6.5});}
-    text(`SHA-256 ACTA FINAL: ${report.finalActaSha256||'PENDIENTE'}`,24,552,6.2,{color:colors.muted,maxWidth:760}); footer(canvas,pages.length+1); pages.push(commands.join('\n'));
+    text(`SELLO SHA-256 DEL RESULTADO: ${report.finalActaSha256||'PENDIENTE'}`,24,552,6.2,{color:colors.muted,maxWidth:760}); footer(canvas,pages.length+1); pages.push(commands.join('\n'));
   }
   // Página por ronda
   for(const round of report.rounds||[]){
@@ -8625,8 +8719,8 @@ function buildChampionshipActaPdf() {
   const standings=report.leaderboard||[], perPage=22;
   for(let offset=0;offset<standings.length;offset+=perPage){
     const {commands,canvas}=makePage('CLASIFICACIÓN FINAL',`${offset+1}-${Math.min(offset+perPage,standings.length)} de ${standings.length} posiciones`); let y=108;
-    y=row(canvas,y,['#','JUGADOR / POSICIÓN','PUNTOS','BINGOS','2ª LÍNEAS','LÍNEAS','NÚMEROS','MEJOR BINGO'],[38,292,80,70,82,70,78,84],{height:20,size:6.4,bold:true,fill:colors.pale});
-    for(const item of standings.slice(offset,offset+perPage)){y=row(canvas,y,[item.rank,`${item.playerName} · ${item.label}`,item.points,item.bingos,item.secondLines,item.lines,item.hits,item.bestBingo||'-'],[38,292,80,70,82,70,78,84],{height:19,size:6.4,fill:item.rank===1?'#FFF4D6':colors.white});}
+    y=row(canvas,y,['#','JUGADOR / POSICIÓN','PUNTOS','BINGOS','2ª LÍNEAS','LÍNEAS','NÚMEROS','ESTADO'],[38,292,80,70,82,70,78,84],{height:20,size:6.4,bold:true,fill:colors.pale});
+    for(const item of standings.slice(offset,offset+perPage)){y=row(canvas,y,[item.rank,`${item.playerName} · ${item.label}`,item.points,item.bingos,item.secondLines,item.lines,item.hits,item.eligible?'ELEGIBLE':'SIN BINGO'],[38,292,80,70,82,70,78,84],{height:19,size:6.4,fill:item.rank===1?'#FFF4D6':colors.white});}
     footer(canvas,pages.length+1); pages.push(commands.join('\n'));
   }
   // Matriz completa de puntos por ronda, en bloques de hasta 7 rondas
@@ -8645,9 +8739,9 @@ function buildChampionshipActaPdf() {
   {
     const {commands,canvas}=makePage('AUDITORÍA Y TRAZABILIDAD','Las matrices completas y timestamps quedan además incluidos en ACTA JSON/CSV del creador.');const{rect,text}=canvas;
     text('REGLAS COMPETITIVAS APLICADAS',24,110,9,{bold:true,color:colors.wine});
-    const rules=[`Cada número acertado suma 1 punto.`,`Primera Línea, Segunda Línea y Bingo puntúan según la bolilla matemática.`,`Primer Bingo matemático + 5 bolillas, limitado por el bolillero.`,`Cantes manuales no bloquean a otros cartones ni alteran la puntuación matemática.`,`Bonus de reacción Bingo: ${report.reactionBonusEnabled?'ACTIVO (+3/+2/+1)':'INACTIVO'}.`,`Matrices nuevas asignadas al azar por el servidor en cada ronda.`];
+    const rules=[`Cada número acertado suma +1 punto.`,`Primera Línea +10 · Segunda Línea +20 · Bingo +60.`,`El primer Bingo matemático de la ronda suma +15 y activa 5 bolillas adicionales.`,`Para ser Campeón es obligatorio haber conseguido al menos un Bingo.`,`Empate en el primer puesto: cartones nuevos, 10 bolillas y luego muerte súbita si persiste.`,`Los cantes son sociales: no alteran la puntuación ni dependen de la velocidad de conexión.`];
     let y=136;for(const line of rules){rect(24,y,794,30,colors.white,colors.line,.5);text('-',35,y+7,10,{bold:true,color:colors.gold});text(line,52,y+8,8,{color:colors.ink,maxWidth:750});y+=36;}
-    text('INTEGRIDAD DEL CIERRE',24,376,9,{bold:true,color:colors.wine});rect(24,400,794,92,'#FFF9E9',colors.gold,.8);text('SHA-256 del acta competitiva congelada',38,416,7,{bold:true,color:colors.muted});text(report.finalActaSha256||'No disponible',38,437,9,{bold:true,color:colors.wine2,maxWidth:760});text(`Finalizado: ${formatLocalTimestamp(report.finalizedAt||report.endedAt)}`,38,462,7,{color:colors.muted});text('Este sello identifica el estado final de rondas, puntos, clasificación y matrices almacenadas por el servidor.',38,478,6.4,{color:colors.muted,maxWidth:750});
+    text('INTEGRIDAD DEL CIERRE',24,376,9,{bold:true,color:colors.wine});rect(24,400,794,92,'#FFF9E9',colors.gold,.8);text('Sello SHA-256 del resultado competitivo congelado',38,416,7,{bold:true,color:colors.muted});text(report.finalActaSha256||'No disponible',38,437,9,{bold:true,color:colors.wine2,maxWidth:760});text(`Finalizado: ${formatLocalTimestamp(report.finalizedAt||report.endedAt)}`,38,462,7,{color:colors.muted});text('Este sello identifica el estado final de rondas, puntos, clasificación y matrices almacenadas por el servidor.',38,478,6.4,{color:colors.muted,maxWidth:750});
     footer(canvas,pages.length+1);pages.push(commands.join('\n'));
   }
   return pdfDocumentFromStreams(pages,PAGE_W,PAGE_H,logo,`CHAMPIONSHIP:${report.roomCode};SHA256:${report.finalActaSha256||''}`);
@@ -9590,7 +9684,6 @@ function publicRoomPayload(record) {
     mode: record.mode,
     gameKind: record.gameKind === 'championship' ? 'championship' : 'normal',
     championshipRounds: record.gameKind === 'championship' ? (CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(record.championshipRounds)) ? Number(record.championshipRounds) : CHAMPIONSHIP_DEFAULT_ROUNDS) : 0,
-    championshipReactionBonus: record.gameKind === 'championship' && Boolean(record.championshipReactionBonus),
     championship,
     maxPlayers: record.maxPlayers,
     maxCardsPerPlayer: record.maxCardsPerPlayer,
@@ -9712,8 +9805,7 @@ function openCommunityPublicRoom(record, { autoJoinCreator = false, deviceId = '
       communityPublicId: record.id,
       communityGameKind: record.gameKind === 'championship' ? 'championship' : 'normal',
       championshipRounds: record.gameKind === 'championship' ? record.championshipRounds : 0,
-      championshipReactionBonus: record.gameKind === 'championship' && Boolean(record.championshipReactionBonus),
-      communityStartMode: record.startMode,
+        communityStartMode: record.startMode,
       communityAccessType: record.accessType,
       scheduledAt: record.startsAt || '',
       maxOpenPlayers: record.maxPlayers
@@ -9759,7 +9851,6 @@ function createCommunityPublicRoom(payload = {}) {
     if (!CHAMPIONSHIP_ROUND_OPTIONS.includes(requestedRounds)) throw new Error('Elegí 3, 5 o 7 rondas para el Campeonato.');
     championshipRounds = requestedRounds;
   }
-  const championshipReactionBonus = gameKind === 'championship' && payload.championshipReactionBonus === true;
   const linePrizeCount = gameKind === 'championship' && mode === 90 ? 2 : (mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1);
   const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};
   const rules = gameKind === 'championship' ? championshipRulesFor(mode) : (mode === 90
@@ -9783,7 +9874,7 @@ function createCommunityPublicRoom(payload = {}) {
   const creatorCodeHash = crypto.createHash('sha256').update(creatorCode).digest('hex');
   const record = normalizeCommunityPublicRoom({
     id: randomId('public'), name:roomName, creatorName, creatorCodeHash, accessType, accessKeyHash, accessKeyAdmin:accessKey, startMode, startsAt,
-    mode, gameKind, championshipRounds, championshipReactionBonus, maxPlayers, maxCardsPerPlayer, autoSeconds,
+    mode, gameKind, championshipRounds, maxPlayers, maxCardsPerPlayer, autoSeconds,
     claimMode: gameKind === 'championship' ? 'manual' : (payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual'), linePrizeCount, rules,
     status:'scheduled', createdAt:nowIso(), updatedAt:nowIso()
   });
@@ -9820,6 +9911,30 @@ function verifyCommunityCreatorCode(record, creatorCode) {
   return code;
 }
 
+function interruptChampionship(reason = 'creator_cancelled') {
+  const champ = state.championship;
+  if (!champ?.enabled || !state.startedAt || champ.stage === 'finished' || champ.stage === 'interrupted') return false;
+  clearAutomaticDrawTimer();
+  clearWorkspaceTransitionTimer();
+  champ.stage = 'interrupted';
+  champ.interruptedAt = nowIso();
+  champ.interruptedRound = Number(champ.currentRound) || Number(state.round) || 1;
+  champ.interruptedDrawCount = Array.isArray(state.game?.drawn) ? state.game.drawn.length : 0;
+  champ.interruptionReason = String(reason || 'creator_cancelled').slice(0, 80);
+  champ.interruptionLeaderboard = deepCopy(championshipLeaderboard());
+  champ.championPositionId = '';
+  champ.finalizedAt = null;
+  champ.finalActaSha256 = '';
+  state.closedReason = 'championship_interrupted';
+  logEvent('championship_interrupted', {
+    round: champ.interruptedRound,
+    completedRounds: Number(champ.completedRounds) || 0,
+    drawCount: champ.interruptedDrawCount,
+    reason: champ.interruptionReason
+  });
+  return true;
+}
+
 function cancelCommunityPublicRoom(payload = {}) {
   const publicId = String(payload.publicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0,100);
   const record = communityPublicRoomById(publicId);
@@ -9830,7 +9945,8 @@ function cancelCommunityPublicRoom(payload = {}) {
     return workspaceContext.run(workspace, () => {
       if (state.status === 'finished') throw new Error('Esta partida ya terminó.');
       const wasStarted = Boolean(state.startedAt) || state.status !== 'waiting';
-      state.closedReason = 'creator_cancelled';
+      const championshipInterrupted = wasStarted && championshipRoomEnabled() ? interruptChampionship('creator_cancelled') : false;
+      if (!championshipInterrupted) state.closedReason = 'creator_cancelled';
       state.roomSettings.joinOpen = false;
       logEvent('community_public_room_cancelled_by_creator', { publicRoomId:record.id, wasStarted });
       closeRoom();
@@ -9838,7 +9954,7 @@ function cancelCommunityPublicRoom(payload = {}) {
       record.endedAt = state.endedAt || nowIso();
       record.updatedAt = nowIso();
       savePlatform();
-      return { ok:true, publicId:record.id, status:'cancelled', wasStarted, message:wasStarted?'Partida finalizada.':'Sala cancelada.' };
+      return { ok:true, publicId:record.id, status:'cancelled', wasStarted, closedReason:state.closedReason, message:championshipInterrupted?'Campeonato interrumpido. No se declaró campeón oficial.':wasStarted?'Partida finalizada.':'Sala cancelada.' };
     });
   }
   record.status = 'cancelled';
@@ -9870,7 +9986,7 @@ function championshipOrganizerFromHistorical(record) {
   return {
     token:'', organizer:true, roomCode:record.roomCode || report.roomCode || '', publicId:record.id, status:'finished',
     name:record.name, mode:record.mode, gameKind:'championship', championshipRounds:Number(report.totalRounds || record.championshipRounds)||0,
-    championshipReactionBonus:Boolean(record.championshipReactionBonus), claimMode:'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
+    claimMode:'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
     playerCount:playerNames.size, cardCount:Number(report.totalPositions)||leaderboard.length, pendingSelectionPlayers:0, players:[], canStart:false, joinOpen:false,
     enterUrl:communityPublicShareUrl(record.id), shareUrl:communityPublicShareUrl(record.id), transmissionUrl:'',
     championship:{
@@ -9925,7 +10041,7 @@ function recoverCommunityCreator(payload = {}) {
     if (record.startMode === 'scheduled' && record.startsAt && record.status === 'scheduled') {
       return {
         token:'', pending:true, organizer:true, publicId:record.id, roomCode:'', status:'scheduled',
-        name:record.name, mode:record.mode, gameKind:record.gameKind||'normal', championshipRounds:Number(record.championshipRounds)||0, championshipReactionBonus:Boolean(record.championshipReactionBonus), claimMode:record.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
+        name:record.name, mode:record.mode, gameKind:record.gameKind||'normal', championshipRounds:Number(record.championshipRounds)||0, claimMode:record.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
         playerCount:0, cardCount:0, pendingSelectionPlayers:0, players:[], canStart:false, joinOpen:false,
         shareUrl:communityPublicShareUrl(record.id), transmissionUrl:''
       };
@@ -9946,7 +10062,7 @@ function recoverCommunityCreator(payload = {}) {
       }));
     return {
       token:'', organizer:true, roomCode:state.roomCode, publicId:record.id, status:state.status,
-      name:record.name, mode:record.mode, gameKind:record.gameKind||'normal', championshipRounds:Number(record.championshipRounds)||0, championshipReactionBonus:Boolean(record.championshipReactionBonus), championship:championshipPublicPayload(null), claimMode:state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
+      name:record.name, mode:record.mode, gameKind:record.gameKind||'normal', championshipRounds:Number(record.championshipRounds)||0, championship:championshipPublicPayload(null), claimMode:state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
       playerCount:summary.registeredPlayers, cardCount:summary.playingCards,
       pendingSelectionPlayers:players.filter(item => !item.ready).length, players,
       enterUrl:communityPublicShareUrl(record.id), shareUrl:communityPublicShareUrl(record.id),
@@ -10031,11 +10147,12 @@ function cancelCommunityRoomFromPlayer(player) {
   if (String(state.communityCreatorPlayerId || '') !== String(player?.id || '')) throw new Error('Solo quien creó la sala puede cancelarla.');
   if (!state.active || state.status === 'finished') throw new Error('Esta partida ya terminó.');
   const wasStarted = Boolean(state.startedAt) || state.status !== 'waiting';
-  state.closedReason = 'creator_cancelled';
+  const championshipInterrupted = wasStarted && championshipRoomEnabled() ? interruptChampionship('creator_cancelled') : false;
+  if (!championshipInterrupted) state.closedReason = 'creator_cancelled';
   state.roomSettings.joinOpen = false;
   logEvent('community_public_room_cancelled_by_creator', { publicRoomId:state.roomSettings?.communityPublicId || '', wasStarted });
   closeRoom();
-  return { active:false, closedReason:'creator_cancelled', returnToCommunity:true, cancelled:true, wasStarted };
+  return { active:false, closedReason:state.closedReason, returnToCommunity:true, cancelled:true, wasStarted, championshipInterrupted };
 }
 
 function processCommunityPublicRoomAutomation() {

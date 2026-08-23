@@ -46,6 +46,7 @@ const COMMUNITY_ROOM_RESERVATION_MS = Math.max(15 * 60 * 1000, Number(process.en
 const COMMUNITY_PUBLIC_OPEN_MS = Math.max(1_000, Number(process.env.BINGO_COMMUNITY_PUBLIC_OPEN_MS || 2 * 60 * 60 * 1000));
 const COMMUNITY_PUBLIC_MAX_AHEAD_MS = 36 * 60 * 60 * 1000;
 const COMMUNITY_PUBLIC_ESTIMATED_GAME_MS = 2 * 60 * 60 * 1000;
+const COMMUNITY_EMPTY_MANUAL_IDLE_MS = Math.max(TEST_MODE ? 200 : 60_000, Number(process.env.BINGO_COMMUNITY_EMPTY_IDLE_MS || 5 * 60 * 1000));
 const CHAMPIONSHIP_RESULTS_VISIBILITY_MS = Math.max(10 * 60_000, Number(process.env.BINGO_CHAMPIONSHIP_RESULTS_VISIBILITY_MS || 2 * 60 * 60_000));
 const CHAMPIONSHIP_ROUND_OPTIONS = [3, 5, 7];
 const CHAMPIONSHIP_PERSISTED_ROUNDS = CHAMPIONSHIP_ROUND_OPTIONS;
@@ -729,6 +730,7 @@ function normalizeCommunityPublicRoom(raw = {}) {
     accessType: raw.accessType === 'private' ? 'private' : 'public',
     accessKeyHash: /^[a-f0-9]{64}$/i.test(String(raw.accessKeyHash || '')) ? String(raw.accessKeyHash).toLowerCase() : '',
     accessKeyAdmin: raw.accessType === 'private' && raw.accessKeyAdmin ? normalizeCommunityRoomAccessKey(raw.accessKeyAdmin) : '',
+    inviteToken: /^invite_[a-f0-9]{24}$/i.test(String(raw.inviteToken || '')) ? String(raw.inviteToken) : '',
     roundNumber: Math.max(1, Math.round(Number(raw.roundNumber) || 1)),
     startMode: raw.startMode === 'scheduled' ? 'scheduled' : 'manual',
     startsAt: startsIso,
@@ -5540,6 +5542,9 @@ function createSimpleRoom(payload = {}) {
 
 function openJoinPlayer(payload = {}) {
   if (!state.active || !state.game || !['alpha','test'].includes(state.roomSettings?.roomType)) throw new Error('Este enlace no corresponde a una sala abierta.');
+  // Un ingreso real es actividad de la sala. En salas comunitarias manuales vacías,
+  // esta marca reinicia el plazo de limpieza antes de agregar al jugador.
+  currentWorkspace().lastActivityAt = Date.now();
   if (state.roomSettings?.roomOrigin === 'community' && state.roomSettings?.communityAccessType === 'private' && payload.communityAccessGranted !== true) throw new Error('Esta sala es privada. Ingresá desde su invitación y escribí la clave.');
   const deviceId = String(payload.deviceId || '').slice(0, 120);
   if (!deviceId) throw new Error('No se pudo identificar este dispositivo.');
@@ -9908,6 +9913,31 @@ function communityPublicShareUrl(id) {
   return `${base}/mesa/${encodeURIComponent(String(id || ''))}`;
 }
 
+function ensureCommunityRoomInviteToken(record) {
+  if (!record) return '';
+  const current = String(record.inviteToken || '').trim();
+  if (/^invite_[a-f0-9]{24}$/i.test(current)) return current;
+  record.inviteToken = randomId('invite');
+  record.updatedAt = nowIso();
+  savePlatform();
+  return record.inviteToken;
+}
+
+function communityRoomInviteTokenMatches(record, value) {
+  if (!record || record.accessType !== 'private') return false;
+  const expected = String(record.inviteToken || '').trim();
+  const supplied = String(value || '').trim();
+  if (!/^invite_[a-f0-9]{24}$/i.test(expected) || !/^invite_[a-f0-9]{24}$/i.test(supplied)) return false;
+  return safeEqual(expected, supplied);
+}
+
+function communityCreatorShareUrl(record) {
+  if (!record) return '';
+  if (record.accessType !== 'private') return communityPublicShareUrl(record.id);
+  const token = ensureCommunityRoomInviteToken(record);
+  return `${communityPublicShareUrl(record.id)}?acceso=${encodeURIComponent(token)}`;
+}
+
 function communityPublicRoomAvailability() {
   const community = platform.community ||= blankCommunity();
   const free = operationalWorkspaces().filter(workspace => !workspace.state?.active || workspace.state.status === 'closed').length;
@@ -10167,7 +10197,7 @@ function createCommunityPublicRoom(payload = {}) {
   const creatorCode = randomCode(7);
   const creatorCodeHash = crypto.createHash('sha256').update(creatorCode).digest('hex');
   const record = normalizeCommunityPublicRoom({
-    id: randomId('public'), name:roomName, creatorName, creatorCodeHash, accessType, accessKeyHash, accessKeyAdmin:accessKey, startMode, startsAt,
+    id: randomId('public'), name:roomName, creatorName, creatorCodeHash, accessType, accessKeyHash, accessKeyAdmin:accessKey, inviteToken:randomId('invite'), startMode, startsAt,
     mode, gameKind, championshipRounds, maxPlayers, maxCardsPerPlayer, autoSeconds,
     claimMode: ['championship','flash'].includes(gameKind) ? 'manual' : (payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual'), linePrizeCount, rules,
     status:'scheduled', createdAt:nowIso(), updatedAt:nowIso()
@@ -10188,8 +10218,11 @@ function createCommunityPublicRoom(payload = {}) {
     }
   } else savePlatform();
   const publicPayload = publicRoomPayload(record);
+  const creatorShareUrl = communityCreatorShareUrl(record);
   return {
     ...publicPayload,
+    shareUrl:creatorShareUrl,
+    enterUrl:creatorShareUrl,
     creatorCode,
     creatorCodeHint:'Guardalo para recuperar tu sala desde otro dispositivo.',
     enterNow:Boolean(record.roomCode),
@@ -10282,7 +10315,7 @@ function championshipOrganizerFromHistorical(record) {
     name:record.name, mode:record.mode, gameKind:'championship', championshipRounds:Number(report.totalRounds || record.championshipRounds)||0,
     claimMode:'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
     playerCount:playerNames.size, cardCount:Number(report.totalPositions)||leaderboard.length, pendingSelectionPlayers:0, players:[], canStart:false, joinOpen:false,
-    enterUrl:communityPublicShareUrl(record.id), shareUrl:communityPublicShareUrl(record.id), transmissionUrl:'',
+    enterUrl:communityCreatorShareUrl(record), shareUrl:communityCreatorShareUrl(record), transmissionUrl:'',
     championship:{
       enabled:true, stage:'finished', finished:true, currentRound:Number(report.totalRounds)||Number(record.championshipRounds)||0,
       totalRounds:Number(report.totalRounds)||Number(record.championshipRounds)||0, completedRounds:Number(report.totalRounds)||0,
@@ -10314,7 +10347,7 @@ function flashOrganizerFromHistorical(record) {
     token:'', organizer:true, roomCode:record.roomCode || '', publicId:record.id, status:'finished',
     name:record.name, mode:record.mode, gameKind:'flash', championshipRounds:0, claimMode:'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
     playerCount:leaderboard.length, cardCount:leaderboard.length, pendingSelectionPlayers:0, players:[], canStart:false, joinOpen:false,
-    enterUrl:communityPublicShareUrl(record.id), shareUrl:communityPublicShareUrl(record.id), transmissionUrl:'',
+    enterUrl:communityCreatorShareUrl(record), shareUrl:communityCreatorShareUrl(record), transmissionUrl:'',
     flash:{ ...flash, enabled:true, finished:true, stage:'finished', leaderboard:leaderboard.slice(0,10), fullLeaderboard:leaderboard },
     actaAvailable:false
   };
@@ -10357,13 +10390,17 @@ function recoverCommunityCreator(payload = {}) {
   const record = publicId ? communityPublicRoomById(publicId) : communityPublicRooms().find(item => String(item.roomCode || '').toUpperCase() === roomCode);
   verifyCommunityCreatorCode(record, payload.creatorCode);
   const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
+  // La vista del organizador consulta creator-state cada 5 s mientras está abierta.
+  // Una consulta autenticada demuestra actividad real del creador y mantiene viva
+  // una sala manual vacía. Si cierra esa vista, deja de renovar esta marca.
+  if (workspace?.state?.active) workspace.lastActivityAt = Date.now();
   if (!workspace?.state?.active) {
     if (record.startMode === 'scheduled' && record.startsAt && record.status === 'scheduled') {
       return {
         token:'', pending:true, organizer:true, publicId:record.id, roomCode:'', status:'scheduled',
         name:record.name, mode:record.mode, gameKind:record.gameKind||'normal', championshipRounds:Number(record.championshipRounds)||0, claimMode:record.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
         playerCount:0, cardCount:0, pendingSelectionPlayers:0, players:[], canStart:false, joinOpen:false,
-        shareUrl:communityPublicShareUrl(record.id), transmissionUrl:''
+        shareUrl:communityCreatorShareUrl(record), transmissionUrl:''
       };
     }
     const historical = championshipOrganizerFromHistorical(record);
@@ -10387,7 +10424,7 @@ function recoverCommunityCreator(payload = {}) {
       name:record.name, mode:record.mode, gameKind:record.gameKind||'normal', championshipRounds:Number(record.championshipRounds)||0, championship:championshipPublicPayload(null), flash:flashPublicPayload(null), claimMode:state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
       playerCount:summary.registeredPlayers, cardCount:summary.playingCards,
       pendingSelectionPlayers:players.filter(item => !item.ready).length, players,
-      enterUrl:communityPublicShareUrl(record.id), shareUrl:communityPublicShareUrl(record.id),
+      enterUrl:communityCreatorShareUrl(record), shareUrl:communityCreatorShareUrl(record),
       transmissionUrl:shortBroadcastUrlFor(), joinOpen:Boolean(state.status === 'waiting' && state.roomSettings?.joinOpen),
       canStart:state.status === 'waiting' && state.roomSettings?.communityStartMode === 'manual' && summary.registeredPlayers >= 2,
       actaAvailable:Boolean(championshipRoomEnabled() && state.status === 'finished')
@@ -10638,7 +10675,7 @@ function accessCommunityRoom(req, res, payload = {}) {
   const publicId = String(payload.publicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0,100);
   const record = communityPublicRoomById(publicId);
   if (!record || ['finished','cancelled'].includes(record.status)) throw new Error('Esta sala ya no está disponible.');
-  if (record.accessType === 'private') verifyCommunityRoomAccessKey(record, payload.accessKey);
+  if (record.accessType === 'private' && !reqMayAccessPrivateCommunityRoom(req, record)) verifyCommunityRoomAccessKey(record, payload.accessKey);
   const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
   if (!workspace?.state?.active || String(workspace.state.roomSettings?.communityPublicId || '') !== record.id) throw new Error(record.status === 'scheduled' ? 'La sala todavía no abrió.' : 'Esta sala ya no está disponible.');
   const grant = createCommunityRoomAccessGrant(record);
@@ -10762,6 +10799,20 @@ function maybeCloseFinishedCommunityRoom() {
   return true;
 }
 
+function maybeCloseInactiveEmptyCommunityRoom(workspace = currentWorkspace()) {
+  if (!state.active || state.status !== 'waiting') return false;
+  if (state.roomSettings?.roomOrigin !== 'community' || state.roomSettings?.communityStartMode !== 'manual') return false;
+  if (registrationSummaryPayload().registeredPlayers > 0) return false;
+  const lastActivityAt = Number(workspace?.lastActivityAt || 0);
+  if (!lastActivityAt || Date.now() - lastActivityAt < COMMUNITY_EMPTY_MANUAL_IDLE_MS) return false;
+  const publicId = String(state.roomSettings?.communityPublicId || '');
+  state.closedReason = 'community_empty_inactive_timeout';
+  state.roomSettings.joinOpen = false;
+  logEvent('community_empty_room_inactive_timeout', { publicRoomId:publicId, idleMs:Date.now() - lastActivityAt, thresholdMs:COMMUNITY_EMPTY_MANUAL_IDLE_MS });
+  closeRoom();
+  return true;
+}
+
 function createCommunityPrivateRoom(payload = {}) {
   const community = platform.community ||= blankCommunity();
   const availability = communityPrivateRoomAvailability();
@@ -10840,13 +10891,15 @@ function createCommunityHostSession(payload = {}) {
   };
 }
 
-function communityStatePayload(visitorId = '') {
+function communityStatePayload(visitorId = '', req = null) {
   const id = String(visitorId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
   if (id) communityVisitors.set(id, Date.now());
   pruneCommunityVisitors();
   const community = platform.community ||= blankCommunity();
+  const roomGrant = req ? communityRoomGrantFromReq(req) : null;
   return {
     now: nowIso(),
+    privateAccessPublicId: roomGrant?.publicId || '',
     chatEnabled: community.chatEnabled !== false,
     maxLength: COMMUNITY_CHAT_MAX_LENGTH,
     messages: (community.messages || []).slice(-60).map(message => {
@@ -11717,7 +11770,7 @@ async function handleApi(req, res, url) {
       catch(error){ const message=String(error?.message||'No se pudo abrir la pantalla del evento.'); return sendJson(res,message.includes('no válido')?401:404,{error:message}); }
     }
     if (url.pathname === '/api/tv-screen/state' && req.method === 'GET') return sendJson(res, 200, tvScreenPayload());
-    if (url.pathname === '/api/community/state' && req.method === 'GET') return sendJson(res, 200, communityStatePayload(url.searchParams.get('visitorId')));
+    if (url.pathname === '/api/community/state' && req.method === 'GET') return sendJson(res, 200, communityStatePayload(url.searchParams.get('visitorId'), req));
     if (url.pathname === '/api/community/resume' && req.method === 'GET') {
       const resume = activePlayerResume(req);
       return sendJson(res, 200, resume ? { resume:true, url:'/jugar', status:resume.status, roomCode:resume.roomCode } : { resume:false });
@@ -12412,6 +12465,26 @@ const server = http.createServer(async (req, res) => {
     const record = communityPublicRoomById(publicId);
     if (!record) { res.writeHead(303, { Location:'/comunidad', 'Cache-Control':'no-store' }); return res.end(); }
     if (['finished','cancelled'].includes(record.status)) return serveCommunityEndedRoomPage(res, record);
+
+    const suppliedInvite = String(url.searchParams.get('acceso') || '').trim();
+    let privateInviteGranted = false;
+    if (record.accessType === 'private' && suppliedInvite) {
+      if (!communityRoomInviteTokenMatches(record, suppliedInvite)) {
+        res.writeHead(303, { Location:`/comunidad?mesa=${encodeURIComponent(record.id)}&acceso=invalido`, 'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer' });
+        return res.end();
+      }
+      const grant = createCommunityRoomAccessGrant(record);
+      setCommunityRoomAccessCookie(req, res, grant);
+      privateInviteGranted = true;
+    }
+
+    const workspace = (record.workspaceId && workspaces.get(record.workspaceId)) || (record.roomCode ? findWorkspaceByRoomCode(record.roomCode) : null);
+    const activeRoom = workspace?.state?.active && String(workspace.state.roomSettings?.communityPublicId || '') === String(record.id);
+    if (activeRoom && record.roomCode && (record.accessType !== 'private' || privateInviteGranted || reqMayAccessPrivateCommunityRoom(req, record))) {
+      res.writeHead(303, { Location:`/jugador?sala=${encodeURIComponent(record.roomCode)}&directo=1`, 'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer' });
+      return res.end();
+    }
+
     res.writeHead(303, { Location:`/comunidad?mesa=${encodeURIComponent(record.id)}`, 'Cache-Control':'no-store', 'Referrer-Policy':'no-referrer' });
     return res.end();
   }
@@ -12537,6 +12610,8 @@ setInterval(() => {
       catch (error) { console.error(`No se pudo completar la asignación automática en ${workspace.id}:`, error.message); }
       try { maybeCloseFinishedCommunityRoom(); }
       catch (error) { console.error(`No se pudo cerrar la sala comunitaria finalizada en ${workspace.id}:`, error.message); }
+      try { maybeCloseInactiveEmptyCommunityRoom(workspace); }
+      catch (error) { console.error(`No se pudo limpiar la sala comunitaria vacía en ${workspace.id}:`, error.message); }
       if (workspace.id === 'owner') {
         try { processCommunityScheduleAutomation(); }
         catch (error) { console.error(`No se pudo procesar la agenda automática:`, error.message); }

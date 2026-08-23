@@ -1,0 +1,26 @@
+EL BINGO DE LA GORDA — RESPALDO COMPLETO V9.2.6
+Fecha: 2026-08-23
+
+ESTADO
+Respaldo completo acumulativo del proyecto hasta V9.2.6.
+
+INCLUYE
+- V9.2.4: jugadores inscriptos no se descuentan por desconexión + Cartones al azar.
+- V9.2.5: cierre de salas comunitarias manuales vacías tras 5 minutos sin actividad.
+- V9.2.6: links directos de mesas públicas y links privados con credencial de invitado integrada.
+
+LINKS V9.2.6
+- Pública: el link lleva al flujo de ingreso de esa mesa cuando está activa.
+- Privada: el link del creador concede acceso de invitado a esa sala sin pedir la clave manual.
+- El token de invitado no es la clave humana y no es el código de creador.
+- El lobby público no expone el token privado.
+- El token no otorga permisos de titular.
+
+VALIDACIÓN
+- Sintaxis Node de server.js, js/community.js y la nueva prueba: OK.
+- Suite del proyecto: 65/65 pruebas validadas colectivamente.
+- Regresiones específicas V9.2.4, V9.2.5 y V9.2.6: OK.
+
+USO
+Este ZIP es autocontenido. No requiere instalar antes V9.2.5.
+Si se parte de V9.2.4 y sólo se quiere actualizar, usar el ZIP incremental V9.2.6.

@@ -1,0 +1,26 @@
+V9.2.5 — LIMPIEZA AUTOMÁTICA DE SALAS VACÍAS
+Fecha: 2026-08-23
+
+COMPORTAMIENTO
+El creador puede crear y administrar una sala comunitaria sin inscribirse como jugador. Por eso una sala manual en ESPERANDO puede mostrar 0/N jugadores legítimamente.
+
+Para evitar mesas fantasma, una sala manual que permanezca con cero jugadores y no reciba actividad durante 5 minutos se cierra automáticamente y desaparece del lobby activo de Comunidad.
+
+ACTIVIDAD QUE CONSERVA LA SALA
+- Consultas autenticadas del creador desde la vista VER MI SALA.
+- Ingreso real de jugadores y actividad posterior de jugadores.
+
+NO SE CONSIDERA VACÍA
+Un jugador inscripto sigue contando aunque se desconecte, cambie a WhatsApp, minimice o cierre la pestaña. Mientras no ejecute ABANDONAR SALA, la mesa conserva su inscripción y no entra en la limpieza de 0 jugadores.
+
+EXCLUSIONES
+- Salas programadas antes de su horario.
+- Partidas ya iniciadas.
+- Salas con uno o más jugadores inscriptos.
+
+ARCHIVOS PRINCIPALES MODIFICADOS
+- server.js
+- package.json
+- package-lock.json
+- README.md
+- tests/community-empty-idle-cleanup.js

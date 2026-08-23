@@ -1,3 +1,23 @@
+## V9.2.6 — Links directos a mesas públicas y privadas
+
+- El link compartido de una **mesa pública** abre directamente el ingreso de esa mesa; ya no deja al invitado solamente en Comunidad.
+- El link compartido por el creador de una **mesa privada** incluye una credencial de invitado segura: quien lo recibe entra directamente sin escribir la clave manualmente.
+- La credencial del link privado **no es el código de titular** y nunca concede permisos para iniciar, cancelar, finalizar ni administrar la sala.
+- La clave humana de la sala privada no se expone dentro del link.
+- El lobby público no publica la credencial privada: el enlace directo con acceso sólo se obtiene desde la sesión autenticada del creador.
+- Si una invitación privada abre una sala todavía programada, el navegador conserva temporalmente el permiso de acceso; al habilitarse la mesa puede continuar sin volver a escribir la clave.
+- V9.2.6 es **acumulativa sobre V9.2.4**: también incluye la limpieza de salas manuales `0/N` tras 5 minutos sin actividad preparada en V9.2.5.
+- Nueva regresión automatizada: `tests/community-direct-room-links.js`.
+
+## V9.2.5 — Limpieza automática de salas vacías
+
+- Una sala de Comunidad creada en modo **manual** puede existir con `0 jugadores`: el creador sigue siendo organizador y no está obligado a jugar.
+- Si esa sala permanece con `0 jugadores` durante más de **5 minutos sin actividad**, el servidor la cierra automáticamente y deja de mostrarla en Comunidad.
+- La actividad autenticada del creador en **VER MI SALA** renueva el plazo; también lo reinician ingresos/movimientos reales de jugadores.
+- Si hay al menos un jugador inscripto, la regla de sala vacía no aplica, aunque esté desconectado: `1/30` sigue siendo `1/30`.
+- Las salas **programadas** no usan este cierre por inactividad antes de su horario, y una partida ya iniciada tampoco.
+- Nueva regresión automatizada: `tests/community-empty-idle-cleanup.js`.
+
 ## V9.2.4 — Inscriptos persistentes + Cartones al azar
 
 - La Comunidad muestra la cantidad de **jugadores inscriptos**, no la cantidad de conexiones SSE activas.

@@ -1,0 +1,20 @@
+EL BINGO DE LA GORDA — ACTUALIZACIÓN V9.2.5
+Fecha: 2026-08-23
+
+OBJETIVO
+Evitar salas comunitarias manuales vacías abandonadas sin obligar al creador a convertirse en jugador.
+
+REGLA
+- Una sala manual puede permanecer abierta con 0 jugadores mientras el creador la administra.
+- Si permanece en 0 jugadores durante más de 5 minutos sin actividad, el servidor la cierra automáticamente.
+- VER MI SALA mantiene viva la sala mientras el creador conserva abierta esa vista, mediante actividad autenticada.
+- Un ingreso real de jugador reinicia la actividad de la sala.
+- Con 1 o más jugadores inscriptos no se aplica el cierre por sala vacía, aunque estén desconectados.
+- Las salas programadas quedan excluidas de esta regla antes de su horario.
+- Una partida ya iniciada queda excluida de esta regla.
+
+PRUEBA NUEVA
+- tests/community-empty-idle-cleanup.js
+
+BASE
+Aplicar sobre V9.2.4 o utilizar el respaldo completo V9.2.5.

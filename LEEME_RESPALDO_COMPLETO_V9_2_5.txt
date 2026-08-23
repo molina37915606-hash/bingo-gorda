@@ -1,0 +1,14 @@
+EL BINGO DE LA GORDA — RESPALDO COMPLETO V9.2.5
+Fecha: 2026-08-23
+
+Este respaldo parte del V9.2.4 completo y agrega V9.2.5.
+
+V9.2.5 agrega limpieza automática de salas comunitarias manuales vacías:
+- el creador puede seguir siendo solo organizador;
+- 0 jugadores es válido mientras haya actividad;
+- después de 5 minutos con 0 jugadores y sin actividad, la sala se cierra automáticamente;
+- jugadores inscriptos desconectados siguen contando y no activan esta limpieza;
+- salas programadas y partidas iniciadas quedan excluidas.
+
+Incluye todas las versiones y pruebas acumuladas hasta V9.2.5.
+Verificar integridad con SHA256SUMS_RESPALDO.txt.

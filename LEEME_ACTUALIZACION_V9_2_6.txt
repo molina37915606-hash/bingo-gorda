@@ -1,0 +1,26 @@
+EL BINGO DE LA GORDA — ACTUALIZACIÓN V9.2.6
+Fecha: 2026-08-23
+
+OBJETIVO
+Hacer que los links compartidos de mesas lleven al invitado directamente a la sala correcta y que una invitación privada no obligue a escribir la clave manualmente.
+
+CAMBIOS
+- Mesa pública: /mesa/<id> redirige directamente al ingreso de esa mesa cuando está abierta.
+- Mesa privada: el creador comparte un link con una credencial de invitado propia de la sala.
+- La credencial privada se valida en servidor y crea únicamente permiso de invitado.
+- La clave humana no se incluye en la URL.
+- El código de creador/titular no se incluye en la URL y sigue siendo obligatorio para administrar.
+- El lobby público nunca expone el token de invitación privada.
+- Un link privado válido permite continuar sin volver a escribir la clave durante la sesión de acceso.
+- Links inválidos no habilitan la sala.
+
+ACUMULATIVA
+Esta actualización está preparada para aplicarse directamente sobre V9.2.4. Incluye también V9.2.5: cierre automático de salas manuales vacías (0 jugadores) luego de 5 minutos sin actividad.
+
+PRUEBAS
+- tests/community-registration-random-cards.js
+- tests/community-empty-idle-cleanup.js
+- tests/community-direct-room-links.js
+
+BASE
+Aplicar sobre V9.2.4 o utilizar el respaldo completo V9.2.6.

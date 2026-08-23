@@ -1,0 +1,30 @@
+V9.2.6 — LINKS DIRECTOS A MESAS
+Fecha: 2026-08-23
+
+MESA PÚBLICA
+El enlace estable de la mesa resuelve el identificador público y, si la sala está activa, dirige a /jugador?sala=<codigo>&directo=1. El usuario entra al flujo de nombre, cantidad y elección de cartones de esa mesa sin tener que buscarla en Comunidad.
+
+MESA PRIVADA
+El creador recibe un enlace con un token de invitación de invitado. Ese token no contiene la clave humana ni el código de creador. Al abrirlo, el servidor valida el token, concede acceso temporal sólo a esa sala y redirige al flujo normal del jugador.
+
+SEGURIDAD
+- El token privado no se publica en community/state ni en las tarjetas públicas del lobby.
+- Sólo el creador autenticado con su código puede recuperar/copiar el enlace privado directo desde la interfaz.
+- El token de invitación no sirve para creator-state ni para acciones de titular.
+- Un token inválido no crea cookie de acceso.
+- La clave privada tradicional sigue funcionando como alternativa para ingreso manual.
+
+SALAS PROGRAMADAS
+Si el link privado se abre antes de que la sala esté disponible, queda enfocada en Comunidad y el permiso temporal queda asociado a esa sala. El link original sigue siendo reutilizable mientras la sala exista.
+
+COMPATIBILIDAD
+V9.2.6 se entrega acumulativa sobre V9.2.4 e incorpora la limpieza de salas vacías de V9.2.5.
+
+ARCHIVOS PRINCIPALES MODIFICADOS
+- server.js
+- js/community.js
+- package.json
+- package-lock.json
+- README.md
+- tests/community-direct-room-links.js
+- documentación V9.2.6

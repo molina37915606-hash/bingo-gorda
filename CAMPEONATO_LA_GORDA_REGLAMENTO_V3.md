@@ -160,7 +160,7 @@ Si el Campeonato fue creado con bonus manual de reacción, el Bingo puede sumar:
 
 No existen puntos negativos por tardanza. Una sola acción de RECLAMAR registra todos los cartones de ese jugador que ya tengan Bingo matemático y aún no hayan sido reclamados.
 
-Si el Campeonato se configura sin bonus de reacción, todos los puntos se calculan automáticamente y el reclamo no altera la puntuación.
+Si el Campeonato se configura sin bonus de reacción, todos los puntos se calculan automáticamente y el canto sigue disponible para Primera Línea, Segunda Línea y Bingo, pero no agrega puntos adicionales.
 
 ### 10. Ventana final
 
@@ -204,13 +204,13 @@ Toda decisión competitiva se realiza en el servidor. El navegador no decide mat
 
 ## Aclaración V9.0.2 — Cantes de Campeonato
 
-En modalidad manual, **cada cartón competitivo puede cantar su propia Primera Línea, Segunda Línea y Bingo** cuando la jugada exista matemáticamente.
+En Campeonato, **cada cartón competitivo puede cantar manualmente su propia Primera Línea, Segunda Línea y Bingo** cuando la jugada exista matemáticamente, exista o no bonus de reacción.
 
 Un canto no adjudica ni cierra la categoría para los demás cartones. Que un cartón haya cantado Primera Línea no impide que todos los demás cartones canten su propia Primera Línea posteriormente. Lo mismo se aplica a Segunda Línea y Bingo.
 
 Los cantes de Línea y Segunda Línea no detienen el bolillero ni requieren verificación del administrador: el servidor conoce la matriz y la secuencia oficial, valida la jugada inmediatamente y registra el canto. La puntuación matemática ya obtenida por el cartón se conserva independientemente del momento del canto.
 
-El Bingo también es individual por cartón. En Campeonato manual, el canto de Bingo puede añadir únicamente el bonus de reacción reglamentario. Si un mismo jugador tiene más de un cartón con Bingo habilitado al mismo tiempo, un único toque puede registrar esos Bingos simultáneos para no generar una desventaja artificial por tener que realizar varias pulsaciones.
+El Bingo también es individual por cartón. El canto de Bingo puede añadir únicamente el bonus de reacción reglamentario cuando ese bonus esté habilitado. Si un mismo jugador tiene más de un cartón con Bingo habilitado al mismo tiempo, un único toque puede registrar esos Bingos simultáneos para no generar una desventaja artificial por tener que realizar varias pulsaciones.
 
 
 ---
@@ -224,3 +224,18 @@ Para Comunidad pública, los formatos oficiales disponibles son:
 - **7 rondas · Extendido:** mayor peso de la regularidad sin convertir la sala en una sesión demasiado larga.
 
 Todas las rondas continúan valiendo x1. No existe multiplicador especial en la final.
+
+
+---
+
+## Aclaración V9.0.4 — Canto manual y anuncio público
+
+La puntuación del Campeonato y el canto son mecanismos separados:
+
+- los puntos de números, Primera Línea, Segunda Línea y Bingo se asignan matemáticamente por servidor;
+- el botón **RECLAMAR** se habilita apenas una posición completa una jugada todavía no cantada;
+- desactivar el bonus de reacción no desactiva el botón;
+- Primera Línea, Segunda Línea y Bingo pueden cantarse una vez por posición y por ronda;
+- el canto no pausa el bolillero, no abre verificación y no cierra la jugada para otros cartones;
+- cada canto válido genera un anuncio visible para todos los jugadores de la sala y para las vistas públicas de TV/Transmisión;
+- el bonus de reacción, si está habilitado, sólo afecta al Bingo y nunca determina la validez del canto.

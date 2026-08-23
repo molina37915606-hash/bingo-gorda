@@ -4388,6 +4388,7 @@ function createChampionshipState(payload = {}, mode = 90) {
     stage: 'registration',
     reactionBonusEnabled: payload.championshipReactionBonus === true,
     positions: [],
+    announcements: [],
     firstBingoDrawnCount: null,
     closingDrawnCount: null,
     roundStartedAt: null,
@@ -4547,6 +4548,13 @@ function championshipPublicPayload(player = null) {
   const champ = state.championship;
   const all = championshipLeaderboard();
   const roundTop = championshipRoundLeaderboard();
+  const announcements = (Array.isArray(champ.announcements) ? champ.announcements : []).slice(-40).map(item => ({
+    id:String(item?.id||''), round:Number(item?.round)||Number(champ.currentRound)||1, type:String(item?.type||''),
+    label:String(item?.label||''), playerId:String(item?.playerId||''), playerName:String(item?.playerName||''),
+    positionId:String(item?.positionId||''), slot:Number(item?.slot)||1, positionLabel:String(item?.positionLabel||`C${Number(item?.slot)||1}`),
+    cardId:String(item?.cardId||''), cardNumber:item?.cardNumber??'', ball:Number(item?.ball)||0, points:Math.max(0,Number(item?.points)||0),
+    reactionBonus:Math.max(0,Number(item?.reactionBonus)||0), createdAt:String(item?.createdAt||'')
+  }));
   const own = player ? all.filter(item => item.playerId === player.id).map(item => {
     const position = (champ.positions || []).find(pos => pos.id === item.positionId);
     const entry = championshipCurrentEntry(position);
@@ -4580,6 +4588,7 @@ function championshipPublicPayload(player = null) {
     finished:champ.stage === 'finished',
     leaderboard:all.slice(0,10),
     roundLeaderboard:roundTop.slice(0,10),
+    announcements,
     leader,
     ownPositions:own,
     canNextRound:Boolean(player && champ.stage === 'results' && String(state.communityCreatorPlayerId||'') === String(player.id||'') && Number(champ.currentRound) < Number(champ.totalRounds)),
@@ -4755,9 +4764,6 @@ function processChampionshipAfterDraw() {
 function createChampionshipClaim(player, payload = {}) {
   if (!championshipRoomEnabled() || !state.game || !state.championship) throw new Error('Esta sala no es un Campeonato.');
   const champ = state.championship;
-  if (state.roomSettings?.claimMode === 'automatic_ties' || !champ.reactionBonusEnabled) {
-    throw new Error('Este Campeonato usa puntuación automática y no requiere reclamos manuales.');
-  }
   if (!['playing','finalizing'].includes(state.status) || !['playing','reaction'].includes(champ.stage)) {
     throw new Error('La ventana para cantar jugadas ya terminó.');
   }
@@ -4819,6 +4825,15 @@ function createChampionshipClaim(player, payload = {}) {
     claimed.push(claimOne(position, entry, type));
   }
 
+  champ.announcements = Array.isArray(champ.announcements) ? champ.announcements : [];
+  for (const item of claimed) {
+    champ.announcements.push({
+      id: randomId('champ_announce'), round:Number(champ.currentRound)||1, type:item.type, label:item.label,
+      playerId:player.id, playerName:playerDisplayName(player), positionId:item.positionId, slot:item.slot, positionLabel:`C${item.slot}`,
+      cardId:item.cardId, cardNumber:item.cardNumber, ball:item.ball, points:item.points, reactionBonus:item.reactionBonus, createdAt:now
+    });
+  }
+  if (champ.announcements.length > 120) champ.announcements = champ.announcements.slice(-120);
   logEvent('championship_claimed', {
     type, playerId:player.id, playerName:playerDisplayName(player),
     claimed:claimed.map(item => ({ type:item.type, positionId:item.positionId, slot:item.slot, cardId:item.cardId, cardNumber:item.cardNumber, ball:item.ball, points:item.points, reactionBonus:item.reactionBonus }))
@@ -7750,7 +7765,7 @@ function setAutoMark(player, payload) {
 }
 
 function automaticTieClaimsEnabled() {
-  return !currentWorkspace().isDemo && state.roomSettings?.claimMode === 'automatic_ties';
+  return !championshipRoomEnabled() && !currentWorkspace().isDemo && state.roomSettings?.claimMode === 'automatic_ties';
 }
 
 function automaticClaimValidity(type, analysis, lineDetail = null) {
@@ -9503,7 +9518,7 @@ function createCommunityPublicRoom(payload = {}) {
   const record = normalizeCommunityPublicRoom({
     id: randomId('public'), name:roomName, creatorName, creatorCodeHash, accessType, accessKeyHash, accessKeyAdmin:accessKey, startMode, startsAt,
     mode, gameKind, championshipRounds, championshipReactionBonus, maxPlayers, maxCardsPerPlayer, autoSeconds,
-    claimMode: gameKind === 'championship' ? (championshipReactionBonus ? 'manual' : 'automatic_ties') : (payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual'), linePrizeCount, rules,
+    claimMode: gameKind === 'championship' ? 'manual' : (payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual'), linePrizeCount, rules,
     status:'scheduled', createdAt:nowIso(), updatedAt:nowIso()
   });
   communityPublicRooms().push(record);

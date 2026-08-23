@@ -1,3 +1,12 @@
+## V9.0.4 — Cantes públicos del Campeonato
+
+- En Campeonato, **RECLAMAR** queda disponible para cantar Primera Línea, Segunda Línea y Bingo aunque el bonus de reacción esté desactivado.
+- La puntuación sigue siendo automática y matemática; el canto es una acción manual/social independiente.
+- Cada posición C1/C2/C3/C4 puede cantar cada jugada una vez por ronda; ningún canto cierra la categoría para los demás.
+- Cuando un jugador canta, el anuncio se distribuye a todos los jugadores conectados y también a Transmisión/TV.
+- Los cantes no pausan el bolillero ni disparan verificación administrativa.
+- El bonus +3/+2/+1 continúa aplicándose únicamente a Bingo cuando está habilitado.
+
 ## V9.0.3 — Campeonato dinámico
 
 - Campeonato público: 3 / 5 / 7 rondas.

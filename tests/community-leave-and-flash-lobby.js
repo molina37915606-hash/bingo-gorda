@@ -32,7 +32,18 @@ function playerTokenFromSetCookie(response){const header=response?.headers?.get(
   const first=await ok('/api/player/open-join',{method:'POST',body:{roomCode:transfer.roomCode,name:'Primero',cardCount:1,deviceId:'owner-transfer-first'}});
   const second=await ok('/api/player/open-join',{method:'POST',body:{roomCode:transfer.roomCode,name:'Segundo',cardCount:1,deviceId:'owner-transfer-second'}});
   let creatorState=await ok('/api/player/state',{playerToken:creatorToken});assert.equal(creatorState.communityRoom.isCreator,true);
-  const ownerLeft=await ok('/api/player/community-leave',{method:'POST',playerToken:creatorToken,body:{}});
+
+  // Desconectarse NO es abandonar: cortar la conexión de eventos no libera cupo ni transfiere titularidad.
+  const abortEvents=new AbortController();
+  const eventResponse=await fetch(base+`/api/events?role=player&token=${encodeURIComponent(creatorToken)}`,{signal:abortEvents.signal});
+  assert(eventResponse.ok,'La conexión SSE del jugador debe abrir');
+  const reader=eventResponse.body.getReader();await reader.read();abortEvents.abort();try{await reader.cancel()}catch{}
+  await sleep(80);
+  creatorState=await ok('/api/player/state',{playerToken:creatorToken});assert.equal(creatorState.communityRoom.isCreator,true,'Una desconexión no debe quitar la titularidad');
+  let disconnectLobby=await ok('/api/community/state?visitorId=disconnect-regression');let disconnectCard=disconnectLobby.publicRooms.find(x=>x.id===transfer.id);assert(disconnectCard);assert.equal(disconnectCard.playerCount,3,'Una desconexión no debe liberar el cupo');assert.equal(disconnectCard.creatorName,'Titular Original','Una desconexión no debe transferir titularidad');
+  const implicitLeave=await raw('/api/player/community-leave',{method:'POST',playerToken:creatorToken,body:{}});assert.equal(implicitLeave.r.status,400,'El endpoint no debe abandonar sin confirmación explícita');
+  creatorState=await ok('/api/player/state',{playerToken:creatorToken});assert.equal(creatorState.communityRoom.isCreator,true,'Un intento no explícito debe conservar la sesión');
+  const ownerLeft=await ok('/api/player/community-leave',{method:'POST',playerToken:creatorToken,body:{explicitLeave:true}});
   assert(ownerLeft.left&&ownerLeft.wasCreator&&ownerLeft.ownershipTransferred&&!ownerLeft.roomClosed,'Debe transferir titularidad sin cerrar la sala');
   assert.equal(ownerLeft.newOwner.playerName,'Primero','La titularidad debe ir al jugador restante que ingresó primero');
   let firstState=await ok('/api/player/state',{playerToken:first.token});assert.equal(firstState.communityRoom.isCreator,true,'El sucesor debe recibir permisos reales de creador');assert.equal(firstState.communityRoom.canStart,true,'El nuevo titular debe poder iniciar');
@@ -42,16 +53,16 @@ function playerTokenFromSetCookie(response){const header=response?.headers?.get(
 
   // La transferencia también debe encadenarse con la partida ya iniciada.
   await ok('/api/player/community-start',{method:'POST',playerToken:first.token,body:{}});await waitPlaying(first.token);
-  const firstOwnerLeft=await ok('/api/player/community-leave',{method:'POST',playerToken:first.token,body:{}});assert(firstOwnerLeft.wasCreator&&firstOwnerLeft.ownershipTransferred&&!firstOwnerLeft.roomClosed);assert.equal(firstOwnerLeft.newOwner.playerName,'Segundo');
+  const firstOwnerLeft=await ok('/api/player/community-leave',{method:'POST',playerToken:first.token,body:{explicitLeave:true}});assert(firstOwnerLeft.wasCreator&&firstOwnerLeft.ownershipTransferred&&!firstOwnerLeft.roomClosed);assert.equal(firstOwnerLeft.newOwner.playerName,'Segundo');
   secondState=await ok('/api/player/state',{playerToken:second.token});assert.equal(secondState.communityRoom.isCreator,true,'El segundo jugador debe recibir la titularidad durante la partida');
-  const secondOwnerLeft=await ok('/api/player/community-leave',{method:'POST',playerToken:second.token,body:{}});assert(secondOwnerLeft.wasCreator&&secondOwnerLeft.roomClosed,'Si ya no queda otro jugador activo, la mesa en curso debe cerrarse');
+  const secondOwnerLeft=await ok('/api/player/community-leave',{method:'POST',playerToken:second.token,body:{explicitLeave:true}});assert(secondOwnerLeft.wasCreator&&secondOwnerLeft.roomClosed,'Si ya no queda otro jugador activo, la mesa en curso debe cerrarse');
   ownerLobby=await ok('/api/community/state?visitorId=owner-transfer-lobby-closed');assert(!ownerLobby.publicRooms.some(x=>x.id===transfer.id),'La mesa cerrada por quedar vacía debe desaparecer del lobby');
 
   // Si el creador es la última persona de la mesa, abandonar cierra la sala.
   const empty=await ok('/api/community/public-room',{method:'POST',body:{visitorId:'owner-empty-host',name:'Solo Titular',roomName:'Sala Vacía',gameKind:'flash',mode:75,maxPlayers:4,maxCardsPerPlayer:1,autoSeconds:12,startMode:'manual',accessType:'private',accessKey:'VACIA77'}});
   const emptyJoin=await raw('/api/community/creator-join-player',{method:'POST',body:{publicId:empty.id,creatorCode:empty.creatorCode,deviceId:'owner-empty-creator',cardCount:1}});assert(emptyJoin.r.ok,JSON.stringify(emptyJoin.d));
   const emptyCreatorToken=playerTokenFromSetCookie(emptyJoin.r);assert(emptyCreatorToken);
-  const emptyLeft=await ok('/api/player/community-leave',{method:'POST',playerToken:emptyCreatorToken,body:{}});assert(emptyLeft.wasCreator&&emptyLeft.roomClosed&&!emptyLeft.ownershipTransferred,'Sin sucesor la sala debe cerrarse');
+  const emptyLeft=await ok('/api/player/community-leave',{method:'POST',playerToken:emptyCreatorToken,body:{explicitLeave:true}});assert(emptyLeft.wasCreator&&emptyLeft.roomClosed&&!emptyLeft.ownershipTransferred,'Sin sucesor la sala debe cerrarse');
   ownerLobby=await ok('/api/community/state?visitorId=owner-empty-lobby');assert(!ownerLobby.publicRooms.some(x=>x.id===empty.id),'La sala vacía cerrada debe desaparecer de Comunidad');
 
   // Pública normal: abandonar antes de empezar elimina al jugador y vuelve a liberar el cupo.
@@ -59,7 +70,7 @@ function playerTokenFromSetCookie(response){const header=response?.headers?.get(
   const n1=await ok('/api/player/open-join',{method:'POST',body:{roomCode:normal.roomCode,name:'Ana',cardCount:1,deviceId:'leave-normal-a'}});
   const n2=await ok('/api/player/open-join',{method:'POST',body:{roomCode:normal.roomCode,name:'Beto',cardCount:1,deviceId:'leave-normal-b'}});
   let lobby=await ok('/api/community/state?visitorId=leave-test');let normalCard=lobby.publicRooms.find(x=>x.id===normal.id);assert(normalCard);assert.equal(normalCard.playerCount,2);assert.equal(normalCard.joinOpen,false,'Sala llena debe cerrar ingreso');
-  const leftWaiting=await ok('/api/player/community-leave',{method:'POST',playerToken:n1.token,body:{}});assert(leftWaiting.left&&leftWaiting.removedBeforeStart,'Antes de iniciar debe retirarlo completamente');
+  const leftWaiting=await ok('/api/player/community-leave',{method:'POST',playerToken:n1.token,body:{explicitLeave:true}});assert(leftWaiting.left&&leftWaiting.removedBeforeStart,'Antes de iniciar debe retirarlo completamente');
   const oldSession=await raw('/api/player/state',{playerToken:n1.token});assert.equal(oldSession.r.status,401,'La sesión abandonada debe quedar inválida');
   lobby=await ok('/api/community/state?visitorId=leave-test');normalCard=lobby.publicRooms.find(x=>x.id===normal.id);assert(normalCard);assert.equal(normalCard.playerCount,1);assert.equal(normalCard.joinOpen,true,'Al liberarse un lugar de una sala llena debe reabrir ingreso');
   const replacement=await ok('/api/player/open-join',{method:'POST',body:{roomCode:normal.roomCode,name:'Carla',cardCount:1,deviceId:'leave-normal-c'}});assert(replacement.token);
@@ -68,7 +79,7 @@ function playerTokenFromSetCookie(response){const header=response?.headers?.get(
   const privateRoom=await ok('/api/community/public-room',{method:'POST',body:{visitorId:'leave-private-host',name:'Host Privado',roomName:'Salida Privada',gameKind:'normal',mode:75,maxPlayers:3,maxCardsPerPlayer:1,autoSeconds:12,startMode:'manual',accessType:'private',accessKey:'CLAVE77'}});
   const privateOrganizer=await ok('/api/community/creator-state',{method:'POST',body:{publicId:privateRoom.id,creatorCode:privateRoom.creatorCode}});
   const privatePlayer=await ok('/api/player/open-join',{method:'POST',body:{roomCode:privateOrganizer.roomCode,name:'Privado',cardCount:1,deviceId:'leave-private-p',communityAccessGranted:true}});
-  const leftPrivate=await ok('/api/player/community-leave',{method:'POST',playerToken:privatePlayer.token,body:{}});assert(leftPrivate.left&&leftPrivate.removedBeforeStart,'La salida debe funcionar también en sala privada');
+  const leftPrivate=await ok('/api/player/community-leave',{method:'POST',playerToken:privatePlayer.token,body:{explicitLeave:true}});assert(leftPrivate.left&&leftPrivate.removedBeforeStart,'La salida debe funcionar también en sala privada');
 
   // Flash iniciado: salir cierra sesión, pero no reescribe la competencia ya iniciada.
   const runningFlash=await ok('/api/community/public-room',{method:'POST',body:{visitorId:'leave-flash-running',name:'Host Flash',roomName:'Flash en curso',gameKind:'flash',mode:75,maxPlayers:4,maxCardsPerPlayer:4,autoSeconds:12,startMode:'manual',accessType:'public'}});
@@ -76,7 +87,7 @@ function playerTokenFromSetCookie(response){const header=response?.headers?.get(
   const fb=await ok('/api/player/open-join',{method:'POST',body:{roomCode:runningFlash.roomCode,name:'Flash B',cardCount:4,deviceId:'leave-flash-b'}});
   await ok('/api/community/creator-start',{method:'POST',body:{publicId:runningFlash.id,creatorCode:runningFlash.creatorCode}});await waitPlaying(fa.token);await selectRoom(admin,runningFlash.roomCode);
   let adminState=await ok('/api/admin/state',{token:admin});assert.equal(adminState.players.length,2);
-  const leftPlaying=await ok('/api/player/community-leave',{method:'POST',playerToken:fa.token,body:{}});assert(leftPlaying.left&&!leftPlaying.removedBeforeStart,'Con partida iniciada debe conservar el registro competitivo');
+  const leftPlaying=await ok('/api/player/community-leave',{method:'POST',playerToken:fa.token,body:{explicitLeave:true}});assert(leftPlaying.left&&!leftPlaying.removedBeforeStart,'Con partida iniciada debe conservar el registro competitivo');
   const leftPlayingSession=await raw('/api/player/state',{playerToken:fa.token});assert.equal(leftPlayingSession.r.status,401);
   adminState=await ok('/api/admin/state',{token:admin});assert.equal(adminState.players.length,2,'Salir en juego no debe borrar cartón/resultado');assert(['starting','playing'].includes(adminState.status),'Salir no debe cerrar la mesa');
 
@@ -95,5 +106,5 @@ function playerTokenFromSetCookie(response){const header=response?.headers?.get(
   assert(html.includes('id="leaveCommunityRoomBtn"')&&html.includes('ABANDONAR SALA'));
   assert(js.includes('/api/player/community-leave')&&js.includes('syncCommunityLeaveButton'));
 
-  console.log('PRUEBA SALIDA COMUNIDAD + FLASH LOBBY: OK · transferencia/cierre de titularidad · pública/privada · espera/juego · Flash desaparece al finalizar');
+  console.log('PRUEBA SALIDA COMUNIDAD + FLASH LOBBY: OK · desconexión conserva sesión/cupo/titularidad · abandono explícito · transferencia/cierre · pública/privada · Flash');
 }catch(e){console.error(e);process.exitCode=1}finally{await stop();fs.rmSync(dataDir,{recursive:true,force:true})}})();

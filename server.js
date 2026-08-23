@@ -10491,7 +10491,10 @@ function closeCommunityRoomAfterCreatorLeavesEmpty(statusBeforeLeave = '') {
   return { closed:true, championshipInterrupted, publicRoomId:publicId };
 }
 
-function leaveCommunityRoomFromPlayer(player) {
+function leaveCommunityRoomFromPlayer(player, payload = {}) {
+  // Abandonar es una decisión explícita. Una desconexión SSE, cambio de app, pestaña en segundo plano
+  // o pérdida temporal de Internet nunca debe ejecutar esta ruta ni liberar el lugar del jugador.
+  if (payload?.explicitLeave !== true) throw new Error('Para abandonar la sala tenés que confirmarlo desde el botón ABANDONAR SALA.');
   if (state.roomSettings?.roomOrigin !== 'community') throw new Error('Esta acción solo está disponible en salas de Comunidad.');
   if (!player || !(state.players || []).some(item => String(item.id) === String(player.id))) throw new Error('No se encontró tu participación en esta sala.');
   const playerId = String(player.id || '');
@@ -11914,7 +11917,8 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/championship-next-round' && req.method === 'POST') return sendJson(res, 200, beginNextChampionshipRound(player));
         if (url.pathname === '/api/player/community-cancel' && req.method === 'POST') return sendJson(res, 200, cancelCommunityRoomFromPlayer(player));
         if (url.pathname === '/api/player/community-leave' && req.method === 'POST') {
-          const result = leaveCommunityRoomFromPlayer(player);
+          const payload = await readJson(req);
+          const result = leaveCommunityRoomFromPlayer(player, payload);
           clearPlayerSessionCookie(req, res);
           return sendJson(res, 200, result);
         }

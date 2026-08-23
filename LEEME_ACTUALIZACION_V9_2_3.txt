@@ -1,0 +1,17 @@
+EL BINGO DE LA GORDA — ACTUALIZACIÓN V9.2.3
+
+Esta actualización separa de forma estricta DESCONEXIÓN y ABANDONO en las mesas de Comunidad.
+
+ARCHIVOS A REEMPLAZAR
+- server.js
+- player.html
+- js/player.js
+- tests/community-leave-and-flash-lobby.js
+- package.json
+- package-lock.json
+- README.md
+
+REGLA
+Cambiar de app, cerrar/minimizar la pestaña o perder conexión no saca al jugador de la mesa. Solo ABANDONAR SALA confirmado ejecuta la salida real.
+
+Partir de V9.2.2 o usar el respaldo completo V9.2.3.

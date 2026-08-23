@@ -1,6 +1,6 @@
 {
   "name": "el-bingo-de-la-gorda",
-  "version": "9.2.2",
+  "version": "9.2.3",
   "private": true,
   "description": "EL BINGO DE LA GORDA: software web gratuito para crear y administrar partidas recreativas de Bingo, con cartones, transmisión, actas, recuperación y Comunidad.",
   "engines": {

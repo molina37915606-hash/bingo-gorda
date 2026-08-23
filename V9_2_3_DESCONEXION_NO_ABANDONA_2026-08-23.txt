@@ -1,0 +1,10 @@
+EL BINGO DE LA GORDA — V9.2.3
+
+DESCONEXIÓN ≠ ABANDONO
+
+- Cambiar a WhatsApp/otra app, minimizar, bloquear pantalla, cerrar pestaña o perder Internet no abandona la mesa.
+- La sesión del jugador, su cupo y la titularidad se conservan.
+- Solo el botón ABANDONAR SALA, luego de la confirmación del usuario, ejecuta la salida real.
+- Si quien abandona explícitamente es titular: sin jugadores restantes se cierra la sala; con jugadores restantes se transfiere la titularidad al primero que ingresó entre los presentes.
+
+Incluye prueba de regresión con corte de conexión SSE y reconexión.

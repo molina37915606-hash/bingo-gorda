@@ -1,3 +1,11 @@
+## V9.2.3 — Desconectarse no es abandonar
+
+- `ABANDONAR SALA` es una acción explícita y exclusiva del botón del jugador.
+- Cambiar a WhatsApp u otra app, bloquear el teléfono, dejar la pestaña en segundo plano, cerrar la pestaña o perder Internet no libera el cupo ni transfiere la titularidad.
+- Al volver con la misma sesión, el jugador recupera su mesa y continúa normalmente.
+- El servidor rechaza intentos de abandono que no lleven la confirmación explícita de la interfaz.
+- Se mantiene V9.2.2: si el titular abandona de forma explícita, la sala se cierra si queda vacía o transfiere la titularidad al primer jugador restante.
+
 ## V9.2.2 — Titularidad automática al abandonar Comunidad
 
 - Si el **titular/creador que está jugando abandona la sala** y no queda ningún otro jugador activo, la mesa se cierra automáticamente y deja de mostrarse como activa en Comunidad.

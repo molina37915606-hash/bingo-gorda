@@ -1,9 +1,0 @@
-V9.0.4 — CANTES PÚBLICOS DEL CAMPEONATO
-
-- RECLAMAR siempre disponible en Campeonato cuando C1/C2/C3/C4 completa Primera Línea, Segunda Línea o Bingo.
-- El botón ya no depende del bonus de reacción ni del modo automático de partidas normales.
-- Todos los puntos siguen siendo matemáticos y automáticos.
-- Cantar registra la jugada socialmente una vez por posición y por ronda.
-- Ningún canto cierra premios para otros cartones ni pausa el bolillero.
-- Los anuncios se muestran a todos los jugadores, TV y Transmisión.
-- Bonus de reacción sólo para Bingo cuando está habilitado.

@@ -1,0 +1,17 @@
+EL BINGO DE LA GORDA · V9.2.13
+VUELTA A VOZ DEL NAVEGADOR / GOOGLE TTS
+Fecha: 2026-08-24
+
+OBJETIVO
+- Dejar de utilizar los audios MP3 generados para el canto de bolillas y avisos.
+- Volver al sintetizador de voz del navegador, priorizando voz Google en español cuando el dispositivo la ofrezca.
+
+ALCANCE
+- Se reemplaza únicamente el motor compartido js/bingo-voice.js.
+- Se conserva la misma API BingoVoice usada por Jugador, Admin, TV, Transmisión, Evento y Comunidad.
+- No se modifica server.js, creación de salas, cartones, premios, Campeonato, Flash, chat ni mensajes de voz de usuarios.
+- Los MP3 existentes pueden permanecer como archivos inactivos: el runtime ya no los descarga ni reproduce.
+- Las páginas que usan BingoVoice cambian el parámetro de versión para evitar caché.
+
+NOTA
+La voz exacta depende de las voces instaladas/ofrecidas por el navegador. En Chrome/Android se prioriza una voz Google española si está disponible; en otros navegadores se usa la mejor voz española disponible.

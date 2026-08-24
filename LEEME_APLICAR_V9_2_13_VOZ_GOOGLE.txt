@@ -1,0 +1,31 @@
+EL BINGO DE LA GORDA · V9.2.13
+SOLO ACTUALIZACIÓN · VUELTA A VOZ DEL NAVEGADOR / GOOGLE
+
+Objetivo: dejar de reproducir la voz MP3 generada y volver al sintetizador del navegador.
+
+Aplicación:
+1. Hacer respaldo de la instalación actual.
+2. Copiar el contenido de este ZIP sobre la raíz del proyecto.
+3. Reemplazar los archivos existentes conservando las carpetas js/ y tests/.
+4. No es necesario borrar assets/voice: los MP3 quedan inactivos y ya no se descargan ni reproducen.
+5. Reiniciar/desplegar normalmente.
+
+Archivos funcionales modificados:
+- js/bingo-voice.js: motor Web Speech; prioriza voz Google española cuando está disponible.
+- admin.html, comunidad.html, evento-transmision.html, evento-tv.html, player.html, transmision.html, tv.html: solo cambian la versión de bingo-voice.js para evitar caché.
+- package.json y package-lock.json: versión 9.2.13.
+- tests/elevenlabs-local-voice.js: regresión adaptada al motor de navegador.
+
+NO SE MODIFICA:
+- server.js
+- js/player.js
+- js/community.js
+- js/admin.js
+- creación de salas
+- cartones y marcado
+- reclamos/premios
+- Campeonato / Flash
+- chat y mensajes de voz de usuarios
+- interfaz horizontal V9.2.11
+
+La voz exacta depende del dispositivo. Chrome/Android priorizará una voz Google española si está disponible; otros navegadores usarán la mejor voz española disponible.

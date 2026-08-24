@@ -1,0 +1,33 @@
+EL BINGO DE LA GORDA — ACTUALIZACIÓN V9.2.9
+Fecha: 2026-08-24
+
+MENSAJES DE VOZ + MODERACIÓN + CÓDIGO DE CREADOR EN ADMIN
+
+Esta actualización se aplica sobre V9.2.8.
+
+1. MENSAJES DE VOZ EN EL CHAT
+- Botón de micrófono integrado en la barra del chat.
+- Jugador normal: máximo 8 segundos por audio.
+- Creador de la sala: máximo 120 segundos por audio.
+- Administrador: máximo 120 segundos por audio.
+- Al terminar de grabar se puede escuchar, cancelar o enviar.
+- Los audios recibidos nunca se reproducen automáticamente.
+- El servidor valida rol, silencio, duración declarada, formato y tamaño antes de guardar el mensaje.
+- Los archivos de voz se guardan aparte del estado de la sala y tienen limpieza automática por antigüedad.
+
+2. MODERACIÓN DE AUDIO
+- El creador de una sala de Comunidad puede silenciar/habilitar los audios de los demás participantes desde el propio chat.
+- El Administrador puede silenciar/habilitar el audio de cualquier jugador, incluido el creador-jugador.
+- Silenciar audio NO bloquea el chat escrito del participante.
+- La restricción se aplica en servidor: el botón queda deshabilitado y cualquier intento de envío de voz es rechazado.
+
+3. CÓDIGO DE CREADOR EN ADMIN
+- En el Administrador principal, junto a las herramientas de clave de sala, aparece CÓDIGO CREADOR para salas de Comunidad.
+- Se puede MOSTRAR / OCULTAR y COPIAR.
+- Sólo el administrador principal puede consultar este dato.
+- Las salas creadas desde V9.2.9 guardan una copia recuperable para Admin además del hash de validación.
+- Para salas creadas antes de V9.2.9, el hash existente no permite reconstruir el código. Si el creador lo conoce y lo valida correctamente una vez, V9.2.9 guarda desde ese momento la copia recuperable para Admin.
+
+4. PRUEBA NUEVA
+- tests/community-chat-audio-v929.js
+- Verifica 8 s jugador, 120 s creador/admin, rechazo por exceso, archivo reproducible, silencio independiente de voz, texto todavía habilitado, moderación de creador/admin y recuperación exacta del código creador.

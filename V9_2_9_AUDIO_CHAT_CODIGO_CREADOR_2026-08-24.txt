@@ -1,0 +1,19 @@
+EL BINGO DE LA GORDA · V9.2.9
+Fecha: 2026-08-24
+
+AUDIO EN CHAT
+- Jugador: hasta 8 s.
+- Creador: hasta 120 s.
+- Admin: hasta 120 s.
+- Grabación desde el chat, escucha previa, cancelar o enviar.
+- Sin reproducción automática.
+
+MODERACIÓN
+- Creador y Admin pueden silenciar voz por participante.
+- El jugador silenciado conserva el chat de texto.
+- Admin puede silenciar también al creador si éste está jugando.
+
+ADMIN
+- Las salas de Comunidad muestran una herramienta CÓDIGO CREADOR junto a las claves de sala.
+- El código puede mostrarse/ocultarse y copiarse.
+- Códigos antiguos basados sólo en hash no pueden reconstruirse; quedan recuperables cuando el creador los valida correctamente una vez.

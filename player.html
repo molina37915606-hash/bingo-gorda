@@ -14,10 +14,12 @@
     <section id="root" class="panel"><div class="stateHero"><img src="/assets/logo.webp" alt="" title="Volver a Comunidad" style="cursor:pointer" onclick="location.href='/comunidad?quedar=1'"><div class="spinner"></div><h1>Cargando sala…</h1><p>Estamos recuperando tu sesión privada. No cierres la página.</p></div></section>
   </main>
   <section id="chatPanel" class="chatPanel communityStyleChat hidden" aria-label="Chat de la sala">
-    <header class="chatHead"><div><b>💬 CHAT DE LA SALA</b><small id="chatSubline">Emojis · stickers · La Gorda</small></div><div class="chatHeadActions"><span id="chatSheetBadge" class="chatSheetBadge">ACTIVO</span><button id="minChat" class="minChat" type="button">— MINIMIZAR</button></div></header>
+    <header class="chatHead"><div><b>💬 CHAT DE LA SALA</b><small id="chatSubline">Emojis · stickers · La Gorda · voz</small></div><div class="chatHeadActions"><button id="chatAudioModerationBtn" class="chatMiniAction hidden" type="button" title="Moderar mensajes de voz">🎙⚙</button><span id="chatSheetBadge" class="chatSheetBadge">ACTIVO</span><button id="minChat" class="minChat" type="button">— MINIMIZAR</button></div></header>
+    <div id="chatAudioModeration" class="chatAudioModeration hidden"></div>
     <div id="chatMessages" class="chatMessages"></div>
     <div id="chatPicker" class="chatPicker"></div>
-    <form id="chatForm" class="chatComposer communityComposer"><button id="chatEmojiBtn" class="chatTool" type="button" aria-label="Emojis">☺</button><button id="chatStickerBtn" class="chatTool" type="button" aria-label="Stickers y La Gorda">✦</button><input id="chatInput" maxlength="160" placeholder="Escribí un mensaje…" autocomplete="off" enterkeyhint="send"><button class="sendBtn" type="submit" aria-label="Enviar">➤</button></form>
+    <div id="chatVoiceBar" class="chatVoiceBar hidden"><div class="chatVoiceState"><span id="chatVoiceDot" class="chatVoiceDot"></span><b id="chatVoiceLabel">GRABANDO</b><small id="chatVoiceTimer">0:00 / 0:08</small></div><audio id="chatVoicePreview" class="hidden" controls preload="metadata"></audio><div class="chatVoiceActions"><button id="chatVoiceCancel" class="chatVoiceCancel" type="button">CANCELAR</button><button id="chatVoiceSend" class="chatVoiceSend hidden" type="button">ENVIAR</button></div></div>
+    <form id="chatForm" class="chatComposer communityComposer"><button id="chatEmojiBtn" class="chatTool" type="button" aria-label="Emojis">☺</button><button id="chatStickerBtn" class="chatTool" type="button" aria-label="Stickers y La Gorda">✦</button><button id="chatVoiceBtn" class="chatTool chatVoiceBtn" type="button" aria-label="Grabar mensaje de voz" title="Mensaje de voz">🎙</button><input id="chatInput" maxlength="160" placeholder="Escribí un mensaje…" autocomplete="off" enterkeyhint="send"><button class="sendBtn" type="submit" aria-label="Enviar">➤</button></form>
   </section>
 </div>
 <button id="chatFab" class="chatFab hidden" type="button" aria-label="Abrir chat">💬<span id="chatCount" class="chatCount hidden">0</span></button>
@@ -27,6 +29,6 @@
 <div id="toast" class="toast"></div>
 <script src="/js/emoji-stickers.js?v=2.2.0"></script>
 <script src="/js/bingo-voice.js?v=eleven-v1-20260822"></script>
-<script src="/js/player.js?v=v9-2-7-premios-20260823"></script>
+<script src="/js/player.js?v=v9-2-9-voz-chat-20260824"></script>
 </body>
 </html>

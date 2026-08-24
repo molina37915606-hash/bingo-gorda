@@ -1,3 +1,15 @@
+## V9.2.9 — Mensajes de voz + moderación + código de creador en Admin
+
+- El chat de cada sala incorpora **mensajes de voz** sin reproducción automática.
+- Jugadores normales: máximo **8 segundos** por audio.
+- Creador de la sala y administrador: máximo **120 segundos** por audio.
+- El creador y el administrador pueden **silenciar sólo los audios** de un participante; el chat de texto continúa habilitado.
+- El botón de micrófono queda integrado en la barra del chat y permite grabar, escuchar, cancelar y enviar.
+- Los audios se guardan fuera del estado JSON de la sala y se limpian automáticamente por antigüedad.
+- El Administrador principal puede **mostrar y copiar el código de creador** de cada sala de Comunidad desde el mismo sector donde gestiona las claves privadas.
+- Por seguridad, un código de creador de una sala creada antes de V9.2.9 no puede reconstruirse desde su hash; queda disponible en Admin después de que el creador lo valide correctamente una vez.
+- Nueva regresión automatizada: `tests/community-chat-audio-v929.js`.
+
 ## V9.2.8 — Campeonato: bonus por primer logro + desempate rápido
 
 - Campeonato incorpora bonus matemáticos por orden de logro: **Primera Línea +5**, **primera Segunda Línea +5** y mantiene **primer Bingo +15**.

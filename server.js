@@ -39,6 +39,7 @@ const EVENT_LOTS_DIR = path.join(EVENTS_DIR, 'tandas');
 const COMMUNITY_BANNERS_DIR = path.join(DATA_DIR, 'community-banners');
 const TV_SCREEN_DIR = path.join(DATA_DIR, 'tv-screen');
 const TV_SCREEN_META_FILE = path.join(TV_SCREEN_DIR, 'pantalla.json');
+const CHAT_AUDIO_DIR = path.join(DATA_DIR, 'chat-audio');
 const OPERATIONAL_WORKSPACE_IDS = ['owner', ...Array.from({ length: 9 }, (_, index) => `slot${index + 2}`)];
 const MAX_OPERATIONAL_ROOMS = OPERATIONAL_WORKSPACE_IDS.length;
 const COMMUNITY_HOST_TTL_MS = 8 * 60 * 60 * 1000;
@@ -113,6 +114,12 @@ const CHAT_STICKER_COOLDOWN_MS = 1200;
 const CHAT_STICKER_WINDOW_MS = 10 * 1000;
 const CHAT_STICKER_WINDOW_MAX = 4;
 const CHAT_STICKER_IDS = new Set(['gorda-risa','gorda-festejo','gorda-dinero','gorda-ay-no','gorda-enojada','corazon','aplausos','suerte','dinero','ira','explosion','cerveza']);
+const CHAT_AUDIO_PLAYER_MAX_SECONDS = 8;
+const CHAT_AUDIO_PRIVILEGED_MAX_SECONDS = 120;
+const CHAT_AUDIO_PLAYER_MAX_BYTES = 320_000;
+const CHAT_AUDIO_PRIVILEGED_MAX_BYTES = 2_400_000;
+const CHAT_AUDIO_RETENTION_MS = 24 * 60 * 60 * 1000;
+const CHAT_AUDIO_MIME_EXT = Object.freeze({ 'audio/webm':'webm', 'audio/ogg':'ogg', 'audio/mp4':'mp4', 'audio/mpeg':'mp3', 'audio/aac':'aac' });
 const COMMUNITY_CHAT_MAX_MESSAGES = 120;
 const COMMUNITY_CHAT_MAX_LENGTH = 180;
 const COMMUNITY_CHAT_COOLDOWN_MS = 1800;
@@ -148,6 +155,7 @@ fs.mkdirSync(EVENT_ASSETS_DIR, { recursive: true });
 fs.mkdirSync(EVENT_LOTS_DIR, { recursive: true });
 fs.mkdirSync(COMMUNITY_BANNERS_DIR, { recursive: true });
 fs.mkdirSync(TV_SCREEN_DIR, { recursive: true });
+fs.mkdirSync(CHAT_AUDIO_DIR, { recursive: true });
 
 function loadLastResultMeta(metaFile, pdfFile) {
   try {
@@ -423,7 +431,7 @@ function blankState() {
     claimSequence: 0,
     claimWindow: null,
     testDrawOrderFixed: false,
-    chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} },
+    chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], audioMutedPlayerIds: [], lastSentAt: {} },
     demo: null,
     waitingGame: { type: 'both', leaderboard: [], leaderboards: { red_black: [], higher_lower: [] } },
     game: null,
@@ -605,6 +613,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       locked: Boolean(parsed.chat?.locked),
       messages: Array.isArray(parsed.chat?.messages) ? parsed.chat.messages.slice(-CHAT_MAX_MESSAGES) : [],
       mutedPlayerIds: Array.isArray(parsed.chat?.mutedPlayerIds) ? [...new Set(parsed.chat.mutedPlayerIds.map(String))] : [],
+      audioMutedPlayerIds: Array.isArray(parsed.chat?.audioMutedPlayerIds) ? [...new Set(parsed.chat.audioMutedPlayerIds.map(String))] : [],
       lastSentAt: {}
     };
     merged.demo = parsed.demo && typeof parsed.demo === 'object' ? parsed.demo : null;
@@ -735,6 +744,7 @@ function normalizeCommunityPublicRoom(raw = {}) {
     name: String(raw.name || '').trim().replace(/\s+/g, ' ').slice(0, 30),
     creatorName: normalizePlayerName(raw.creatorName || '').slice(0, 20),
     creatorCodeHash: /^[a-f0-9]{64}$/i.test(String(raw.creatorCodeHash || '')) ? String(raw.creatorCodeHash).toLowerCase() : '',
+    creatorCodeAdmin: raw.creatorCodeAdmin ? normalizeAccessKey(raw.creatorCodeAdmin) : '',
     accessType: raw.accessType === 'private' ? 'private' : 'public',
     accessKeyHash: /^[a-f0-9]{64}$/i.test(String(raw.accessKeyHash || '')) ? String(raw.accessKeyHash).toLowerCase() : '',
     accessKeyAdmin: raw.accessType === 'private' && raw.accessKeyAdmin ? normalizeCommunityRoomAccessKey(raw.accessKeyAdmin) : '',
@@ -2132,7 +2142,7 @@ function broadcastPayload() {
     playersTotal: state.players.length, playersReady: state.players.filter(player => player.selectionConfirmed).length, playersConnected: connectedPlayerIds().size,
     roomSettings: state.roomSettings, transition: state.transition, prizeAnnouncement: automaticPrizeAnnouncementPayload(), prizeLabels: activePrizeLabelsFor(), publicClaims: publicClaimsPayload(), markingPolicy: markingPolicyPayload(), championship: championshipPublicPayload(null), flash: flashPublicPayload(null),
     adminPresence: adminPresencePayload(), integrity: publicIntegrityPayload(),
-    chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES) },
+    chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), audioMaxSeconds:CHAT_AUDIO_PRIVILEGED_MAX_SECONDS },
     game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: PRESENTER_ID, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, drawTimestamps: state.game.drawTimestamps || {}, lastDrawnAt: state.game.lastDrawnAt || null, total: state.game.mode },
     pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, eventPlayerId: pendingClaim.eventPlayerId || '', eventLotCode: pendingClaim.eventLotCode || '', eventCardNumber: pendingClaim.eventCardNumber || null, createdAt: pendingClaim.createdAt } : null,
     latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, eventPlayerId: latestConfirmed.eventPlayerId || '', eventLotCode: latestConfirmed.eventLotCode || '', eventCardNumber: latestConfirmed.eventCardNumber || null, prizeNumber: latestConfirmed.prizeNumber || 1, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt, automatic: Boolean(latestConfirmed.automatic), tieGroupId: latestConfirmed.tieGroupId || null } : null,
@@ -2216,7 +2226,7 @@ function adminPayload() {
     roomSettings: state.roomSettings,
     waitingGame: waitingGamePayload(),
     markingPolicy: markingPolicyPayload(),
-    chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), mutedPlayerIds: state.chat?.mutedPlayerIds || [] },
+    chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), mutedPlayerIds: state.chat?.mutedPlayerIds || [], audioMutedPlayerIds: state.chat?.audioMutedPlayerIds || [], audioMaxSeconds:CHAT_AUDIO_PRIVILEGED_MAX_SECONDS },
     assignmentTimer: assignmentTimerPayload(),
     prizeStatus: prizeStatusPayload(),
     bingoConfirmed: prizeStatusPayload().bingo.closed,
@@ -2271,7 +2281,9 @@ function communityCreatorPlayersPayload(viewer) {
   return (state.players || [])
     .filter(item => item?.nameSet && !item.virtual)
     .map(item => ({
+      playerId: String(item.id || ''),
       name: playerDisplayName(item),
+      audioMuted: (state.chat?.audioMutedPlayerIds || []).includes(String(item.id || '')),
       cardCount: championshipRoomEnabled() && state.championship?.stage === 'registration' ? Math.max(1, Number(item.requestedCardCount)||Number(item.allowedCardCount)||1) : (item.selectionConfirmed ? (item.cardIds || []).length : 0),
       expectedCardCount: authorizedCardCount(item),
       ready: Boolean(item.selectionConfirmed),
@@ -2300,7 +2312,7 @@ function playerPayload(player) {
     playerAd: currentWorkspace().isDemo ? { enabled:false, imageUrl:'', durationMs:10000, everyBalls:10 } : playerAdPublicPayload(),
     waitingGame: waitingGamePayload(),
     markingPolicy: markingPolicyPayload(),
-    chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), muted: (state.chat?.mutedPlayerIds || []).includes(player.id) },
+    chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), muted: (state.chat?.mutedPlayerIds || []).includes(player.id), audioMuted:(state.chat?.audioMutedPlayerIds || []).includes(player.id), audioMaxSeconds:String(state.communityCreatorPlayerId || '') === String(player.id || '') ? CHAT_AUDIO_PRIVILEGED_MAX_SECONDS : CHAT_AUDIO_PLAYER_MAX_SECONDS, canModerateAudio:state.roomSettings?.roomOrigin === 'community' && String(state.communityCreatorPlayerId || '') === String(player.id || '') },
     assignmentTimer: assignmentTimerPayload(),
     claimWindow: state.claimWindow ? {
       id: state.claimWindow.id,
@@ -6277,9 +6289,10 @@ function createAdminSimulationRoom(payload = {}) {
 }
 
 function ensureChatState() {
-  state.chat ||= { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {}, lastStickerAt: {}, stickerSentAt: {} };
+  state.chat ||= { enabled: true, locked: false, messages: [], mutedPlayerIds: [], audioMutedPlayerIds: [], lastSentAt: {}, lastStickerAt: {}, stickerSentAt: {} };
   state.chat.messages ||= [];
   state.chat.mutedPlayerIds ||= [];
+  state.chat.audioMutedPlayerIds ||= [];
   state.chat.lastSentAt ||= {};
   state.chat.lastStickerAt ||= {};
   state.chat.stickerSentAt ||= {};
@@ -6292,6 +6305,9 @@ function chatControlPayload(player = null) {
     enabled: chat.enabled !== false,
     locked: Boolean(chat.locked),
     muted: player ? chat.mutedPlayerIds.includes(player.id) : false,
+    audioMuted: player ? chat.audioMutedPlayerIds.includes(player.id) : false,
+    audioMaxSeconds: player ? (String(state.communityCreatorPlayerId || '') === String(player.id || '') ? CHAT_AUDIO_PRIVILEGED_MAX_SECONDS : CHAT_AUDIO_PLAYER_MAX_SECONDS) : CHAT_AUDIO_PRIVILEGED_MAX_SECONDS,
+    canModerateAudio: Boolean(player && state.roomSettings?.roomOrigin === 'community' && String(state.communityCreatorPlayerId || '') === String(player.id || '')),
     maxLength: CHAT_MAX_LENGTH,
     cooldownMs: CHAT_COOLDOWN_MS
   };
@@ -6302,6 +6318,103 @@ function emitChatEvent(event, data) {
     try { writeSse(client.res, event, data); }
     catch { sseClients.delete(client); }
   }
+}
+
+function chatAudioExtForMime(mime = '') {
+  return CHAT_AUDIO_MIME_EXT[String(mime || '').toLowerCase()] || '';
+}
+
+function chatAudioFilePath(audioId = '', ext = '') {
+  const id = String(audioId || '');
+  const safeExt = String(ext || '').toLowerCase();
+  if (!/^voice_[a-f0-9]{24}$/.test(id) || !Object.values(CHAT_AUDIO_MIME_EXT).includes(safeExt)) return '';
+  return path.join(CHAT_AUDIO_DIR, `${id}.${safeExt}`);
+}
+
+function deleteChatAudioForMessage(message) {
+  if (!message || message.type !== 'audio') return;
+  const file = chatAudioFilePath(message.audioId, message.audioExt);
+  if (!file) return;
+  try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch {}
+}
+
+function trimChatMessages(chat) {
+  if (chat.messages.length <= CHAT_MAX_MESSAGES) return;
+  const removed = chat.messages.splice(0, chat.messages.length - CHAT_MAX_MESSAGES);
+  removed.forEach(deleteChatAudioForMessage);
+}
+
+function cleanupOldChatAudioFiles() {
+  const cutoff = Date.now() - CHAT_AUDIO_RETENTION_MS;
+  try {
+    for (const name of fs.readdirSync(CHAT_AUDIO_DIR)) {
+      if (!/^voice_[a-f0-9]{24}\.(?:webm|ogg|mp4|mp3|aac)$/i.test(name)) continue;
+      const file = path.join(CHAT_AUDIO_DIR, name);
+      try { if (fs.statSync(file).mtimeMs < cutoff) fs.unlinkSync(file); } catch {}
+    }
+  } catch {}
+}
+
+function appendChatAudioMessage({ role, player = null, audioData = '', durationMs = 0 }) {
+  const chat = ensureChatState();
+  if (chat.enabled === false) throw new Error('El chat está deshabilitado.');
+  const privileged = role === 'admin' || (role === 'player' && String(state.communityCreatorPlayerId || '') === String(player?.id || ''));
+  const maxSeconds = privileged ? CHAT_AUDIO_PRIVILEGED_MAX_SECONDS : CHAT_AUDIO_PLAYER_MAX_SECONDS;
+  const maxBytes = privileged ? CHAT_AUDIO_PRIVILEGED_MAX_BYTES : CHAT_AUDIO_PLAYER_MAX_BYTES;
+  if (role === 'player') {
+    if (!player) throw new Error('Jugador no válido.');
+    if (chat.locked) throw new Error('El administrador pausó el chat.');
+    if (chat.mutedPlayerIds.includes(player.id)) throw new Error('Tu participación en el chat está silenciada.');
+    if (chat.audioMutedPlayerIds.includes(player.id)) throw new Error('Tus mensajes de voz están silenciados en esta sala.');
+  }
+  const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+  if (duration < 250) throw new Error('El audio es demasiado corto.');
+  if (duration > maxSeconds * 1000 + 900) throw new Error(`El máximo de audio para tu rol es ${maxSeconds} segundos.`);
+  const match = String(audioData || '').match(/^data:(audio\/(?:webm|ogg|mp4|mpeg|aac))(?:;codecs=[^;,]+)?;base64,([A-Za-z0-9+/=]+)$/i);
+  if (!match) throw new Error('Formato de audio no compatible.');
+  const mimeType = String(match[1] || '').toLowerCase();
+  const ext = chatAudioExtForMime(mimeType);
+  if (!ext) throw new Error('Formato de audio no compatible.');
+  const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer.length || buffer.length > maxBytes) throw new Error('El audio supera el tamaño permitido para tu rol.');
+  cleanupOldChatAudioFiles();
+  const audioId = randomId('voice');
+  const file = chatAudioFilePath(audioId, ext);
+  const temp = `${file}.tmp`;
+  fs.writeFileSync(temp, buffer);
+  fs.renameSync(temp, file);
+  const message = {
+    id: randomId('chat'), role, playerId: player?.id || null,
+    name: role === 'admin' ? 'Administración' : playerDisplayName(player),
+    type: 'audio', text: '', stickerId: null,
+    audioId, audioExt: ext, audioMime: mimeType, durationMs: duration,
+    voiceRole: role === 'admin' ? 'admin' : (privileged ? 'creator' : 'player'),
+    createdAt: nowIso()
+  };
+  chat.messages.push(message);
+  trimChatMessages(chat);
+  logEvent('chat_message', { messageId:message.id, role, playerId:message.playerId, type:'audio', durationMs:duration, sizeBytes:buffer.length });
+  emitChatEvent('chat', message);
+  saveState();
+  return message;
+}
+
+function moderateChatAudioFromCreator(player, payload = {}) {
+  if (state.roomSettings?.roomOrigin !== 'community' || String(state.communityCreatorPlayerId || '') !== String(player?.id || '')) throw new Error('Solo quien creó la sala puede moderar los audios.');
+  const action = String(payload.action || '').toLowerCase();
+  if (!['mute-audio','unmute-audio'].includes(action)) throw new Error('Acción de moderación no válida.');
+  const targetId = String(payload.playerId || '');
+  const target = state.players.find(item => String(item.id || '') === targetId && item?.nameSet && !item.virtual);
+  if (!target) throw new Error('Jugador no encontrado.');
+  const chat = ensureChatState();
+  if (action === 'mute-audio') {
+    if (!chat.audioMutedPlayerIds.includes(targetId)) chat.audioMutedPlayerIds.push(targetId);
+  } else chat.audioMutedPlayerIds = chat.audioMutedPlayerIds.filter(id => id !== targetId);
+  logEvent('chat_audio_moderated_by_creator', { action, playerId:targetId, moderatorPlayerId:player.id });
+  saveState();
+  emitChatEvent('chat-control', { ...chatControlPayload(), messages:chat.messages.slice(-CHAT_MAX_MESSAGES), mutedPlayerIds:chat.mutedPlayerIds, audioMutedPlayerIds:chat.audioMutedPlayerIds });
+  broadcast();
+  return playerPayload(player);
 }
 
 function appendChatMessage({ role, player = null, text = '', stickerId = '' }) {
@@ -6341,7 +6454,7 @@ function appendChatMessage({ role, player = null, text = '', stickerId = '' }) {
     createdAt: nowIso()
   };
   chat.messages.push(message);
-  if (chat.messages.length > CHAT_MAX_MESSAGES) chat.messages.splice(0, chat.messages.length - CHAT_MAX_MESSAGES);
+  trimChatMessages(chat);
   logEvent('chat_message', { messageId: message.id, role, playerId: message.playerId, type: message.type, stickerId: message.stickerId, length: clean.length });
   emitChatEvent('chat', message);
   return message;
@@ -6354,17 +6467,30 @@ function moderateChat(payload) {
   else if (action === 'unlock') chat.locked = false;
   else if (action === 'disable') chat.enabled = false;
   else if (action === 'enable') chat.enabled = true;
-  else if (action === 'clear') chat.messages = [];
-  else if (action === 'delete') chat.messages = chat.messages.filter(message => message.id !== String(payload.messageId || ''));
+  else if (action === 'clear') { chat.messages.forEach(deleteChatAudioForMessage); chat.messages = []; }
+  else if (action === 'delete') {
+    const messageId = String(payload.messageId || '');
+    const removed = chat.messages.filter(message => message.id === messageId);
+    removed.forEach(deleteChatAudioForMessage);
+    chat.messages = chat.messages.filter(message => message.id !== messageId);
+  }
   else if (action === 'mute') {
     const playerId = String(payload.playerId || '');
     if (playerId && !chat.mutedPlayerIds.includes(playerId)) chat.mutedPlayerIds.push(playerId);
     const messageId = String(payload.messageId || '');
-    if (messageId) chat.messages = chat.messages.filter(message => message.id !== messageId);
+    if (messageId) {
+      const removed = chat.messages.filter(message => message.id === messageId);
+      removed.forEach(deleteChatAudioForMessage);
+      chat.messages = chat.messages.filter(message => message.id !== messageId);
+    }
   } else if (action === 'unmute') chat.mutedPlayerIds = chat.mutedPlayerIds.filter(id => id !== String(payload.playerId || ''));
+  else if (action === 'mute-audio') {
+    const playerId = String(payload.playerId || '');
+    if (playerId && !chat.audioMutedPlayerIds.includes(playerId)) chat.audioMutedPlayerIds.push(playerId);
+  } else if (action === 'unmute-audio') chat.audioMutedPlayerIds = chat.audioMutedPlayerIds.filter(id => id !== String(payload.playerId || ''));
   else throw new Error('Acción de moderación no válida.');
   logEvent('chat_moderated', { action, playerId: payload?.playerId || null, messageId: payload?.messageId || null });
-  saveState(); emitChatEvent('chat-control', { ...chatControlPayload(), messages: chat.messages.slice(-CHAT_MAX_MESSAGES), mutedPlayerIds: chat.mutedPlayerIds });
+  saveState(); emitChatEvent('chat-control', { ...chatControlPayload(), messages: chat.messages.slice(-CHAT_MAX_MESSAGES), mutedPlayerIds: chat.mutedPlayerIds, audioMutedPlayerIds:chat.audioMutedPlayerIds });
   return adminPayload();
 }
 
@@ -9617,7 +9743,11 @@ const MIME_TYPES = {
   '.json': 'application/json; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
   '.pdf': 'application/pdf',
-  '.mp3': 'audio/mpeg'
+  '.mp3': 'audio/mpeg',
+  '.webm': 'audio/webm',
+  '.ogg': 'audio/ogg',
+  '.mp4': 'audio/mp4',
+  '.aac': 'audio/aac'
 };
 
 function safeInlineJson(value) {
@@ -10446,7 +10576,7 @@ function createCommunityPublicRoom(payload = {}) {
   const creatorCode = randomCode(7);
   const creatorCodeHash = crypto.createHash('sha256').update(creatorCode).digest('hex');
   const record = normalizeCommunityPublicRoom({
-    id: randomId('public'), name:roomName, creatorName, creatorCodeHash, accessType, accessKeyHash, accessKeyAdmin:accessKey, inviteToken:randomId('invite'), startMode, startsAt,
+    id: randomId('public'), name:roomName, creatorName, creatorCodeHash, creatorCodeAdmin:creatorCode, accessType, accessKeyHash, accessKeyAdmin:accessKey, inviteToken:randomId('invite'), startMode, startsAt,
     mode, gameKind, championshipRounds, maxPlayers, maxCardsPerPlayer, autoSeconds,
     claimMode: ['championship','flash'].includes(gameKind) ? 'manual' : (payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual'), linePrizeCount, rules,
     status:'scheduled', createdAt:nowIso(), updatedAt:nowIso()
@@ -10484,6 +10614,7 @@ function verifyCommunityCreatorCode(record, creatorCode) {
   const code = normalizeAccessKey(creatorCode || '');
   const digest = crypto.createHash('sha256').update(code).digest('hex');
   if (!safeEqual(digest, record.creatorCodeHash)) throw new Error('Código de creador incorrecto.');
+  if (!record.creatorCodeAdmin) { record.creatorCodeAdmin = code; savePlatform(); }
   return code;
 }
 
@@ -11843,6 +11974,16 @@ async function dispatchAdminApi(req, res, url, session) {
     if (!accessKey) throw new Error('La clave de esta sala fue creada antes de esta actualización y todavía no puede recuperarse. Se guardará cuando vuelva a usarse correctamente.');
     return sendJson(res, 200, { accessKey });
   }
+  if (url.pathname === '/api/admin/creator-room-code' && req.method === 'GET') {
+    if (session.role !== 'owner') return sendJson(res, 403, { error: 'Solo el administrador principal puede consultar códigos de creador.' });
+    if (state.roomSettings?.roomOrigin !== 'community') throw new Error('La sala seleccionada no pertenece a Comunidad.');
+    const publicId = String(state.roomSettings?.communityPublicId || '');
+    const record = publicId ? communityPublicRoomById(publicId) : null;
+    if (!record) throw new Error('No se encontró el registro de la sala.');
+    const creatorCode = record.creatorCodeAdmin || '';
+    if (!creatorCode) throw new Error('Este código fue creado antes de esta actualización. Se podrá mostrar después de que el creador vuelva a validarlo una vez.');
+    return sendJson(res, 200, { creatorCode });
+  }
   if (url.pathname === '/api/admin/workspace/select' && req.method === 'POST') {
     if (session.role !== 'owner') return sendJson(res, 403, { error: 'Solo el administrador principal puede cambiar de sala.' });
     const payload = await readJson(req);
@@ -11939,6 +12080,7 @@ async function dispatchAdminApi(req, res, url, session) {
   if (url.pathname === '/api/admin/settings' && req.method === 'POST') return sendJson(res, 200, updateRoomSettings(await readJson(req)));
   if (url.pathname === '/api/admin/message' && req.method === 'POST') return sendJson(res, 200, updateAdminMessage(await readJson(req)));
   if (url.pathname === '/api/admin/chat' && req.method === 'POST') { const payload = await readJson(req); appendChatMessage({ role: 'admin', text: payload.text, stickerId: payload.stickerId }); return sendJson(res, 200, adminPayload()); }
+  if (url.pathname === '/api/admin/chat/audio' && req.method === 'POST') { const payload = await readJson(req, 3_600_000); appendChatAudioMessage({ role:'admin', audioData:payload.audioData, durationMs:payload.durationMs }); return sendJson(res, 200, adminPayload()); }
   if (url.pathname === '/api/admin/chat/moderate' && req.method === 'POST') return sendJson(res, 200, moderateChat(await readJson(req)));
   if (url.pathname === '/api/admin/release-selection' && req.method === 'POST') return sendJson(res, 200, releasePlayerSelection(await readJson(req)));
   if (url.pathname === '/api/admin/assign-player' && req.method === 'POST') return sendJson(res, 200, assignCardsToPlayer(await readJson(req)));
@@ -12276,6 +12418,12 @@ async function handleApi(req, res, url) {
           const payload = await readJson(req);
           return sendJson(res, 200, appendChatMessage({ role: 'player', player, text: payload.text, stickerId: payload.stickerId }));
         }
+        if (url.pathname === '/api/player/chat/audio' && req.method === 'POST') {
+          if (!consumeRate(req, `chat-audio-${player.id}`, 12, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Enviaste muchos audios. Esperá un momento.' });
+          const payload = await readJson(req, 3_600_000);
+          return sendJson(res, 200, appendChatAudioMessage({ role:'player', player, audioData:payload.audioData, durationMs:payload.durationMs }));
+        }
+        if (url.pathname === '/api/player/chat/audio-moderate' && req.method === 'POST') return sendJson(res, 200, moderateChatAudioFromCreator(player, await readJson(req)));
         return sendJson(res, 404, { error: 'Acción de jugador no encontrada.' });
       });
     }
@@ -12651,6 +12799,19 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+
+  const chatAudioMatch = url.pathname.match(/^\/chat-audio\/(voice_[a-f0-9]{24})\.(webm|ogg|mp4|mp3|aac)$/i);
+  if (chatAudioMatch && (req.method === 'GET' || req.method === 'HEAD')) {
+    const audioId = chatAudioMatch[1].toLowerCase();
+    const ext = chatAudioMatch[2].toLowerCase();
+    const file = chatAudioFilePath(audioId, ext);
+    if (!file || !fs.existsSync(file)) return sendJson(res, 404, { error:'Audio no disponible.' });
+    const stat = fs.statSync(file);
+    const mime = Object.entries(CHAT_AUDIO_MIME_EXT).find(([,value]) => value === ext)?.[0] || 'application/octet-stream';
+    res.writeHead(200, { 'Content-Type':mime, 'Content-Length':stat.size, 'Cache-Control':'private, max-age=300', 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'same-origin' });
+    if (req.method === 'HEAD') return res.end();
+    return fs.createReadStream(file).pipe(res);
+  }
 
   if (url.pathname === '/pantalla-imagen' && (req.method === 'GET' || req.method === 'HEAD')) {
     const payload = tvScreenPayload();

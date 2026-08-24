@@ -1,0 +1,21 @@
+EL BINGO DE LA GORDA · V9.2.11
+PAQUETE SOLO ACTUALIZACION · INTERFAZ 90 BOLAS MOVIL HORIZONTAL
+
+Este ZIP NO es una instalacion completa.
+Contiene unicamente los archivos nuevos o modificados respecto de V9.2.10.
+
+Para aplicar sobre V9.2.10:
+1. Hacer una copia de respaldo de la instalacion actual.
+2. Copiar el contenido de este ZIP sobre la raiz del proyecto.
+3. Permitir reemplazar los archivos existentes conservando las carpetas css/ y js/.
+4. Reiniciar/desplegar normalmente.
+
+Archivos de actualizacion:
+- player.html
+- js/player.js
+- css/platform.css
+- package.json (solo cambia version a 9.2.11)
+- package-lock.json (solo cambia version a 9.2.11)
+- V9_2_11_INTERFAZ_90_HORIZONTAL_2026-08-24.txt
+
+La logica central y server.js no forman parte de este parche.

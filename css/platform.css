@@ -486,3 +486,92 @@ html[data-theme=day] .creatorRoster{background:#f5f3fa}.creatorRosterRow{border-
 /* V9.2.10 · audio de chat estilo mensajería: envío con flecha + reproductor estable */
 .chatVoiceBar{grid-template-columns:minmax(0,1fr) auto}.chatVoiceBar.previewing{grid-template-columns:minmax(0,1fr) auto}.voiceDraftPlayer{grid-column:1/-1;display:grid;grid-template-columns:40px minmax(0,1fr) 38px;gap:8px;align-items:center;padding:6px 2px 1px}.voiceMessage{display:grid;gap:5px;width:min(315px,100%);margin-top:5px}.voicePlayerMain{display:grid;grid-template-columns:42px minmax(0,1fr) 42px;gap:8px;align-items:center}.voicePlayBtn{width:42px;height:42px;border:0;border-radius:50%;display:grid;place-items:center;background:#1ea86e;color:#fff;font-size:18px;font-weight:1000;cursor:pointer;touch-action:manipulation}.voicePlayer.playing .voicePlayBtn{background:#106b4a}.voiceSeek{width:100%;min-width:0;accent-color:#1ea86e;cursor:pointer;touch-action:pan-x}.voiceTime{font-size:10px;font-weight:1000;color:var(--muted);text-align:right;white-space:nowrap}.voiceMessage small{padding-left:50px}.chatComposer .sendBtn.voiceReady{background:#1ea86e;color:#fff;box-shadow:0 0 0 2px #1ea86e33}.chatComposer input.voiceActive{opacity:.72}.chatVoiceActions{align-self:center}.chatVoiceCancel{min-height:34px}.chatVoiceBar .chatVoiceState{min-width:0}.chatVoiceBar.previewing .chatVoiceDot{background:#1ea86e}.chatVoiceBtn.recording{animation:voiceRecordPulse 1s ease-in-out infinite}
 @media(max-width:720px){.voicePlayerMain{grid-template-columns:44px minmax(0,1fr) 38px}.voicePlayBtn{width:44px;height:44px;font-size:19px}.voiceMessage{width:100%;max-width:320px}.voiceMessage small{padding-left:52px}.voiceSeek{height:30px}.voiceDraftPlayer{grid-template-columns:44px minmax(0,1fr) 38px}}
+
+
+/* V9.2.11 · Jugador 90 bolas · móvil horizontal centrado en el cartón.
+   Sólo se activa cuando player.js detecta una pantalla compacta en horizontal y modo 90.
+   No altera lógica, IDs, reclamos ni eventos existentes. */
+@media (orientation:landscape) and (max-height:600px) and (max-width:1100px){
+  .playerShell.gameLandscape90 .app{width:100%;padding:3px 3px 48px}
+  .playerShell.gameLandscape90 .top{display:grid;grid-template-columns:28px minmax(110px,1fr) auto auto;grid-template-areas:"logo brand tools net";align-items:center;gap:4px;padding:3px 5px;min-height:38px;border-radius:9px}
+  .playerShell.gameLandscape90 .top>img{grid-area:logo;width:27px;height:27px}
+  .playerShell.gameLandscape90 .top>.brand{grid-area:brand;min-width:0}
+  .playerShell.gameLandscape90 .top>.brand b{font-size:10px;line-height:1.05}
+  .playerShell.gameLandscape90 .top>.brand small{font-size:7.5px;line-height:1.1}
+  .playerShell.gameLandscape90 .top>.net{grid-area:net;margin:0;padding:4px 6px;font-size:7px}
+  .playerShell.gameLandscape90 .platformTools{grid-area:tools;display:grid!important;grid-template-columns:repeat(6,28px)!important;gap:3px;width:auto!important;padding:0!important;border:0!important;overflow:visible!important}
+  .playerShell.gameLandscape90 .toolBtn{display:grid!important;width:28px!important;height:28px!important;min-width:28px!important;max-width:28px!important;padding:0!important;font-size:13px!important;border-radius:7px!important}
+  .playerShell.gameLandscape90 .toolBtn small{display:none!important}
+  .playerShell.gameLandscape90 #voiceTool,.playerShell.gameLandscape90 #moreTool,.playerShell.gameLandscape90 #chatTool{display:none!important}
+
+  .playerShell.gameLandscape90 #root.panel{margin-top:3px;padding:4px;border-radius:10px}
+  .playerShell.gameLandscape90 .gameLayout{display:grid;grid-template-columns:minmax(0,1fr) 132px;gap:4px;align-items:start}
+  .playerShell.gameLandscape90 .gameMain{display:grid;grid-template-columns:118px minmax(0,1fr);grid-template-areas:"champ champ" "ball ticket";gap:4px;align-items:start;min-width:0}
+  .playerShell.gameLandscape90 .championshipBar{grid-area:champ;margin:0 0 1px;padding:5px 7px;min-height:34px}
+  .playerShell.gameLandscape90 .championshipBar small{font-size:7px}
+  .playerShell.gameLandscape90 .championshipBar b{font-size:11px}
+  .playerShell.gameLandscape90 .championshipBarStats{gap:5px;font-size:8px}
+  .playerShell.gameLandscape90 .championshipClosing{font-size:8px}
+
+  .playerShell.gameLandscape90 .ballPanel{grid-area:ball;display:grid;grid-template-columns:1fr;grid-template-areas:"ball" "status" "progress" "recent";align-content:start;gap:3px;min-width:0;padding:5px 4px;border:1px solid var(--line);border-radius:10px;background:var(--panel3);overflow:hidden}
+  .playerShell.gameLandscape90 .ballStage{grid-area:ball;width:88px;height:88px;margin:0 auto}
+  .playerShell.gameLandscape90 .ballStage:after{width:62px}
+  .playerShell.gameLandscape90 .ball{width:82px;height:82px;margin:0;border-width:3px}
+  .playerShell.gameLandscape90 .ball .ballNumber{font-size:37px;line-height:1}
+  .playerShell.gameLandscape90 .ball .ballLetter{font-size:10px;padding:1px 4px}
+  .playerShell.gameLandscape90 .gameStatus{grid-area:status;font-size:10px;line-height:1.05}
+  .playerShell.gameLandscape90 .ballProgress{grid-area:progress;margin:0 auto;padding:3px 6px;border-radius:999px}
+  .playerShell.gameLandscape90 .ballProgress strong{font-size:8px}
+  .playerShell.gameLandscape90 .recent{grid-area:recent;display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin:1px 0 0;overflow:hidden}
+  .playerShell.gameLandscape90 .recent span{min-width:0;width:100%;height:23px;padding:0 2px;font-size:7px}
+
+  .playerShell.gameLandscape90 .ticketPanel{grid-area:ticket;display:grid;grid-template-columns:minmax(0,1fr) minmax(142px,30%);gap:3px 5px;margin:0;padding:4px 5px 5px;min-width:0;border:1px solid var(--line);border-radius:10px;background:#0d1426b8}
+  .playerShell.gameLandscape90 .tabs{grid-column:1/-1;gap:3px;padding:0 0 2px;min-height:25px}
+  .playerShell.gameLandscape90 .tabs button{padding:4px 7px;border-radius:7px;font-size:8px;min-height:24px}
+  .playerShell.gameLandscape90 .tabs button small{font-size:6px}
+  .playerShell.gameLandscape90 .ticketHead{grid-column:1;grid-row:2;margin:0;min-height:29px;padding:0 2px}
+  .playerShell.gameLandscape90 .ticketHead b{font-size:11px}
+  .playerShell.gameLandscape90 .ticketHead small{font-size:7px}
+  .playerShell.gameLandscape90 .ticketPanel>.modeRow{grid-column:2;grid-row:2;margin:0;gap:3px;align-self:center}
+  .playerShell.gameLandscape90 .ticketPanel>.modeRow .modeBtn{min-height:29px;padding:4px 5px;border-radius:7px;font-size:7.5px}
+  .playerShell.gameLandscape90 .ticketPanel>.notice{grid-column:1/-1;margin-top:0!important;padding:5px 7px;font-size:8px}
+  .playerShell.gameLandscape90 .ticket{grid-column:1/-1;grid-row:3;gap:3px}
+  .playerShell.gameLandscape90 .ticket.m90 .cell{height:clamp(52px,15.3vh,66px);min-height:0;aspect-ratio:auto;border-radius:5px;font-size:clamp(18px,3vw,27px)}
+  .playerShell.gameLandscape90 .ticket.m90 .cell.marked:after{right:3px;top:1px;font-size:9px}
+  .playerShell.gameLandscape90 .claimCenter{grid-column:1/-1;display:grid;grid-template-columns:minmax(135px,.8fr) minmax(0,1.55fr);align-items:stretch;gap:4px;margin-top:1px;max-width:none}
+  .playerShell.gameLandscape90 .primaryClaim{min-height:42px;max-width:none;border-radius:8px;font-size:13px}
+  .playerShell.gameLandscape90 .prizeTrack{justify-content:flex-start;gap:3px;padding:0;overflow-x:auto}
+  .playerShell.gameLandscape90 .prizeSquare{min-width:52px;min-height:42px;max-height:42px;aspect-ratio:auto;border-radius:7px;padding:2px}
+  .playerShell.gameLandscape90 .prizeSquare span{width:14px;height:14px;font-size:8px}
+  .playerShell.gameLandscape90 .prizeSquare b{font-size:7px}
+  .playerShell.gameLandscape90 .championshipScoreHint{grid-column:1/-1;padding:4px 6px;font-size:7px}
+  .playerShell.gameLandscape90 .playerAdBanner{grid-column:1/-1;margin:3px 0 0}
+  .playerShell.gameLandscape90 .playerAdBanner img{max-height:70px}
+  .playerShell.gameLandscape90 .creatorGameActions{grid-column:1/-1;margin-top:3px}
+  .playerShell.gameLandscape90 .creatorGameActions .btn{min-height:34px;padding:5px 8px;font-size:8px}
+
+  .playerShell.gameLandscape90 .sideInfo{display:grid!important;grid-template-rows:minmax(0,1fr);gap:4px;min-width:0}
+  .playerShell.gameLandscape90 .sideInfo>.panel{display:none;margin:0!important;padding:6px;border-radius:10px;min-width:0;max-height:calc(100vh - 92px);overflow:hidden}
+  .playerShell.gameLandscape90 .sideInfo>.panel:first-child{display:block}
+  .playerShell.gameLandscape90 .sideInfo h3{margin:0 0 5px;font-size:8px;text-align:center}
+  .playerShell.gameLandscape90 .numbersGrid{display:grid;grid-template-columns:repeat(3,1fr);align-content:start;gap:3px;max-height:calc(100vh - 122px);overflow:auto}
+  .playerShell.gameLandscape90 .numbersGrid span{width:auto;height:28px;border-radius:999px;font-size:8px}
+
+  .playerShell.gameLandscape90 .chatFab{display:none!important}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile{display:grid;position:fixed;z-index:120;left:4px;right:4px;bottom:4px;width:auto;margin:0;border-radius:12px;background:#0d1426f9;box-shadow:0 -10px 30px #000a;transition:height .2s ease;overflow:hidden;grid-template-rows:auto minmax(0,1fr) auto auto}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile[data-sheet="collapsed"]{height:40px;grid-template-rows:40px 0 0 0}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile[data-sheet="peek"]{height:min(72vh,300px)}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile[data-sheet="full"]{height:min(92vh,440px)}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile[data-sheet="collapsed"] .chatMessages,.playerShell.gameLandscape90 .chatPanel.docked-mobile[data-sheet="collapsed"] .chatPicker,.playerShell.gameLandscape90 .chatPanel.docked-mobile[data-sheet="collapsed"] .communityComposer,.playerShell.gameLandscape90 .chatPanel.docked-mobile[data-sheet="collapsed"] .chatVoiceBar{visibility:hidden;pointer-events:none}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile .chatHead{min-height:40px;padding:5px 9px;cursor:ns-resize;touch-action:none;user-select:none}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile .chatHead b{font-size:9px}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile .chatHead small{display:none}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile .chatSheetBadge{display:inline-flex;font-size:7px}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile .minChat{padding:4px 6px;font-size:7px}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile .chatMessages{padding:5px;gap:3px}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile .communityComposer{padding:4px;grid-template-columns:34px 34px 34px minmax(0,1fr) 38px}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile .communityComposer .chatTool{width:34px;height:34px}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile .communityComposer input{height:34px}
+  .playerShell.gameLandscape90 .chatPanel.docked-mobile .communityComposer .sendBtn{width:38px;height:34px}
+  .playerShell.gameLandscape90~.leaveCommunityRoomBtn{bottom:44px;min-height:30px;padding:5px 8px;font-size:7px}
+}

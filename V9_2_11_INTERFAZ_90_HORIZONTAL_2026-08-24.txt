@@ -1,0 +1,30 @@
+EL BINGO DE LA GORDA · V9.2.11
+INTERFAZ DE JUGADOR · 90 BOLAS · MÓVIL HORIZONTAL
+
+Objetivo
+- Hacer del cartón de 90 bolas el elemento central en celulares en horizontal.
+- Mantener intacta la forma de jugar y la lógica actual.
+
+Cambios
+- Se detecta exclusivamente una partida activa de 90 bolas en pantalla horizontal compacta.
+- El cartón 3x9 ocupa el área central.
+- Bola actual queda visible a la izquierda.
+- Números salidos quedan en una columna compacta a la derecha.
+- Manual / Automarcado reutiliza los botones y endpoint existentes.
+- Reclamos, premios, cambio de cartón, Campeonato y publicidad reutilizan el HTML y eventos existentes.
+- Chat conserva la lógica actual y se presenta como bandeja inferior colapsable en horizontal.
+- Herramientas superiores siguen disponibles en formato compacto.
+
+No se modificó
+- server.js
+- reglas de Bingo 90/75
+- generación o validación de cartones
+- endpoints de marcado o reclamo
+- lógica de chat/audio
+- Comunidad, Admin, TV, Transmisión, Flash o Evento
+- interfaz vertical, escritorio o Bingo 75
+
+Archivos funcionalmente modificados
+- js/player.js: detección aislada del modo 90 horizontal + docking móvil.
+- css/platform.css: estilos nuevos bajo .gameLandscape90.
+- player.html: actualización de versión de assets para evitar caché.

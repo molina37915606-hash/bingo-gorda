@@ -1,0 +1,39 @@
+EL BINGO DE LA GORDA · V9.3.0
+SOLO ACTUALIZACIÓN DESDE V9.2.13
+
+Este paquete contiene únicamente los archivos nuevos o modificados para pasar de V9.2.13 a V9.3.0.
+NO es un respaldo completo.
+
+CAMBIOS PRINCIPALES
+- RIVALES en Bingo 75/90, Flash y Campeonato.
+- Cajón lateral: abre sólo desde la flecha y cierra con gesto/tocando fuera.
+- Campeonato: primeros logros destacados; siguientes avisos compactos.
+- TV Campeonato: lista cronológica de logros en esquina.
+- Transmisión completa: Chromecast reemplazado por acceso TV SIMPLE.
+- Se conserva la voz Google/navegador de V9.2.13.
+
+ARCHIVOS DEL PARCHE
+- README.md
+- css/platform.css
+- js/player.js
+- js/transmision.js
+- js/tv.js
+- package.json
+- package-lock.json
+- player.html
+- server.js
+- transmision.html
+- tv.html
+- SHA256SUMS_V9_3_0.txt
+- V9_3_0_RIVALES_CAMPEONATO_TV_SIMPLE_2026-08-24.txt
+- tests/v930-rivals-championship-ui.js
+- tests/v930-rivals-functional.js
+
+APLICACIÓN
+1. Hacer respaldo de la instalación actual.
+2. Descomprimir este ZIP.
+3. Subir/reemplazar estos archivos respetando las carpetas js/, css/ y tests/.
+4. No borrar ningún otro archivo del proyecto.
+5. Desplegar normalmente.
+
+No hay archivos que eliminar para esta actualización.

@@ -1,3 +1,13 @@
+## V9.3.0 — Rivales + Campeonato menos invasivo + TV simple
+
+- Jugador: nuevo cajón lateral **RIVALES** disponible en Bingo normal 75/90, Flash y Campeonato.
+- El cajón se abre únicamente desde la flecha del borde derecho; se cierra con gesto hacia la derecha desde cualquier zona o tocando fuera.
+- RIVALES muestra sólo información resumida calculada por el servidor: cercanía al próximo premio, clasificación Flash o progreso de Campeonato; nunca revela números faltantes ni cartones rivales.
+- Campeonato: sólo el primer canto de Primera Línea, Segunda Línea y Bingo de cada ronda conserva el anuncio central; los siguientes aparecen como avisos compactos en la esquina.
+- TV Campeonato: los cantes se muestran como lista cronológica compacta en la esquina superior derecha, en lugar de rotar uno por vez.
+- Transmisión completa: se retira el acceso Chromecast y se reemplaza por un botón directo a **TV simple**.
+- Se conserva la voz del navegador/Google de V9.2.13 y no se modifican reglas, puntuación ni desempates.
+
 ## V9.2.10 — Audio de chat más directo y reproductor estable
 
 - El mensaje de voz usa el mismo botón **Enviar** del chat: no existe un segundo botón de envío encima de la barra.

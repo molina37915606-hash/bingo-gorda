@@ -1,0 +1,24 @@
+EL BINGO DE LA GORDA · V9.3.0
+Fecha: 2026-08-24
+
+NUEVO
+- RIVALES en todos los modos de juego, como cajón lateral por gesto.
+- Apertura exclusivamente desde la flecha lateral.
+- Cierre con swipe derecho desde cualquier zona o toque fuera.
+- Normal: distancia al próximo premio habilitado.
+- Flash: clasificación y estado de muerte súbita.
+- Campeonato: puntos, posición competitiva más avanzada y distancia al próximo logro.
+- No se exponen números faltantes ni matrices/cartones rivales.
+
+CAMPEONATO
+- Primer canto de cada tipo por ronda: anuncio central.
+- Cantes posteriores del mismo tipo: aviso compacto en esquina.
+- TV: lista cronológica de logros en esquina, sin rotación invasiva.
+
+TRANSMISIÓN
+- Se elimina el botón Chromecast de la transmisión completa.
+- En el mismo lugar se agrega acceso directo a TV simple.
+
+BASE
+- V9.2.13 con voz del navegador/Google.
+- Las reglas, puntajes, desempates, creación de salas y chat permanecen sin cambios salvo el nuevo resumen seguro RIVALES agregado al payload del jugador.

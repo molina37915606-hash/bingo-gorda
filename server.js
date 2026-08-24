@@ -2330,6 +2330,7 @@ function playerPayload(player) {
     prizeLabels: activePrizeLabelsFor(),
     testEvent: state.testEvent && new Date(state.testEvent.expiresAt || 0).getTime() > Date.now() ? state.testEvent : null,
     readiness: playerPrizeReadiness(player),
+    rivals: rivalsPayloadFor(player),
     publicClaims: publicClaimsPayload(),
     broadcastUrl: shortBroadcastUrlFor(),
     castAppId: CAST_APP_ID || null,
@@ -6067,6 +6068,114 @@ function highlightedBroadcastCards() {
     .sort((a,b) => a.score - b.score || a.bingoMissing - b.bingoMissing || String(a.cardNumber).localeCompare(String(b.cardNumber)))
     .slice(0, 6)
     .map((item, index) => ({ ...item, rank: index + 1 }));
+}
+
+
+function rivalsNormalPayload(viewer) {
+  if (!state.game) return [];
+  const connected = connectedPlayerIds();
+  const prizes = prizeStatusPayload();
+  const rows = [];
+  for (const player of (state.players || []).filter(item => item?.nameSet && !item.virtual && item.selectionConfirmed && String(item.id) !== String(viewer?.id || ''))) {
+    let best = null;
+    for (const cardId of player.cardIds || []) {
+      const card = state.game.cards.find(item => item.id === cardId);
+      if (!card) continue;
+      const analysis = analyzeCard(card, state.game.drawn, player.marks?.[cardId] || []);
+      const race = broadcastRaceForCard(card, analysis, prizes);
+      const candidate = {
+        raceType:String(race.type || ''), raceLabel:String(race.label || 'BINGO'),
+        prizeNumber:Number(race.prizeNumber) || 1, missing:Math.max(0, Number(race.missing) || 0),
+        importance:Number.isFinite(Number(race.importance)) ? Number(race.importance) : 9
+      };
+      if (!best || candidate.missing < best.missing || (candidate.missing === best.missing && candidate.importance < best.importance)) best = candidate;
+    }
+    if (!best) continue;
+    rows.push({
+      playerId:String(player.id || ''), playerName:playerDisplayName(player), connected:connected.has(player.id),
+      cardCount:(player.cardIds || []).length, ...best, alert:best.missing === 1
+    });
+  }
+  return rows.sort((a,b)=>a.missing-b.missing || a.importance-b.importance || String(a.playerName).localeCompare(String(b.playerName),'es'));
+}
+
+function championshipRivalProgress(position) {
+  const entry = championshipCurrentEntry(position);
+  if (!entry?.cardId) return null;
+  const card = state.game?.cards?.find(item => item.id === entry.cardId);
+  if (!card) return null;
+  const analysis = analyzeCard(card, state.game.drawn, []);
+  if (entry.bingoBall) return { stage:4, nextType:'complete', nextLabel:'BINGO LOGRADO', missing:0 };
+  if (entry.secondLineBall) return { stage:3, nextType:'bingo', nextLabel:'BINGO', missing:Math.max(0,Number(analysis.bingoMissing)||0) };
+  if (entry.lineBall) return { stage:2, nextType:'secondLine', nextLabel:'SEGUNDA LÍNEA', missing:Math.max(0,missingNumbersForLineCount(card,state.game.drawn,2)) };
+  return { stage:1, nextType:'line', nextLabel:'PRIMERA LÍNEA', missing:Math.max(0,Number(analysis.lineMissing)||0) };
+}
+
+function rivalsChampionshipPayload(viewer) {
+  const champ = state.championship;
+  if (!champ?.enabled) return [];
+  const board = championshipLeaderboard();
+  const viewerId = String(viewer?.id || '');
+  if (champ.stage === 'tiebreak') {
+    const groups = new Map();
+    for (const item of champ.tiebreak?.contenders || []) {
+      if (String(item.playerId || '') === viewerId) continue;
+      const current = groups.get(String(item.playerId || '')) || { playerId:String(item.playerId||''), playerName:String(item.playerName||'Jugador'), activePositions:0, bestHits:0, slots:[] };
+      if ((champ.tiebreak?.activePositionIds || []).includes(item.positionId)) current.activePositions += 1;
+      current.bestHits = Math.max(current.bestHits, Math.max(0,Number(item.hits)||0));
+      current.slots.push(`C${Number(item.slot)||1}`);
+      groups.set(current.playerId,current);
+    }
+    return [...groups.values()].map(item=>({ ...item, mode:'championship_tiebreak', alert:item.activePositions>0 })).sort((a,b)=>b.activePositions-a.activePositions || b.bestHits-a.bestHits || String(a.playerName).localeCompare(String(b.playerName),'es'));
+  }
+  const groups = new Map();
+  for (const row of board) {
+    if (String(row.playerId || '') === viewerId) continue;
+    const position = (champ.positions || []).find(item => String(item.id) === String(row.positionId));
+    const progress = championshipRivalProgress(position);
+    if (!progress) continue;
+    const item = {
+      playerId:String(row.playerId||''), playerName:String(row.playerName||'Jugador'), rank:Number(row.rank)||0,
+      points:Math.max(0,Number(row.points)||0), roundPoints:Math.max(0,Number(row.roundPoints)||0),
+      positionLabel:String(row.label||`C${Number(row.slot)||1}`), ...progress,
+      alert:progress.missing === 1 && progress.stage < 4
+    };
+    const old = groups.get(item.playerId);
+    const better = !old || item.stage > old.stage || (item.stage === old.stage && item.missing < old.missing) || (item.stage === old.stage && item.missing === old.missing && item.points > old.points);
+    if (better) groups.set(item.playerId,item);
+  }
+  return [...groups.values()].sort((a,b)=>a.missing-b.missing || b.stage-a.stage || a.rank-b.rank || String(a.playerName).localeCompare(String(b.playerName),'es'));
+}
+
+function rivalsFlashPayload(viewer) {
+  if (!state.flash?.enabled) return [];
+  const board = flashLeaderboard();
+  let rank = 0, lastScore = null;
+  return board.map((item,index)=>{
+    if (lastScore === null || Number(item.score) !== lastScore) rank = index + 1;
+    lastScore = Number(item.score);
+    return { ...item, rank };
+  }).filter(item=>String(item.playerId||'') !== String(viewer?.id||'')).map(item=>({
+    playerId:String(item.playerId||''), playerName:String(item.playerName||'Jugador'), rank:Number(item.rank)||0,
+    score:Math.max(0,Number(item.score)||0), contender:Boolean(item.contender), winner:Boolean(item.winner),
+    mode:'flash', alert:Boolean(item.contender && state.flash?.stage === 'sudden_death')
+  }));
+}
+
+function rivalsPayloadFor(viewer) {
+  if (!state.active || !state.game || !viewer || !['starting','playing','paused','verifying','resuming','finalizing','finished'].includes(state.status)) return { enabled:false, mode:'', alertCount:0, items:[] };
+  const cacheKey = `${currentWorkspace().id}:${Number(state.revision)||0}:${state.game.id}:${state.status}`;
+  if (rivalsPayloadFor.cacheKey !== cacheKey) {
+    let mode = 'normal', items = [];
+    if (state.flash?.enabled) { mode = 'flash'; items = rivalsFlashPayload(null); }
+    else if (state.championship?.enabled) { mode = state.championship.stage === 'tiebreak' ? 'championship_tiebreak' : 'championship'; items = rivalsChampionshipPayload(null); }
+    else items = rivalsNormalPayload(null);
+    rivalsPayloadFor.cacheKey = cacheKey;
+    rivalsPayloadFor.cache = { mode, items };
+  }
+  const mode = rivalsPayloadFor.cache?.mode || 'normal';
+  const items = (rivalsPayloadFor.cache?.items || []).filter(item => String(item.playerId||'') !== String(viewer.id||''));
+  return { enabled:true, mode, alertCount:items.filter(item=>item.alert).length, updatedDrawCount:(state.game.drawn||[]).length, items:items.slice(0,30) };
 }
 
 

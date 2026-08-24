@@ -1,0 +1,30 @@
+EL BINGO DE LA GORDA · V9.2.10
+24/08/2026
+
+AUDIO DE CHAT — FLUJO MÁS SIMPLE
+
+JUGADOR / CREADOR
+- El micrófono inicia o termina la grabación.
+- La flecha normal del chat (➤) envía el audio.
+- Si se toca ➤ mientras sigue grabando, se detiene y se envía automáticamente.
+- Ya no existe un botón adicional "ENVIAR" arriba de la flecha.
+- CANCELAR descarta la grabación.
+- Jugador: hasta 8 segundos.
+- Creador: hasta 120 segundos.
+
+REPRODUCCIÓN
+- Reproductor propio tipo mensajería con Play/Pausa grande.
+- Barra de progreso táctil para avanzar o retroceder.
+- Tiempo visible.
+- Sólo un audio se reproduce a la vez.
+- El audio activo ya no depende del HTML reconstruido del chat, reduciendo cortes/reinicios cuando llegan actualizaciones.
+
+ADMIN
+- El botón ENVIAR del chat también envía el audio grabado.
+- Se elimina el segundo botón de envío de audio.
+- Conserva máximo de 120 segundos y moderación de audio por jugador.
+
+SIN CAMBIOS
+- APIs y almacenamiento de audios.
+- Código de creador recuperable en Admin.
+- Campeonato V9.2.8.

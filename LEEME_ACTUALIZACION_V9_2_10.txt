@@ -1,0 +1,20 @@
+EL BINGO DE LA GORDA — ACTUALIZACIÓN V9.2.10
+
+Base requerida: V9.2.9.
+
+Esta actualización mejora exclusivamente la experiencia de mensajes de voz del chat.
+
+CAMBIOS PRINCIPALES
+- La flecha/botón normal ENVIAR del chat ahora envía también el audio.
+- Se elimina el botón adicional de envío de voz.
+- Play/Pausa grande y barra de progreso táctil.
+- Reproductor persistente para evitar cortes al actualizarse el chat.
+- Misma experiencia en Jugador/Creador y Admin.
+
+SE MANTIENE
+- 8 segundos para jugador.
+- 120 segundos para creador y Admin.
+- Silenciamiento de audio independiente del texto.
+- Código de creador visible para Admin según V9.2.9.
+
+Aplicar los archivos de este ZIP sobre una instalación V9.2.9 conservando la estructura de carpetas.

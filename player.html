@@ -18,7 +18,7 @@
     <div id="chatAudioModeration" class="chatAudioModeration hidden"></div>
     <div id="chatMessages" class="chatMessages"></div>
     <div id="chatPicker" class="chatPicker"></div>
-    <div id="chatVoiceBar" class="chatVoiceBar hidden"><div class="chatVoiceState"><span id="chatVoiceDot" class="chatVoiceDot"></span><b id="chatVoiceLabel">GRABANDO</b><small id="chatVoiceTimer">0:00 / 0:08</small></div><audio id="chatVoicePreview" class="hidden" controls preload="metadata"></audio><div class="chatVoiceActions"><button id="chatVoiceCancel" class="chatVoiceCancel" type="button">CANCELAR</button><button id="chatVoiceSend" class="chatVoiceSend hidden" type="button">ENVIAR</button></div></div>
+    <div id="chatVoiceBar" class="chatVoiceBar hidden"><div class="chatVoiceState"><span id="chatVoiceDot" class="chatVoiceDot"></span><b id="chatVoiceLabel">GRABANDO</b><small id="chatVoiceTimer">0:00 / 0:08</small></div><div id="chatVoicePreviewControls" class="voiceDraftPlayer hidden"><button id="chatVoicePreviewPlay" class="voicePlayBtn" type="button" aria-label="Escuchar audio">▶</button><input id="chatVoicePreviewSeek" class="voiceSeek" type="range" min="0" max="1000" value="0" aria-label="Progreso del audio"><span id="chatVoicePreviewTime" class="voiceTime">0:00</span></div><div class="chatVoiceActions"><button id="chatVoiceCancel" class="chatVoiceCancel" type="button">CANCELAR</button></div></div>
     <form id="chatForm" class="chatComposer communityComposer"><button id="chatEmojiBtn" class="chatTool" type="button" aria-label="Emojis">☺</button><button id="chatStickerBtn" class="chatTool" type="button" aria-label="Stickers y La Gorda">✦</button><button id="chatVoiceBtn" class="chatTool chatVoiceBtn" type="button" aria-label="Grabar mensaje de voz" title="Mensaje de voz">🎙</button><input id="chatInput" maxlength="160" placeholder="Escribí un mensaje…" autocomplete="off" enterkeyhint="send"><button class="sendBtn" type="submit" aria-label="Enviar">➤</button></form>
   </section>
 </div>
@@ -29,6 +29,6 @@
 <div id="toast" class="toast"></div>
 <script src="/js/emoji-stickers.js?v=2.2.0"></script>
 <script src="/js/bingo-voice.js?v=eleven-v1-20260822"></script>
-<script src="/js/player.js?v=v9-2-9-voz-chat-20260824"></script>
+<script src="/js/player.js?v=v9-2-10-audio-whatsapp-20260824"></script>
 </body>
 </html>

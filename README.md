@@ -1,3 +1,17 @@
+## V9.2.10 — Audio de chat más directo y reproductor estable
+
+- El mensaje de voz usa el mismo botón **Enviar** del chat: no existe un segundo botón de envío encima de la barra.
+- Al tocar el micrófono comienza la grabación; la flecha `➤` envía el audio. Si se toca `➤` mientras todavía está grabando, la grabación se cierra y se envía automáticamente.
+- Si el audio llega al límite (8 s jugador / 120 s creador y Admin), queda listo para enviar con el botón normal del chat.
+- Se conserva **Cancelar** para descartar una grabación.
+- Los audios recibidos ya no usan el reproductor nativo que era recreado por el chat: ahora usan un reproductor propio con **Play/Pausa grande, barra táctil de progreso y tiempo**.
+- La reproducción usa un único objeto de audio persistente, por lo que las actualizaciones del chat no reinician ni cortan el audio en curso.
+- Sólo se reproduce un audio a la vez. Al iniciar otro, el anterior se pausa.
+- El audio grabado puede escucharse con el mismo tipo de control simple antes de enviarlo.
+- El flujo equivalente también se aplica al chat del Administrador.
+- Se mantienen los límites y permisos de V9.2.9: 8 s para jugadores, 120 s para creador/Admin y silenciamiento de voz independiente.
+- Nueva regresión automatizada: `tests/community-chat-audio-v9210.js`.
+
 ## V9.2.9 — Mensajes de voz + moderación + código de creador en Admin
 
 - El chat de cada sala incorpora **mensajes de voz** sin reproducción automática.

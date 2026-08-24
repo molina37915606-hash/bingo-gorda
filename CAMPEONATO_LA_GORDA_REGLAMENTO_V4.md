@@ -1,6 +1,6 @@
 # CAMPEONATO LA GORDA
 
-## Reglamento competitivo V4
+## Reglamento competitivo V4 · revisión V9.2.8
 
 CAMPEONATO LA GORDA es un modo competitivo público de Comunidad. Este reglamento reemplaza por completo las reglas anteriores del modo Campeonato.
 
@@ -64,9 +64,13 @@ La puntuación es fija para Bingo 75 y Bingo 90:
 |---|---:|
 | Cada número real del cartón extraído | +1 |
 | Primera Línea | +10 |
+| Primera posición que logra Primera Línea | +5 adicionales |
 | Segunda Línea | +20 |
+| Primera posición que logra Segunda Línea | +5 adicionales |
 | Bingo | +60 |
-| Primer Bingo de la ronda | +15 adicionales |
+| Primera posición que logra Bingo | +15 adicionales |
+
+Los bonus de primero se determinan por la **bolilla matemática del logro**, nunca por quién toca antes el botón de canto. Si dos o más posiciones completan la misma jugada con la misma bolilla, todas reciben el bonus correspondiente.
 
 No existen tablas de puntos variables según la bolilla en que se logra una jugada.
 
@@ -92,11 +96,10 @@ El canto:
 - se registra en el historial;
 - no pausa el bolillero;
 - no requiere una decisión manual del administrador;
-- no modifica el puntaje;
-- no agrega bonus;
+- no decide quién recibe los bonus de primero;
 - no afecta a los demás cartones.
 
-La velocidad de conexión, el dispositivo o el tiempo de reacción **nunca otorgan puntos ni resuelven posiciones**.
+Los puntos y bonus ya están determinados automáticamente por la bolilla en que cada cartón completa matemáticamente la jugada. La velocidad de conexión, el dispositivo o el tiempo de reacción **nunca otorgan puntos ni resuelven posiciones**.
 
 ## 8. Elegibilidad para ser Campeón
 
@@ -137,9 +140,10 @@ Después de **10 bolillas exactas** se realiza la primera comparación.
 
 - Si existe un líder único, es Campeón.
 - Si varios siguen empatados en el mayor puntaje de desempate, las posiciones con menor puntaje quedan eliminadas y los líderes empatados continúan con **los mismos cartones y el mismo bolillero**.
-- Desde la bolilla 11 se juega en **muerte súbita, una bolilla por vez**. Después de cada nueva bolilla se compara nuevamente el puntaje de los finalistas activos.
-- Cuando aparece un líder único, el desempate termina inmediatamente.
-- Si excepcionalmente se agotara todo el bolillero y persistiera el empate, sólo los finalistas todavía empatados reciben cartones nuevos y comienza una nueva serie con otro bolillero.
+- Desde la bolilla 11 se juega en **muerte súbita, una bolilla por vez**. El acumulado de las primeras 10 ya no vuelve a compararse.
+- En cada bolilla extra se observa únicamente esa bolilla: si todos los finalistas activos la marcan o ninguno la marca, el desempate continúa.
+- Si sólo una parte de los finalistas activos marca esa bolilla, continúan únicamente quienes la marcaron. Con dos finalistas, si uno la marca y el otro no, el que la marca es Campeón inmediatamente.
+- No se abre una nueva serie de 10 bolillas durante esta muerte súbita.
 
 Los puntos del desempate no se agregan al puntaje normal del Campeonato: sirven únicamente para determinar al Campeón Oficial.
 

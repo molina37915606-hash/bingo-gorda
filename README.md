@@ -1,3 +1,13 @@
+## V9.2.8 — Campeonato: bonus por primer logro + desempate rápido
+
+- Campeonato incorpora bonus matemáticos por orden de logro: **Primera Línea +5**, **primera Segunda Línea +5** y mantiene **primer Bingo +15**.
+- Los bonus se asignan por la **bolilla en que se completa matemáticamente** la jugada, no por velocidad de toque ni conexión. Si varias posiciones completan la jugada con la misma bolilla, todas reciben el bonus correspondiente.
+- El anuncio y la pantalla del jugador muestran el valor efectivo: por ejemplo, el primer Bingo se informa como **75 pts (60 + 15)** y los Bingos posteriores como **60 pts**.
+- El desempate final conserva las **10 bolillas iniciales**: si hay líder único, gana. Si persiste el empate, comienza muerte súbita una bolilla por vez.
+- En muerte súbita ya no se vuelve a comparar el acumulado: gana la primera posición activa que **marca la bolilla nueva cuando su rival no la marca**. Con más de dos finalistas, continúan sólo quienes marcaron esa bolilla diferencial.
+- No se abre una nueva serie de 10 bolillas durante la muerte súbita de Campeonato.
+- Nueva regresión automatizada: `tests/community-championship-v4-bonuses.js`; se reforzó `tests/community-championship-v4-tiebreak.js`.
+
 ## V9.2.7 — Premios visibles + anuncios automáticos sincronizados
 
 - Cada mesa normal muestra en **Comunidad** los premios que realmente están habilitados: por ejemplo `SE JUEGA POR: LÍNEA + BINGO` o `AMBO CABEZA + 2 LÍNEAS + BINGO`.

@@ -51,7 +51,7 @@ const CHAMPIONSHIP_RESULTS_VISIBILITY_MS = Math.max(10 * 60_000, Number(process.
 const CHAMPIONSHIP_ROUND_OPTIONS = [3, 5, 7];
 const CHAMPIONSHIP_PERSISTED_ROUNDS = CHAMPIONSHIP_ROUND_OPTIONS;
 const CHAMPIONSHIP_DEFAULT_ROUNDS = 5;
-const CHAMPIONSHIP_SCORE = Object.freeze({ hit:1, line:10, secondLine:20, bingo:60, firstBingo:15, tiebreakMinimumBalls:10 });
+const CHAMPIONSHIP_SCORE = Object.freeze({ hit:1, line:10, firstLine:5, secondLine:20, firstSecondLine:5, bingo:60, firstBingo:15, tiebreakMinimumBalls:10 });
 const FLASH_MINIMUM_BALLS = 10;
 const COMMUNITY_FINISH_GRACE_MS = Math.max(TEST_MODE ? 150 : 15_000, Number(process.env.BINGO_COMMUNITY_FINISH_GRACE_MS || 3 * 60 * 1000));
 const COMMUNITY_ROOM_ACCESS_COOKIE = 'bingo_community_room_access';
@@ -523,6 +523,9 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       merged.championship.roundHistory = Array.isArray(merged.championship.roundHistory) ? merged.championship.roundHistory : [];
       merged.championship.announcements = Array.isArray(merged.championship.announcements) ? merged.championship.announcements : [];
       merged.championship.finalizedAt = merged.championship.finalizedAt || null;
+      merged.championship.firstLineDrawnCount = Math.max(0, Number(merged.championship.firstLineDrawnCount) || 0) || null;
+      merged.championship.firstSecondLineDrawnCount = Math.max(0, Number(merged.championship.firstSecondLineDrawnCount) || 0) || null;
+      merged.championship.firstBingoDrawnCount = Math.max(0, Number(merged.championship.firstBingoDrawnCount) || 0) || null;
       merged.championship.finalActaSha256 = /^[a-f0-9]{64}$/i.test(String(merged.championship.finalActaSha256 || '')) ? String(merged.championship.finalActaSha256).toLowerCase() : '';
     }
     merged.flash = parsed.flash && typeof parsed.flash === 'object' && parsed.flash.enabled ? {
@@ -4624,6 +4627,8 @@ function createChampionshipState(payload = {}, mode = 90) {
     tiebreak: null,
     finalizedAt: null,
     finalActaSha256: '',
+    firstLineDrawnCount: null,
+    firstSecondLineDrawnCount: null,
     firstBingoDrawnCount: null,
     closingDrawnCount: null,
     roundStartedAt: null,
@@ -4659,6 +4664,10 @@ function championshipPositionStats(position) {
     eligible: bingoRounds.length > 0,
     bingos: bingoRounds.length,
     bingoPoints: bingoRounds.reduce((sum,item)=>sum+Math.max(0,Number(item.bingoPoints)||0),0),
+    firstLineBonuses: rounds.filter(item=>Number(item.firstLineBonus)>0).length,
+    firstLineBonusPoints: rounds.reduce((sum,item)=>sum+Math.max(0,Number(item.firstLineBonus)||0),0),
+    firstSecondLineBonuses: rounds.filter(item=>Number(item.firstSecondLineBonus)>0).length,
+    firstSecondLineBonusPoints: rounds.reduce((sum,item)=>sum+Math.max(0,Number(item.firstSecondLineBonus)||0),0),
     firstBingoBonuses: rounds.filter(item=>Number(item.firstBingoBonus)>0).length,
     firstBingoBonusPoints: rounds.reduce((sum,item)=>sum+Math.max(0,Number(item.firstBingoBonus)||0),0),
     secondLines: secondRounds.length,
@@ -4716,6 +4725,10 @@ function championshipLeaderboard() {
       roundPoints: Math.max(0, Number(entry?.points) || 0),
       bingos: stats.bingos,
       bingoPoints: stats.bingoPoints,
+      firstLineBonuses: stats.firstLineBonuses,
+      firstLineBonusPoints: stats.firstLineBonusPoints,
+      firstSecondLineBonuses: stats.firstSecondLineBonuses,
+      firstSecondLineBonusPoints: stats.firstSecondLineBonusPoints,
       firstBingoBonuses: stats.firstBingoBonuses,
       firstBingoBonusPoints: stats.firstBingoBonusPoints,
       secondLines: stats.secondLines,
@@ -4728,6 +4741,8 @@ function championshipLeaderboard() {
       lineBall: entry?.lineBall || null,
       secondLineBall: entry?.secondLineBall || null,
       bingoBall: entry?.bingoBall || null,
+      firstLineBonus: Math.max(0, Number(entry?.firstLineBonus) || 0),
+      firstSecondLineBonus: Math.max(0, Number(entry?.firstSecondLineBonus) || 0),
       firstBingoBonus: Math.max(0, Number(entry?.firstBingoBonus) || 0)
     };
   });
@@ -4741,8 +4756,8 @@ function championshipRoundLeaderboard() {
       positionId: position.id, playerId: position.playerId, playerName: position.playerName, slot: position.slot, label:`C${position.slot}`,
       roundPoints: Math.max(0, Number(entry?.points) || 0), totalPoints: championshipPositionStats(position).totalPoints,
       bingoBall: entry?.bingoBall || null, bingoPoints:Math.max(0,Number(entry?.bingoPoints)||0), firstBingoBonus:Math.max(0,Number(entry?.firstBingoBonus)||0),
-      secondLineBall: entry?.secondLineBall || null, secondLinePoints:Math.max(0,Number(entry?.secondLinePoints)||0),
-      lineBall: entry?.lineBall || null, linePoints:Math.max(0,Number(entry?.linePoints)||0), hitCount:Math.max(0,Number(entry?.hitCount)||0)
+      secondLineBall: entry?.secondLineBall || null, secondLinePoints:Math.max(0,Number(entry?.secondLinePoints)||0), firstSecondLineBonus:Math.max(0,Number(entry?.firstSecondLineBonus)||0),
+      lineBall: entry?.lineBall || null, linePoints:Math.max(0,Number(entry?.linePoints)||0), firstLineBonus:Math.max(0,Number(entry?.firstLineBonus)||0), hitCount:Math.max(0,Number(entry?.hitCount)||0)
     };
   }).sort((a,b)=>b.roundPoints-a.roundPoints || String(a.positionId).localeCompare(String(b.positionId)));
   let rank = 0;
@@ -4791,6 +4806,8 @@ function championshipPublicPayload(player = null) {
     completedRounds:Number(champ.completedRounds)||0,
     stage:String(champ.stage||'registration'),
     scoring:{...CHAMPIONSHIP_SCORE},
+    firstLineDrawnCount:Number(champ.firstLineDrawnCount)||null,
+    firstSecondLineDrawnCount:Number(champ.firstSecondLineDrawnCount)||null,
     firstBingoDrawnCount:firstBingo,
     closingDrawnCount:closing,
     finalBallsRemaining:closing ? Math.max(0, closing - drawnCount) : null,
@@ -4809,6 +4826,7 @@ function championshipPublicPayload(player = null) {
     tiebreak:champ.tiebreak ? {
       series:Number(champ.tiebreak.series)||1, minimumBalls:CHAMPIONSHIP_SCORE.tiebreakMinimumBalls,
       drawnCount:Number(champ.tiebreak.drawnCount)||0, suddenDeath:Boolean(champ.tiebreak.suddenDeath),
+      suddenDeathDrawn:Math.max(0,Number(champ.tiebreak.suddenDeathDrawn)||0), winningBall:Number(champ.tiebreak.winningBall)||null,
       activePositionIds:Array.isArray(champ.tiebreak.activePositionIds)?[...champ.tiebreak.activePositionIds]:[],
       winnerPositionId:String(champ.tiebreak.winnerPositionId||''),
       contenders:(Array.isArray(champ.tiebreak.contenders)?champ.tiebreak.contenders:[]).map(item=>({positionId:String(item.positionId||''),playerId:String(item.playerId||''),playerName:String(item.playerName||''),slot:Number(item.slot)||1,label:`C${Number(item.slot)||1}`,cardId:String(item.cardId||''),cardNumber:item.cardNumber??'',hits:Math.max(0,Number(item.hits)||0),active:(champ.tiebreak.activePositionIds||[]).includes(item.positionId)})),
@@ -4831,8 +4849,10 @@ function recomputeChampionshipEntryPoints(entry, mode) {
   entry.linePoints = entry.lineBall ? championshipPointsFor(mode, 'line') : 0;
   entry.secondLinePoints = entry.secondLineBall ? championshipPointsFor(mode, 'secondLine') : 0;
   entry.bingoPoints = entry.bingoBall ? championshipPointsFor(mode, 'bingo') : 0;
+  entry.firstLineBonus = entry.lineBall ? Math.max(0, Number(entry.firstLineBonus) || 0) : 0;
+  entry.firstSecondLineBonus = entry.secondLineBall ? Math.max(0, Number(entry.firstSecondLineBonus) || 0) : 0;
   entry.firstBingoBonus = entry.bingoBall ? Math.max(0, Number(entry.firstBingoBonus) || 0) : 0;
-  entry.points = entry.hitPoints + entry.linePoints + entry.secondLinePoints + entry.bingoPoints + entry.firstBingoBonus;
+  entry.points = entry.hitPoints + entry.linePoints + entry.firstLineBonus + entry.secondLinePoints + entry.firstSecondLineBonus + entry.bingoPoints + entry.firstBingoBonus;
   return entry.points;
 }
 
@@ -4883,6 +4903,8 @@ function prepareChampionshipRound(roundNumber) {
   state.round = round;
   champ.currentRound = round;
   champ.stage = 'prepared';
+  champ.firstLineDrawnCount = null;
+  champ.firstSecondLineDrawnCount = null;
   champ.firstBingoDrawnCount = null;
   champ.closingDrawnCount = null;
   champ.roundStartedAt = null;
@@ -4912,7 +4934,7 @@ function prepareChampionshipRound(roundNumber) {
       position.rounds ||= [];
       position.rounds.push({
         round, cardId:card.id, cardNumber:card.number, grid:deepCopy(card.grid), hitCount:0, hitPoints:0,
-        lineBall:null, linePoints:0, lineClaimedAt:null, secondLineBall:null, secondLinePoints:0, secondLineClaimedAt:null,
+        lineBall:null, linePoints:0, firstLineBonus:0, lineClaimedAt:null, secondLineBall:null, secondLinePoints:0, firstSecondLineBonus:0, secondLineClaimedAt:null,
         bingoBall:null, bingoPoints:0, bingoDetectedAt:null, bingoClaimedAt:null, firstBingoBonus:0,
         claimEvents:[], points:0
       });
@@ -4981,7 +5003,7 @@ function prepareChampionshipTiebreak(positionIds, options = {}) {
   state.transition = null;
   state.cardReservations = {};
   champ.stage = 'tiebreak';
-  champ.tiebreak = { enabled:true, series, minimumBalls:CHAMPIONSHIP_SCORE.tiebreakMinimumBalls, startedAt:nowIso(), drawnCount:0, suddenDeath:false, activePositionIds:positions.map(item=>item.id), contenders, history, winnerPositionId:'' };
+  champ.tiebreak = { enabled:true, series, minimumBalls:CHAMPIONSHIP_SCORE.tiebreakMinimumBalls, startedAt:nowIso(), drawnCount:0, suddenDeath:false, suddenDeathStartedAt:null, suddenDeathDrawn:0, winningBall:null, activePositionIds:positions.map(item=>item.id), contenders, history, winnerPositionId:'' };
   for (const player of state.players) {
     const own = contenders.filter(item => item.playerId === player.id);
     player.cardIds = own.map(item => item.cardId);
@@ -5033,6 +5055,7 @@ function processChampionshipTiebreakAfterDraw() {
   const tb = champ?.tiebreak;
   if (!tb?.enabled || champ.stage !== 'tiebreak' || !state.game) return null;
   const drawCount = state.game.drawn.length;
+  const lastBall = Number(state.game.drawn.at(-1));
   tb.drawnCount = drawCount;
   for (const contender of tb.contenders || []) {
     const card = state.game.cards.find(item => item.id === contender.cardId);
@@ -5044,19 +5067,43 @@ function processChampionshipTiebreakAfterDraw() {
   }
   const activeIds = new Set((tb.activePositionIds || []).map(String));
   const active = (tb.contenders || []).filter(item => activeIds.has(String(item.positionId)));
-  const maxHits = Math.max(...active.map(item => Number(item.hits)||0));
-  const leaders = active.filter(item => Number(item.hits)||0 === maxHits);
-  if (leaders.length === 1) {
-    finalizeChampionship(leaders[0].positionId, { tiebreak:true });
+  if (!active.length) return championshipPublicPayload();
+
+  if (drawCount === CHAMPIONSHIP_SCORE.tiebreakMinimumBalls && !tb.suddenDeath) {
+    const maxHits = Math.max(...active.map(item => Number(item.hits)||0));
+    const leaders = active.filter(item => Number(item.hits)||0 === maxHits);
+    if (leaders.length === 1) {
+      finalizeChampionship(leaders[0].positionId, { tiebreak:true });
+      return championshipPublicPayload();
+    }
+    tb.activePositionIds = leaders.map(item => item.positionId);
+    tb.suddenDeath = true;
+    tb.suddenDeathStartedAt = nowIso();
+    tb.suddenDeathDrawn = 0;
+    logEvent('championship_tiebreak_sudden_death_started', { positionIds:[...tb.activePositionIds], afterBalls:drawCount });
+    champ.updatedAt = nowIso();
     return championshipPublicPayload();
   }
-  tb.activePositionIds = leaders.map(item => item.positionId);
-  tb.suddenDeath = true;
-  champ.updatedAt = nowIso();
-  if (drawCount >= Number(state.game.mode)) {
-    const history = [...(tb.history || []), { series:Number(tb.series)||1, balls:drawCount, result:(tb.contenders||[]).map(item=>({positionId:item.positionId,playerName:item.playerName,slot:item.slot,hits:Number(item.hits)||0})), unresolvedPositionIds:[...tb.activePositionIds] }];
-    prepareChampionshipTiebreak(tb.activePositionIds, { series:Number(tb.series||1)+1, history });
+
+  if (drawCount > CHAMPIONSHIP_SCORE.tiebreakMinimumBalls && tb.suddenDeath) {
+    tb.suddenDeathDrawn = Math.max(0, Number(tb.suddenDeathDrawn) || 0) + 1;
+    const liveIds = new Set((tb.activePositionIds || []).map(String));
+    const live = (tb.contenders || []).filter(item => liveIds.has(String(item.positionId)));
+    const hitters = live.filter(item => {
+      const card = state.game.cards.find(cardItem => cardItem.id === item.cardId);
+      return card ? cardNumbers(card).includes(lastBall) : false;
+    });
+    logEvent('championship_tiebreak_sudden_death_ball', { ball:lastBall, hitPositionIds:hitters.map(item=>item.positionId), activePositionIds:[...liveIds] });
+    if (hitters.length > 0 && hitters.length < live.length) {
+      tb.activePositionIds = hitters.map(item => item.positionId);
+      if (hitters.length === 1) {
+        tb.winningBall = lastBall;
+        finalizeChampionship(hitters[0].positionId, { tiebreak:true, winningBall:lastBall });
+        return championshipPublicPayload();
+      }
+    }
   }
+  champ.updatedAt = nowIso();
   return championshipPublicPayload();
 }
 
@@ -5068,6 +5115,8 @@ function processChampionshipAfterDraw() {
   const drawCount = state.game.drawn.length;
   const mode = Number(state.game.mode) === 75 ? 75 : 90;
   const drawAt = state.game.lastDrawnAt || nowIso();
+  const newLineEntries = [];
+  const newSecondLineEntries = [];
   const newBingoEntries = [];
   for (const position of champ.positions || []) {
     if (position.retired) continue;
@@ -5077,14 +5126,36 @@ function processChampionshipAfterDraw() {
     if (!card) continue;
     const analysis = analyzeCard(card, state.game.drawn, []);
     entry.hitCount = analysis.markedCount;
-    if (!entry.lineBall && analysis.lineCount >= 1) entry.lineBall = drawCount;
-    if (!entry.secondLineBall && analysis.lineCount >= 2) entry.secondLineBall = drawCount;
+    if (!entry.lineBall && analysis.lineCount >= 1) {
+      entry.lineBall = drawCount;
+      newLineEntries.push(entry);
+    }
+    if (!entry.secondLineBall && analysis.lineCount >= 2) {
+      entry.secondLineBall = drawCount;
+      newSecondLineEntries.push(entry);
+    }
     if (!entry.bingoBall && analysis.hasBingo) {
       entry.bingoBall = drawCount;
       entry.bingoDetectedAt = drawAt;
       newBingoEntries.push(entry);
     }
     recomputeChampionshipEntryPoints(entry, mode);
+  }
+  if (!champ.firstLineDrawnCount && newLineEntries.length > 0) {
+    champ.firstLineDrawnCount = drawCount;
+    for (const entry of newLineEntries) {
+      entry.firstLineBonus = CHAMPIONSHIP_SCORE.firstLine;
+      recomputeChampionshipEntryPoints(entry, mode);
+    }
+    logEvent('championship_first_line', { round:champ.currentRound, ballOrder:drawCount, ballNumber:state.game.drawn.at(-1), bonus:CHAMPIONSHIP_SCORE.firstLine, simultaneous:newLineEntries.length });
+  }
+  if (!champ.firstSecondLineDrawnCount && newSecondLineEntries.length > 0) {
+    champ.firstSecondLineDrawnCount = drawCount;
+    for (const entry of newSecondLineEntries) {
+      entry.firstSecondLineBonus = CHAMPIONSHIP_SCORE.firstSecondLine;
+      recomputeChampionshipEntryPoints(entry, mode);
+    }
+    logEvent('championship_first_second_line', { round:champ.currentRound, ballOrder:drawCount, ballNumber:state.game.drawn.at(-1), bonus:CHAMPIONSHIP_SCORE.firstSecondLine, simultaneous:newSecondLineEntries.length });
   }
   if (!champ.firstBingoDrawnCount && newBingoEntries.length > 0) {
     champ.firstBingoDrawnCount = drawCount;
@@ -5131,7 +5202,12 @@ function createChampionshipClaim(player, payload = {}) {
     currentEntry[config.claimedKey] = now;
     currentEntry.claimEvents = Array.isArray(currentEntry.claimEvents) ? currentEntry.claimEvents : [];
     const basePoints = Math.max(0, Number(currentEntry?.[config.pointsKey]) || 0);
-    const eventPoints = claimType === 'bingo' ? basePoints + Math.max(0, Number(currentEntry.firstBingoBonus)||0) : basePoints;
+    const bonusPoints = claimType === 'line'
+      ? Math.max(0, Number(currentEntry.firstLineBonus)||0)
+      : claimType === 'secondLine'
+        ? Math.max(0, Number(currentEntry.firstSecondLineBonus)||0)
+        : Math.max(0, Number(currentEntry.firstBingoBonus)||0);
+    const eventPoints = basePoints + bonusPoints;
     const event = { id:randomId('champ_claim'), type:claimType, label:config.label, claimedAt:now, ball, points:eventPoints, positionId:pos.id, slot:pos.slot, cardId:currentEntry.cardId, cardNumber:currentEntry.cardNumber };
     currentEntry.claimEvents.push(event);
     return event;

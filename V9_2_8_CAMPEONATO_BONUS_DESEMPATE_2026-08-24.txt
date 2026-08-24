@@ -1,0 +1,23 @@
+EL BINGO DE LA GORDA · V9.2.8 · CAMPEONATO
+Fecha: 2026-08-24
+
+CAMBIOS PRINCIPALES
+
+PUNTOS
+- Número acertado: +1
+- Primera Línea: +10
+- Bonus primera Primera Línea de la ronda: +5
+- Segunda Línea: +20
+- Bonus primera Segunda Línea de la ronda: +5
+- Bingo: +60
+- Bonus primer Bingo de la ronda: +15
+
+EMPATES EN LA MISMA BOLILLA
+Si dos o más cartones completan la misma jugada con la misma bolilla, todos reciben el bonus de primero.
+
+DESEMPATE
+10 bolillas. Gana quien tenga más aciertos.
+Si siguen empatados: muerte súbita, una bolilla por vez.
+La primera bolilla que marque una posición y no su rival define el Campeonato.
+
+La velocidad para presionar CANTAR/RECLAMAR no decide bonus ni desempates.

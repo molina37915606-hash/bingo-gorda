@@ -1,0 +1,40 @@
+EL BINGO DE LA GORDA — ACTUALIZACIÓN V9.2.8
+Fecha: 2026-08-24
+
+CAMPEONATO — BONUS POR PRIMER LOGRO + DESEMPATE RÁPIDO
+
+Esta actualización se aplica sobre V9.2.7.
+
+1. BONUS OFICIALES DE CAMPEONATO
+- Primera Línea: +10.
+- Primera posición que logra Primera Línea en la ronda: +5 extra.
+- Segunda Línea: +20.
+- Primera posición que logra Segunda Línea en la ronda: +5 extra.
+- Bingo: +60.
+- Primera posición que logra Bingo en la ronda: +15 extra, total 75.
+- Si varias posiciones completan una jugada con la misma bolilla, comparten el bonus de primero.
+- El orden se determina por la bolilla matemática, nunca por velocidad de conexión o por quién presiona antes RECLAMAR.
+
+2. VISUALIZACIÓN CORREGIDA
+- El primer Bingo ahora se anuncia y se muestra como 75 pts (60 + bonus 15).
+- Los Bingos posteriores se anuncian como 60 pts.
+- Línea y Segunda Línea muestran también su bonus de primero cuando corresponde.
+- Los bonus forman parte del puntaje oficial acumulado y del acta.
+
+3. DESEMPATE FINAL
+- Se mantienen 10 bolillas iniciales de desempate.
+- Al completar la bolilla 10, si hay un líder único, gana el Campeonato.
+- Si sigue el empate, comienza muerte súbita de una bolilla por vez.
+- Desde la bolilla 11 no se vuelve a comparar el acumulado: se evalúa únicamente la bolilla nueva.
+- Si uno marca esa bolilla y el rival no, gana inmediatamente.
+- Si ambos la marcan o ninguno la marca, sale otra bolilla.
+- Con más de dos finalistas, una bolilla diferencial elimina a quienes no la marcaron y continúan quienes sí la marcaron.
+- Campeonato ya no inicia otra serie de 10 bolillas al entrar en muerte súbita.
+
+4. PRUEBAS
+- Nuevo: tests/community-championship-v4-bonuses.js
+  Verifica bonus de Línea/Segunda Línea y, específicamente, primer Bingo = 75 y siguiente Bingo = 60.
+- Actualizado: tests/community-championship-v4-tiebreak.js
+  Verifica 10 bolillas, una bolilla neutral y resolución inmediata con la primera bolilla diferencial.
+
+No modifica formatos de 3/5/7 rondas, cierre de cinco bolillas después del primer Bingo, cartón nuevo por ronda, elegibilidad por Bingo ni competencia por posición C1/C2/C3/C4.

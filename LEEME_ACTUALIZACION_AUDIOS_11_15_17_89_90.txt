@@ -1,0 +1,20 @@
+EL BINGO DE LA GORDA
+ACTUALIZACIÓN SOLO AUDIOS · 24/08/2026
+
+Este paquete NO modifica lógica, servidor, salas, interfaz ni chat.
+Reemplaza únicamente estos archivos:
+- assets/voice/numeros/numero_11.mp3
+- assets/voice/numeros/numero_15.mp3
+- assets/voice/numeros/numero_17.mp3
+- assets/voice/numeros/numero_89.mp3
+- assets/voice/numeros/numero_90.mp3
+
+APLICACIÓN
+1. Tener un respaldo de la instalación actual.
+2. Copiar el contenido de este ZIP sobre la raíz del proyecto.
+3. Reemplazar únicamente los 5 MP3 indicados, conservando la ruta assets/voice/numeros/.
+4. Desplegar normalmente.
+5. Si un teléfono sigue reproduciendo una voz anterior, cerrar la pestaña y borrar caché/datos del sitio o probar en una pestaña privada, ya que el navegador puede conservar MP3 previamente descargados.
+
+IMPORTANTE
+No subir el ZIP V9.2.7 completo utilizado como fuente de estos audios: este parche contiene solamente los archivos necesarios.

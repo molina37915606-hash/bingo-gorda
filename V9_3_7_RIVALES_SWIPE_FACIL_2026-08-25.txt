@@ -1,0 +1,15 @@
+EL BINGO DE LA GORDA — V9.3.7
+
+CAMBIO PUNTUAL
+- En celular, el panel RIVALES ahora se puede cerrar con un deslizamiento lateral hacia la derecha iniciado desde cualquier parte del panel.
+- El gesto responde con menos recorrido y también reconoce un swipe corto/rápido.
+- El scroll vertical de la lista de rivales sigue funcionando: un gesto claramente vertical no cierra el panel.
+- Se conserva el cierre tocando fuera del panel.
+
+ARCHIVOS MODIFICADOS
+- js/player.js
+- player.html (solo versionado del script para evitar caché vieja)
+
+NO SE MODIFICA
+- server.js
+- lógica de partidas, premios, reclamos, salas, chat, bolillero, cartones ni Campeonato/Flash.

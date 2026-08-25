@@ -1,0 +1,15 @@
+V9.3.2 — TV SIMPLE + GUION DE GANADORES
+Fecha: 2026-08-25
+
+- TV simple: el chat pasa al lugar del antiguo panel fijo de premios y deja libre todo el ancho inferior para los cartones.
+- TV simple: los seis cartones cercanos se muestran más grandes y legibles.
+- TV simple: cuando a un cartón le faltan entre 1 y 5 números para la jugada que está persiguiendo, esos números exactos se resaltan con un efecto caliente/pulsante; a 1 el efecto aumenta.
+- TV simple: se muestra de forma permanente qué premios se están jugando.
+- TV simple: los reclamos manuales aparecen como un aviso temporal con jugador y cartón, sin volver a ocupar un panel fijo.
+- Campeonato conserva su lista cronológica de logros en la TV, adaptada al nuevo espacio.
+- Guion de voz: los reclamos manuales nombran a quien cantó la jugada.
+- Guion de voz: al confirmar Bingo se anuncia “Bingo confirmado. Ganó <nombre>”; los empates nombran a los ganadores.
+- Cierre: el saludo “Gracias por jugar al Bingo de la Gorda” queda en cola después del anuncio de ganador para que no lo cancele un cambio de estado.
+- El cierre de TV también muestra visualmente el agradecimiento.
+
+No se cambian reglas, puntajes, validación de premios, creación de salas, RIVALES, chat ni cartones.

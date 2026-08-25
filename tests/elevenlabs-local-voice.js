@@ -23,6 +23,6 @@ must(admin.includes('window.BingoVoice')&&admin.includes('playBall(42,90)'),'Adm
 must(community.includes('window.BingoVoice')&&community.includes('browserSpeak(number)'),'Comunidad debe conservar compatibilidad con Bolillero Libre');
 for(const page of ['player.html','tv.html','transmision.html','comunidad.html','admin.html','evento-tv.html','evento-transmision.html']){
   const html=fs.readFileSync(path.join(root,page),'utf8');
-  must(html.includes('bingo-voice.js?v=google-tts-v1-20260824'),`${page} debe forzar la nueva versión de voz`);
+  must(html.includes('bingo-voice.js?v=v9-3-2-nombres-cierre-20260825'),`${page} debe forzar la nueva versión de voz`);
 }
 console.log('PRUEBA VOZ NAVEGADOR / GOOGLE TTS · SIN MP3 EN RUNTIME: OK');

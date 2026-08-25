@@ -96,6 +96,33 @@ function prizeEvent(type, { mode = 90, prizeNumber = 1, confirmed = true } = {})
   return `premio_${base}_${suffix}`;
 }
 
+function spokenPrizeLabel(type, { mode = 90, prizeNumber = 1 } = {}) {
+  const raw = String(type || '');
+  if (raw === 'ambo' || raw === 'ambocabeza') return 'Ambo cabeza';
+  if (raw === 'bingo') return 'Bingo';
+  if (raw === 'doubleLine') return 'Doble línea';
+  if (raw === 'tripleLine') return 'Triple línea';
+  if (raw === 'corners') return 'Cuatro esquinas';
+  if (raw === 'secondLine' || (raw === 'line' && Number(mode) === 90 && Number(prizeNumber) === 2)) return 'Segunda línea';
+  return 'Línea';
+}
+
+function cleanPersonName(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+}
+
+function winnerNames(options = {}) {
+  const source = Array.isArray(options.winnerNames) ? options.winnerNames : [options.playerName || options.winnerName];
+  return [...new Set(source.map(cleanPersonName).filter(Boolean))].slice(0, 8);
+}
+
+function joinedNames(names) {
+  if (!names.length) return '';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} y ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')} y ${names.at(-1)}`;
+}
+
 function sourceText(source) {
   const value = String(source || '').trim();
   if (!value) return '';
@@ -202,17 +229,37 @@ class VoicePlayer {
   }
 
   playClaim(type, options = {}) {
+    const name = cleanPersonName(options.playerName);
+    if (name) {
+      const prize = spokenPrizeLabel(type, options);
+      const rawType = String(type || '');
+      const calledWord = rawType === 'corners' ? 'cantadas' : ['line','secondLine','doubleLine','tripleLine'].includes(rawType) ? 'cantada' : 'cantado';
+      const called = `${prize} ${calledWord} por ${name}.`;
+      return this.playFiles([called, 'Estamos verificando el reclamo.'], { ...options, priority: options.priority !== false });
+    }
     const prize = prizeEvent(type, { ...options, confirmed:false });
     return this.playSequence([prize, 'reclamo_verificando'].filter(Boolean), { ...options, priority: options.priority !== false });
   }
 
   playConfirmed(type, options = {}) {
+    const names = winnerNames(options);
+    if (names.length) {
+      const prize = spokenPrizeLabel(type, options);
+      let text = '';
+      if (String(type || '') === 'bingo') text = names.length === 1 ? `¡Bingo confirmado! Ganó ${names[0]}.` : `¡Bingo confirmado! Ganaron ${joinedNames(names)}.`;
+      else {
+        const key = prizeEvent(type, { ...options, confirmed:true });
+        const confirmedText = String(EVENT_TEXT[key] || `${prize} confirmado.`).replace(/\.\s*$/, '');
+        text = `${confirmedText} para ${joinedNames(names)}.`;
+      }
+      return this.playFiles(text, { ...options, priority: options.priority !== false });
+    }
     const prize = prizeEvent(type, { ...options, confirmed:true });
     return this.playSequence([prize, 'reclamo_valido'].filter(Boolean), { ...options, priority: options.priority !== false });
   }
 
   playFinal(options = {}) {
-    return this.playSequence(['partida_finalizada','cierre_felicitaciones','cierre_final'], { ...options, priority: options.priority !== false, gapMs: options.gapMs ?? 150 });
+    return this.playSequence(['partida_finalizada','cierre_felicitaciones','cierre_final'], { ...options, priority: options.priority !== false, gapMs: options.gapMs ?? 380 });
   }
 
   preloadBall() { return Promise.resolve([]); }

@@ -2144,7 +2144,7 @@ function broadcastPayload() {
     adminPresence: adminPresencePayload(), integrity: publicIntegrityPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), audioMaxSeconds:CHAT_AUDIO_PRIVILEGED_MAX_SECONDS },
     game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: PRESENTER_ID, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, drawTimestamps: state.game.drawTimestamps || {}, lastDrawnAt: state.game.lastDrawnAt || null, total: state.game.mode },
-    pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, eventPlayerId: pendingClaim.eventPlayerId || '', eventLotCode: pendingClaim.eventLotCode || '', eventCardNumber: pendingClaim.eventCardNumber || null, createdAt: pendingClaim.createdAt } : null,
+    pendingClaim: pendingClaim ? { type: pendingClaim.type, playerName: pendingClaim.playerName, cardNumber: pendingClaim.cardNumber, prizeNumber: pendingClaim.prizeNumber || 1, prizeLabel: pendingClaim.prizeLabel || prizeLabelFor(pendingClaim.type, pendingClaim.prizeNumber || 1, state.game?.mode), eventPlayerId: pendingClaim.eventPlayerId || '', eventLotCode: pendingClaim.eventLotCode || '', eventCardNumber: pendingClaim.eventCardNumber || null, createdAt: pendingClaim.createdAt } : null,
     latestConfirmed: latestConfirmed ? { type: latestConfirmed.type, playerName: latestConfirmed.playerName, cardNumber: latestConfirmed.cardNumber, eventPlayerId: latestConfirmed.eventPlayerId || '', eventLotCode: latestConfirmed.eventLotCode || '', eventCardNumber: latestConfirmed.eventCardNumber || null, prizeNumber: latestConfirmed.prizeNumber || 1, prizeLabel: latestConfirmed.prizeLabel, resolvedAt: latestConfirmed.resolvedAt, automatic: Boolean(latestConfirmed.automatic), tieGroupId: latestConfirmed.tieGroupId || null } : null,
     bingoConfirmed: prizeStatusPayload().bingo.closed,
     finalExtraction: finalExtractionPayload(),
@@ -5980,14 +5980,17 @@ function submitWaitingGameScore(player, payload = {}) {
   saveState(); broadcast(); return playerPayload(player);
 }
 
-function missingNumbersForLineCount(card, drawnValues, targetCount) {
+function bestMissingNumbersForLineCount(card, drawnValues, targetCount) {
   const drawn = new Set(uniqueNumbers(drawnValues));
   const definitions = lineDefinitions(card).map(line => new Set(line.values.filter(number => !drawn.has(number))));
   const needed = Math.max(1, Math.min(Number(targetCount) || 1, definitions.length));
-  let best = Infinity;
+  let best = null;
   const visit = (start, chosen, union) => {
-    if (chosen === needed) { best = Math.min(best, union.size); return; }
-    if (union.size >= best) return;
+    if (chosen === needed) {
+      if (!best || union.size < best.size) best = new Set(union);
+      return;
+    }
+    if (best && union.size >= best.size) return;
     for (let index = start; index <= definitions.length - (needed - chosen); index++) {
       const next = new Set(union);
       for (const value of definitions[index]) next.add(value);
@@ -5995,21 +5998,46 @@ function missingNumbersForLineCount(card, drawnValues, targetCount) {
     }
   };
   visit(0, 0, new Set());
-  return Number.isFinite(best) ? best : 99;
+  return best ? [...best].sort((a,b)=>a-b) : [];
 }
 
-function amboMissingForCard(card, drawnValues) {
-  if (Number(card.mode) !== 90) return 99;
+function missingNumbersForLineCount(card, drawnValues, targetCount) {
+  const values = bestMissingNumbersForLineCount(card, drawnValues, targetCount);
+  return values.length || (lineDefinitions(card).length ? 0 : 99);
+}
+
+function amboMissingNumbersForCard(card, drawnValues) {
+  if (Number(card.mode) !== 90) return [];
   const drawn = new Set(uniqueNumbers(drawnValues));
-  let best = 99;
+  let best = null;
   for (const row of card.grid || []) {
     const values = row.filter(Number.isFinite);
     if (values.length !== 5) continue;
     if (values.slice(1, -1).some(number => drawn.has(number))) continue;
-    const missing = Number(!drawn.has(values[0])) + Number(!drawn.has(values.at(-1)));
-    best = Math.min(best, missing);
+    const missing = [values[0], values.at(-1)].filter(number => !drawn.has(number));
+    if (!best || missing.length < best.length) best = missing;
   }
-  return best;
+  return best === null ? null : best.map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+}
+
+function amboMissingForCard(card, drawnValues) {
+  const missing = amboMissingNumbersForCard(card, drawnValues);
+  return Array.isArray(missing) ? missing.length : 99;
+}
+
+function raceHotNumbersForCard(card, race) {
+  const missing = Math.max(0, Number(race?.missing) || 0);
+  if (!card || missing < 1 || missing > 5) return [];
+  const drawn = new Set(uniqueNumbers(state.game?.drawn || []));
+  let values = [];
+  if (race.type === 'bingo') values = cardNumbers(card).filter(number => !drawn.has(number));
+  else if (race.type === 'corners' && Number(card.mode) === 75) values = [card.grid?.[0]?.[0],card.grid?.[0]?.[4],card.grid?.[4]?.[0],card.grid?.[4]?.[4]].filter(Number.isFinite).filter(number => !drawn.has(number));
+  else if (race.type === 'ambo') values = amboMissingNumbersForCard(card, state.game?.drawn || []) || [];
+  else if (race.type === 'doubleLine') values = bestMissingNumbersForLineCount(card, state.game?.drawn || [], 2);
+  else if (race.type === 'tripleLine') values = bestMissingNumbersForLineCount(card, state.game?.drawn || [], 3);
+  else if (race.type === 'line') values = bestMissingNumbersForLineCount(card, state.game?.drawn || [], Number(card.mode) === 90 ? Math.max(1, Number(race.prizeNumber) || 1) : 1);
+  values = uniqueNumbers(values).filter(number => !drawn.has(number));
+  return values.length <= 5 ? values : [];
 }
 
 function broadcastRaceForCard(card, analysis, prizes) {
@@ -6023,7 +6051,8 @@ function broadcastRaceForCard(card, analysis, prizes) {
     candidates.push({ type, missing: Math.max(0, Number(missing) || 0), importance, prizeNumber, label: prize.nextLabel || prizeLabelFor(type, prizeNumber, card.mode) });
   };
   add('ambo', amboMissingForCard(card, state.game.drawn), Number(card.mode) === 90);
-  add('line', analysis.lineMissing);
+  const lineTargetCount = Number(card.mode) === 90 ? Math.max(1, Number(prizes?.line?.nextNumber) || 1) : 1;
+  add('line', lineTargetCount > 1 ? missingNumbersForLineCount(card, state.game.drawn, lineTargetCount) : analysis.lineMissing);
   const mode75 = Number(card.mode) === 75;
   add('doubleLine', mode75 && prizes?.doubleLine && !prizes.doubleLine.closed ? missingNumbersForLineCount(card, state.game.drawn, 2) : 99, mode75);
   add('tripleLine', mode75 && prizes?.tripleLine && !prizes.tripleLine.closed ? missingNumbersForLineCount(card, state.game.drawn, 3) : 99, mode75);
@@ -6066,6 +6095,7 @@ function highlightedBroadcastCards() {
       playerId: player.id, playerName: playerDisplayName(player), connected: connected.has(player.id), cardId,
       cardNumber: card.number, grid: card.grid, mode: card.mode, score,
       racePrizeType: race.type, racePrizeNumber: race.prizeNumber, racePrizeLabel: race.label, raceMissing: race.missing,
+      raceHotNumbers: raceHotNumbersForCard(card, race),
       lineMissing: analysis.lineMissing, bingoMissing: analysis.bingoMissing, marked: analysis.officialMarked || []
     });
   }

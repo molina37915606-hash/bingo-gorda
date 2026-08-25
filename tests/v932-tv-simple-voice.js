@@ -1,0 +1,14 @@
+'use strict';
+const fs=require('fs'),path=require('path'),assert=require('assert');
+const root=path.join(__dirname,'..');
+const read=f=>fs.readFileSync(path.join(root,f),'utf8');
+const tv=read('tv.html'),tvjs=read('js/tv.js'),voice=read('js/bingo-voice.js'),server=read('server.js'),player=read('js/player.js');
+assert(tv.includes('id="playingFor"'),'TV debe mostrar SE JUEGA POR');
+assert(!tv.includes('id="prizePanel"'),'TV simple no debe conservar el panel fijo de premios');
+assert(tv.includes('id="chatList"')&&tv.indexOf('id="chatList"')<tv.indexOf('id="racePanel"'),'Chat debe ocupar la franja superior, antes de los cartones');
+assert(tvjs.includes('raceHotNumbers')&&tvjs.includes('hotTarget'),'TV debe resaltar números calientes');
+assert(server.includes('raceHotNumbersForCard')&&server.includes('raceHotNumbers:'),'Servidor debe calcular números faltantes exactos');
+assert(voice.includes('¡Bingo confirmado! Ganó')&&voice.includes('Gracias por jugar al Bingo de la Gorda.'),'Guion debe nombrar ganador y conservar saludo final');
+assert(player.includes('winnerNames:names.length?names:[latest.playerName]'),'Jugador debe pasar nombres al guion');
+assert(player.includes("partida_ultima_etapa',{priority:confirmedChanges.length===0}")&&player.includes("playFinal?.({priority:confirmedChanges.length===0})"),'El cierre y la extracción final no deben cancelar el anuncio del ganador');
+console.log('V9.3.2 TV SIMPLE + GUION: OK');

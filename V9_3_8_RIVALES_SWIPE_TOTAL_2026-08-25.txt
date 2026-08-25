@@ -1,0 +1,15 @@
+EL BINGO DE LA GORDA - V9.3.8
+RIVALES: CIERRE POR DESLIZAMIENTO EN TODA LA PESTAÑA
+
+Cambio puntual para móvil:
+- La pestaña RIVALES ahora detecta el gesto de cierre desde toda su superficie.
+- Se puede comenzar el deslizamiento sobre el título, el nombre/tarjeta de un rival o el espacio vacío inferior.
+- Un deslizamiento corto y decidido hacia la derecha cierra el panel.
+- El panel acompaña el dedo durante el gesto.
+- Los movimientos verticales siguen reservados para desplazar la lista de rivales.
+- No se modificó la lógica del juego, servidor, premios, cartones ni bolillero.
+
+Archivos modificados:
+- js/player.js
+- css/platform.css
+- player.html (solo actualización de versión/cache de CSS/JS)

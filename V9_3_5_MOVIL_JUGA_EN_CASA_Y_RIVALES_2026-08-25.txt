@@ -1,0 +1,14 @@
+EL BINGO DE LA GORDA · V9.3.5
+
+CAMBIOS
+- Móvil: nuevo botón único JUGÁ EN CASA.
+- JUGÁ EN CASA abre una ventana con CREAR CARTONES y BOLILLERO, reutilizando las herramientas existentes.
+- Móvil: ¿Cómo funciona? ahora abre una guía completa.
+- Escritorio: CREAR CARTONES y BOLILLERO permanecen sin cambios en la cabecera.
+- Jugador: el panel RIVALES se puede cerrar deslizando hacia la derecha desde cualquier sector útil del panel, manteniendo el scroll vertical.
+
+SEGURIDAD DEL CAMBIO
+- No se modificó server.js.
+- No se modificaron reglas, endpoints, creación de salas, cartones, bolillero ni lógica de premios.
+- comunidad.html sólo agrega accesos/ventanas que disparan los botones existentes.
+- player.js sólo cambia el gesto visual de cierre del cajón RIVALES.

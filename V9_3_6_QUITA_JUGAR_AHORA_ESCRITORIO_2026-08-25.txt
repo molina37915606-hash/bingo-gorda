@@ -1,0 +1,11 @@
+EL BINGO DE LA GORDA - V9.3.6
+25/08/2026
+
+CAMBIO:
+- Se elimina el botón "JUGAR AHORA" del bloque principal de Comunidad/Mesas en escritorio.
+- Se conserva el botón "CREAR MESA".
+- No se modifican las acciones de los minijuegos que también muestran el texto "JUGAR AHORA".
+- No se modifica la navegación móvil ni la lógica del juego.
+
+ARCHIVO MODIFICADO:
+- comunidad.html

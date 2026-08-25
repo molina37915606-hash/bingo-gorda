@@ -1,0 +1,28 @@
+V9.3.3 — LOBBY SIMPLE / INTERFAZ COMUNIDAD
+Fecha: 2026-08-25
+
+OBJETIVO
+- Simplificar Comunidad sin modificar la lógica del Bingo.
+- Priorizar el acceso a Mesas.
+- Chat y Minijuegos pasan a pestañas separadas.
+- Cartones pasa a llamarse “CREAR CARTONES”.
+- Se agregan búsqueda y filtros visuales de mesas.
+- Se mantiene el formulario y flujo de creación de salas existente.
+
+ARCHIVOS MODIFICADOS
+- comunidad.html
+
+ARCHIVOS FUNCIONALES NO MODIFICADOS
+- server.js
+- js/community.js
+- js/player.js
+- js/admin.js
+- js/community-tools.js
+- player.html
+- admin.html
+
+NOTA DE SEGURIDAD
+La actualización conserva los IDs, overlays, botones y listeners originales.
+Los nuevos botones de Crear Mesa disparan el botón existente createPrivateRoomTile.
+Los filtros actúan solamente sobre las tarjetas ya renderizadas en publicRoomsList.
+No se agregaron endpoints ni se modificaron reglas del juego.

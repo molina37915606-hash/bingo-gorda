@@ -1,0 +1,18 @@
+ACTUALIZACIÓN EL BINGO DE LA GORDA — V9.3.9
+
+Base: V9.3.8
+
+Para actualizar una instalación V9.3.8, reemplazar respetando las carpetas:
+- comunidad.html
+- js/community.js
+- package.json
+- package-lock.json
+- README.md
+
+Agregar:
+- V9_3_9_LOBBY_JUGAR_UNIRSE_2026-08-25.txt
+- tests/v939-lobby-actions.js
+
+Luego reiniciar el servicio si corresponde.
+
+La actualización no modifica server.js ni datos persistentes.

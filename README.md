@@ -1,3 +1,11 @@
+## V9.3.9 — Lobby JUGAR / UNIRSE
+
+- Móvil: el acceso principal queda en dos acciones claras: **JUGAR** crea una mesa y **UNIRSE** lleva a las mesas existentes.
+- Móvil: si no hay mesas, se informa “Aún no hay mesas disponibles. Armá tu propia mesa y empezá a jugar.”
+- Móvil: se oculta el indicador de conexión de la cabecera para limpiar el encabezado.
+- Escritorio: se elimina el botón duplicado de **CREAR MESA** dentro de “Mesas disponibles”; se conserva el botón principal del bloque superior.
+- No se cambian reglas, premios, salas, servidor, cartones, bolillero, RIVALES ni transmisión.
+
 ## V9.3.2 — TV simple y guion de ganadores
 
 

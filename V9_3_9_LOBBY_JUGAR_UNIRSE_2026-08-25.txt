@@ -1,0 +1,21 @@
+EL BINGO DE LA GORDA — V9.3.9
+LOBBY JUGAR / UNIRSE
+Fecha: 2026-08-25
+
+CAMBIOS
+- Móvil: JUGAR ahora abre directamente la creación de mesa.
+- Móvil: UNIRSE muestra las mesas creadas.
+- Si no hay mesas disponibles, se informa:
+  “Aún no hay mesas disponibles. Armá tu propia mesa y empezá a jugar.”
+- Móvil: se oculta el indicador de conexión de la cabecera.
+- Escritorio: se elimina el CREAR MESA duplicado del encabezado de “Mesas disponibles”.
+- Se conserva el CREAR MESA principal del bloque superior.
+
+ARCHIVOS FUNCIONALES MODIFICADOS
+- comunidad.html
+- js/community.js
+
+SEGURIDAD DEL CAMBIO
+- No se modifica server.js.
+- No se cambian reglas, premios, creación real de salas, cartones, bolillero, RIVALES, TV ni transmisión.
+- Se agrega una prueba de regresión específica: tests/v939-lobby-actions.js.

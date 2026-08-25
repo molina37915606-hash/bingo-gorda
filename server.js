@@ -5620,6 +5620,11 @@ function waitingGamePayload() {
 }
 
 function createSimpleRoom(payload = {}) {
+  // Un workspace puede reutilizarse después de haber estado cerrado durante horas.
+  // La limpieza de salas comunitarias vacías usa lastActivityAt para medir los 5 minutos
+  // de inactividad; si no reiniciamos este reloj, una sala recién creada en un slot viejo
+  // puede cerrarse en el siguiente ciclo de mantenimiento como si fuera la sala anterior.
+  currentWorkspace().lastActivityAt = Date.now();
   const game = createGeneratedGame(payload);
   const markingMode = payload.markingMode === 'manual_only' ? 'manual_only' : 'normal';
   const whatsapp = String(payload.whatsapp || platform.community?.whatsappNumber || '').trim().slice(0, 40);
@@ -10592,8 +10597,18 @@ function syncCommunityPublicRecordFromState(finalStatus = '') {
 function openCommunityPublicRoom(record, { autoJoinCreator = false, deviceId = '' } = {}) {
   if (!record) throw new Error('La sala ya no existe.');
   if (record.roomCode) {
-    const existing = (record.workspaceId && workspaces.get(record.workspaceId)) || findWorkspaceByRoomCode(record.roomCode);
-    if (existing?.state?.active) return { workspace: existing, playerSessionToken: '' };
+    const byWorkspace = record.workspaceId ? workspaces.get(record.workspaceId) : null;
+    const byCode = findWorkspaceByRoomCode(record.roomCode);
+    const existing = [byWorkspace, byCode].find(workspace =>
+      workspace?.state?.active &&
+      String(workspace.state.roomCode || '') === String(record.roomCode || '') &&
+      String(workspace.state.roomSettings?.communityPublicId || '') === String(record.id || '')
+    );
+    if (existing) return { workspace: existing, playerSessionToken: '' };
+    // El slot pudo haber sido reutilizado. No debemos confundir una sala nueva que ocupa
+    // ese workspace con este registro antiguo; al abrir, la vinculación se reemplaza abajo.
+    record.workspaceId = '';
+    record.roomCode = '';
   }
   const availability = communityPublicRoomAvailability();
   if (!availability.available) throw new Error('Ahora no hay salas disponibles. Probá de nuevo en un rato.');

@@ -1,3 +1,11 @@
+## V9.3.1 — Estabilidad de salas al reutilizar slots
+
+- Corrige el cierre intermitente de una sala recién creada cuando el slot operativo reutilizado llevaba más de 5 minutos sin actividad.
+- El reloj de inactividad ahora se reinicia exactamente al crear cada sala nueva.
+- Se valida que una vinculación antigua de Comunidad apunte al mismo código y publicId antes de reutilizar un workspace activo.
+- TV usa un fallback de logo existente (`logo-pdf.jpg`) si el WebP no puede cargarse.
+- Nueva regresión: `tests/community-room-slot-reuse.js`.
+
 ## V9.3.0 — Rivales + Campeonato menos invasivo + TV simple
 
 - Jugador: nuevo cajón lateral **RIVALES** disponible en Bingo normal 75/90, Flash y Campeonato.

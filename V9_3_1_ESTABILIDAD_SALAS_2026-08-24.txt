@@ -1,0 +1,7 @@
+V9.3.1 — ESTABILIDAD DE SALAS DE COMUNIDAD
+
+- Corrige un cierre intermitente de salas recién creadas al reutilizar un slot operativo que llevaba más de 5 minutos inactivo.
+- Cada creación reinicia ahora el reloj de actividad del workspace antes de que pueda actuar la limpieza automática.
+- Refuerza openCommunityPublicRoom para no reutilizar por error un workspace activo que pertenezca a otra sala cuando exista una vinculación antigua.
+- Corrige además el fallback roto del logo en TV: si WebP falla, usa el JPG existente en vez de pedir un logo.png inexistente.
+- No modifica reglas, puntajes, cartones, Campeonato, Flash, chat, RIVALES ni transmisión.

@@ -1,0 +1,17 @@
+EL BINGO DE LA GORDA · V9.3.1 · SOLO ACTUALIZACION
+
+Subir estos archivos respetando sus rutas. No hay que borrar ningún archivo.
+
+Archivos funcionales modificados/nuevos:
+- server.js
+- tv.html
+- package.json
+- package-lock.json
+- README.md
+- V9_3_1_ESTABILIDAD_SALAS_2026-08-24.txt
+- tests/community-room-slot-reuse.js
+
+Correccion principal:
+Una sala nueva ya no hereda el reloj de inactividad de un slot operativo viejo. Antes, si ese slot llevaba mas de 5 minutos sin actividad, la limpieza automatica podia cerrar la sala recien creada casi inmediatamente.
+
+Tambien se refuerza la validacion de vinculaciones publicId/roomCode/workspace y se corrige un fallback de logo roto en TV.

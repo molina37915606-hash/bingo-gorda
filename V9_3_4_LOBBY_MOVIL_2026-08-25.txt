@@ -1,0 +1,30 @@
+EL BINGO DE LA GORDA — V9.3.4 LOBBY MÓVIL
+Fecha: 2026-08-25
+
+OBJETIVO
+Corregir la adaptación móvil del lobby V9.3.3 sin modificar la lógica del bingo.
+
+CAMBIOS
+- Header móvil más compacto.
+- En móvil se elimina la navegación duplicada de arriba: queda una sola barra inferior con Mesas / Chat / Minijuegos.
+- Se agrega un selector compacto dentro de Mesas: Jugar / Crear mesa.
+- Hero móvil reducido para que las mesas aparezcan antes.
+- Buscador y filtros adaptados al ancho del teléfono.
+- Tarjetas de mesas más compactas y legibles.
+- El bloque “¿Cómo funciona?” queda reducido y secundario en móvil.
+- Se elimina la barra flotante duplicada de chat en móvil.
+
+SEGURIDAD DEL CAMBIO
+- No se modifica server.js.
+- No se modifica js/community.js.
+- No se modifica js/player.js.
+- No se modifica Admin, bolillero, reglas, audios, premios, salas ni sincronización.
+- La única pantalla funcional modificada es comunidad.html.
+
+BASE
+Parte de V9.3.3 LOBBY SIMPLE.
+
+VALIDACIÓN
+Se ejecutaron pruebas automatizadas del proyecto sobre la copia actualizada.
+Pasaron las pruebas de acceso, salas públicas/privadas, cancelación, links directos, reutilización de slots, Flash, Campeonatos, chat con audio, bolillero, transmisión móvil, modo Evento, premios, registro y estabilidad del jugador.
+El comando npm test completo supera el límite de tiempo de una sola ejecución en este entorno, por lo que se completó por bloques; los bloques ejecutados terminaron en OK.

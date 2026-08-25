@@ -281,6 +281,93 @@ html.bolScreenOpen,body.bolScreenOpen{overflow:hidden!important}.bolilleroOverla
 @media(max-width:1050px){.lobbyTopbar{flex-wrap:wrap}.lobbyNav{order:3;width:100%;justify-content:center;border-top:1px solid #ffffff10;padding-top:7px}.topbarRight{margin-left:auto}.leftCol{grid-template-columns:1fr}.lobbyGuide{grid-column:1;position:relative;top:auto}.lobbyHero{grid-template-columns:130px minmax(0,1fr) 210px}.lobbyHeroArt{height:112px}.lobbyHeroArt img{max-height:120px}}
 @media(max-width:720px){.page{padding:7px}.lobbyTopbar{padding:7px 9px;border-radius:17px}.brand img{width:46px;height:46px}.brandText strong{font-size:14px}.brandText small{display:none}.communityTools{display:none}.presence{font-size:10px}.lobbyNav{overflow-x:auto;justify-content:flex-start}.lobbyNavBtn{height:42px;padding:0 13px;flex:0 0 auto;font-size:11px}.lobbyHero{grid-template-columns:82px 1fr;padding:14px;gap:12px;min-height:0}.lobbyHeroArt{height:84px}.lobbyHeroArt img{max-height:90px}.lobbyHero h1{font-size:24px}.lobbyHero p{font-size:12px}.lobbyHeroActions{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;width:auto}.lobbyPrimary,.lobbySecondary{min-height:48px;font-size:12px}.lobbyRoomsHead{align-items:flex-start}.lobbyRoomsHead h2{font-size:18px}.lobbyCreateSmall{font-size:10px;padding:0 10px}.lobbyRoomControls{align-items:stretch;flex-direction:column}.lobbyFilters{overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px}.lobbyFilters button{flex:0 0 auto}.publicRoomActions .btn{flex:1}.lobbyGuide{padding:14px}.chatPanel{height:calc(100dvh - 120px);border-radius:18px}.gamesRow{grid-template-columns:1fr}.gamesPanel{padding:14px}}
 </style>
+
+<style id="lobby-v934-mobile">
+.lobbyMobileSwitcher{display:none}
+@media(max-width:720px){
+  body{overflow-x:hidden}
+  .page{padding:6px 7px calc(78px + env(safe-area-inset-bottom))}
+  .lobbyTopbar{position:relative;top:auto;min-height:58px;padding:5px 8px;border-radius:16px;gap:7px;flex-wrap:nowrap}
+  .brand{gap:7px;min-width:0;flex:1}
+  .brand img{width:42px;height:42px;border-radius:12px;flex:0 0 auto}
+  .brandText{min-width:0}
+  .brandText strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brandText small{display:none}
+  .lobbyTopbar .lobbyNav{display:none!important}
+  .topbarRight{margin-left:auto;gap:5px;flex:0 0 auto}
+  .communityTools{display:none!important}
+  .presence{height:34px;padding:0 8px;font-size:9px;background:#ffffff06}
+  .presence i{width:9px;height:9px}
+  .desktopGrid{margin-top:7px}
+  .lobbyMobileSwitcher{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:7px 0;padding:4px;border:1px solid var(--line);border-radius:16px;background:#130d1ceb;box-shadow:0 10px 28px #0005}
+  .lobbyMobileSwitcher button{min-height:43px;border:0;border-radius:12px;background:transparent;color:#c5b7d0;font-size:11px;font-weight:1000}
+  .lobbyMobileSwitcher button.active{background:linear-gradient(145deg,#5f2890,#8b35b6);color:#fff;box-shadow:inset 0 1px 0 #ffffff20}
+  .leftCol{display:grid;grid-template-columns:1fr;gap:7px}
+  .lobbyHero{grid-column:1;grid-template-columns:64px minmax(0,1fr);gap:10px;min-height:0;padding:10px 11px;border-radius:18px;background:radial-gradient(circle at 15% 42%,#7c2c9850,transparent 32%),linear-gradient(120deg,#1b1027,#120b1d 70%,#21102f)}
+  .lobbyHeroArt{height:64px}
+  .lobbyHeroArt img{max-height:68px}
+  .lobbyHeroCopy{min-width:0}
+  .lobbyKicker{font-size:8.5px;letter-spacing:.1em}
+  .lobbyHero h1{margin:3px 0 3px;font-size:19px;line-height:1.05}
+  .lobbyHero p{font-size:10.5px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .lobbyHeroActions{display:none!important}
+  .communityBannersPanel{margin-top:0}
+  .lobbyRoomsPanel{grid-column:1;padding:11px 10px 10px;border-radius:18px}
+  .lobbyRoomsHead{display:block;margin-bottom:0}
+  .lobbyRoomsHead .lobbyKicker{font-size:9px}
+  .lobbyRoomsHead h2{margin:3px 0 1px;font-size:17px;line-height:1.08}
+  .lobbyRoomsHead small{font-size:10px}
+  .lobbyCreateSmall{display:none!important}
+  .lobbyRoomControls{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 9px}
+  .lobbySearch{height:41px;border-radius:12px}
+  .lobbySearch span{font-size:18px}
+  .lobbySearch input{font-size:16px}
+  .lobbyFilters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible;padding:0}
+  .lobbyFilters button{min-width:0;height:34px;padding:0 4px;font-size:9.5px;white-space:nowrap}
+  .publicRoomsList{gap:7px}
+  .publicRoomCard{padding:10px;border-radius:14px}
+  .publicRoomTop{grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:start}
+  .publicRoomTop h3{font-size:15px;line-height:1.1;margin:3px 0 0}
+  .roomKind{min-height:21px;padding:0 7px;font-size:8.5px}
+  .publicRoomBadge{font-size:9px;padding:4px 7px}
+  .creatorRecover{font-size:8px!important;margin-top:4px!important}
+  .publicRoomMeta{margin-top:6px;gap:4px}
+  .publicRoomMeta span{padding:4px 6px;border-radius:8px;font-size:8.5px;line-height:1.15}
+  .publicRoomStatus{margin-top:5px;font-size:8.5px}
+  .publicRoomActions{margin-top:7px;gap:5px;display:flex;flex-wrap:wrap}
+  .publicRoomActions .btn{flex:1 1 105px;width:auto!important;min-height:36px!important;padding:0 9px!important;font-size:10px!important;border-radius:10px!important}
+  .publicRoomsEmpty{padding:18px 10px!important;font-size:12px!important}
+  .lobbyGuide{grid-column:1;position:relative;top:auto;padding:10px 12px;border-radius:16px;min-height:58px;display:flex;align-items:center}
+  .lobbyGuideHead{width:100%;position:relative;padding-left:38px}
+  .lobbyGuideHead:before{content:'?';position:absolute;left:0;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;display:grid;place-items:center;border:1px solid #8b46bd;background:#241332;color:#e8c9ff;font-weight:1000}
+  .lobbyGuideHead span{display:none}
+  .lobbyGuideHead h2{margin:0;font-size:14px}
+  .lobbyGuideHead p{margin:2px 0 0;font-size:9.5px}
+  .lobbyGuideStep,.lobbyGuideTip{display:none!important}
+  .gamesPanel{padding:11px;min-height:0}
+  .gamesRow{display:grid;grid-template-columns:1fr;overflow:visible}
+  .gameCard{min-height:130px;flex:none}
+  .chatPanel{height:calc(100dvh - 138px);border-radius:18px;margin-top:7px}
+  .mobileChatBar{display:none!important}
+  .mobileNav{left:7px;right:7px;bottom:max(5px,env(safe-area-inset-bottom));height:62px;padding:4px;border-radius:18px;grid-template-columns:repeat(3,1fr);background:#130e1ff5}
+  .mobileNav button{font-size:9.5px;color:#b9acc7;border-radius:13px}
+  .mobileNav button span{font-size:18px;margin-bottom:1px}
+  .mobileNav button.active{background:#2c1b40;color:#d49cff;box-shadow:inset 0 2px 0 #8f43ce}
+  body[data-community-view="chat"] .lobbyMobileSwitcher,body[data-community-view="minijuegos"] .lobbyMobileSwitcher{display:none}
+  body[data-community-view="chat"] .desktopGrid,body[data-community-view="minijuegos"] .desktopGrid{margin-top:7px}
+}
+@media(max-width:390px){
+  .brandText strong{font-size:12px}
+  .presence span{display:none}
+  .presence{width:34px;padding:0;justify-content:center}
+  .lobbyMobileSwitcher button{font-size:10px}
+  .lobbyHero{grid-template-columns:55px minmax(0,1fr);padding:9px}
+  .lobbyHeroArt{height:55px}.lobbyHeroArt img{max-height:58px}
+  .lobbyHero h1{font-size:17px}
+  .lobbyHero p{font-size:9.5px}
+  .lobbyFilters button{font-size:8.7px}
+}
+</style>
 </head><body>
 <div class="page" id="page">
 <header class="topbar lobbyTopbar">
@@ -301,6 +388,7 @@ html.bolScreenOpen,body.bolScreenOpen{overflow:hidden!important}.bolilleroOverla
     <div class="presence"><i></i><span id="onlineText">EN LÍNEA</span></div>
   </div>
 </header>
+<div class="lobbyMobileSwitcher" aria-label="Acciones de Mesas"><button class="active" type="button" data-lobby-scroll-rooms><span>👥</span> JUGAR</button><button type="button" data-lobby-create><span>＋</span> CREAR MESA</button></div>
 <div class="desktopGrid"><main class="leftCol"><section class="panel lobbyHero" id="lobbyHero" aria-label="Empezar a jugar">
   <div class="lobbyHeroArt"><img src="/assets/community/crear-sala.webp" alt="" aria-hidden="true"></div>
   <div class="lobbyHeroCopy"><span class="lobbyKicker">BINGO ONLINE GRATIS</span><h1>Entrá a una mesa o creá la tuya.</h1><p>Elegí una mesa abierta, compartí el link con tus amigos y jugá sin instalar nada.</p></div>
@@ -316,7 +404,7 @@ html.bolScreenOpen,body.bolScreenOpen{overflow:hidden!important}.bolilleroOverla
 <section class="panel gamesPanel" id="gamesSection"><div class="sectionHead"><div><h2>🎮 Minijuegos</h2><small>Para pasar el rato. No afectan el Bingo.</small></div><small id="miniName"></small></div><div class="gamesRow"><article class="gameCard" data-open-game="red_black"><div><h3>Rojo o negro</h3><p>Adiviná el color de la próxima carta y acumulá la mejor racha.</p><span class="play">JUGAR AHORA →</span></div><div class="miniVisual"><div class="miniCard one"></div><div class="miniCard two"></div></div></article><article class="gameCard" data-open-game="higher_lower"><div><h3>Mayor o menor</h3><p>Mirá la carta actual y elegí si la próxima será más alta o más baja.</p><span class="play">JUGAR AHORA →</span></div><div class="miniVisual"><div class="miniCard two"></div><div class="miniCard one"></div></div></article></div></section>
 </main><aside class="panel chatPanel" id="desktopChat"><div class="chatHead"><div><h2>💬 Comunidad</h2><small style="color:var(--muted)">Chat general de La Gorda</small></div><button id="identityBtn" class="chatIdentity">ELEGIR NOMBRE</button></div><div id="messages" class="messages"></div><div id="desktopPicker" class="chatPicker"></div><div class="composer"><button id="emojiBtn" class="chatTool" type="button" aria-label="Emojis">☺</button><button id="stickerBtn" class="chatTool" type="button" aria-label="Stickers">✦</button><input id="chatInput" type="text" maxlength="180" autocomplete="off" enterkeyhint="send" placeholder="Escribí un mensaje…"><button id="sendBtn" class="sendBtn" type="button" aria-label="Enviar">➤</button></div></aside></div></div>
 <button id="mobileChatBar" class="mobileChatBar" type="button"><span>💬 CHAT DE LA COMUNIDAD</span><small id="chatUnreadLabel">ABRIR</small></button>
-<nav class="mobileNav"><button data-nav="home" class="active"><span>⌂</span>Inicio</button><button data-nav="games"><span>🎮</span>Juegos</button><button data-nav="chat"><span>💬</span>Chat</button></nav>
+<nav class="mobileNav" aria-label="Navegación móvil"><button data-lobby-tab="mesas" class="active" type="button"><span>▦</span>Mesas</button><button data-lobby-tab="chat" type="button"><span>💬</span>Chat</button><button data-lobby-tab="minijuegos" type="button"><span>🎮</span>Minijuegos</button></nav>
 <div id="nameOverlay" class="overlay hidden"><form id="nameForm" class="dialog" autocomplete="off"><img src="/assets/logo.webp" alt="LA GORDA" title="Volver a Comunidad" style="cursor:pointer" onclick="location.href='/comunidad?quedar=1'"><h2>Entrar a la comunidad</h2><p>Usá tu nombre o un apodo. Quedará guardado en este dispositivo.</p><label for="nameInput">¿CÓMO TE LLAMÁS?</label><input id="nameInput" name="communityName" type="text" maxlength="20" autocomplete="nickname" autocapitalize="words" enterkeyhint="done" spellcheck="false" placeholder="Ej.: Marta"><button id="saveNameBtn" class="btn primary" type="submit">ENTRAR</button><button id="cancelNameBtn" class="btn ghost" type="button">CANCELAR</button><div id="nameError" class="errorText" aria-live="polite"></div></form></div>
 
 <div id="privateRoomOverlay" class="overlay hidden"><form id="privateRoomForm" class="dialog privateRoomDialog" autocomplete="off"><div class="privateRoomHeader"><div><h2>Crear sala</h2><p class="publicCreateIntro">Armala, invitá amigos y jugá.</p></div><button id="closePrivateRoomBtn" class="closeBtn" type="button" aria-label="Cerrar">✕</button></div><div id="privateRoomFields"><div id="privateRoomAvailability" class="privateRoomAvailability hidden"></div>
@@ -344,7 +432,7 @@ html.bolScreenOpen,body.bolScreenOpen{overflow:hidden!important}.bolilleroOverla
 <div id="toast" class="toast"></div>
 <script>(()=>{document.documentElement.dataset.theme='night';const m=document.querySelector('meta[name="theme-color"]');if(m)m.content='#0b0715';})();</script><script src="/js/emoji-stickers.js?v=2.2.0"></script><script src="/js/community.js?v=v9-2-7-premios-20260823"></script><script src="/js/bingo-voice.js?v=v9-3-2-nombres-cierre-20260825"></script><script src="/js/community-tools.js?v=voice-eleven-v1-20260822"></script>
 
-<script id="lobby-v933-script">
+<script id="lobby-v934-script">
 (()=>{
   const $=id=>document.getElementById(id);let filter='all',query='';const tabs=[...document.querySelectorAll('[data-lobby-tab]')];
   function show(view){view=['mesas','chat','minijuegos'].includes(view)?view:'mesas';document.body.dataset.communityView=view;tabs.forEach(btn=>btn.classList.toggle('active',btn.dataset.lobbyTab===view));if(view==='chat')queueMicrotask(()=>{const host=$('messages');if(host)host.scrollTop=host.scrollHeight});try{history.replaceState(null,'',location.pathname+location.search+'#'+view)}catch{}}

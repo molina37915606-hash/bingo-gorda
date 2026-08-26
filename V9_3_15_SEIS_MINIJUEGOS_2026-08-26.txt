@@ -1,0 +1,19 @@
+EL BINGO DE LA GORDA · V9.3.15
+
+SEIS MINIJUEGOS DE COMUNIDAD
+- Rojo o Negro.
+- Mayor o Menor.
+- 21 de La Gorda: rachas plantándose entre 18 y 21.
+- La Bolilla Fantasma: memoria de bolillas durante 3 segundos.
+- El Número Secreto: 1 a 90 con pistas Más Alto / Más Bajo y puntuación por intentos.
+- La Bolilla Intrusa: detectar la bolilla que rompe un patrón antes del tiempo límite.
+
+INTERFAZ
+- Escritorio: grilla 3 × 2.
+- Móvil: tarjetas apiladas.
+- Un único modal permite cambiar entre los seis juegos.
+
+SEGURIDAD DEL CAMBIO
+- Los rankings se amplían a seis tipos, manteniendo los dos existentes.
+- No se modifican reglas de Bingo, salas, Campeonato, Flash, Evento, premios, cartones, TV ni transmisión.
+- No se agregan assets obligatorios.

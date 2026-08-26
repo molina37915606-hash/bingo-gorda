@@ -669,6 +669,14 @@ function loadState(stateFile = OWNER_STATE_FILE) {
   }
 }
 
+const COMMUNITY_MINIGAME_TYPES = ['red_black','higher_lower','gorda_21','ghost_ball','secret_number','intruder_ball'];
+function blankCommunityLeaderboards() {
+  return Object.fromEntries(COMMUNITY_MINIGAME_TYPES.map(type => [type, []]));
+}
+function normalizedCommunityLeaderboards(raw = {}) {
+  return Object.fromEntries(COMMUNITY_MINIGAME_TYPES.map(type => [type, Array.isArray(raw?.[type]) ? raw[type].slice(0, 60) : []]));
+}
+
 function blankCommunity() {
   return {
     whatsappGroup: String(process.env.COMMUNITY_WHATSAPP_GROUP || 'https://chat.whatsapp.com/HauYXd3oUzUIXIcl0YKOlk?s=cl&p=a&ilr=0').trim().slice(0, 500),
@@ -689,7 +697,7 @@ function blankCommunity() {
     privateRoomMaxCardsPerPlayer: 4,
     cardsPrintSite: String(process.env.BINGO_PRINT_SITE || 'bingo-gorda.onrender.com/comunidad').trim().slice(0, 160),
     messages: [],
-    leaderboards: { red_black: [], higher_lower: [] }
+    leaderboards: blankCommunityLeaderboards()
   };
 }
 
@@ -1143,10 +1151,7 @@ function normalizeCommunity(raw = {}) {
         .slice(-50)
         .map(report => ({ visitorId: String(report.visitorId).slice(0,80), createdAt: String(report.createdAt || '') })) : []
     })) : [],
-    leaderboards: {
-      red_black: Array.isArray(raw.leaderboards?.red_black) ? raw.leaderboards.red_black.slice(0, 60) : [],
-      higher_lower: Array.isArray(raw.leaderboards?.higher_lower) ? raw.leaderboards.higher_lower.slice(0, 60) : []
-    }
+    leaderboards: normalizedCommunityLeaderboards(raw.leaderboards || {})
   };
 }
 
@@ -11481,10 +11486,7 @@ function communityStatePayload(visitorId = '', req = null) {
     publicRoomAvailability: communityPublicRoomAvailability(),
     privateRooms: communityPrivateRoomAvailability(),
     tools: { cardsPrintSite: printableSiteLabel() },
-    leaderboards: {
-      red_black: (community.leaderboards?.red_black || []).slice(0, 8),
-      higher_lower: (community.leaderboards?.higher_lower || []).slice(0, 8)
-    }
+    leaderboards: Object.fromEntries(COMMUNITY_MINIGAME_TYPES.map(type => [type, (community.leaderboards?.[type] || []).slice(0, 8)]))
   };
 }
 
@@ -11545,7 +11547,7 @@ function reportCommunityMessage(payload = {}) {
 
 function submitCommunityScore(payload = {}) {
   const community = platform.community ||= blankCommunity();
-  const gameType = ['red_black','higher_lower'].includes(String(payload.gameType)) ? String(payload.gameType) : '';
+  const gameType = COMMUNITY_MINIGAME_TYPES.includes(String(payload.gameType)) ? String(payload.gameType) : '';
   if (!gameType) throw new Error('Minijuego no válido.');
   const name = normalizeCommunityName(payload.name);
   const visitorId = String(payload.visitorId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
@@ -11965,7 +11967,7 @@ function communityAdminPayload() {
     scheduledGames: communityScheduledGames().slice().sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt))).map(item => ({ ...item })),
     messages: (community.messages || []).slice(-COMMUNITY_CHAT_MAX_MESSAGES).map(message => ({ ...message, reportCount: Array.isArray(message.reports) ? message.reports.length : 0 })),
     reportedMessages: (community.messages || []).filter(message => Array.isArray(message.reports) && message.reports.length).map(message => ({ ...message, reportCount: message.reports.length })).sort((a,b) => Number(b.reportCount)-Number(a.reportCount) || String(b.createdAt).localeCompare(String(a.createdAt))),
-    leaderboards: community.leaderboards || { red_black: [], higher_lower: [] }
+    leaderboards: normalizedCommunityLeaderboards(community.leaderboards || {})
   };
 }
 

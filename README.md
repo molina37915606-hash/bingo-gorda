@@ -1,3 +1,12 @@
+## V9.3.12 — COLABORÁ por alias
+
+- Admin: **LINK PARA COLABORAR** se reemplaza por **ALIAS PARA COLABORAR**.
+- Admin: se agrega **TITULAR / NOMBRE** opcional para identificar el destino de la transferencia.
+- Comunidad: CONTACTANOS muestra la sección **COLABORÁ PARA SEGUIR CRECIENDO** solo cuando hay un alias configurado.
+- La colaboración muestra el alias y, si existe, el titular; el botón **COPIAR ALIAS** facilita pegarlo en banco o billetera.
+- Se elimina el uso público del enlace de colaboración anterior; no se redirige a ninguna plataforma de pago.
+- No se modifican mesas, reglas, premios, cartones, azar, bolillero, RIVALES, TV ni transmisión.
+
 ## V9.3.11 — JUGAR más claro + cantidad al azar
 
 - Móvil: el botón principal muestra **JUGAR (CREAR MESA)** para explicar la acción sin cambiar el flujo.

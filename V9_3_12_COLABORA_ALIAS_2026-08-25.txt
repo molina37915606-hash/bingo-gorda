@@ -1,0 +1,16 @@
+EL BINGO DE LA GORDA · V9.3.12
+COLABORÁ POR ALIAS
+Fecha: 2026-08-25
+
+CAMBIOS
+- Se elimina el LINK PARA COLABORAR de Admin.
+- Se agrega ALIAS PARA COLABORAR.
+- Se agrega TITULAR / NOMBRE opcional.
+- CONTACTANOS muestra la colaboración solo si hay alias configurado.
+- Se muestra el alias y el titular opcional.
+- COPIAR ALIAS copia el dato para usarlo en banco o billetera.
+- El enlace de colaboración anterior deja de publicarse y se limpia al cargar la configuración.
+
+SEGURIDAD DEL CAMBIO
+- No se modifican reglas del bingo, premios, sorteo, cartones, azar, bolillero, RIVALES, TV ni transmisión.
+- El servidor valida el formato del alias antes de guardarlo.

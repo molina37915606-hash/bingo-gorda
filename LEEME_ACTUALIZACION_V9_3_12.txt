@@ -1,0 +1,18 @@
+EL BINGO DE LA GORDA · ACTUALIZACIÓN V9.3.12
+
+BASE REQUERIDA: V9.3.11
+
+REEMPLAZAR / INCORPORAR LOS ARCHIVOS INCLUIDOS EN ESTE ZIP.
+
+CAMBIO PRINCIPAL
+La colaboración ahora se realiza por ALIAS de transferencia, no por enlace.
+
+ADMIN
+- ALIAS PARA COLABORAR
+- TITULAR / NOMBRE (opcional)
+
+COMUNIDAD > CONTACTANOS
+- Muestra COLABORÁ solo si hay alias configurado.
+- Botón COPIAR ALIAS.
+
+No se cambian reglas ni funcionamiento del bingo.

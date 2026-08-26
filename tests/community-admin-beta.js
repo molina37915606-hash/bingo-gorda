@@ -12,7 +12,7 @@ const communityHtml=fs.readFileSync(path.join(root,'comunidad.html'),'utf8');
 const serverSrc=fs.readFileSync(path.join(root,'server.js'),'utf8');
 assert(adminHtml.includes('id="communityAdminBtn"'),'Admin debe tener botón visible de Comunidad.');
 assert(adminHtml.includes('id="communityAdminModal"'),'Admin debe tener panel de Comunidad.');
-for(const id of ['communityWhatsappNumber','communityWhatsappGroup','communityCollaborationUrl','communityChatEnabled','communityBlockPhones','communityBlockWhatsapp','communityBlockedTermInput','communityReportedMessages','communityRecentMessages']){
+for(const id of ['communityWhatsappNumber','communityWhatsappGroup','communityCollaborationAlias','communityCollaborationHolder','communityChatEnabled','communityBlockPhones','communityBlockWhatsapp','communityBlockedTermInput','communityReportedMessages','communityRecentMessages']){
   assert(adminHtml.includes(`id="${id}"`),`Falta control ${id}.`);
 }
 assert(adminJs.includes("this.req('/api/admin/community')"),'Admin debe leer la configuración de Comunidad con su sesión actual.');
@@ -36,10 +36,11 @@ async function req(pathname,{method='GET',body,token}={}){const r=await fetch(ba
   let community=await req('/api/admin/community',{token});
   assert.equal(community.chatEnabled,true);
   assert.equal(community.whatsappNumber,'3757624388');
-  community=await req('/api/admin/community/settings',{method:'POST',token,body:{whatsappNumber:'+54 9 3757 123456',whatsappGroup:'https://whatsapp.com/channel/ABCDEFGHIJK',collaborationUrl:'https://example.com/colabora',chatEnabled:false,blockPhoneNumbers:true,blockWhatsappLinks:true}});
+  community=await req('/api/admin/community/settings',{method:'POST',token,body:{whatsappNumber:'+54 9 3757 123456',whatsappGroup:'https://whatsapp.com/channel/ABCDEFGHIJK',collaborationAlias:'bingo.lagorda',collaborationHolder:'El Bingo de La Gorda',chatEnabled:false,blockPhoneNumbers:true,blockWhatsappLinks:true}});
   assert.equal(community.whatsappNumber,'+54 9 3757 123456');
   assert.equal(community.whatsappGroup,'https://whatsapp.com/channel/ABCDEFGHIJK');
-  assert.equal(community.collaborationUrl,'https://example.com/colabora');
+  assert.equal(community.collaborationAlias,'bingo.lagorda');
+  assert.equal(community.collaborationHolder,'El Bingo de La Gorda');
   assert.equal(community.chatEnabled,false);
   community=await req('/api/admin/community/moderate',{method:'POST',token,body:{action:'block-term',term:'spam beta',removeMatchingMessages:true}});
   assert(community.blockedTerms.includes('spam beta'));
@@ -51,7 +52,8 @@ async function req(pathname,{method='GET',body,token}={}){const r=await fetch(ba
   assert.equal(publicState.chatEnabled,true);
   assert.equal(publicState.whatsapp.number,'+54 9 3757 123456');
   assert.equal(publicState.whatsapp.groupUrl,'https://whatsapp.com/channel/ABCDEFGHIJK');
-  assert.equal(publicState.whatsapp.collaborationUrl,'https://example.com/colabora');
+  assert.equal(publicState.whatsapp.collaborationAlias,'bingo.lagorda');
+  assert.equal(publicState.whatsapp.collaborationHolder,'El Bingo de La Gorda');
   const demo=await fetch(base+'/demo');assert(demo.ok,'/demo debe seguir disponible.');
   const comunidad=await fetch(base+'/comunidad');const html=await comunidad.text();assert(comunidad.ok&&html.includes('js/community.js'));
   console.log('PRUEBA BETA COMUNIDAD ADMIN + ACCESO DEMO: OK');

@@ -463,7 +463,7 @@ function ensureUniqueVisibleCardNumbers(cards = []) {
 
 const LEGACY_ROOM_FINANCIAL_KEYS = ['paymentMode','cardPrice','paymentAlias','paymentAccountHolder','paymentProvider','prizeAmounts'];
 const LEGACY_PLAYER_FINANCIAL_KEYS = ['paymentStatus','paymentConfirmedAt','paymentReportedAt','paymentTransferDni','paymentTransferHolder','paymentChangeRequestedCount','paymentChangeRequestedAt','prizePayoutAlias','prizePayoutAccountHolder','prizePayoutProvider','prizePayoutUpdatedAt'];
-const LEGACY_COMMUNITY_FINANCIAL_KEYS = ['supportEnabled','supportRecipient','supportWallet','supportCustomAlias','supportCustomHolder','supportCustomWallet','supportTitle','supportMessage'];
+const LEGACY_COMMUNITY_FINANCIAL_KEYS = ['supportEnabled','supportRecipient','supportWallet','supportCustomAlias','supportCustomHolder','supportCustomWallet','supportTitle','supportMessage','collaborationUrl'];
 const LEGACY_SCHEDULE_FINANCIAL_KEYS = ['paymentMode','cardPrice','paymentAlias','paymentAccountHolder','paymentProvider'];
 
 function omitLegacyKeys(value, keys) {
@@ -671,7 +671,8 @@ function blankCommunity() {
   return {
     whatsappGroup: String(process.env.COMMUNITY_WHATSAPP_GROUP || 'https://chat.whatsapp.com/HauYXd3oUzUIXIcl0YKOlk?s=cl&p=a&ilr=0').trim().slice(0, 500),
     whatsappNumber: String(process.env.COMMUNITY_WHATSAPP_NUMBER || '3757624388').trim().slice(0, 60),
-    collaborationUrl: String(process.env.COMMUNITY_COLLABORATION_URL || '').trim().slice(0, 500),
+    collaborationAlias: String(process.env.COMMUNITY_COLLABORATION_ALIAS || '').trim().slice(0, 60),
+    collaborationHolder: String(process.env.COMMUNITY_COLLABORATION_HOLDER || '').trim().replace(/\s+/g, ' ').slice(0, 100),
     banners: [1,2,3].map(slot => ({ slot, enabled:false, destinationType:'none', target:'', alt:'', imageExt:'', updatedAt:'' })),
     playerAd: { enabled:false, imageExt:'', updatedAt:'' },
     chatEnabled: true,
@@ -1112,7 +1113,8 @@ function normalizeCommunity(raw = {}) {
   return {
     whatsappGroup: String(raw.whatsappGroup || defaults.whatsappGroup).trim().slice(0, 500),
     whatsappNumber: String(raw.whatsappNumber || defaults.whatsappNumber).trim().slice(0, 60),
-    collaborationUrl: String(raw.collaborationUrl || '').trim().slice(0, 500),
+    collaborationAlias: String(raw.collaborationAlias || defaults.collaborationAlias || '').trim().slice(0, 60),
+    collaborationHolder: String(raw.collaborationHolder || defaults.collaborationHolder || '').trim().replace(/\s+/g, ' ').slice(0, 100),
     banners: [1,2,3].map(slot => normalizeCommunityBanner((Array.isArray(raw.banners) ? raw.banners : []).find(item => Number(item?.slot) === slot) || {}, slot)),
     playerAd: normalizePlayerAd(raw.playerAd || {}),
     chatEnabled: raw.chatEnabled !== false,
@@ -1155,13 +1157,13 @@ function loadPlatform() {
     if (legacyFinance) backupLegacyJsonFile(PLATFORM_FILE);
     const cleanedCommunity = omitLegacyKeys(rawCommunity, LEGACY_COMMUNITY_FINANCIAL_KEYS);
     if (Array.isArray(cleanedCommunity.scheduledGames)) cleanedCommunity.scheduledGames = cleanedCommunity.scheduledGames.map(game => omitLegacyKeys(game, LEGACY_SCHEDULE_FINANCIAL_KEYS));
-    const result = { version: 25, operators: Array.isArray(parsed.operators) ? parsed.operators : [], community: normalizeCommunity(cleanedCommunity) };
+    const result = { version: 26, operators: Array.isArray(parsed.operators) ? parsed.operators : [], community: normalizeCommunity(cleanedCommunity) };
     if (legacyFinance) {
       try { writeJsonAtomic(PLATFORM_FILE, result); } catch {}
     }
     return result;
   } catch {
-    return { version: 25, operators: [], community: blankCommunity() };
+    return { version: 26, operators: [], community: blankCommunity() };
   }
 }
 
@@ -10271,9 +10273,13 @@ function communityWhatsappContactUrl() {
   return digits.length >= 8 ? `https://wa.me/${digits}` : '';
 }
 
-function communityCollaborationUrl() {
-  const value = String(platform.community?.collaborationUrl || '').trim();
-  return /^https:\/\/[^\s]+$/i.test(value) ? value : '';
+function communityCollaborationAlias() {
+  const value = String(platform.community?.collaborationAlias || '').trim();
+  return /^[a-z0-9._-]{3,50}$/i.test(value) ? value : '';
+}
+
+function communityCollaborationHolder() {
+  return String(platform.community?.collaborationHolder || '').trim().replace(/\s+/g, ' ').slice(0, 100);
 }
 
 function communityActiveGamePayload() {
@@ -11458,7 +11464,8 @@ function communityStatePayload(visitorId = '', req = null) {
       groupUrl: communityWhatsappGroupUrl(),
       contactUrl: communityWhatsappContactUrl(),
       number: communityWhatsappNumber(),
-      collaborationUrl: communityCollaborationUrl()
+      collaborationAlias: communityCollaborationAlias(),
+      collaborationHolder: communityCollaborationHolder()
     },
     banners: communityBannersPublicPayload(),
     activeGame: communityActiveGamePayload(),
@@ -11790,10 +11797,13 @@ function updateCommunitySettings(payload = {}) {
     community.whatsappGroup = value || blankCommunity().whatsappGroup;
   }
   if (payload.whatsappNumber !== undefined) community.whatsappNumber = String(payload.whatsappNumber || '').trim().slice(0, 60) || blankCommunity().whatsappNumber;
-  if (payload.collaborationUrl !== undefined) {
-    const value = String(payload.collaborationUrl || '').trim().slice(0, 500);
-    if (value && !/^https:\/\/[^\s]+$/i.test(value)) throw new Error('Pegá un enlace https válido para COLABORÁ.');
-    community.collaborationUrl = value;
+  if (payload.collaborationAlias !== undefined) {
+    const value = String(payload.collaborationAlias || '').trim().slice(0, 60);
+    if (value && !/^[a-z0-9._-]{3,50}$/i.test(value)) throw new Error('El alias debe tener entre 3 y 50 caracteres y usar letras, números, punto, guion o guion bajo.');
+    community.collaborationAlias = value;
+  }
+  if (payload.collaborationHolder !== undefined) {
+    community.collaborationHolder = String(payload.collaborationHolder || '').trim().replace(/\s+/g, ' ').slice(0, 100);
   }
   if (Array.isArray(payload.banners)) {
     const current = [1,2,3].map(slot => normalizeCommunityBanner((community.banners || []).find(item => Number(item?.slot) === slot) || {}, slot));
@@ -11931,7 +11941,8 @@ function communityAdminPayload() {
     communityUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/comunidad`,
     whatsappGroup: community.whatsappGroup || blankCommunity().whatsappGroup,
     whatsappNumber: community.whatsappNumber || blankCommunity().whatsappNumber,
-    collaborationUrl: String(community.collaborationUrl || '').trim(),
+    collaborationAlias: String(community.collaborationAlias || '').trim(),
+    collaborationHolder: String(community.collaborationHolder || '').trim(),
     banners: communityBannersAdminPayload(),
     playerAd: playerAdAdminPayload(),
     chatEnabled: community.chatEnabled !== false,

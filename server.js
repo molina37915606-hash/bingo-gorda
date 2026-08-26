@@ -52,6 +52,8 @@ const CHAMPIONSHIP_RESULTS_VISIBILITY_MS = Math.max(10 * 60_000, Number(process.
 const CHAMPIONSHIP_ROUND_OPTIONS = [3, 5, 7];
 const CHAMPIONSHIP_PERSISTED_ROUNDS = CHAMPIONSHIP_ROUND_OPTIONS;
 const CHAMPIONSHIP_DEFAULT_ROUNDS = 5;
+const CHAMPIONSHIP_AUTO_SECONDS = 3;
+const CHAMPIONSHIP_START_SEQUENCE_MS = Math.max(TEST_MODE ? 40 : 500, Number(process.env.BINGO_CHAMPIONSHIP_START_SEQUENCE_MS || (TEST_MODE ? 80 : 3000)));
 const CHAMPIONSHIP_SCORE = Object.freeze({ hit:1, line:10, firstLine:5, secondLine:20, firstSecondLine:5, bingo:60, firstBingo:15, tiebreakMinimumBalls:10 });
 const FLASH_MINIMUM_BALLS = 10;
 const COMMUNITY_FINISH_GRACE_MS = Math.max(TEST_MODE ? 150 : 15_000, Number(process.env.BINGO_COMMUNITY_FINISH_GRACE_MS || 3 * 60 * 1000));
@@ -755,7 +757,7 @@ function normalizeCommunityPublicRoom(raw = {}) {
     startMode: raw.startMode === 'scheduled' ? 'scheduled' : 'manual',
     startsAt: startsIso,
     mode, maxPlayers, maxCardsPerPlayer, gameKind, championshipRounds,
-    autoSeconds: Math.max(4, Math.min(20, Math.round(Number(raw.autoSeconds) || 8))),
+    autoSeconds: gameKind === 'championship' ? CHAMPIONSHIP_AUTO_SECONDS : Math.max(4, Math.min(20, Math.round(Number(raw.autoSeconds) || 8))),
     claimMode: raw.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
     linePrizeCount, rules,
     roomCode: String(raw.roomCode || '').replace(/[^A-Z0-9]/gi, '').slice(0, 12),
@@ -4910,6 +4912,7 @@ function prepareChampionshipRound(roundNumber) {
   state.game.drawTimestamps = {};
   state.game.lastDrawnAt = null;
   state.game.phase = 'READY';
+  state.game.autoSeconds = CHAMPIONSHIP_AUTO_SECONDS;
   state.game.integrity = null;
   state.drawOrder = createSecureDrawOrder(mode);
   state.claims = [];
@@ -5401,7 +5404,7 @@ function beginNextChampionshipRound(player = null) {
   state.status = 'starting';
   state.pauseReason = null;
   state.game.phase = 'READY';
-  const delay = TEST_MODE ? 80 : START_SEQUENCE_MS;
+  const delay = CHAMPIONSHIP_START_SEQUENCE_MS;
   state.transition = { id:randomId('transition'), type:'start', startedAt, endsAt:new Date(Date.now()+delay).toISOString(), officialTime:new Date().toLocaleTimeString('es-AR',{timeZone:BINGO_TIMEZONE,hour:'2-digit',minute:'2-digit',hour12:false}), championshipRound:Number(champ.currentRound) };
   const record = communityPublicRoomById(state.roomSettings?.communityPublicId || '');
   if (record) { record.roundNumber=Number(champ.currentRound); record.status='playing'; record.updatedAt=nowIso(); savePlatform(); }
@@ -5415,10 +5418,11 @@ function createGeneratedGame(payload = {}) {
   const rules = roomRulesFor(mode, payload.rules || {});
   const count = normalizedGeneratedCount(payload.cardCount);
   const cards = generateDiverseCardsServer(count, mode, rules);
+  const championship = payload.roomOrigin === 'community' && payload.communityGameKind === 'championship';
   return {
     id: randomId('game'), number: 1, mode, rules,
     drawMode: payload.drawMode === 'manual' ? 'manual' : 'automatic',
-    autoSeconds: Math.max(2, Math.min(60, Number(payload.autoSeconds) || 6)),
+    autoSeconds: championship ? CHAMPIONSHIP_AUTO_SECONDS : Math.max(2, Math.min(60, Number(payload.autoSeconds) || 6)),
     presenter: PRESENTER_ID,
     theme: 'clasico', phase: 'READY', drawn: [], createdAt: nowIso(), updatedAt: nowIso(), cards
   };
@@ -7026,7 +7030,9 @@ function scheduleAutomaticDraw() {
   if (!state.active || state.status !== 'playing' || state.game?.drawMode !== 'automatic') return;
   if ((state.game?.drawn?.length || 0) >= Number(state.game?.mode || 0)) return;
   const minimumSeconds = currentWorkspace().isDemo ? 2 : 3;
-  const delay = Math.max(minimumSeconds, Math.min(60, Number(state.game.autoSeconds) || 6)) * 1000;
+  const effectiveSeconds = championshipRoomEnabled() ? CHAMPIONSHIP_AUTO_SECONDS : Math.max(minimumSeconds, Math.min(60, Number(state.game.autoSeconds) || 6));
+  if (championshipRoomEnabled()) state.game.autoSeconds = CHAMPIONSHIP_AUTO_SECONDS;
+  const delay = effectiveSeconds * 1000;
   const timer = setTimeout(() => workspaceContext.run(workspace, () => {
     try { drawNextBall('automatic'); }
     catch (error) { console.error(`No se pudo extraer una bolilla automática en ${workspace.id}:`, error.message); }
@@ -7435,7 +7441,7 @@ function setTestDrawOrder(payload = {}) {
 function updateDrawSettings(payload = {}) {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   const minimumSeconds = currentWorkspace().isDemo ? 2 : 3;
-  const nextSeconds = Math.max(minimumSeconds, Math.min(60, Number(payload.autoSeconds ?? state.game.autoSeconds) || 6));
+  const nextSeconds = championshipRoomEnabled() ? CHAMPIONSHIP_AUTO_SECONDS : Math.max(minimumSeconds, Math.min(60, Number(payload.autoSeconds ?? state.game.autoSeconds) || 6));
   state.game.autoSeconds = nextSeconds;
   if (state.status === 'waiting' && ['manual', 'automatic'].includes(payload.drawMode)) state.game.drawMode = payload.drawMode;
   logEvent('draw_settings_updated', { drawMode: state.game.drawMode, autoSeconds: state.game.autoSeconds });
@@ -7799,8 +7805,8 @@ function startRoom(payload = {}) {
   if (championshipRoomEnabled()) { lockChampionshipRoundIntegrity(); state.championship.stage = 'starting'; state.championship.roundStartedAt ||= nowIso(); }
   state.cardReservations = {}; for (const player of state.players) player.reservedCardIds = [];
   state.assignmentTimer = { ...(state.assignmentTimer || blankState().assignmentTimer), status: 'completed', endsAt: null, remainingMs: 0, completedAt: state.assignmentTimer?.completedAt || nowIso() };
-  const startedAt = nowIso(); const largeRoomNotice = !forcedSimulationStart && state.players.length > LARGE_ROOM_NOTICE_THRESHOLD; const largeRoomNoticeMs = largeRoomNotice ? (TEST_MODE ? 30 : LARGE_ROOM_NOTICE_MS) : 0;
-  const baseStartSequenceMs = forcedSimulationStart ? (TEST_MODE ? 50 : 900) : currentWorkspace().isDemo ? (TEST_MODE ? 100 : DEMO_START_SEQUENCE_MS) : START_SEQUENCE_MS;
+  const startedAt = nowIso(); const largeRoomNotice = !championshipRoomEnabled() && !forcedSimulationStart && state.players.length > LARGE_ROOM_NOTICE_THRESHOLD; const largeRoomNoticeMs = largeRoomNotice ? (TEST_MODE ? 30 : LARGE_ROOM_NOTICE_MS) : 0;
+  const baseStartSequenceMs = championshipRoomEnabled() ? CHAMPIONSHIP_START_SEQUENCE_MS : forcedSimulationStart ? (TEST_MODE ? 50 : 900) : currentWorkspace().isDemo ? (TEST_MODE ? 100 : DEMO_START_SEQUENCE_MS) : START_SEQUENCE_MS;
   state.status = 'starting'; state.pauseReason = null; state.startedAt = startedAt; state.endedAt = null; state.game.phase = 'READY';
   state.transition = { id: randomId('transition'), type: 'start', startedAt, endsAt: new Date(Date.now() + baseStartSequenceMs + largeRoomNoticeMs).toISOString(), officialTime: new Date().toLocaleTimeString('es-AR', { timeZone: BINGO_TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false }), largeRoomNotice, noticeDurationMs: largeRoomNoticeMs, priorityNotice: largeRoomNotice ? { title: LARGE_ROOM_NOTICE_TITLE, text: LARGE_ROOM_NOTICE_TEXT } : null };
   logEvent('game_start_sequence', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0), largeRoomNotice, forcedSimulationStart });
@@ -10718,8 +10724,8 @@ function createCommunityPublicRoom(payload = {}) {
   const maxPlayers = Math.max(2, Math.min(availability.maxPlayers, Math.round(Number(payload.maxPlayers) || Math.min(20, availability.maxPlayers))));
   const requestedGameKind = ['championship','flash'].includes(payload.gameKind) ? payload.gameKind : 'normal';
   const maxCardsPerPlayer = requestedGameKind === 'flash' ? 1 : Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
-  const autoSeconds = Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
   const gameKind = requestedGameKind;
+  const autoSeconds = gameKind === 'championship' ? CHAMPIONSHIP_AUTO_SECONDS : Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
   let championshipRounds = 0;
   if (gameKind === 'championship') {
     const requestedRounds = Math.round(Number(payload.championshipRounds) || CHAMPIONSHIP_DEFAULT_ROUNDS);
@@ -11375,7 +11381,7 @@ function createCommunityPrivateRoom(payload = {}) {
   const maxPlayers = Math.max(2, Math.min(availability.maxPlayers, Math.round(Number(payload.maxPlayers) || Math.min(20, availability.maxPlayers))));
   const requestedGameKind = ['championship','flash'].includes(payload.gameKind) ? payload.gameKind : 'normal';
   const maxCardsPerPlayer = requestedGameKind === 'flash' ? 1 : Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
-  const autoSeconds = Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
+  const autoSeconds = requestedGameKind === 'championship' ? CHAMPIONSHIP_AUTO_SECONDS : Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
   const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1;
   const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};
   const rules = mode === 90

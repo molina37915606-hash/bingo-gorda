@@ -1,0 +1,15 @@
+EL BINGO DE LA GORDA · V9.3.14
+
+CAMBIO EXCLUSIVO DE CAMPEONATO
+- Siguiente ronda: un solo toque, sin confirmación adicional.
+- Inicio de Ronda 1 y rondas siguientes: secuencia corta de 3 segundos antes de la primera bolilla.
+- Extracción automática de Campeonato: 3 segundos por bolilla, fija y validada también por servidor.
+- Al crear un Campeonato, la velocidad deja de ofrecer 6/8/10/12 y muestra “3 segundos por bolilla”.
+
+NO CAMBIA
+- Partida Normal.
+- Modo Flash.
+- Modo Evento.
+- Demo.
+- Bolillero independiente.
+- Reglas, puntos, Bingo +5, desempate y actas de Campeonato.

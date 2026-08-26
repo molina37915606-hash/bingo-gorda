@@ -1,0 +1,12 @@
+EL BINGO DE LA GORDA · V9.3.17
+
+HOTFIX 21 DE LA GORDA
+- Se corrige el handler de SACAR BOLILLA, ME PLANTO y SIGUIENTE MANO.
+- El atributo data-action-21 ahora se lee explícitamente con getAttribute().
+- Se invalida la caché de community.js para entregar la corrección a navegadores que ya usaron V9.3.15/V9.3.16.
+
+SEGURIDAD DEL CAMBIO
+- No se modifica la mecánica de 21 puntos.
+- No se modifican rankings ni endpoints.
+- No se modifican los otros cinco minijuegos.
+- No se modifican salas, Campeonato, Flash, Evento, premios, cartones, TV ni transmisión.

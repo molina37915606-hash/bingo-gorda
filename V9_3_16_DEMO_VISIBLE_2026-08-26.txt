@@ -1,0 +1,12 @@
+EL BINGO DE LA GORDA · V9.3.16
+
+DEMO VISIBLE EN COMUNIDAD
+- Se recupera el acceso directo al Demo existente (/demo) para usuarios nuevos.
+- Escritorio: PROBAR DEMO aparece debajo de CONTACTANOS dentro del bloque principal.
+- Móvil: PROBAR DEMO aparece como acción secundaria dentro del bloque “Entrá a una mesa o creá la tuya”.
+- ¿Cómo funciona? recuerda que una persona nueva puede probar el Demo antes de crear o unirse a una mesa.
+
+SEGURIDAD DEL CAMBIO
+- No se modifica la lógica del Demo.
+- No se modifican salas, Bingo, Campeonato, Flash, Evento, premios, cartones, minijuegos, TV ni transmisión.
+- El panel rápido antiguo permanece oculto; los nuevos accesos apuntan al Demo ya existente.

@@ -1,0 +1,22 @@
+EL BINGO DE LA GORDA — ACTUALIZACIÓN V9.3.10
+Fecha: 2026-08-25
+
+REQUISITO
+- Partir de V9.3.9.
+
+INSTALACIÓN
+1. Hacé una copia de seguridad de tu instalación actual.
+2. Descomprimí EL_BINGO_DE_LA_GORDA_V9_3_10_ACTUALIZACION.zip.
+3. Copiá su contenido sobre la carpeta raíz de V9.3.9 y aceptá reemplazar archivos.
+4. Reiniciá el servidor Node.
+5. En el navegador, recargá Comunidad y Admin.
+
+NUEVO
+- CONTACTANOS visible en móvil junto al logo.
+- CONTACTANOS en escritorio debajo de CREAR MESA.
+- Panel con número, WhatsApp, grupo/canal y COLABORÁ.
+- Admin permite cargar el LINK PARA COLABORAR.
+- El enlace de colaboración queda vacío por defecto y se activa al configurarlo.
+
+NO CAMBIA
+- Reglas de Bingo, premios, cartones, bolillero, RIVALES, TV, transmisión ni lógica de salas.

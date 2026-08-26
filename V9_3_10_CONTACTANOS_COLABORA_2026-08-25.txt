@@ -1,0 +1,22 @@
+EL BINGO DE LA GORDA — V9.3.10
+CONTACTANOS + COLABORACIÓN
+Fecha: 2026-08-25
+
+CAMBIOS
+- Móvil: botón CONTACTANOS visible en la cabecera junto al logo.
+- Escritorio: botón CONTACTANOS debajo de CREAR MESA en el hero principal.
+- Un solo panel compartido muestra el número de contacto y accesos a WhatsApp, grupo/canal y COLABORÁ PARA SEGUIR CRECIENDO.
+- Admin: LINK DEL GRUPO O CANAL DE WHATSAPP.
+- Admin: nuevo LINK PARA COLABORAR, opcional.
+- Si no hay link de colaboración configurado, el botón informa que todavía no está configurado en lugar de inventar un destino.
+
+ARCHIVOS FUNCIONALES MODIFICADOS
+- comunidad.html
+- js/community.js
+- admin.html
+- js/admin.js
+- server.js
+
+SEGURIDAD DEL CAMBIO
+- No cambia la lógica de Bingo, premios, cartones, bolillero, RIVALES, TV ni transmisión.
+- Se agrega regresión específica tests/v9310-community-contact.js.

@@ -671,6 +671,7 @@ function blankCommunity() {
   return {
     whatsappGroup: String(process.env.COMMUNITY_WHATSAPP_GROUP || 'https://chat.whatsapp.com/HauYXd3oUzUIXIcl0YKOlk?s=cl&p=a&ilr=0').trim().slice(0, 500),
     whatsappNumber: String(process.env.COMMUNITY_WHATSAPP_NUMBER || '3757624388').trim().slice(0, 60),
+    collaborationUrl: String(process.env.COMMUNITY_COLLABORATION_URL || '').trim().slice(0, 500),
     banners: [1,2,3].map(slot => ({ slot, enabled:false, destinationType:'none', target:'', alt:'', imageExt:'', updatedAt:'' })),
     playerAd: { enabled:false, imageExt:'', updatedAt:'' },
     chatEnabled: true,
@@ -1111,6 +1112,7 @@ function normalizeCommunity(raw = {}) {
   return {
     whatsappGroup: String(raw.whatsappGroup || defaults.whatsappGroup).trim().slice(0, 500),
     whatsappNumber: String(raw.whatsappNumber || defaults.whatsappNumber).trim().slice(0, 60),
+    collaborationUrl: String(raw.collaborationUrl || '').trim().slice(0, 500),
     banners: [1,2,3].map(slot => normalizeCommunityBanner((Array.isArray(raw.banners) ? raw.banners : []).find(item => Number(item?.slot) === slot) || {}, slot)),
     playerAd: normalizePlayerAd(raw.playerAd || {}),
     chatEnabled: raw.chatEnabled !== false,
@@ -10264,6 +10266,11 @@ function communityWhatsappContactUrl() {
   return digits.length >= 8 ? `https://wa.me/${digits}` : '';
 }
 
+function communityCollaborationUrl() {
+  const value = String(platform.community?.collaborationUrl || '').trim();
+  return /^https:\/\/[^\s]+$/i.test(value) ? value : '';
+}
+
 function communityActiveGamePayload() {
   const candidates = operationalWorkspaces()
     .filter(workspace => {
@@ -11445,7 +11452,8 @@ function communityStatePayload(visitorId = '', req = null) {
     whatsapp: {
       groupUrl: communityWhatsappGroupUrl(),
       contactUrl: communityWhatsappContactUrl(),
-      number: communityWhatsappNumber()
+      number: communityWhatsappNumber(),
+      collaborationUrl: communityCollaborationUrl()
     },
     banners: communityBannersPublicPayload(),
     activeGame: communityActiveGamePayload(),
@@ -11777,6 +11785,11 @@ function updateCommunitySettings(payload = {}) {
     community.whatsappGroup = value || blankCommunity().whatsappGroup;
   }
   if (payload.whatsappNumber !== undefined) community.whatsappNumber = String(payload.whatsappNumber || '').trim().slice(0, 60) || blankCommunity().whatsappNumber;
+  if (payload.collaborationUrl !== undefined) {
+    const value = String(payload.collaborationUrl || '').trim().slice(0, 500);
+    if (value && !/^https:\/\/[^\s]+$/i.test(value)) throw new Error('Pegá un enlace https válido para COLABORÁ.');
+    community.collaborationUrl = value;
+  }
   if (Array.isArray(payload.banners)) {
     const current = [1,2,3].map(slot => normalizeCommunityBanner((community.banners || []).find(item => Number(item?.slot) === slot) || {}, slot));
     for (const incoming of payload.banners.slice(0,3)) {
@@ -11913,6 +11926,7 @@ function communityAdminPayload() {
     communityUrl: `${PUBLIC_URL || `http://localhost:${PORT}`}/comunidad`,
     whatsappGroup: community.whatsappGroup || blankCommunity().whatsappGroup,
     whatsappNumber: community.whatsappNumber || blankCommunity().whatsappNumber,
+    collaborationUrl: String(community.collaborationUrl || '').trim(),
     banners: communityBannersAdminPayload(),
     playerAd: playerAdAdminPayload(),
     chatEnabled: community.chatEnabled !== false,

@@ -1,3 +1,12 @@
+## V9.3.10 — CONTACTANOS + colaboración
+
+- Móvil: se agrega **CONTACTANOS** en la cabecera, junto al logo.
+- Escritorio: se agrega **CONTACTANOS** debajo de **CREAR MESA** en el bloque principal.
+- Ambos accesos abren el mismo panel con número de contacto, WhatsApp, grupo/canal y **COLABORÁ PARA SEGUIR CRECIENDO**.
+- Admin: el enlace del grupo acepta grupo o canal de WhatsApp y se agrega un campo opcional **LINK PARA COLABORAR**.
+- El enlace de colaboración queda vacío por defecto; no se inventa ningún destino de pago.
+- No se modifican reglas, premios, creación de salas, cartones, bolillero, RIVALES, TV ni transmisión.
+
 ## V9.3.9 — Lobby JUGAR / UNIRSE
 
 - Móvil: el acceso principal queda en dos acciones claras: **JUGAR** crea una mesa y **UNIRSE** lleva a las mesas existentes.

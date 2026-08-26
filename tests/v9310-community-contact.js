@@ -1,0 +1,25 @@
+const fs=require('fs');
+const path=require('path');
+function assert(ok,msg){if(!ok){console.error('FAIL:',msg);process.exit(1)}}
+const root=path.join(__dirname,'..');
+const html=fs.readFileSync(path.join(root,'comunidad.html'),'utf8');
+const community=fs.readFileSync(path.join(root,'js','community.js'),'utf8');
+const adminHtml=fs.readFileSync(path.join(root,'admin.html'),'utf8');
+const admin=fs.readFileSync(path.join(root,'js','admin.js'),'utf8');
+const server=fs.readFileSync(path.join(root,'server.js'),'utf8');
+assert(html.includes('id="mobileContactBtn"')&&html.includes('CONTACTANOS'),'Móvil debe tener CONTACTANOS en cabecera.');
+assert(html.includes('id="desktopContactBtn"')&&html.includes('class="lobbyContact"'),'Escritorio debe tener CONTACTANOS debajo de Crear Mesa.');
+assert(html.includes('id="contactPhoneNumber"'),'El panel debe mostrar el número de contacto.');
+assert(html.includes('id="groupBtn"')&&html.includes('UNIRME AL GRUPO / CANAL'),'El panel debe tener grupo/canal.');
+assert(html.includes('id="collaborationBtn"')&&html.includes('COLABORÁ PARA SEGUIR CRECIENDO'),'El panel debe tener colaboración.');
+assert(community.includes("state.whatsapp?.collaborationUrl"),'Community JS debe leer el enlace de colaboración.');
+assert(community.includes("$('mobileContactBtn').onclick=openWhatsapp")&&community.includes("$('desktopContactBtn').onclick=openWhatsapp"),'Ambos CONTACTANOS deben abrir el panel existente.');
+assert(adminHtml.includes('id="communityCollaborationUrl"'),'Admin debe permitir configurar colaboración.');
+assert(adminHtml.includes('LINK DEL GRUPO O CANAL DE WHATSAPP'),'Admin debe identificar grupo o canal.');
+assert(admin.includes('collaborationUrl:'),'Admin debe guardar colaboración.');
+assert(server.includes('collaborationUrl: String(process.env.COMMUNITY_COLLABORATION_URL'),'Servidor debe tener valor persistente de colaboración.');
+assert(server.includes('function communityCollaborationUrl()'),'Servidor debe publicar solo enlaces de colaboración válidos.');
+assert(server.includes('collaborationUrl: communityCollaborationUrl()'),'Estado público debe incluir colaboración.');
+assert(html.includes('/js/community.js?v=v9-3-10-contacto-colabora-20260825'),'Debe invalidarse caché de Community para V9.3.10.');
+assert(adminHtml.includes('js/admin.js?v=v9-3-10-contacto-colabora-20260825'),'Debe invalidarse caché de Admin para V9.3.10.');
+console.log('OK v9310 CONTACTANOS + colaboración');

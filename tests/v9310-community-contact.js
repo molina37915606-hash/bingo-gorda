@@ -20,6 +20,6 @@ assert(admin.includes('collaborationAlias:')&&admin.includes('collaborationHolde
 assert(server.includes('collaborationAlias: String(process.env.COMMUNITY_COLLABORATION_ALIAS'),'Servidor debe tener alias persistente de colaboración.');
 assert(server.includes('function communityCollaborationAlias()'),'Servidor debe publicar solo alias de colaboración válidos.');
 assert(server.includes('collaborationAlias: communityCollaborationAlias()'),'Estado público debe incluir alias de colaboración.');
-assert(/\/js\/community\.js\?v=v9-3-\d+-/.test(html),'Community debe conservar caché versionada.');
+assert(/\/js\/community\.js\?v=(?:v9-3-\d+-|final-)/.test(html),'Community debe conservar caché versionada.');
 assert(adminHtml.includes('js/admin.js?v=v9-3-12-alias-colabora-20260825'),'Debe invalidarse caché de Admin para V9.3.12.');
 console.log('OK CONTACTANOS + colaboración por alias');

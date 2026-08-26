@@ -1,0 +1,21 @@
+EL BINGO DE LA GORDA — FINAL
+Actualización desde V9.3.17
+Fecha: 26/08/2026
+
+APLICACIÓN
+1. Hacé una copia de seguridad de tu instalación actual.
+2. Copiá el contenido del ZIP FINAL_ACTUALIZACION sobre la raíz del proyecto.
+3. Permití reemplazar los archivos existentes.
+4. Reiniciá el servicio Node/Render.
+
+CAMBIOS FUNCIONALES
+- 21 DE LA GORDA ahora enfrenta al jugador contra La Gorda.
+- Ambos comienzan con 2 bolillas visibles.
+- Regla de casa: 16 o menos pide; 17 o más se planta.
+- Fantasma, Número Secreto e Intrusa tienen pantalla INICIAR.
+- Intrusa agrega cuenta 3-2-1 y temporizador visual estable.
+- Se corrige la ubicación del número/palo en las cartas de los dos minijuegos originales.
+
+CIERRE
+Esta edición queda identificada como EL BINGO DE LA GORDA FINAL.
+No se incorporan nuevas funciones salvo correcciones de errores o mantenimiento.

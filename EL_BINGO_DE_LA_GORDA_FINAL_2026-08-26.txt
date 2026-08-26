@@ -1,0 +1,17 @@
+EL BINGO DE LA GORDA — FINAL
+Fecha: 26/08/2026
+
+CIERRE FUNCIONAL
+- Se congela la incorporación de nuevas funciones.
+- Cambios futuros: correcciones de errores reales y mantenimiento.
+
+MINIJUEGOS
+- 21 DE LA GORDA: jugador vs. La Gorda, 2 bolillas iniciales visibles por lado.
+- Regla de la casa: con 16 o menos pide; con 17 o más se planta.
+- BOLILLA FANTASMA: pantalla INICIAR antes de memorizar.
+- NÚMERO SECRETO: pantalla INICIAR antes de comenzar.
+- BOLILLA INTRUSA: pantalla INICIAR, cuenta 3-2-1 y temporizador visual estable.
+- ROJO O NEGRO / MAYOR O MENOR: índice de número y palo reposicionado sobre la carta.
+
+NO MODIFICADO
+- Tradicional, Flash, Campeonato, Evento, Demo, TV, transmisión, premios, cartones y recuperación de salas conservan su lógica.

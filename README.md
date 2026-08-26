@@ -1,3 +1,55 @@
+# EL BINGO DE LA GORDA — FINAL
+
+Edición de cierre funcional · 26/08/2026
+
+Esta edición congela nuevas funciones. A partir de este paquete, los cambios deberían limitarse a correcciones de errores reales y mantenimiento.
+
+## Ajustes finales de minijuegos
+
+- **21 de La Gorda** pasa a jugador vs. La Gorda: dos bolillas iniciales visibles por lado; la casa pide con 16 o menos y se planta con 17 o más.
+- **Bolilla Fantasma**, **Número Secreto** y **Bolilla Intrusa** incorporan una pantalla previa con **INICIAR**.
+- **Bolilla Intrusa** usa una cuenta 3–2–1 y un temporizador visual estable de 6/5/4 segundos según la racha.
+- **Rojo o Negro** y **Mayor o Menor** ajustan el número y el palo para encajar mejor en los espacios impresos de las cartas.
+- Se conservan los seis rankings y no se alteran las modalidades de Bingo.
+
+---
+
+## V9.3.17 — HOTFIX 21 DE LA GORDA
+
+- Se corrige el enlace de los botones **SACAR BOLILLA**, **ME PLANTO** y **SIGUIENTE MANO** del minijuego 21 de La Gorda.
+- El fallo era de lectura del atributo `data-action-21`; la mecánica y el ranking no cambian.
+- Se invalida la caché de `community.js` para que el navegador reciba el hotfix.
+- Se agrega una regresión específica para impedir que el error vuelva a aparecer.
+- No se modifican los otros cinco minijuegos ni ninguna modalidad de Bingo.
+
+## V9.3.16 — DEMO VISIBLE EN COMUNIDAD
+
+- Se recupera un acceso visible a **PROBAR DEMO** para usuarios nuevos.
+- Escritorio: el botón aparece debajo de **CONTACTANOS** en el bloque principal.
+- Móvil: aparece como acción secundaria dentro del bloque **Entrá a una mesa o creá la tuya**.
+- El bloque **¿Cómo funciona?** recuerda que el Demo puede probarse antes de crear o unirse a una mesa.
+- Se reutiliza `/demo`; no cambia la lógica del Demo ni ninguna partida real.
+
+## V9.3.15 — SEIS MINIJUEGOS DE COMUNIDAD
+
+- El panel de Minijuegos pasa de 2 a **6 juegos**, organizado en escritorio como grilla **3 × 2**.
+- Se agregan **21 de La Gorda**, **La Bolilla Fantasma**, **El Número Secreto** y **La Bolilla Intrusa**.
+- Los cuatro nuevos reutilizan números, bolillas, identidad y rankings de Comunidad; no requieren assets nuevos.
+- Cada minijuego mantiene récord propio por jugador/dispositivo y ranking comunitario independiente.
+- En móvil las seis tarjetas quedan apiladas para conservar botones grandes y lectura clara.
+- Los minijuegos no entregan cartones, premios ni ventajas y no modifican ninguna partida de Bingo.
+- Rojo o Negro y Mayor o Menor conservan su funcionamiento anterior.
+
+## V9.3.14 — CAMPEONATO RÁPIDO
+
+- Cambio exclusivo de **CAMPEONATO**.
+- **Siguiente ronda** se inicia con un solo toque, sin confirmación adicional.
+- Ronda 1 y rondas siguientes usan una secuencia corta de **3 segundos** antes de la primera bolilla.
+- La extracción automática queda fija en **3 segundos por bolilla** y el servidor impide cambiarla dentro de Campeonato.
+- Al crear un Campeonato, la velocidad 6/8/10/12 se reemplaza visualmente por **3 SEGUNDOS POR BOLILLA**.
+- Partida Normal, Flash, Evento, Demo y Bolillero conservan sus tiempos y comportamiento.
+- No cambian puntuación, primer Bingo +5 bolillas, desempate, cantes, cartones, clasificación ni actas.
+
 ## V9.3.13 — CONTACTANOS alineado en móvil
 
 - Móvil: la cabecera queda con el **logo justificado a la izquierda** y **CONTACTANOS justificado a la derecha**.

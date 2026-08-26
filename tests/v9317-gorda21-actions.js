@@ -7,5 +7,5 @@ ok(js.includes('data-action-21=\"draw\"')&&js.includes('data-action-21=\"stand\"
 ok(js.includes("choices.querySelectorAll('[data-action-21]').forEach(b=>b.onclick=()=>play21(b.getAttribute('data-action-21')))"),'Los botones de 21 deben leer el atributo data-action-21 explícitamente.');
 ok(!js.includes('play21(b.dataset.action21)'),'No debe reaparecer la lectura inválida dataset.action21.');
 ok(js.includes("if(action==='draw')")&&js.includes("if(action==='stand')")&&js.includes("if(action==='next')"),'play21 debe atender draw, stand y next.');
-ok(html.includes('/js/community.js?v=v9-3-17-hotfix-21-20260826'),'Comunidad debe invalidar caché de community.js para el hotfix.');
+ok(html.includes('/js/community.js?v=final-minijuegos-20260826'),'Comunidad debe invalidar caché de community.js para el hotfix.');
 console.log('OK V9.3.17 hotfix acciones 21 de La Gorda');

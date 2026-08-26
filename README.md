@@ -1,3 +1,11 @@
+## V9.3.13 — CONTACTANOS alineado en móvil
+
+- Móvil: la cabecera queda con el **logo justificado a la izquierda** y **CONTACTANOS justificado a la derecha**.
+- Ambos elementos comparten la misma fila y quedan centrados verticalmente, sin superponerse.
+- Se oculta el texto largo de marca únicamente en esa cabecera móvil para mantener una separación limpia entre ambos extremos.
+- Escritorio mantiene CONTACTANOS debajo de CREAR MESA.
+- No se modifican salas, reglas, premios, cartones, azar, bolillero, RIVALES, TV, transmisión ni configuración de contacto.
+
 ## V9.3.12 — COLABORÁ por alias
 
 - Admin: **LINK PARA COLABORAR** se reemplaza por **ALIAS PARA COLABORAR**.

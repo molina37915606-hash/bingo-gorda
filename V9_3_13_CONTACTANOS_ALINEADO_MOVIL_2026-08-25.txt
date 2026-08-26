@@ -1,0 +1,14 @@
+EL BINGO DE LA GORDA · V9.3.13
+CONTACTANOS ALINEADO EN MÓVIL
+Fecha: 2026-08-25
+
+CAMBIO
+- En móvil, el logo queda justificado a la izquierda de la cabecera.
+- CONTACTANOS queda justificado al extremo derecho de la misma fila.
+- Ambos quedan centrados verticalmente y sin superposición.
+- Se elimina el texto de marca de la cabecera móvil para mantener aire entre logo y botón.
+- En escritorio CONTACTANOS permanece debajo de CREAR MESA.
+
+SEGURIDAD
+- Cambio exclusivamente visual en comunidad.html.
+- No se modifican servidor, salas, reglas, premios, cartones, azar, bolillero, RIVALES, TV ni transmisión.

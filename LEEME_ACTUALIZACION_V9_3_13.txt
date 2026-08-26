@@ -1,0 +1,14 @@
+EL BINGO DE LA GORDA · ACTUALIZACIÓN V9.3.13
+
+BASE REQUERIDA: V9.3.12
+
+REEMPLAZAR / INCORPORAR LOS ARCHIVOS INCLUIDOS EN ESTE ZIP.
+
+CAMBIO PRINCIPAL
+En móvil, la cabecera de Comunidad queda ordenada en una sola fila:
+- LOGO justificado a la izquierda.
+- CONTACTANOS justificado a la derecha.
+- Sin superposición entre ambos.
+
+Escritorio no cambia.
+No se modifica el funcionamiento del bingo.

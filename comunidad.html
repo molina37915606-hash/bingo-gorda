@@ -304,6 +304,10 @@ html.bolScreenOpen,body.bolScreenOpen{overflow:hidden!important}.bolilleroOverla
   .lobbyMobileSwitcher{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:7px 0;padding:4px;border:1px solid var(--line);border-radius:16px;background:#130d1ceb;box-shadow:0 10px 28px #0005}
   .lobbyMobileSwitcher button{min-height:43px;border:1px solid transparent;border-radius:12px;color:#fff;font-size:11px;font-weight:1000;cursor:pointer;box-shadow:inset 0 1px 0 #ffffff20,0 5px 15px #0003}
   .lobbyMobileSwitcher .lobbyMobilePlay{background:linear-gradient(135deg,#ff2f8d,#d6379f);border-color:#ff73b35c}
+  .lobbyMobileSwitcher .lobbyMobilePlay{display:flex;align-items:center;justify-content:center;gap:7px;line-height:1.05}
+  .lobbyMobileActionCopy{display:grid;gap:2px;text-align:left}
+  .lobbyMobileActionCopy b{font-size:11px}
+  .lobbyMobileActionCopy small{font-size:7.5px;letter-spacing:.04em;color:#ffe0f0;font-weight:900}
   .lobbyMobileSwitcher .lobbyMobileJoin{background:linear-gradient(145deg,#5f2890,#8b35b6);border-color:#ad6bd05c}
   .lobbyMobileSwitcher button:active{transform:scale(.985)}
   .lobbyRoomsPanel.lobbyJoinPulse{animation:lobbyJoinPulse .65s ease}
@@ -395,7 +399,7 @@ html.bolScreenOpen,body.bolScreenOpen{overflow:hidden!important}.bolilleroOverla
     <div class="presence"><i></i><span id="onlineText">EN LÍNEA</span></div>
   </div>
 </header>
-<div class="lobbyMobileSwitcher" aria-label="Acciones de Mesas"><button class="lobbyMobilePlay" type="button" data-lobby-create><span>🎲</span> JUGAR</button><button class="lobbyMobileJoin" type="button" data-lobby-join><span>👥</span> UNIRSE</button></div>
+<div class="lobbyMobileSwitcher" aria-label="Acciones de Mesas"><button class="lobbyMobilePlay" type="button" data-lobby-create><span>🎲</span><span class="lobbyMobileActionCopy"><b>JUGAR</b><small>(CREAR MESA)</small></span></button><button class="lobbyMobileJoin" type="button" data-lobby-join><span>👥</span> UNIRSE</button></div>
 <div class="desktopGrid"><main class="leftCol"><section class="panel lobbyHero" id="lobbyHero" aria-label="Empezar a jugar">
   <div class="lobbyHeroArt"><img src="/assets/community/crear-sala.webp" alt="" aria-hidden="true"></div>
   <div class="lobbyHeroCopy"><span class="lobbyKicker">BINGO ONLINE GRATIS</span><h1>Entrá a una mesa o creá la tuya.</h1><p>Elegí una mesa abierta, compartí el link con tus amigos y jugá sin instalar nada.</p></div>

@@ -8568,15 +8568,20 @@ function renewOffers(player) {
   return playerPayload(player);
 }
 
-function chooseRandomCards(player) {
+function chooseRandomCards(player, payload = {}) {
   if (!state.active || !state.game) throw new Error('La sala no está activa.');
   if (!selectionIsOpen()) throw new Error('La elección de cartones ya está cerrada.');
   if (player.selectionConfirmed) throw new Error('Tus cartones ya están confirmados.');
   if (championshipRoomEnabled()) throw new Error('En Campeonato los cartones se asignan automáticamente al comenzar cada ronda.');
   purgeExpiredReservations();
-  // La cantidad fue elegida al ingresar a la sala. El botón AL AZAR debe respetarla
-  // exactamente y confirmar todo en una única operación del servidor para evitar duplicados.
-  const requiredCount = authorizedCardCount(player);
+  // allowedCardCount es el máximo autorizado para este jugador. Al usar AL AZAR puede
+  // pedir cualquier cantidad entre 1 y ese máximo, igual que en la selección manual.
+  const maxCount = authorizedCardCount(player);
+  const rawCount = payload?.cardCount ?? payload?.count;
+  const requiredCount = rawCount === undefined || rawCount === null || rawCount === ''
+    ? maxCount
+    : Math.round(Number(rawCount));
+  if (!Number.isFinite(requiredCount) || requiredCount < 1 || requiredCount > maxCount) throw new Error(`Podés elegir al azar entre 1 y ${maxCount} cartón${maxCount === 1 ? '' : 'es'}.`);
   releaseReservationsForPlayer(player);
   const available = availableCardIdsFor(player);
   const chosen = diverseCardSelection(available, requiredCount, []);
@@ -12555,7 +12560,7 @@ async function handleApi(req, res, url) {
         if (readOnlyPreview) return sendJson(res, 403, { error: 'Vista previa del administrador: modo solo lectura.' });
         if (url.pathname === '/api/player/reserve' && req.method === 'POST') return sendJson(res, 200, reserveCard(player, await readJson(req)));
         if (url.pathname === '/api/player/renew-offers' && req.method === 'POST') return sendJson(res, 200, renewOffers(player));
-        if (url.pathname === '/api/player/random-cards' && req.method === 'POST') return sendJson(res, 200, chooseRandomCards(player));
+        if (url.pathname === '/api/player/random-cards' && req.method === 'POST') return sendJson(res, 200, chooseRandomCards(player, await readJson(req)));
         if (url.pathname === '/api/player/name' && req.method === 'POST') return sendJson(res, 200, setPlayerName(player, await readJson(req)));
         if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
         if (url.pathname === '/api/player/demo/tutorial' && req.method === 'POST') return sendJson(res, 200, resolveDemoTutorial(player, await readJson(req)));

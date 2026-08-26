@@ -1,0 +1,16 @@
+EL BINGO DE LA GORDA — V9.3.11
+Fecha: 2026-08-25
+
+CAMBIOS
+- En móvil, JUGAR muestra también (CREAR MESA) para evitar confusión.
+- En la elección de cartones, AL AZAR permite seleccionar una cantidad entre 1 y el máximo autorizado.
+- Ejemplo: si la mesa admite hasta 4, se puede pedir 1, 2, 3 o 4 cartones al azar.
+- La selección manual conserva su funcionamiento.
+- El servidor valida el rango y sigue evitando asignaciones duplicadas.
+
+ARCHIVOS FUNCIONALES MODIFICADOS
+- comunidad.html
+- player.html
+- css/platform.css
+- js/player.js
+- server.js

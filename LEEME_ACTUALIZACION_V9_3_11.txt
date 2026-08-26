@@ -1,0 +1,12 @@
+ACTUALIZACIÓN V9.3.11
+
+Base requerida: V9.3.10.
+
+Reemplazá los archivos incluidos manteniendo la misma estructura de carpetas.
+
+Incluye:
+- JUGAR (CREAR MESA) en móvil.
+- Selector de cantidad para CARTONES AL AZAR.
+- Validación del lado del servidor para elegir de 1 al máximo permitido.
+
+No requiere cambios de configuración ni migraciones de datos.

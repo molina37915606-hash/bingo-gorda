@@ -1,3 +1,12 @@
+## V9.3.11 — JUGAR más claro + cantidad al azar
+
+- Móvil: el botón principal muestra **JUGAR (CREAR MESA)** para explicar la acción sin cambiar el flujo.
+- Jugador: **AL AZAR** ya no obliga a tomar el máximo de cartones permitido por la mesa.
+- Si una mesa permite hasta 4 cartones, el jugador puede pedir **1, 2, 3 o 4 al azar**.
+- La selección manual sigue permitiendo elegir entre 1 y el máximo.
+- El servidor valida la cantidad solicitada y mantiene la protección contra cartones duplicados.
+- No se modifica la lógica de Comunidad, ni reglas, premios, sorteos, bolillero, RIVALES, TV o transmisión.
+
 ## V9.3.10 — CONTACTANOS + colaboración
 
 - Móvil: se agrega **CONTACTANOS** en la cabecera, junto al logo.

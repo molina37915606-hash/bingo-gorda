@@ -4,7 +4,7 @@ function assert(ok,msg){if(!ok){console.error('FAIL:',msg);process.exit(1)}}
 const root=path.join(__dirname,'..');
 const html=fs.readFileSync(path.join(root,'comunidad.html'),'utf8');
 const community=fs.readFileSync(path.join(root,'js','community.js'),'utf8');
-assert(html.includes('class="lobbyMobilePlay" type="button" data-lobby-create')&&html.includes('> JUGAR</button>'),'Móvil: JUGAR debe crear una mesa.');
+assert(html.includes('class="lobbyMobilePlay" type="button" data-lobby-create')&&html.includes('<b>JUGAR</b><small>(CREAR MESA)</small>'),'Móvil: JUGAR debe crear una mesa y explicarlo.');
 assert(html.includes('class="lobbyMobileJoin" type="button" data-lobby-join')&&html.includes('> UNIRSE</button>'),'Móvil: debe existir UNIRSE.');
 assert(!html.includes('data-lobby-scroll-rooms'),'No debe quedar el antiguo JUGAR que solo hacía scroll.');
 assert(html.includes("function joinAvailableRooms()"),'UNIRSE debe tener una acción propia.');

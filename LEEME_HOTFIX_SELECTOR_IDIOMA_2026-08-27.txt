@@ -1,0 +1,19 @@
+EL BINGO DE LA GORDA FINAL INTERNACIONAL
+HOTFIX SELECTOR DE IDIOMA · 2026-08-27
+
+Incluye:
+- reemplazo del selector visible/flotante por un desplegable compacto;
+- selector integrado al header superior;
+- opciones con bandera e identificación de idioma:
+  ARG / ESP
+  BRA / PT
+  USA / ENG
+- en móvil queda arriba, junto a CONTACTANOS;
+- en escritorio queda en la esquina superior del header;
+- mantiene guardado del idioma y recarga visual inmediata.
+
+Archivos modificados:
+- js/i18n.js
+- assets/lang/argentina.webp
+- assets/lang/brasil.webp
+- assets/lang/usa.webp

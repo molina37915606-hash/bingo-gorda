@@ -39,10 +39,68 @@ function translateNode(node){
  if(node.nodeType===3){const p=node.parentElement;if(!p||p.closest('[data-i18n-skip],script,style,textarea'))return;let source;if(node.__lgLast!==undefined&&node.nodeValue===node.__lgLast)source=node.__lgEs;else{source=node.nodeValue;node.__lgEs=source}const val=tr(source);node.__lgLast=val;if(node.nodeValue!==val)node.nodeValue=val;return}
  if(node.nodeType!==1)return;translateElement(node);const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);let n;while((n=walker.nextNode()))translateNode(n);node.querySelectorAll?.('*').forEach(translateElement);
 }
-let busy=false,titleEs=document.title,titleLast=document.title;function translatePage(){if(busy)return;busy=true;document.documentElement.lang=lang==='pt'?'pt-BR':lang;translateNode(document.body);if(document.title!==titleLast)titleEs=document.title;const nextTitle=tr(titleEs);titleLast=nextTitle;if(document.title!==nextTitle)document.title=nextTitle;document.querySelectorAll('#lgLanguageSwitcher button').forEach(b=>b.classList.toggle('active',b.dataset.lang===lang));busy=false;}
+let busy=false,titleEs=document.title,titleLast=document.title;
+const LANG_META={es:{label:'ESP',flag:'/assets/lang/argentina.webp',country:'ARG'},pt:{label:'PT',flag:'/assets/lang/brasil.webp',country:'BRA'},en:{label:'ENG',flag:'/assets/lang/usa.webp',country:'USA'}};
+function syncSwitcher(box){
+ if(!box)return;
+ const current=box.querySelector('.lgLangCurrent');
+ const meta=LANG_META[lang]||LANG_META.es;
+ if(current){
+  const img=current.querySelector('img');
+  const code=current.querySelector('.lgLangCode');
+  const country=current.querySelector('.lgLangCountry');
+  if(img){img.src=meta.flag;img.alt=meta.country}
+  if(code)code.textContent=meta.label;
+  if(country)country.textContent=meta.country;
+ }
+ box.querySelectorAll('.lgLangOption').forEach(btn=>btn.classList.toggle('active',btn.dataset.lang===lang));
+}
+function syncSwitchers(){document.querySelectorAll('#lgLanguageSwitcher').forEach(syncSwitcher)}
+function translatePage(){if(busy)return;busy=true;document.documentElement.lang=lang==='pt'?'pt-BR':lang;translateNode(document.body);if(document.title!==titleLast)titleEs=document.title;const nextTitle=tr(titleEs);titleLast=nextTitle;if(document.title!==nextTitle)document.title=nextTitle;syncSwitchers();busy=false;}
 function setLang(next){next=normalizeLang(next);if(!SUPPORTED.includes(next))next='es';lang=next;try{localStorage.setItem('lg_language',lang)}catch{};translatePage();window.dispatchEvent(new CustomEvent('lg:languagechange',{detail:{language:lang}}));}
-function addSwitcher(){if(displayPaths.some(r=>r.test(location.pathname))||document.getElementById('lgLanguageSwitcher'))return;const box=document.createElement('div');box.id='lgLanguageSwitcher';box.setAttribute('data-i18n-skip','');box.setAttribute('aria-label','Language / Idioma');box.innerHTML='<span class="lgLangGlobe">🌐</span><button type="button" data-lang="es">ES</button><button type="button" data-lang="pt">PT</button><button type="button" data-lang="en">EN</button>';box.addEventListener('click',e=>{const b=e.target.closest('button[data-lang]');if(b)setLang(b.dataset.lang)});document.body.appendChild(box);
- const st=document.createElement('style');st.id='lgI18nStyle';st.textContent=`#lgLanguageSwitcher{position:fixed;z-index:10000;right:12px;bottom:12px;display:flex;align-items:center;gap:3px;padding:4px;border:1px solid #ffffff2a;border-radius:999px;background:#100a19e8;color:#fff;box-shadow:0 10px 30px #0008;backdrop-filter:blur(10px);font:800 11px/1 Segoe UI,Arial,sans-serif}#lgLanguageSwitcher .lgLangGlobe{padding:0 4px 0 3px;font-size:14px}#lgLanguageSwitcher button{min-width:34px;height:32px;padding:0 7px;border:0;border-radius:999px;background:transparent;color:#c7b9d1;font:900 10px Segoe UI,Arial,sans-serif;cursor:pointer}#lgLanguageSwitcher button.active{background:linear-gradient(145deg,#7b2fa6,#b53c99);color:#fff}@media(max-width:720px){#lgLanguageSwitcher{right:10px;bottom:calc(76px + env(safe-area-inset-bottom));padding:3px}#lgLanguageSwitcher button{min-width:31px;height:30px;padding:0 5px;font-size:9px}}`;document.head.appendChild(st);
+function createLangOption(code){const meta=LANG_META[code]||LANG_META.es;return '<button type="button" class="lgLangOption" data-lang="'+code+'"><img src="'+meta.flag+'" alt="'+meta.country+'"><span class="lgLangCode">'+meta.label+'</span><span class="lgLangCountry">'+meta.country+'</span></button>';}
+function closeLangMenu(box){if(!box)return;box.classList.remove('open');const btn=box.querySelector('.lgLangCurrent');if(btn)btn.setAttribute('aria-expanded','false');}
+function openLangMenu(box){if(!box)return;box.classList.add('open');const btn=box.querySelector('.lgLangCurrent');if(btn)btn.setAttribute('aria-expanded','true');}
+function findSwitcherHost(){
+ return document.querySelector('.topbarRight')||document.querySelector('.topbar .presence')?.parentElement||document.querySelector('.topbar')||document.querySelector('header')||null;
+}
+function mountSwitcher(box){
+ const host=findSwitcherHost();
+ if(host){
+  box.classList.add('embedded');
+  const before=host.querySelector('#mobileContactBtn')||host.querySelector('.presence')||null;
+  if(before)host.insertBefore(box,before);else host.appendChild(box);
+ }else{
+  box.classList.add('floating');
+  document.body.appendChild(box);
+ }
+}
+function addSwitcher(){if(displayPaths.some(r=>r.test(location.pathname))||document.getElementById('lgLanguageSwitcher'))return;const box=document.createElement('div');box.id='lgLanguageSwitcher';box.setAttribute('data-i18n-skip','');box.setAttribute('aria-label','Language / Idioma');box.innerHTML='<button type="button" class="lgLangCurrent" aria-haspopup="menu" aria-expanded="false"><img src="'+LANG_META[lang].flag+'" alt="'+LANG_META[lang].country+'"><span class="lgLangCode">'+LANG_META[lang].label+'</span><span class="lgLangCountry">'+LANG_META[lang].country+'</span><span class="lgLangCaret">▾</span></button><div class="lgLangMenu" role="menu">'+createLangOption('es')+createLangOption('pt')+createLangOption('en')+'</div>';
+ mountSwitcher(box);
+ box.addEventListener('click',e=>{
+  const current=e.target.closest('.lgLangCurrent');
+  const option=e.target.closest('.lgLangOption');
+  if(current){e.preventDefault();box.classList.contains('open')?closeLangMenu(box):openLangMenu(box);return;}
+  if(option){e.preventDefault();setLang(option.dataset.lang);closeLangMenu(box);}
+ });
+ document.addEventListener('click',e=>{if(!box.contains(e.target))closeLangMenu(box)});
+ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLangMenu(box)});
+ const st=document.createElement('style');st.id='lgI18nStyle';st.textContent=
+ '#lgLanguageSwitcher{position:relative;z-index:1000;flex:0 0 auto;font:900 12px/1 Segoe UI,Arial,sans-serif}'+
+ '#lgLanguageSwitcher .lgLangCurrent{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 12px;border:1px solid #ffffff24;border-radius:999px;background:linear-gradient(145deg,#1d1328,#120c1b);color:#fff;box-shadow:0 10px 28px #0006;cursor:pointer}'+
+ '#lgLanguageSwitcher .lgLangCurrent img,#lgLanguageSwitcher .lgLangOption img{width:20px;height:20px;border-radius:50%;display:block;flex:0 0 20px;box-shadow:0 0 0 1px #ffffff22}'+
+ '#lgLanguageSwitcher .lgLangCode{font-weight:1000;letter-spacing:.02em}'+
+ '#lgLanguageSwitcher .lgLangCountry{font-size:10px;color:#cbbcd9;letter-spacing:.05em}'+
+ '#lgLanguageSwitcher .lgLangCaret{font-size:11px;color:#d8c9e6}'+
+ '#lgLanguageSwitcher .lgLangMenu{position:absolute;top:calc(100% + 8px);right:0;display:none;min-width:170px;padding:6px;border:1px solid #ffffff18;border-radius:16px;background:#120c1be8;box-shadow:0 18px 45px #0009;backdrop-filter:blur(14px)}'+
+ '#lgLanguageSwitcher.open .lgLangMenu{display:grid;gap:4px}'+
+ '#lgLanguageSwitcher .lgLangOption{display:grid;grid-template-columns:20px auto auto;align-items:center;column-gap:8px;min-height:40px;padding:0 10px;border:0;border-radius:12px;background:transparent;color:#fff;text-align:left;cursor:pointer}'+
+ '#lgLanguageSwitcher .lgLangOption .lgLangCountry{justify-self:end}'+
+ '#lgLanguageSwitcher .lgLangOption.active,#lgLanguageSwitcher .lgLangOption:hover{background:linear-gradient(145deg,#5e2b85,#8d3ac0)}'+
+ '#lgLanguageSwitcher.embedded{display:flex;align-items:center}'+
+ '#lgLanguageSwitcher.floating{position:fixed;right:12px;bottom:12px}'+
+ '@media(max-width:1050px){#lgLanguageSwitcher .lgLangCurrent{min-height:40px;padding:0 10px;gap:7px}#lgLanguageSwitcher .lgLangMenu{right:0}#lgLanguageSwitcher .lgLangCountry{display:none}#lgLanguageSwitcher .lgLangOption{grid-template-columns:20px auto}}'+
+ '@media(max-width:720px){#lgLanguageSwitcher .lgLangCurrent{min-height:38px;padding:0 10px}#lgLanguageSwitcher .lgLangCurrent img,#lgLanguageSwitcher .lgLangOption img{width:18px;height:18px;flex-basis:18px}#lgLanguageSwitcher .lgLangCode{font-size:11px}#lgLanguageSwitcher .lgLangCaret{font-size:10px}}';document.head.appendChild(st);syncSwitcher(box);
 }
 const obs=new MutationObserver(records=>{if(busy)return;for(const r of records){for(const n of r.addedNodes)translateNode(n);if(r.type==='characterData')translateNode(r.target)}});
 function init(){addSwitcher();translatePage();obs.observe(document.body,{subtree:true,childList:true,characterData:true});}

@@ -1,4 +1,10 @@
-# EL BINGO DE LA GORDA — FINAL
+# EL BINGO DE LA GORDA — FINAL INTERNACIONAL
+
+## Idiomas
+Esta edición incorpora una única plataforma con interfaz **ES / PT-BR / EN**. La marca **EL BINGO DE LA GORDA** no se traduce. El idioma se detecta desde el navegador, puede cambiarse con el selector `ES · PT · EN` y queda recordado en el dispositivo. Español es siempre el idioma de respaldo cuando un texto no tiene traducción específica.
+
+La lógica interna de salas, premios, cartones, Flash, Campeonato, Evento, TV, rankings y minijuegos sigue usando los mismos códigos internos para evitar divergencias entre idiomas. Las voces existentes continúan en español en esta edición.
+
 
 Edición de cierre funcional · 26/08/2026
 

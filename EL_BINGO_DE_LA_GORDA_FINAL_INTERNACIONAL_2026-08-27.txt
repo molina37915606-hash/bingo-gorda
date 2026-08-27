@@ -1,0 +1,12 @@
+EL BINGO DE LA GORDA — FINAL INTERNACIONAL
+Fecha: 2026-08-27
+
+CAMBIOS
+- Una sola plataforma con ES / PT-BR / EN.
+- La marca EL BINGO DE LA GORDA se conserva sin traducir.
+- Detección automática del idioma del navegador.
+- Selector ES · PT · EN y preferencia recordada.
+- Traducción reactiva de contenido generado dinámicamente en Comunidad, Jugador, Demo, Admin, TV y Evento.
+- Español funciona como fallback seguro para textos no traducidos.
+- No se modifican reglas ni lógica interna de Bingo.
+- Las voces permanecen en español.

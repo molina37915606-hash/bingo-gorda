@@ -1,0 +1,17 @@
+EL BINGO DE LA GORDA — FINAL INTERNACIONAL
+Actualización desde EL BINGO DE LA GORDA FINAL
+Fecha: 2026-08-27
+
+CAMBIOS
+- Una sola plataforma con selector ES / PT / EN.
+- Detección automática del idioma del navegador.
+- Preferencia de idioma guardada en el dispositivo.
+- La marca EL BINGO DE LA GORDA no se traduce.
+- Traducción reactiva de contenido dinámico.
+- Cobertura de Comunidad, Jugador, Demo, Admin, Reglamento, Evento, TV y Transmisión.
+- Español queda como respaldo seguro para textos técnicos no contemplados.
+- Las voces existentes continúan en español.
+- No se modifican reglas, premios, cartones, rankings ni lógica de partidas.
+
+INSTALACIÓN
+Copiar el contenido de este paquete sobre la instalación EL BINGO DE LA GORDA FINAL, conservando la misma estructura de carpetas y reemplazando los archivos existentes.

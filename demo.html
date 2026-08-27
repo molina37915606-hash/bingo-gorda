@@ -93,5 +93,5 @@ html[data-theme=day] body{background:radial-gradient(circle at top,#d9c8ed,#eef3
   if(err){box.textContent=err==='rate'?'Demasiados intentos. Esperá unos minutos y volvé a probar.':'No se pudo crear la DEMO. Volvé a intentar.';box.classList.add('show')}
 })();
 </script>
-<script>(()=>{let t=localStorage.getItem('bingo_theme')==='day'?'day':'night';const b=document.getElementById('demoThemeBtn'),m=document.querySelector('meta[name="theme-color"]');const a=()=>{document.documentElement.dataset.theme=t;b.textContent=t==='day'?'☀':'☾';b.title=t==='day'?'Cambiar a modo noche':'Cambiar a modo día';if(m)m.content=t==='day'?'#eef3f8':'#090b18'};b.onclick=()=>{t=t==='day'?'night':'day';localStorage.setItem('bingo_theme',t);a()};a()})();</script></body>
+<script>(()=>{let t=localStorage.getItem('bingo_theme')==='day'?'day':'night';const b=document.getElementById('demoThemeBtn'),m=document.querySelector('meta[name="theme-color"]');const a=()=>{document.documentElement.dataset.theme=t;b.textContent=t==='day'?'☀':'☾';b.title=t==='day'?'Cambiar a modo noche':'Cambiar a modo día';if(m)m.content=t==='day'?'#eef3f8':'#090b18'};b.onclick=()=>{t=t==='day'?'night':'day';localStorage.setItem('bingo_theme',t);a()};a()})();</script><script src="/js/i18n.js?v=final-internacional-20260827"></script></body>
 </html>

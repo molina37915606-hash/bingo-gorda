@@ -31,10 +31,15 @@ function lineCompletionBalls(card,sequence){
   const at=new Map(sequence.map((n,i)=>[Number(n),i+1]));
   return lineDefs75(card).map(line=>Math.max(...line.map(n=>at.get(n)||999))).sort((a,b)=>a-b);
 }
+function cornersCompletionBall(card,sequence){
+  const at=new Map(sequence.map((n,i)=>[Number(n),i+1])),g=card.grid||[];
+  const values=[g?.[0]?.[0],g?.[0]?.[4],g?.[4]?.[0],g?.[4]?.[4]].filter(Number.isFinite).map(Number);
+  return values.length===4?Math.max(...values.map(n=>at.get(n)||999)):999;
+}
 function bonusDiff(cardA,cardB,sequence){
   const aa=lineCompletionBalls(cardA,sequence),bb=lineCompletionBalls(cardB,sequence);
   const cmp=(a,b)=>a===b?0:(a<b?5:-5);
-  return cmp(aa[0],bb[0])+cmp(aa[1],bb[1]);
+  return cmp(aa[0],bb[0])+cmp(cornersCompletionBall(cardA,sequence),cornersCompletionBall(cardB,sequence))+cmp(aa[1],bb[1])+cmp(aa[2],bb[2]);
 }
 function shuffled(values){const out=[...values];for(let i=out.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[out[i],out[j]]=[out[j],out[i]]}return out}
 function equalBonusSequence(cardA,cardB){
@@ -42,12 +47,12 @@ function equalBonusSequence(cardA,cardB){
   assert(commons.length,'Los dos cartones 75 deberían compartir al menos un número para la prueba controlada');
   for(const common of commons){
     const rest=union.filter(n=>n!==common);
-    for(let attempt=0;attempt<12000;attempt++){
+    for(let attempt=0;attempt<30000;attempt++){
       const sequence=[...shuffled(rest),common];
       if(bonusDiff(cardA,cardB,sequence)===0)return sequence;
     }
   }
-  throw new Error('No se encontró una secuencia controlada con bonus de Línea equilibrados');
+  throw new Error('No se encontró una secuencia controlada con bonus de Campeonato 75 equilibrados');
 }
 async function forceEqualRound(admin,aToken,bToken){
   const a=await ok('/api/player/state',{playerToken:aToken}),b=await ok('/api/player/state',{playerToken:bToken});

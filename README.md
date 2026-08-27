@@ -1,12 +1,21 @@
 # EL BINGO DE LA GORDA — FINAL INTERNACIONAL
 
 ## Idiomas
-Esta edición incorpora una única plataforma con interfaz **ES / PT-BR / EN**. La marca **EL BINGO DE LA GORDA** no se traduce. El idioma se detecta desde el navegador, puede cambiarse con el selector `ES · PT · EN` y queda recordado en el dispositivo. Español es siempre el idioma de respaldo cuando un texto no tiene traducción específica.
+Esta edición incorpora una única plataforma con interfaz **ES / PT-BR / EN**. La marca **EL BINGO DE LA GORDA** no se traduce. El idioma se detecta desde el navegador, puede cambiarse con el selector desplegable **ARG / ESP · BRA / PT · USA / ENG** y queda recordado en el dispositivo. Español es siempre el idioma de respaldo cuando un texto no tiene traducción específica.
 
-La lógica interna de salas, premios, cartones, Flash, Campeonato, Evento, TV, rankings y minijuegos sigue usando los mismos códigos internos para evitar divergencias entre idiomas. Las voces existentes continúan en español en esta edición.
+La lógica interna de salas, premios, cartones, Flash, Campeonato, Evento, TV, rankings y minijuegos sigue usando los mismos códigos internos para evitar divergencias entre idiomas. La cantadora usa la voz del navegador y sigue el idioma elegido: **es-AR**, **pt-BR** o **en-US**.
 
 
 Edición de cierre funcional · 26/08/2026
+
+## HOTFIX 02 — CAMPEONATO 75 + VOZ INTERNACIONAL
+
+- Campeonato 75 suma **4 Esquinas (+15)** y **Triple Línea (+30)** como jugadas oficiales.
+- Bonus al primero: **4 Esquinas +5** y **Triple Línea +5**. Se mantienen Línea +10 (+5 primero), Segunda Línea +20 (+5 primero), Bingo +60 (+15 primero) y cada número +1.
+- Ambas jugadas se detectan matemáticamente, pueden reclamarse, se anuncian y quedan registradas en clasificación y actas.
+- Los campeonatos 75 ya iniciados reconstruyen estas jugadas desde la secuencia de bolillas existente al cargar el estado.
+- La cantadora cambia con el idioma: **ESP → es-AR**, **PT → pt-BR**, **ENG → en-US**.
+- Campeonato 90, Flash, Evento y reglas de partidas normales no cambian.
 
 Esta edición congela nuevas funciones. A partir de este paquete, los cambios deberían limitarse a correcciones de errores reales y mantenimiento.
 

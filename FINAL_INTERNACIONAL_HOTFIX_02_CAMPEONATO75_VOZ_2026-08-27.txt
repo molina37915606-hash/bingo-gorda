@@ -1,0 +1,30 @@
+EL BINGO DE LA GORDA · FINAL INTERNACIONAL
+HOTFIX 02 · CAMPEONATO 75 + VOZ INTERNACIONAL · 2026-08-27
+Versión técnica: 9.3.17-final.international.2
+
+CORRECCIONES
+1. CAMPEONATO · 75 BOLAS
+- Primera Línea: +10 puntos · bonus primero +5.
+- 4 Esquinas: +15 puntos · bonus primero +5.
+- Segunda Línea: +20 puntos · bonus primero +5.
+- Triple Línea: +30 puntos · bonus primero +5.
+- Bingo: +60 puntos · bonus primero +15.
+- Cada número marcado mantiene +1 punto.
+- 4 Esquinas y Triple Línea se detectan, puntúan, pueden reclamarse, se anuncian y quedan reflejadas en la clasificación/resultados.
+- Compatibilidad con campeonatos 75 ya iniciados: normaliza las reglas y reconstruye la bolilla matemática de 4 Esquinas / Triple Línea usando la secuencia ya extraída.
+- Campeonato 90 no cambia.
+
+2. CANTADORA MULTIDIOMA
+- ESP: es-AR.
+- PT: pt-BR.
+- ENG: en-US.
+- La voz cambia con el selector de idioma sin recargar la plataforma.
+- Números, letras BINGO 75, inicio, pausas, reanudación, reclamos, premios y cierre usan el idioma seleccionado.
+- Se conserva la marca EL BINGO DE LA GORDA en todos los idiomas.
+- En PT y ENG se usa Web Speech / voz compatible del navegador; los MP3 españoles existentes no se reproducen para esas locuciones.
+
+NO MODIFICADO
+- Campeonato 90.
+- Flash.
+- Evento.
+- Reglas de partidas normales.

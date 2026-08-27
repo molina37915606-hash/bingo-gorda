@@ -45,7 +45,9 @@ El servidor es la única autoridad competitiva. Determina, usando la matriz ofic
 
 - números acertados;
 - Primera Línea;
+- 4 Esquinas en Bingo 75;
 - Segunda Línea;
+- Triple Línea en Bingo 75;
 - Bingo;
 - primer Bingo de la ronda;
 - puntos de cada posición;
@@ -58,17 +60,21 @@ El marcado manual o automático es una ayuda visual y no modifica los puntos mat
 
 ## 5. Puntuación oficial
 
-La puntuación es fija para Bingo 75 y Bingo 90:
+La puntuación base de Campeonato mantiene +1 por cada número real extraído. Las jugadas de Bingo 90 y Bingo 75 se puntúan así:
 
-| Acción | Puntos |
-|---|---:|
-| Cada número real del cartón extraído | +1 |
-| Primera Línea | +10 |
-| Primera posición que logra Primera Línea | +5 adicionales |
-| Segunda Línea | +20 |
-| Primera posición que logra Segunda Línea | +5 adicionales |
-| Bingo | +60 |
-| Primera posición que logra Bingo | +15 adicionales |
+| Acción | Bingo 90 | Bingo 75 |
+|---|---:|---:|
+| Cada número real del cartón extraído | +1 | +1 |
+| Primera Línea | +10 | +10 |
+| Primera posición que logra Primera Línea | +5 adicionales | +5 adicionales |
+| 4 Esquinas | — | +15 |
+| Primera posición que logra 4 Esquinas | — | +5 adicionales |
+| Segunda Línea | +20 | +20 |
+| Primera posición que logra Segunda Línea | +5 adicionales | +5 adicionales |
+| Triple Línea | — | +30 |
+| Primera posición que logra Triple Línea | — | +5 adicionales |
+| Bingo | +60 | +60 |
+| Primera posición que logra Bingo | +15 adicionales | +15 adicionales |
 
 Los bonus de primero se determinan por la **bolilla matemática del logro**, nunca por quién toca antes el botón de canto. Si dos o más posiciones completan la misma jugada con la misma bolilla, todas reciben el bonus correspondiente.
 
@@ -82,13 +88,13 @@ Cuando aparece el primer Bingo matemático de la ronda, el servidor fija el cier
 
 Los Bingos posteriores no reinician la cuenta.
 
-Durante esas cinco bolillas finales todas las posiciones continúan sumando números, Líneas, Segundas Líneas y Bingo.
+Durante esas cinco bolillas finales todas las posiciones continúan sumando números y las jugadas habilitadas. En Bingo 75 esto incluye Primera Línea, 4 Esquinas, Segunda Línea, Triple Línea y Bingo.
 
 Si dos o más posiciones completan su primer Bingo con **la misma bolilla que activa el cierre**, todas reciben el bonus de **+15**. El servidor no elige arbitrariamente una sola por orden interno.
 
 ## 7. Cantes
 
-Primera Línea, Segunda Línea y Bingo pueden cantarse manualmente por cada posición cuando la jugada ya existe matemáticamente.
+Primera Línea, Segunda Línea y Bingo pueden cantarse manualmente por cada posición cuando la jugada ya existe matemáticamente. En Bingo 75 también pueden cantarse 4 Esquinas y Triple Línea.
 
 El canto:
 

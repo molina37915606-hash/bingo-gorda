@@ -6,7 +6,7 @@ assert(i18n.includes("localStorage.getItem('lg_language')"),'debe recordar idiom
 assert(i18n.includes("navigator.language"),'debe detectar idioma');
 assert(i18n.includes("BRAND='EL BINGO DE LA GORDA'"),'debe preservar marca');
 for(const file of ['comunidad.html','player.html','demo.html','admin.html','evento.html','evento-admin.html','evento-conductor.html','evento-elegir.html','tv.html','transmision.html']){
- const html=fs.readFileSync(path.join(root,file),'utf8');assert(html.includes('/js/i18n.js?v=final-internacional-20260827'),file+' debe cargar i18n');
+ const html=fs.readFileSync(path.join(root,file),'utf8');assert(html.includes('/js/i18n.js?v=final-internacional-'),file+' debe cargar i18n');
 }
 assert(i18n.includes('Join a room or create your own.'),'debe incluir inglés');
 assert(i18n.includes('Entre em uma sala ou crie a sua.'),'debe incluir portugués');

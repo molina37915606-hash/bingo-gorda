@@ -8,12 +8,13 @@ const community=fs.readFileSync(path.join(root,'js','community-tools.js'),'utf8'
 const admin=fs.readFileSync(path.join(root,'js','admin.js'),'utf8');
 const must=(ok,msg)=>{if(!ok){console.error('VOZ NAVEGADOR FAIL:',msg);process.exit(1)}};
 must(voice.includes('SpeechSynthesisUtterance')&&voice.includes('speechSynthesis'),'el motor debe usar Web Speech / voz del navegador');
-must(voice.includes("utterance.lang = 'es-AR'")&&voice.includes("name(v).includes('google')"),'debe priorizar voz Google española cuando esté disponible');
+must(voice.includes('utterance.lang = speechLocale(language)')&&voice.includes("name(v).includes('google')")&&voice.includes("pt:'pt-BR'")&&voice.includes("en:'en-US'"),'debe elegir voz Google compatible con ES/PT/EN');
 must(!voice.includes('fetch(')&&!voice.includes('decodeAudioData')&&!voice.includes('new Audio('),'el motor no debe descargar ni reproducir MP3');
 must(voice.includes('playBall(number, mode = 90')&&voice.includes('playFinal(options = {})'),'debe conservar la API BingoVoice');
-const sandbox={window:{speechSynthesis:{getVoices:()=>[],addEventListener(){},cancel(){},speak(){}},SpeechSynthesisUtterance:function(t){this.text=t}},console,setTimeout};
+const sandbox={window:{speechSynthesis:{getVoices:()=>[],addEventListener(){},cancel(){},speak(){}},SpeechSynthesisUtterance:function(t){this.text=t},addEventListener(){}},localStorage:{getItem:()=>''},navigator:{language:'es-AR'},console,setTimeout};
 vm.runInNewContext(voice,sandbox);const api=sandbox.window.BingoVoice;
-must(api&&typeof api.create==='function'&&api.eventText('inicio_bienvenida').includes('Bingo de la Gorda'),'API de voz incompleta');
+must(api&&typeof api.create==='function'&&api.eventText('inicio_bienvenida','es').includes('Bingo de la Gorda'),'API de voz incompleta');
+must(api.eventText('inicio_bienvenida','pt').includes('Bem-vindos')&&api.eventText('inicio_bienvenida','en').includes('Welcome'),'faltan textos de voz PT/EN');
 for(const [type,mode,prizeNumber] of [['ambo',90,1],['line',90,1],['line',90,2],['doubleLine',75,1],['tripleLine',75,1],['corners',75,1],['bingo',90,1]]){
   must(api.prizeEvent(type,{mode,prizeNumber,confirmed:true}),'mapeo de premio incompleto');
 }
@@ -23,6 +24,6 @@ must(admin.includes('window.BingoVoice')&&admin.includes('playBall(42,90)'),'Adm
 must(community.includes('window.BingoVoice')&&community.includes('browserSpeak(number)'),'Comunidad debe conservar compatibilidad con Bolillero Libre');
 for(const page of ['player.html','tv.html','transmision.html','comunidad.html','admin.html','evento-tv.html','evento-transmision.html']){
   const html=fs.readFileSync(path.join(root,page),'utf8');
-  must(html.includes('bingo-voice.js?v=v9-3-2-nombres-cierre-20260825'),`${page} debe forzar la nueva versión de voz`);
+  must(html.includes('bingo-voice.js?v=final-internacional-voice-20260827-2'),`${page} debe forzar la nueva versión de voz`);
 }
 console.log('PRUEBA VOZ NAVEGADOR / GOOGLE TTS · SIN MP3 EN RUNTIME: OK');

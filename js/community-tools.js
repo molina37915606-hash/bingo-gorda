@@ -289,7 +289,7 @@
   }
   function browserSpeak(text) {
     if (!bol.sound || !isFreeMode(bol.mode) || !('speechSynthesis' in window)) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(String(text)); u.lang='es-AR'; u.rate=.9; speechSynthesis.speak(u); } catch {}
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(String(text)); u.lang=window.BingoVoice?.speechLocale?.()||'es-AR'; u.rate=.9; speechSynthesis.speak(u); } catch {}
   }
   function speakBall(number) {
     if (!bol.sound) return;

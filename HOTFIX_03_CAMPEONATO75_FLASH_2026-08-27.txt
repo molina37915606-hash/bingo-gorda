@@ -1,0 +1,17 @@
+EL BINGO DE LA GORDA · FINAL INTERNACIONAL · HOTFIX 03
+
+CAMPEONATO 75
+- Cuádruple Línea: +40 puntos; primera posición +5 extra.
+- Quinta Línea: +50 puntos; primera posición +5 extra.
+- Se mantienen: número +1, Línea +10, 4 Esquinas +15, 2ª Línea +20, Triple Línea +30, Bingo +60 y bonus previos.
+- Las nuevas jugadas se detectan matemáticamente, se pueden cantar y se incluyen en resultados/acta.
+- Un Campeonato 75 en curso puede reconstruirlas desde las bolillas ya extraídas.
+
+FLASH
+- Inicio fijo: 3 segundos.
+- Extracción automática fija: una bolilla cada 4 segundos.
+- La creación de Flash oculta la elección manual de velocidad.
+- El servidor fuerza ambos tiempos.
+- Flash no usa el aviso largo de inicio de salas grandes.
+
+Sin cambios en Normal, Campeonato 90, Demo o Evento.

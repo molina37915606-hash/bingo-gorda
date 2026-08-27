@@ -48,6 +48,8 @@ El servidor es la única autoridad competitiva. Determina, usando la matriz ofic
 - 4 Esquinas en Bingo 75;
 - Segunda Línea;
 - Triple Línea en Bingo 75;
+- Cuádruple Línea en Bingo 75;
+- Quinta Línea en Bingo 75;
 - Bingo;
 - primer Bingo de la ronda;
 - puntos de cada posición;
@@ -73,6 +75,10 @@ La puntuación base de Campeonato mantiene +1 por cada número real extraído. L
 | Primera posición que logra Segunda Línea | +5 adicionales | +5 adicionales |
 | Triple Línea | — | +30 |
 | Primera posición que logra Triple Línea | — | +5 adicionales |
+| Cuádruple Línea | — | +40 |
+| Primera posición que logra Cuádruple Línea | — | +5 adicionales |
+| Quinta Línea | — | +50 |
+| Primera posición que logra Quinta Línea | — | +5 adicionales |
 | Bingo | +60 | +60 |
 | Primera posición que logra Bingo | +15 adicionales | +15 adicionales |
 
@@ -88,13 +94,13 @@ Cuando aparece el primer Bingo matemático de la ronda, el servidor fija el cier
 
 Los Bingos posteriores no reinician la cuenta.
 
-Durante esas cinco bolillas finales todas las posiciones continúan sumando números y las jugadas habilitadas. En Bingo 75 esto incluye Primera Línea, 4 Esquinas, Segunda Línea, Triple Línea y Bingo.
+Durante esas cinco bolillas finales todas las posiciones continúan sumando números y las jugadas habilitadas. En Bingo 75 esto incluye Primera Línea, 4 Esquinas, Segunda Línea, Triple Línea, Cuádruple Línea, Quinta Línea y Bingo.
 
 Si dos o más posiciones completan su primer Bingo con **la misma bolilla que activa el cierre**, todas reciben el bonus de **+15**. El servidor no elige arbitrariamente una sola por orden interno.
 
 ## 7. Cantes
 
-Primera Línea, Segunda Línea y Bingo pueden cantarse manualmente por cada posición cuando la jugada ya existe matemáticamente. En Bingo 75 también pueden cantarse 4 Esquinas y Triple Línea.
+Primera Línea, Segunda Línea y Bingo pueden cantarse manualmente por cada posición cuando la jugada ya existe matemáticamente. En Bingo 75 también pueden cantarse 4 Esquinas, Triple Línea, Cuádruple Línea y Quinta Línea.
 
 El canto:
 

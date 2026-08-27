@@ -54,8 +54,10 @@ const CHAMPIONSHIP_PERSISTED_ROUNDS = CHAMPIONSHIP_ROUND_OPTIONS;
 const CHAMPIONSHIP_DEFAULT_ROUNDS = 5;
 const CHAMPIONSHIP_AUTO_SECONDS = 3;
 const CHAMPIONSHIP_START_SEQUENCE_MS = Math.max(TEST_MODE ? 40 : 500, Number(process.env.BINGO_CHAMPIONSHIP_START_SEQUENCE_MS || (TEST_MODE ? 80 : 3000)));
-const CHAMPIONSHIP_SCORE = Object.freeze({ hit:1, line:10, firstLine:5, corners:15, firstCorners:5, secondLine:20, firstSecondLine:5, tripleLine:30, firstTripleLine:5, bingo:60, firstBingo:15, tiebreakMinimumBalls:10 });
+const CHAMPIONSHIP_SCORE = Object.freeze({ hit:1, line:10, firstLine:5, corners:15, firstCorners:5, secondLine:20, firstSecondLine:5, tripleLine:30, firstTripleLine:5, quadrupleLine:40, firstQuadrupleLine:5, quintupleLine:50, firstQuintupleLine:5, bingo:60, firstBingo:15, tiebreakMinimumBalls:10 });
 const FLASH_MINIMUM_BALLS = 10;
+const FLASH_AUTO_SECONDS = 4;
+const FLASH_START_SEQUENCE_MS = Math.max(TEST_MODE ? 40 : 500, Number(process.env.BINGO_FLASH_START_SEQUENCE_MS || (TEST_MODE ? 80 : 3000)));
 const COMMUNITY_FINISH_GRACE_MS = Math.max(TEST_MODE ? 150 : 15_000, Number(process.env.BINGO_COMMUNITY_FINISH_GRACE_MS || 3 * 60 * 1000));
 const COMMUNITY_ROOM_ACCESS_COOKIE = 'bingo_community_room_access';
 const COMMUNITY_ROOM_ACCESS_TTL_MS = 30 * 60 * 1000;
@@ -342,6 +344,8 @@ function analyzeCard(card, drawnValues, playerMarks = []) {
     hasLine: lineCount >= 1,
     hasDoubleLine: Number(card.mode) === 75 && lineCount >= 2,
     hasTripleLine: Number(card.mode) === 75 && lineCount >= 3,
+    hasQuadrupleLine: Number(card.mode) === 75 && lineCount >= 4,
+    hasQuintupleLine: Number(card.mode) === 75 && lineCount >= 5,
     hasCorners: Number(card.mode) === 75 && cornerDetails.length > 0,
     cornerDetails,
     hasBingo: bingoMissing === 0 && numbers.length > 0,
@@ -534,7 +538,11 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       merged.championship.announcements = Array.isArray(merged.championship.announcements) ? merged.championship.announcements : [];
       merged.championship.finalizedAt = merged.championship.finalizedAt || null;
       merged.championship.firstLineDrawnCount = Math.max(0, Number(merged.championship.firstLineDrawnCount) || 0) || null;
+      merged.championship.firstCornersDrawnCount = Math.max(0, Number(merged.championship.firstCornersDrawnCount) || 0) || null;
       merged.championship.firstSecondLineDrawnCount = Math.max(0, Number(merged.championship.firstSecondLineDrawnCount) || 0) || null;
+      merged.championship.firstTripleLineDrawnCount = Math.max(0, Number(merged.championship.firstTripleLineDrawnCount) || 0) || null;
+      merged.championship.firstQuadrupleLineDrawnCount = Math.max(0, Number(merged.championship.firstQuadrupleLineDrawnCount) || 0) || null;
+      merged.championship.firstQuintupleLineDrawnCount = Math.max(0, Number(merged.championship.firstQuintupleLineDrawnCount) || 0) || null;
       merged.championship.firstBingoDrawnCount = Math.max(0, Number(merged.championship.firstBingoDrawnCount) || 0) || null;
       merged.championship.finalActaSha256 = /^[a-f0-9]{64}$/i.test(String(merged.championship.finalActaSha256 || '')) ? String(merged.championship.finalActaSha256).toLowerCase() : '';
     }
@@ -765,7 +773,7 @@ function normalizeCommunityPublicRoom(raw = {}) {
     startMode: raw.startMode === 'scheduled' ? 'scheduled' : 'manual',
     startsAt: startsIso,
     mode, maxPlayers, maxCardsPerPlayer, gameKind, championshipRounds,
-    autoSeconds: gameKind === 'championship' ? CHAMPIONSHIP_AUTO_SECONDS : Math.max(4, Math.min(20, Math.round(Number(raw.autoSeconds) || 8))),
+    autoSeconds: gameKind === 'championship' ? CHAMPIONSHIP_AUTO_SECONDS : gameKind === 'flash' ? FLASH_AUTO_SECONDS : Math.max(4, Math.min(20, Math.round(Number(raw.autoSeconds) || 8))),
     claimMode: raw.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
     linePrizeCount, rules,
     roomCode: String(raw.roomCode || '').replace(/[^A-Z0-9]/gi, '').slice(0, 12),
@@ -1858,6 +1866,7 @@ function activePrizeLabelsFor(modeValue = state.game?.mode, rulesValue = state.g
     if (rules.line) labels.push('LÍNEA');
     if (rules.doubleLine) labels.push('DOBLE LÍNEA');
     if (rules.tripleLine) labels.push('TRIPLE LÍNEA');
+    if (championshipRoomEnabled()) labels.push('CUÁDRUPLE LÍNEA', 'QUINTA LÍNEA');
     if (rules.bingo !== false) labels.push('BINGO');
   }
   return labels;
@@ -4521,20 +4530,38 @@ function repairChampionship75CurrentRound() {
       const ball = earliestChampionshipCompletionBall(card, drawn, analysis => Number(analysis.lineCount) >= 3);
       if (ball) { entry.tripleLineBall = ball; changed = true; }
     }
+    if (!entry.quadrupleLineBall) {
+      const ball = earliestChampionshipCompletionBall(card, drawn, analysis => Number(analysis.lineCount) >= 4);
+      if (ball) { entry.quadrupleLineBall = ball; changed = true; }
+    }
+    if (!entry.quintupleLineBall) {
+      const ball = earliestChampionshipCompletionBall(card, drawn, analysis => Number(analysis.lineCount) >= 5);
+      if (ball) { entry.quintupleLineBall = ball; changed = true; }
+    }
     recomputeChampionshipEntryPoints(entry, 75);
   }
   const entries = (champ.positions || []).filter(position => !position?.retired).map(championshipCurrentEntry).filter(Boolean);
   const cornerBalls = entries.map(entry => Number(entry.cornersBall) || 0).filter(Boolean);
   const tripleBalls = entries.map(entry => Number(entry.tripleLineBall) || 0).filter(Boolean);
+  const quadrupleBalls = entries.map(entry => Number(entry.quadrupleLineBall) || 0).filter(Boolean);
+  const quintupleBalls = entries.map(entry => Number(entry.quintupleLineBall) || 0).filter(Boolean);
   const firstCorner = Number(champ.firstCornersDrawnCount) || (cornerBalls.length ? Math.min(...cornerBalls) : 0);
   const firstTriple = Number(champ.firstTripleLineDrawnCount) || (tripleBalls.length ? Math.min(...tripleBalls) : 0);
+  const firstQuadruple = Number(champ.firstQuadrupleLineDrawnCount) || (quadrupleBalls.length ? Math.min(...quadrupleBalls) : 0);
+  const firstQuintuple = Number(champ.firstQuintupleLineDrawnCount) || (quintupleBalls.length ? Math.min(...quintupleBalls) : 0);
   if (firstCorner && !champ.firstCornersDrawnCount) { champ.firstCornersDrawnCount = firstCorner; changed = true; }
   if (firstTriple && !champ.firstTripleLineDrawnCount) { champ.firstTripleLineDrawnCount = firstTriple; changed = true; }
+  if (firstQuadruple && !champ.firstQuadrupleLineDrawnCount) { champ.firstQuadrupleLineDrawnCount = firstQuadruple; changed = true; }
+  if (firstQuintuple && !champ.firstQuintupleLineDrawnCount) { champ.firstQuintupleLineDrawnCount = firstQuintuple; changed = true; }
   for (const entry of entries) {
     const cornerBonus = firstCorner && Number(entry.cornersBall) === firstCorner ? CHAMPIONSHIP_SCORE.firstCorners : 0;
     const tripleBonus = firstTriple && Number(entry.tripleLineBall) === firstTriple ? CHAMPIONSHIP_SCORE.firstTripleLine : 0;
+    const quadrupleBonus = firstQuadruple && Number(entry.quadrupleLineBall) === firstQuadruple ? CHAMPIONSHIP_SCORE.firstQuadrupleLine : 0;
+    const quintupleBonus = firstQuintuple && Number(entry.quintupleLineBall) === firstQuintuple ? CHAMPIONSHIP_SCORE.firstQuintupleLine : 0;
     if (Number(entry.firstCornersBonus || 0) !== cornerBonus) { entry.firstCornersBonus = cornerBonus; changed = true; }
     if (Number(entry.firstTripleLineBonus || 0) !== tripleBonus) { entry.firstTripleLineBonus = tripleBonus; changed = true; }
+    if (Number(entry.firstQuadrupleLineBonus || 0) !== quadrupleBonus) { entry.firstQuadrupleLineBonus = quadrupleBonus; changed = true; }
+    if (Number(entry.firstQuintupleLineBonus || 0) !== quintupleBonus) { entry.firstQuintupleLineBonus = quintupleBonus; changed = true; }
     recomputeChampionshipEntryPoints(entry, 75);
   }
   if (changed) champ.updatedAt = nowIso();
@@ -4713,6 +4740,8 @@ function createChampionshipState(payload = {}, mode = 90) {
     firstCornersDrawnCount: null,
     firstSecondLineDrawnCount: null,
     firstTripleLineDrawnCount: null,
+    firstQuadrupleLineDrawnCount: null,
+    firstQuintupleLineDrawnCount: null,
     firstBingoDrawnCount: null,
     closingDrawnCount: null,
     roundStartedAt: null,
@@ -4729,6 +4758,8 @@ function championshipPointsFor(mode, type) {
   if (Number(mode) === 75 && type === 'corners') return CHAMPIONSHIP_SCORE.corners;
   if (type === 'secondLine') return CHAMPIONSHIP_SCORE.secondLine;
   if (Number(mode) === 75 && type === 'tripleLine') return CHAMPIONSHIP_SCORE.tripleLine;
+  if (Number(mode) === 75 && type === 'quadrupleLine') return CHAMPIONSHIP_SCORE.quadrupleLine;
+  if (Number(mode) === 75 && type === 'quintupleLine') return CHAMPIONSHIP_SCORE.quintupleLine;
   if (type === 'bingo') return CHAMPIONSHIP_SCORE.bingo;
   return 0;
 }
@@ -4744,6 +4775,8 @@ function championshipPositionStats(position) {
   const totalPoints = rounds.reduce((sum, item) => sum + Math.max(0, Number(item.points) || 0), 0);
   const bingoRounds = rounds.filter(item => Number(item.bingoBall) > 0);
   const tripleRounds = rounds.filter(item => Number(item.tripleLineBall) > 0);
+  const quadrupleRounds = rounds.filter(item => Number(item.quadrupleLineBall) > 0);
+  const quintupleRounds = rounds.filter(item => Number(item.quintupleLineBall) > 0);
   const secondRounds = rounds.filter(item => Number(item.secondLineBall) > 0);
   const cornerRounds = rounds.filter(item => Number(item.cornersBall) > 0);
   const lineRounds = rounds.filter(item => Number(item.lineBall) > 0);
@@ -4768,6 +4801,14 @@ function championshipPositionStats(position) {
     tripleLinePoints: tripleRounds.reduce((sum,item)=>sum+Math.max(0,Number(item.tripleLinePoints)||0),0),
     firstTripleLineBonuses: rounds.filter(item=>Number(item.firstTripleLineBonus)>0).length,
     firstTripleLineBonusPoints: rounds.reduce((sum,item)=>sum+Math.max(0,Number(item.firstTripleLineBonus)||0),0),
+    quadrupleLines: quadrupleRounds.length,
+    quadrupleLinePoints: quadrupleRounds.reduce((sum,item)=>sum+Math.max(0,Number(item.quadrupleLinePoints)||0),0),
+    firstQuadrupleLineBonuses: rounds.filter(item=>Number(item.firstQuadrupleLineBonus)>0).length,
+    firstQuadrupleLineBonusPoints: rounds.reduce((sum,item)=>sum+Math.max(0,Number(item.firstQuadrupleLineBonus)||0),0),
+    quintupleLines: quintupleRounds.length,
+    quintupleLinePoints: quintupleRounds.reduce((sum,item)=>sum+Math.max(0,Number(item.quintupleLinePoints)||0),0),
+    firstQuintupleLineBonuses: rounds.filter(item=>Number(item.firstQuintupleLineBonus)>0).length,
+    firstQuintupleLineBonusPoints: rounds.reduce((sum,item)=>sum+Math.max(0,Number(item.firstQuintupleLineBonus)||0),0),
     lines: lineRounds.length,
     linePoints: lineRounds.reduce((sum,item)=>sum+Math.max(0,Number(item.linePoints)||0),0),
     hits: rounds.reduce((sum,item)=>sum+Math.max(0,Number(item.hitCount)||0),0)
@@ -4837,6 +4878,14 @@ function championshipLeaderboard() {
       tripleLinePoints: stats.tripleLinePoints,
       firstTripleLineBonuses: stats.firstTripleLineBonuses,
       firstTripleLineBonusPoints: stats.firstTripleLineBonusPoints,
+      quadrupleLines: stats.quadrupleLines,
+      quadrupleLinePoints: stats.quadrupleLinePoints,
+      firstQuadrupleLineBonuses: stats.firstQuadrupleLineBonuses,
+      firstQuadrupleLineBonusPoints: stats.firstQuadrupleLineBonusPoints,
+      quintupleLines: stats.quintupleLines,
+      quintupleLinePoints: stats.quintupleLinePoints,
+      firstQuintupleLineBonuses: stats.firstQuintupleLineBonuses,
+      firstQuintupleLineBonusPoints: stats.firstQuintupleLineBonusPoints,
       lines: stats.lines,
       linePoints: stats.linePoints,
       hits: stats.hits,
@@ -4846,11 +4895,15 @@ function championshipLeaderboard() {
       cornersBall: entry?.cornersBall || null,
       secondLineBall: entry?.secondLineBall || null,
       tripleLineBall: entry?.tripleLineBall || null,
+      quadrupleLineBall: entry?.quadrupleLineBall || null,
+      quintupleLineBall: entry?.quintupleLineBall || null,
       bingoBall: entry?.bingoBall || null,
       firstLineBonus: Math.max(0, Number(entry?.firstLineBonus) || 0),
       firstCornersBonus: Math.max(0, Number(entry?.firstCornersBonus) || 0),
       firstSecondLineBonus: Math.max(0, Number(entry?.firstSecondLineBonus) || 0),
       firstTripleLineBonus: Math.max(0, Number(entry?.firstTripleLineBonus) || 0),
+      firstQuadrupleLineBonus: Math.max(0, Number(entry?.firstQuadrupleLineBonus) || 0),
+      firstQuintupleLineBonus: Math.max(0, Number(entry?.firstQuintupleLineBonus) || 0),
       firstBingoBonus: Math.max(0, Number(entry?.firstBingoBonus) || 0)
     };
   });
@@ -4864,6 +4917,8 @@ function championshipRoundLeaderboard() {
       positionId: position.id, playerId: position.playerId, playerName: position.playerName, slot: position.slot, label:`C${position.slot}`,
       roundPoints: Math.max(0, Number(entry?.points) || 0), totalPoints: championshipPositionStats(position).totalPoints,
       bingoBall: entry?.bingoBall || null, bingoPoints:Math.max(0,Number(entry?.bingoPoints)||0), firstBingoBonus:Math.max(0,Number(entry?.firstBingoBonus)||0),
+      quintupleLineBall: entry?.quintupleLineBall || null, quintupleLinePoints:Math.max(0,Number(entry?.quintupleLinePoints)||0), firstQuintupleLineBonus:Math.max(0,Number(entry?.firstQuintupleLineBonus)||0),
+      quadrupleLineBall: entry?.quadrupleLineBall || null, quadrupleLinePoints:Math.max(0,Number(entry?.quadrupleLinePoints)||0), firstQuadrupleLineBonus:Math.max(0,Number(entry?.firstQuadrupleLineBonus)||0),
       tripleLineBall: entry?.tripleLineBall || null, tripleLinePoints:Math.max(0,Number(entry?.tripleLinePoints)||0), firstTripleLineBonus:Math.max(0,Number(entry?.firstTripleLineBonus)||0),
       secondLineBall: entry?.secondLineBall || null, secondLinePoints:Math.max(0,Number(entry?.secondLinePoints)||0), firstSecondLineBonus:Math.max(0,Number(entry?.firstSecondLineBonus)||0),
       cornersBall: entry?.cornersBall || null, cornersPoints:Math.max(0,Number(entry?.cornersPoints)||0), firstCornersBonus:Math.max(0,Number(entry?.firstCornersBonus)||0),
@@ -4899,6 +4954,8 @@ function championshipPublicPayload(player = null) {
       cornersPoints: Math.max(0, Number(entry?.cornersPoints) || 0),
       secondLinePoints: Math.max(0, Number(entry?.secondLinePoints) || 0),
       tripleLinePoints: Math.max(0, Number(entry?.tripleLinePoints) || 0),
+      quadrupleLinePoints: Math.max(0, Number(entry?.quadrupleLinePoints) || 0),
+      quintupleLinePoints: Math.max(0, Number(entry?.quintupleLinePoints) || 0),
       bingoPoints: Math.max(0, Number(entry?.bingoPoints) || 0),
       bingoDetectedAt: entry?.bingoDetectedAt || null,
       lineClaimed: Boolean(entry?.lineClaimedAt),
@@ -4909,6 +4966,10 @@ function championshipPublicPayload(player = null) {
       secondLineClaimedAt: entry?.secondLineClaimedAt || null,
       tripleLineClaimed: Boolean(entry?.tripleLineClaimedAt),
       tripleLineClaimedAt: entry?.tripleLineClaimedAt || null,
+      quadrupleLineClaimed: Boolean(entry?.quadrupleLineClaimedAt),
+      quadrupleLineClaimedAt: entry?.quadrupleLineClaimedAt || null,
+      quintupleLineClaimed: Boolean(entry?.quintupleLineClaimedAt),
+      quintupleLineClaimedAt: entry?.quintupleLineClaimedAt || null,
       bingoClaimed: Boolean(entry?.bingoClaimedAt),
       bingoClaimedAt: entry?.bingoClaimedAt || null
     };
@@ -4929,6 +4990,8 @@ function championshipPublicPayload(player = null) {
     firstCornersDrawnCount:Number(champ.firstCornersDrawnCount)||null,
     firstSecondLineDrawnCount:Number(champ.firstSecondLineDrawnCount)||null,
     firstTripleLineDrawnCount:Number(champ.firstTripleLineDrawnCount)||null,
+    firstQuadrupleLineDrawnCount:Number(champ.firstQuadrupleLineDrawnCount)||null,
+    firstQuintupleLineDrawnCount:Number(champ.firstQuintupleLineDrawnCount)||null,
     firstBingoDrawnCount:firstBingo,
     closingDrawnCount:closing,
     finalBallsRemaining:closing ? Math.max(0, closing - drawnCount) : null,
@@ -4942,6 +5005,7 @@ function championshipPublicPayload(player = null) {
       round:Number(item.round)||0, startedAt:item.startedAt||null, endedAt:item.endedAt||null,
       drawCount:Number(item.drawCount)||0, firstBingoDrawnCount:Number(item.firstBingoDrawnCount)||null,
       firstCornersDrawnCount:Number(item.firstCornersDrawnCount)||null, firstTripleLineDrawnCount:Number(item.firstTripleLineDrawnCount)||null,
+      firstQuadrupleLineDrawnCount:Number(item.firstQuadrupleLineDrawnCount)||null, firstQuintupleLineDrawnCount:Number(item.firstQuintupleLineDrawnCount)||null,
       closingDrawnCount:Number(item.closingDrawnCount)||null, leader:item.leader||null,
       roundLeader:item.roundLeader||null, announcementsCount:Number(item.announcementsCount)||0
     })),
@@ -4973,13 +5037,17 @@ function recomputeChampionshipEntryPoints(entry, mode) {
   entry.cornersPoints = is75 && entry.cornersBall ? championshipPointsFor(mode, 'corners') : 0;
   entry.secondLinePoints = entry.secondLineBall ? championshipPointsFor(mode, 'secondLine') : 0;
   entry.tripleLinePoints = is75 && entry.tripleLineBall ? championshipPointsFor(mode, 'tripleLine') : 0;
+  entry.quadrupleLinePoints = is75 && entry.quadrupleLineBall ? championshipPointsFor(mode, 'quadrupleLine') : 0;
+  entry.quintupleLinePoints = is75 && entry.quintupleLineBall ? championshipPointsFor(mode, 'quintupleLine') : 0;
   entry.bingoPoints = entry.bingoBall ? championshipPointsFor(mode, 'bingo') : 0;
   entry.firstLineBonus = entry.lineBall ? Math.max(0, Number(entry.firstLineBonus) || 0) : 0;
   entry.firstCornersBonus = is75 && entry.cornersBall ? Math.max(0, Number(entry.firstCornersBonus) || 0) : 0;
   entry.firstSecondLineBonus = entry.secondLineBall ? Math.max(0, Number(entry.firstSecondLineBonus) || 0) : 0;
   entry.firstTripleLineBonus = is75 && entry.tripleLineBall ? Math.max(0, Number(entry.firstTripleLineBonus) || 0) : 0;
+  entry.firstQuadrupleLineBonus = is75 && entry.quadrupleLineBall ? Math.max(0, Number(entry.firstQuadrupleLineBonus) || 0) : 0;
+  entry.firstQuintupleLineBonus = is75 && entry.quintupleLineBall ? Math.max(0, Number(entry.firstQuintupleLineBonus) || 0) : 0;
   entry.firstBingoBonus = entry.bingoBall ? Math.max(0, Number(entry.firstBingoBonus) || 0) : 0;
-  entry.points = entry.hitPoints + entry.linePoints + entry.firstLineBonus + entry.cornersPoints + entry.firstCornersBonus + entry.secondLinePoints + entry.firstSecondLineBonus + entry.tripleLinePoints + entry.firstTripleLineBonus + entry.bingoPoints + entry.firstBingoBonus;
+  entry.points = entry.hitPoints + entry.linePoints + entry.firstLineBonus + entry.cornersPoints + entry.firstCornersBonus + entry.secondLinePoints + entry.firstSecondLineBonus + entry.tripleLinePoints + entry.firstTripleLineBonus + entry.quadrupleLinePoints + entry.firstQuadrupleLineBonus + entry.quintupleLinePoints + entry.firstQuintupleLineBonus + entry.bingoPoints + entry.firstBingoBonus;
   return entry.points;
 }
 
@@ -5035,6 +5103,8 @@ function prepareChampionshipRound(roundNumber) {
   champ.firstCornersDrawnCount = null;
   champ.firstSecondLineDrawnCount = null;
   champ.firstTripleLineDrawnCount = null;
+  champ.firstQuadrupleLineDrawnCount = null;
+  champ.firstQuintupleLineDrawnCount = null;
   champ.firstBingoDrawnCount = null;
   champ.closingDrawnCount = null;
   champ.roundStartedAt = null;
@@ -5068,6 +5138,8 @@ function prepareChampionshipRound(roundNumber) {
         cornersBall:null, cornersPoints:0, firstCornersBonus:0, cornersClaimedAt:null,
         secondLineBall:null, secondLinePoints:0, firstSecondLineBonus:0, secondLineClaimedAt:null,
         tripleLineBall:null, tripleLinePoints:0, firstTripleLineBonus:0, tripleLineClaimedAt:null,
+        quadrupleLineBall:null, quadrupleLinePoints:0, firstQuadrupleLineBonus:0, quadrupleLineClaimedAt:null,
+        quintupleLineBall:null, quintupleLinePoints:0, firstQuintupleLineBonus:0, quintupleLineClaimedAt:null,
         bingoBall:null, bingoPoints:0, bingoDetectedAt:null, bingoClaimedAt:null, firstBingoBonus:0,
         claimEvents:[], points:0
       });
@@ -5253,6 +5325,8 @@ function processChampionshipAfterDraw() {
   const newCornersEntries = [];
   const newSecondLineEntries = [];
   const newTripleLineEntries = [];
+  const newQuadrupleLineEntries = [];
+  const newQuintupleLineEntries = [];
   const newBingoEntries = [];
   for (const position of champ.positions || []) {
     if (position.retired) continue;
@@ -5277,6 +5351,14 @@ function processChampionshipAfterDraw() {
     if (is75 && !entry.tripleLineBall && analysis.lineCount >= 3) {
       entry.tripleLineBall = drawCount;
       newTripleLineEntries.push(entry);
+    }
+    if (is75 && !entry.quadrupleLineBall && analysis.lineCount >= 4) {
+      entry.quadrupleLineBall = drawCount;
+      newQuadrupleLineEntries.push(entry);
+    }
+    if (is75 && !entry.quintupleLineBall && analysis.lineCount >= 5) {
+      entry.quintupleLineBall = drawCount;
+      newQuintupleLineEntries.push(entry);
     }
     if (!entry.bingoBall && analysis.hasBingo) {
       entry.bingoBall = drawCount;
@@ -5317,6 +5399,22 @@ function processChampionshipAfterDraw() {
     }
     logEvent('championship_first_triple_line', { round:champ.currentRound, ballOrder:drawCount, ballNumber:state.game.drawn.at(-1), bonus:CHAMPIONSHIP_SCORE.firstTripleLine, simultaneous:newTripleLineEntries.length });
   }
+  if (is75 && !champ.firstQuadrupleLineDrawnCount && newQuadrupleLineEntries.length > 0) {
+    champ.firstQuadrupleLineDrawnCount = drawCount;
+    for (const entry of newQuadrupleLineEntries) {
+      entry.firstQuadrupleLineBonus = CHAMPIONSHIP_SCORE.firstQuadrupleLine;
+      recomputeChampionshipEntryPoints(entry, mode);
+    }
+    logEvent('championship_first_quadruple_line', { round:champ.currentRound, ballOrder:drawCount, ballNumber:state.game.drawn.at(-1), bonus:CHAMPIONSHIP_SCORE.firstQuadrupleLine, simultaneous:newQuadrupleLineEntries.length });
+  }
+  if (is75 && !champ.firstQuintupleLineDrawnCount && newQuintupleLineEntries.length > 0) {
+    champ.firstQuintupleLineDrawnCount = drawCount;
+    for (const entry of newQuintupleLineEntries) {
+      entry.firstQuintupleLineBonus = CHAMPIONSHIP_SCORE.firstQuintupleLine;
+      recomputeChampionshipEntryPoints(entry, mode);
+    }
+    logEvent('championship_first_quintuple_line', { round:champ.currentRound, ballOrder:drawCount, ballNumber:state.game.drawn.at(-1), bonus:CHAMPIONSHIP_SCORE.firstQuintupleLine, simultaneous:newQuintupleLineEntries.length });
+  }
   if (!champ.firstBingoDrawnCount && newBingoEntries.length > 0) {
     champ.firstBingoDrawnCount = drawCount;
     champ.closingDrawnCount = Math.min(mode, drawCount + 5);
@@ -5341,9 +5439,9 @@ function createChampionshipClaim(player, payload = {}) {
   if (state.status !== 'playing' || champ.stage !== 'playing') throw new Error('La ronda no está habilitada para cantar jugadas.');
   const requested = String(payload.type || '');
   const mode = Number(state.game.mode) === 75 ? 75 : 90;
-  const allowedTypes = mode === 75 ? ['line','corners','secondLine','tripleLine','bingo'] : ['line','secondLine','bingo'];
+  const allowedTypes = mode === 75 ? ['line','corners','secondLine','tripleLine','quadrupleLine','quintupleLine','bingo'] : ['line','secondLine','bingo'];
   const type = allowedTypes.includes(requested) ? requested : '';
-  if (!type) throw new Error(mode === 75 ? 'En Campeonato 75 sólo se puede cantar Primera Línea, 4 Esquinas, Segunda Línea, Triple Línea o Bingo.' : 'En Campeonato sólo se puede cantar Primera Línea, Segunda Línea o Bingo.');
+  if (!type) throw new Error(mode === 75 ? 'En Campeonato 75 sólo se puede cantar Primera Línea, 4 Esquinas, Segunda Línea, Triple Línea, Cuádruple Línea, Quinta Línea o Bingo.' : 'En Campeonato sólo se puede cantar Primera Línea, Segunda Línea o Bingo.');
   const cardId = String(payload.cardId || '');
   if (!cardId || !(player.cardIds || []).includes(cardId)) throw new Error('Ese cartón no pertenece al jugador.');
   const position = (champ.positions || []).find(item => item.playerId === player.id && !item.retired && championshipCurrentEntry(item)?.cardId === cardId);
@@ -5358,6 +5456,8 @@ function createChampionshipClaim(player, payload = {}) {
       corners:{ ballKey:'cornersBall', claimedKey:'cornersClaimedAt', pointsKey:'cornersPoints', bonusKey:'firstCornersBonus', label:'4 ESQUINAS' },
       secondLine:{ ballKey:'secondLineBall', claimedKey:'secondLineClaimedAt', pointsKey:'secondLinePoints', bonusKey:'firstSecondLineBonus', label:'SEGUNDA LÍNEA' },
       tripleLine:{ ballKey:'tripleLineBall', claimedKey:'tripleLineClaimedAt', pointsKey:'tripleLinePoints', bonusKey:'firstTripleLineBonus', label:'TRIPLE LÍNEA' },
+      quadrupleLine:{ ballKey:'quadrupleLineBall', claimedKey:'quadrupleLineClaimedAt', pointsKey:'quadrupleLinePoints', bonusKey:'firstQuadrupleLineBonus', label:'CUÁDRUPLE LÍNEA' },
+      quintupleLine:{ ballKey:'quintupleLineBall', claimedKey:'quintupleLineClaimedAt', pointsKey:'quintupleLinePoints', bonusKey:'firstQuintupleLineBonus', label:'QUINTA LÍNEA' },
       bingo:{ ballKey:'bingoBall', claimedKey:'bingoClaimedAt', pointsKey:'bingoPoints', bonusKey:'firstBingoBonus', label:'BINGO' }
     };
     const config = configs[claimType];
@@ -5417,6 +5517,8 @@ function captureChampionshipRoundHistory() {
     firstBingoDrawnCount:Number(champ.firstBingoDrawnCount)||null,
     firstCornersDrawnCount:Number(champ.firstCornersDrawnCount)||null,
     firstTripleLineDrawnCount:Number(champ.firstTripleLineDrawnCount)||null,
+    firstQuadrupleLineDrawnCount:Number(champ.firstQuadrupleLineDrawnCount)||null,
+    firstQuintupleLineDrawnCount:Number(champ.firstQuintupleLineDrawnCount)||null,
     closingDrawnCount:Number(champ.closingDrawnCount)||null,
     announcementsCount:announcements.length,
     announcements,
@@ -5563,10 +5665,11 @@ function createGeneratedGame(payload = {}) {
   const count = normalizedGeneratedCount(payload.cardCount);
   const cards = generateDiverseCardsServer(count, mode, rules);
   const championship = payload.roomOrigin === 'community' && payload.communityGameKind === 'championship';
+  const flash = payload.roomOrigin === 'community' && payload.communityGameKind === 'flash';
   return {
     id: randomId('game'), number: 1, mode, rules,
     drawMode: payload.drawMode === 'manual' ? 'manual' : 'automatic',
-    autoSeconds: championship ? CHAMPIONSHIP_AUTO_SECONDS : Math.max(2, Math.min(60, Number(payload.autoSeconds) || 6)),
+    autoSeconds: championship ? CHAMPIONSHIP_AUTO_SECONDS : flash ? FLASH_AUTO_SECONDS : Math.max(2, Math.min(60, Number(payload.autoSeconds) || 6)),
     presenter: PRESENTER_ID,
     theme: 'clasico', phase: 'READY', drawn: [], createdAt: nowIso(), updatedAt: nowIso(), cards
   };
@@ -7174,8 +7277,9 @@ function scheduleAutomaticDraw() {
   if (!state.active || state.status !== 'playing' || state.game?.drawMode !== 'automatic') return;
   if ((state.game?.drawn?.length || 0) >= Number(state.game?.mode || 0)) return;
   const minimumSeconds = currentWorkspace().isDemo ? 2 : 3;
-  const effectiveSeconds = championshipRoomEnabled() ? CHAMPIONSHIP_AUTO_SECONDS : Math.max(minimumSeconds, Math.min(60, Number(state.game.autoSeconds) || 6));
+  const effectiveSeconds = championshipRoomEnabled() ? CHAMPIONSHIP_AUTO_SECONDS : flashRoomEnabled() ? FLASH_AUTO_SECONDS : Math.max(minimumSeconds, Math.min(60, Number(state.game.autoSeconds) || 6));
   if (championshipRoomEnabled()) state.game.autoSeconds = CHAMPIONSHIP_AUTO_SECONDS;
+  else if (flashRoomEnabled()) state.game.autoSeconds = FLASH_AUTO_SECONDS;
   const delay = effectiveSeconds * 1000;
   const timer = setTimeout(() => workspaceContext.run(workspace, () => {
     try { drawNextBall('automatic'); }
@@ -7585,7 +7689,7 @@ function setTestDrawOrder(payload = {}) {
 function updateDrawSettings(payload = {}) {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
   const minimumSeconds = currentWorkspace().isDemo ? 2 : 3;
-  const nextSeconds = championshipRoomEnabled() ? CHAMPIONSHIP_AUTO_SECONDS : Math.max(minimumSeconds, Math.min(60, Number(payload.autoSeconds ?? state.game.autoSeconds) || 6));
+  const nextSeconds = championshipRoomEnabled() ? CHAMPIONSHIP_AUTO_SECONDS : flashRoomEnabled() ? FLASH_AUTO_SECONDS : Math.max(minimumSeconds, Math.min(60, Number(payload.autoSeconds ?? state.game.autoSeconds) || 6));
   state.game.autoSeconds = nextSeconds;
   if (state.status === 'waiting' && ['manual', 'automatic'].includes(payload.drawMode)) state.game.drawMode = payload.drawMode;
   logEvent('draw_settings_updated', { drawMode: state.game.drawMode, autoSeconds: state.game.autoSeconds });
@@ -7949,8 +8053,8 @@ function startRoom(payload = {}) {
   if (championshipRoomEnabled()) { lockChampionshipRoundIntegrity(); state.championship.stage = 'starting'; state.championship.roundStartedAt ||= nowIso(); }
   state.cardReservations = {}; for (const player of state.players) player.reservedCardIds = [];
   state.assignmentTimer = { ...(state.assignmentTimer || blankState().assignmentTimer), status: 'completed', endsAt: null, remainingMs: 0, completedAt: state.assignmentTimer?.completedAt || nowIso() };
-  const startedAt = nowIso(); const largeRoomNotice = !championshipRoomEnabled() && !forcedSimulationStart && state.players.length > LARGE_ROOM_NOTICE_THRESHOLD; const largeRoomNoticeMs = largeRoomNotice ? (TEST_MODE ? 30 : LARGE_ROOM_NOTICE_MS) : 0;
-  const baseStartSequenceMs = championshipRoomEnabled() ? CHAMPIONSHIP_START_SEQUENCE_MS : forcedSimulationStart ? (TEST_MODE ? 50 : 900) : currentWorkspace().isDemo ? (TEST_MODE ? 100 : DEMO_START_SEQUENCE_MS) : START_SEQUENCE_MS;
+  const startedAt = nowIso(); const largeRoomNotice = !championshipRoomEnabled() && !flashRoomEnabled() && !forcedSimulationStart && state.players.length > LARGE_ROOM_NOTICE_THRESHOLD; const largeRoomNoticeMs = largeRoomNotice ? (TEST_MODE ? 30 : LARGE_ROOM_NOTICE_MS) : 0;
+  const baseStartSequenceMs = championshipRoomEnabled() ? CHAMPIONSHIP_START_SEQUENCE_MS : flashRoomEnabled() ? FLASH_START_SEQUENCE_MS : forcedSimulationStart ? (TEST_MODE ? 50 : 900) : currentWorkspace().isDemo ? (TEST_MODE ? 100 : DEMO_START_SEQUENCE_MS) : START_SEQUENCE_MS;
   state.status = 'starting'; state.pauseReason = null; state.startedAt = startedAt; state.endedAt = null; state.game.phase = 'READY';
   state.transition = { id: randomId('transition'), type: 'start', startedAt, endsAt: new Date(Date.now() + baseStartSequenceMs + largeRoomNoticeMs).toISOString(), officialTime: new Date().toLocaleTimeString('es-AR', { timeZone: BINGO_TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false }), largeRoomNotice, noticeDurationMs: largeRoomNoticeMs, priorityNotice: largeRoomNotice ? { title: LARGE_ROOM_NOTICE_TITLE, text: LARGE_ROOM_NOTICE_TEXT } : null };
   logEvent('game_start_sequence', { round: state.round, players: state.players.length, selectedCards: state.players.reduce((sum, player) => sum + player.cardIds.length, 0), largeRoomNotice, forcedSimulationStart });
@@ -9508,15 +9612,15 @@ function championshipActaCsv() {
     ['Rondas completadas', report.completedRounds],
     ['Jugadores', report.totals.players],
     ['Posiciones competitivas', report.totals.positions],
-    ['Puntuación', report.mode===75 ? 'Número +1 · Primera Línea +10 · 4 Esquinas +15 · Segunda Línea +20 · Triple Línea +30 · Bingo +60 · Bonus al primero: Línea +5 · 4 Esquinas +5 · Segunda Línea +5 · Triple Línea +5 · Bingo +15' : 'Número +1 · Primera Línea +10 · Segunda Línea +20 · Bingo +60 · Bonus al primero: Línea +5 · Segunda Línea +5 · Bingo +15'],
+    ['Puntuación', report.mode===75 ? 'Número +1 · Primera Línea +10 · 4 Esquinas +15 · Segunda Línea +20 · Triple Línea +30 · Cuádruple Línea +40 · Quinta Línea +50 · Bingo +60 · Bonus al primero: Línea +5 · 4 Esquinas +5 · Segunda Línea +5 · Triple Línea +5 · Cuádruple Línea +5 · Quinta Línea +5 · Bingo +15' : 'Número +1 · Primera Línea +10 · Segunda Línea +20 · Bingo +60 · Bonus al primero: Línea +5 · Segunda Línea +5 · Bingo +15'],
     ['Elegibilidad', 'Para ser Campeón es obligatorio haber conseguido al menos un Bingo'],
     ['Inicio', formatLocalTimestamp(report.startedAt)],
     ['Finalización', formatLocalTimestamp(report.endedAt)],
     ['Sello SHA-256 del resultado competitivo', report.finalActaSha256 || ''],
     [],
     ['CLASIFICACIÓN FINAL'],
-    ['PUESTO','JUGADOR','POSICIÓN','ELEGIBLE','PUNTOS','BINGOS','BONUS 1ER BINGO','TRIPLES LÍNEAS','4 ESQUINAS','SEGUNDAS LÍNEAS','PRIMERAS LÍNEAS','NÚMEROS'],
-    ...report.leaderboard.map(item => [item.rank,item.playerName,item.label,item.eligible?'SÍ':'NO',item.points,item.bingos,item.firstBingoBonusPoints ?? 0,item.tripleLines||0,item.corners||0,item.secondLines,item.lines,item.hits]),
+    ['PUESTO','JUGADOR','POSICIÓN','ELEGIBLE','PUNTOS','BINGOS','BONUS 1ER BINGO','QUINTAS LÍNEAS','CUÁDRUPLES LÍNEAS','TRIPLES LÍNEAS','4 ESQUINAS','SEGUNDAS LÍNEAS','PRIMERAS LÍNEAS','NÚMEROS'],
+    ...report.leaderboard.map(item => [item.rank,item.playerName,item.label,item.eligible?'SÍ':'NO',item.points,item.bingos,item.firstBingoBonusPoints ?? 0,item.quintupleLines||0,item.quadrupleLines||0,item.tripleLines||0,item.corners||0,item.secondLines,item.lines,item.hits]),
     [],
     ['PUNTOS POR RONDA'],
     ['PUESTO','JUGADOR','POSICIÓN',...Array.from({length:report.totalRounds},(_,i)=>`R${i+1}`),'TOTAL'],
@@ -9530,8 +9634,8 @@ function championshipActaCsv() {
     lines.push([`RONDA ${round.round}`]);
     lines.push(['Inicio',formatLocalTimestamp(round.startedAt)],['Finalización',formatLocalTimestamp(round.endedAt)],['Bolillas extraídas',round.drawCount],['Primer Bingo matemático (salida)',round.firstBingoDrawnCount ?? ''],['Cierre reglamentario (salida)',round.closingDrawnCount ?? '']);
     lines.push(['SECUENCIA DE BOLILLAS'],[(round.balls||[]).map(item=>item.number).join(' · ')]);
-    lines.push(['RESULTADO DE LA RONDA'],['PUESTO','JUGADOR','POSICIÓN','PUNTOS','BINGO','BONUS 1ER BINGO','TRIPLE LÍNEA','2ª LÍNEA','4 ESQUINAS','1ª LÍNEA','NÚMEROS']);
-    for (const item of round.roundLeaderboard || []) lines.push([item.rank,item.playerName,item.label,item.roundPoints,item.bingoBall||'',item.firstBingoBonus||0,item.tripleLineBall||'',item.secondLineBall||'',item.cornersBall||'',item.lineBall||'',item.hitCount]);
+    lines.push(['RESULTADO DE LA RONDA'],['PUESTO','JUGADOR','POSICIÓN','PUNTOS','BINGO','BONUS 1ER BINGO','5ª LÍNEA','4ª LÍNEA','TRIPLE LÍNEA','2ª LÍNEA','4 ESQUINAS','1ª LÍNEA','NÚMEROS']);
+    for (const item of round.roundLeaderboard || []) lines.push([item.rank,item.playerName,item.label,item.roundPoints,item.bingoBall||'',item.firstBingoBonus||0,item.quintupleLineBall||'',item.quadrupleLineBall||'',item.tripleLineBall||'',item.secondLineBall||'',item.cornersBall||'',item.lineBall||'',item.hitCount]);
     lines.push(['CANTES'],['JUGADOR','POSICIÓN','JUGADA','BOLILLA','PUNTOS','HORA']);
     for (const item of round.announcements || []) lines.push([item.playerName,item.positionLabel,item.label,item.ball,item.points,formatLocalTimeMs(item.createdAt)]);
     lines.push([]);
@@ -9548,11 +9652,11 @@ function championshipActaCsv() {
     lines.push([]);
   }
   lines.push(['DETALLE DE POSICIONES Y MATRICES']);
-  lines.push(['JUGADOR','POSICIÓN','RONDA','PUNTOS','NÚMEROS','LÍNEA BOLILLA','4 ESQUINAS BOLILLA','2ª LÍNEA BOLILLA','TRIPLE LÍNEA BOLILLA','BINGO BOLILLA','BONUS 1ER BINGO','MATRIZ']);
+  lines.push(['JUGADOR','POSICIÓN','RONDA','PUNTOS','NÚMEROS','LÍNEA BOLILLA','4 ESQUINAS BOLILLA','2ª LÍNEA BOLILLA','TRIPLE LÍNEA BOLILLA','4ª LÍNEA BOLILLA','5ª LÍNEA BOLILLA','BINGO BOLILLA','BONUS 1ER BINGO','MATRIZ']);
   for (const position of report.positions) {
     for (const round of position.rounds || []) {
       const matrix=(round.grid||[]).map(row=>(row||[]).map(v=>v==null?'-':v).join(' ')).join(' / ');
-      lines.push([position.playerName,position.label,round.round,round.points,round.hitCount,round.lineBall||'',round.cornersBall||'',round.secondLineBall||'',round.tripleLineBall||'',round.bingoBall||'',round.firstBingoBonus||0,matrix]);
+      lines.push([position.playerName,position.label,round.round,round.points,round.hitCount,round.lineBall||'',round.cornersBall||'',round.secondLineBall||'',round.tripleLineBall||'',round.quadrupleLineBall||'',round.quintupleLineBall||'',round.bingoBall||'',round.firstBingoBonus||0,matrix]);
     }
   }
   const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -10869,7 +10973,7 @@ function createCommunityPublicRoom(payload = {}) {
   const requestedGameKind = ['championship','flash'].includes(payload.gameKind) ? payload.gameKind : 'normal';
   const maxCardsPerPlayer = requestedGameKind === 'flash' ? 1 : Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
   const gameKind = requestedGameKind;
-  const autoSeconds = gameKind === 'championship' ? CHAMPIONSHIP_AUTO_SECONDS : Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
+  const autoSeconds = gameKind === 'championship' ? CHAMPIONSHIP_AUTO_SECONDS : gameKind === 'flash' ? FLASH_AUTO_SECONDS : Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
   let championshipRounds = 0;
   if (gameKind === 'championship') {
     const requestedRounds = Math.round(Number(payload.championshipRounds) || CHAMPIONSHIP_DEFAULT_ROUNDS);
@@ -11525,7 +11629,7 @@ function createCommunityPrivateRoom(payload = {}) {
   const maxPlayers = Math.max(2, Math.min(availability.maxPlayers, Math.round(Number(payload.maxPlayers) || Math.min(20, availability.maxPlayers))));
   const requestedGameKind = ['championship','flash'].includes(payload.gameKind) ? payload.gameKind : 'normal';
   const maxCardsPerPlayer = requestedGameKind === 'flash' ? 1 : Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
-  const autoSeconds = requestedGameKind === 'championship' ? CHAMPIONSHIP_AUTO_SECONDS : Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
+  const autoSeconds = requestedGameKind === 'championship' ? CHAMPIONSHIP_AUTO_SECONDS : requestedGameKind === 'flash' ? FLASH_AUTO_SECONDS : Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
   const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1;
   const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};
   const rules = mode === 90

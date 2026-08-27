@@ -8,6 +8,17 @@ La lógica interna de salas, premios, cartones, Flash, Campeonato, Evento, TV, r
 
 Edición de cierre funcional · 26/08/2026
 
+## HOTFIX 03 — CAMPEONATO 75 + FLASH FIJO
+
+- Campeonato 75 agrega **Cuádruple Línea (+40)** y **Quinta Línea (+50)**.
+- Bonus al primero: **Cuádruple Línea +5** y **Quinta Línea +5**.
+- Las dos jugadas se detectan matemáticamente, pueden cantarse y quedan registradas en clasificación, resultados y acta.
+- Un Campeonato 75 ya iniciado reconstruye 4ª/5ª línea desde las bolillas extraídas al cargar el estado.
+- Flash queda fijo: **3 segundos de inicio** y luego **1 bolilla cada 4 segundos**.
+- Flash oculta la elección de velocidad y el servidor impide cambiar el intervalo.
+- Flash no usa el aviso largo de arranque para salas grandes.
+- Normal, Campeonato 90, Demo y Evento no cambian.
+
 ## HOTFIX 02 — CAMPEONATO 75 + VOZ INTERNACIONAL
 
 - Campeonato 75 suma **4 Esquinas (+15)** y **Triple Línea (+30)** como jugadas oficiales.

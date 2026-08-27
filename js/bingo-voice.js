@@ -217,12 +217,14 @@ function spokenPrizeLabel(type, options = {}, language = currentLanguage()) {
   else if (raw === 'bingo') key = 'bingo';
   else if (raw === 'doubleLine') key = 'doubleLine';
   else if (raw === 'tripleLine') key = 'tripleLine';
+  else if (raw === 'quadrupleLine') key = 'quadrupleLine';
+  else if (raw === 'quintupleLine') key = 'quintupleLine';
   else if (raw === 'corners') key = 'corners';
   else if (raw === 'secondLine' || (raw === 'line' && Number(options.mode) === 90 && Number(options.prizeNumber) === 2)) key = 'secondLine';
   const labels = {
-    es:{ ambo:'Ambo cabeza', line:'Línea', secondLine:'Segunda línea', doubleLine:'Doble línea', tripleLine:'Triple línea', corners:'Cuatro esquinas', bingo:'Bingo' },
-    pt:{ ambo:'Dupla cabeça', line:'Linha', secondLine:'Segunda linha', doubleLine:'Linha dupla', tripleLine:'Linha tripla', corners:'Quatro cantos', bingo:'Bingo' },
-    en:{ ambo:'Two-number head', line:'Line', secondLine:'Second line', doubleLine:'Double line', tripleLine:'Triple line', corners:'Four corners', bingo:'Bingo' }
+    es:{ ambo:'Ambo cabeza', line:'Línea', secondLine:'Segunda línea', doubleLine:'Doble línea', tripleLine:'Triple línea', quadrupleLine:'Cuádruple línea', quintupleLine:'Quinta línea', corners:'Cuatro esquinas', bingo:'Bingo' },
+    pt:{ ambo:'Dupla cabeça', line:'Linha', secondLine:'Segunda linha', doubleLine:'Linha dupla', tripleLine:'Linha tripla', quadrupleLine:'Quarta linha', quintupleLine:'Quinta linha', corners:'Quatro cantos', bingo:'Bingo' },
+    en:{ ambo:'Two-number head', line:'Line', secondLine:'Second line', doubleLine:'Double line', tripleLine:'Triple line', quadrupleLine:'Fourth line', quintupleLine:'Fifth line', corners:'Four corners', bingo:'Bingo' }
   };
   return labels[lang]?.[key] || labels.es[key];
 }
@@ -326,7 +328,7 @@ class VoicePlayer {
       if (language === 'pt') called = `${name} cantou ${prize}.`;
       else if (language === 'en') called = `${name} called ${prize}.`;
       else {
-        const rawType = String(type || ''), calledWord = rawType === 'corners' ? 'cantadas' : ['line','secondLine','doubleLine','tripleLine'].includes(rawType) ? 'cantada' : 'cantado';
+        const rawType = String(type || ''), calledWord = rawType === 'corners' ? 'cantadas' : ['line','secondLine','doubleLine','tripleLine','quadrupleLine','quintupleLine'].includes(rawType) ? 'cantada' : 'cantado';
         called = `${prize} ${calledWord} por ${name}.`;
       }
       return this.playFiles([called, eventText('reclamo_verificando', language)], { ...options, priority: options.priority !== false });

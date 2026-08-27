@@ -1,0 +1,18 @@
+EL BINGO DE LA GORDA · FINAL INTERNACIONAL · HOTFIX 03
+
+Aplicar sobre HOTFIX 02 o sobre el respaldo completo inmediatamente anterior.
+
+CAMPEONATO 75
+- Cuádruple Línea: +40 puntos; primera posición +5.
+- Quinta Línea: +50 puntos; primera posición +5.
+- Detección matemática, cantes, resultados y acta.
+- Reconstrucción desde bolillas ya extraídas si el Campeonato 75 estaba en curso.
+
+FLASH
+- Inicio fijo: 3 segundos.
+- Una bolilla automática cada 4 segundos.
+- Sin selector manual de velocidad en Flash.
+- El servidor fuerza 4 segundos aunque se intente cambiar.
+- Sin aviso largo de inicio por sala grande.
+
+No cambia Normal, Campeonato 90, Demo ni Evento.

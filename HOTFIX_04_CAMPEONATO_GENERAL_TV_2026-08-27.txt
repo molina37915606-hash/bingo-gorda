@@ -1,0 +1,11 @@
+HOTFIX 04 · CAMPEONATO · GENERAL + RIVALES + TV
+Fecha: 2026-08-27
+
+CAMBIOS
+- Jugador: nueva pestaña GENERAL a la izquierda, espejo de RIVALES, sin mover ni achicar el cartón.
+- GENERAL muestra exclusivamente championship.leaderboard (clasificación acumulada), Top 5 y la mejor posición propia si queda fuera del Top 5.
+- RIVALES: el badge rojo funciona como aviso no leído sólo cuando un rival está a falta de 1. Al abrir RIVALES se limpia y no reaparece por el mismo estado ya visto.
+- TV/Transmisión de Campeonato: la carrera fija un único próximo premio pendiente. Una vez logrado matemáticamente, deja de calcularlo y avanza al siguiente.
+- Bingo 90: Primera Línea -> Segunda Línea -> Bingo.
+- Bingo 75: Primera Línea -> 4 Esquinas -> Segunda Línea -> Triple -> Cuádruple -> Quinta -> Bingo.
+- No se modifican reglas, puntajes, extracción, reclamos ni lógica de premios del Campeonato.

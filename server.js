@@ -6288,8 +6288,10 @@ function raceHotNumbersForCard(card, race) {
   if (race.type === 'bingo') values = cardNumbers(card).filter(number => !drawn.has(number));
   else if (race.type === 'corners' && Number(card.mode) === 75) values = [card.grid?.[0]?.[0],card.grid?.[0]?.[4],card.grid?.[4]?.[0],card.grid?.[4]?.[4]].filter(Number.isFinite).filter(number => !drawn.has(number));
   else if (race.type === 'ambo') values = amboMissingNumbersForCard(card, state.game?.drawn || []) || [];
-  else if (race.type === 'doubleLine') values = bestMissingNumbersForLineCount(card, state.game?.drawn || [], 2);
+  else if (race.type === 'doubleLine' || race.type === 'secondLine') values = bestMissingNumbersForLineCount(card, state.game?.drawn || [], 2);
   else if (race.type === 'tripleLine') values = bestMissingNumbersForLineCount(card, state.game?.drawn || [], 3);
+  else if (race.type === 'quadrupleLine') values = bestMissingNumbersForLineCount(card, state.game?.drawn || [], 4);
+  else if (race.type === 'quintupleLine') values = bestMissingNumbersForLineCount(card, state.game?.drawn || [], 5);
   else if (race.type === 'line') values = bestMissingNumbersForLineCount(card, state.game?.drawn || [], Number(card.mode) === 90 ? Math.max(1, Number(race.prizeNumber) || 1) : 1);
   values = uniqueNumbers(values).filter(number => !drawn.has(number));
   return values.length <= 5 ? values : [];
@@ -6317,6 +6319,42 @@ function broadcastRaceForCard(card, analysis, prizes) {
   return candidates[0] || { type: 'bingo', missing: Number(analysis.bingoMissing) || 99, importance: 9, prizeNumber: 1, label: prizeLabelFor('bingo', 1, card.mode) };
 }
 
+function championshipBroadcastRaceTarget() {
+  const champ = state.championship;
+  if (!champ?.enabled || !state.game || ['registration','results','tiebreak','finished'].includes(String(champ.stage || ''))) return null;
+  const mode = Number(state.game.mode) === 75 ? 75 : 90;
+  const sequence = mode === 75
+    ? [
+        ['line','PRIMERA LÍNEA','firstLineDrawnCount'],
+        ['corners','4 ESQUINAS','firstCornersDrawnCount'],
+        ['secondLine','SEGUNDA LÍNEA','firstSecondLineDrawnCount'],
+        ['tripleLine','TRIPLE LÍNEA','firstTripleLineDrawnCount'],
+        ['quadrupleLine','CUÁDRUPLE LÍNEA','firstQuadrupleLineDrawnCount'],
+        ['quintupleLine','QUINTA LÍNEA','firstQuintupleLineDrawnCount'],
+        ['bingo','BINGO','firstBingoDrawnCount']
+      ]
+    : [
+        ['line','PRIMERA LÍNEA','firstLineDrawnCount'],
+        ['secondLine','SEGUNDA LÍNEA','firstSecondLineDrawnCount'],
+        ['bingo','BINGO','firstBingoDrawnCount']
+      ];
+  const next = sequence.find(([, , key]) => !Number(champ[key]));
+  return next ? { type:next[0], label:next[1], key:next[2], prizeNumber:next[0] === 'secondLine' ? 2 : 1 } : null;
+}
+
+function championshipBroadcastRaceForCard(card, analysis, target) {
+  if (!target) return null;
+  let missing = 99;
+  if (target.type === 'line') missing = Number(analysis.lineMissing);
+  else if (target.type === 'corners') missing = Number(analysis.cornersMissing);
+  else if (target.type === 'secondLine') missing = missingNumbersForLineCount(card, state.game?.drawn || [], 2);
+  else if (target.type === 'tripleLine') missing = missingNumbersForLineCount(card, state.game?.drawn || [], 3);
+  else if (target.type === 'quadrupleLine') missing = missingNumbersForLineCount(card, state.game?.drawn || [], 4);
+  else if (target.type === 'quintupleLine') missing = missingNumbersForLineCount(card, state.game?.drawn || [], 5);
+  else if (target.type === 'bingo') missing = Number(analysis.bingoMissing);
+  return { ...target, missing:Math.max(0, Number.isFinite(Number(missing)) ? Number(missing) : 99), importance:0 };
+}
+
 function highlightedBroadcastCards() {
   if (!state.game || state.roomSettings?.transmission?.showCards === false) return [];
   const connected = connectedPlayerIds();
@@ -6338,6 +6376,31 @@ function highlightedBroadcastCards() {
         lineMissing:0, bingoMissing:0, marked:cardNumbers(card).filter(number => drawn.has(Number(number)))
       } : null;
     }).filter(Boolean).slice(0, 6);
+  }
+  if (state.championship?.enabled && state.championship?.stage !== 'tiebreak') {
+    const target = championshipBroadcastRaceTarget();
+    if (!target) return [];
+    const rows = [];
+    for (const position of state.championship.positions || []) {
+      const entry = championshipCurrentEntry(position);
+      if (!entry?.cardId) continue;
+      const card = state.game.cards.find(item => item.id === entry.cardId);
+      const player = state.players.find(item => String(item.id) === String(position.playerId));
+      if (!card || !player) continue;
+      const analysis = analyzeCard(card, state.game.drawn, []);
+      const race = championshipBroadcastRaceForCard(card, analysis, target);
+      rows.push({
+        playerId:player.id, playerName:playerDisplayName(player), connected:connected.has(player.id), cardId:card.id,
+        cardNumber:card.number, grid:card.grid, mode:card.mode, score:race.missing,
+        racePrizeType:race.type, racePrizeNumber:race.prizeNumber, racePrizeLabel:race.label, raceMissing:race.missing,
+        raceHotNumbers:raceHotNumbersForCard(card, race), lineMissing:analysis.lineMissing,
+        bingoMissing:analysis.bingoMissing, marked:analysis.officialMarked || []
+      });
+    }
+    return rows
+      .sort((a,b) => a.raceMissing - b.raceMissing || a.bingoMissing - b.bingoMissing || String(a.cardNumber).localeCompare(String(b.cardNumber)))
+      .slice(0, 6)
+      .map((item, index) => ({ ...item, rank:index + 1 }));
   }
   const prizes = prizeStatusPayload();
   const rows = [];

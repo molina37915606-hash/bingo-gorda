@@ -1,0 +1,15 @@
+const fs=require('fs'),path=require('path'),assert=require('assert');
+const root=path.join(__dirname,'..');
+const playerHtml=fs.readFileSync(path.join(root,'player.html'),'utf8');
+const player=fs.readFileSync(path.join(root,'js/player.js'),'utf8');
+const css=fs.readFileSync(path.join(root,'css/platform.css'),'utf8');
+const server=fs.readFileSync(path.join(root,'server.js'),'utf8');
+assert(playerHtml.includes('id="generalHandle"')&&playerHtml.includes('id="generalDrawer"')&&playerHtml.includes('id="generalBackdrop"'),'Jugador debe tener panel GENERAL independiente.');
+assert(player.includes('champ.leaderboard')&&player.includes('slice(0,5)')&&player.includes('TU MEJOR POSICIÓN'),'GENERAL debe usar la tabla acumulada y mostrar Top 5.');
+assert(!player.includes('roundLeaderboard)?champ.roundLeaderboard'),'GENERAL no debe construirse desde la tabla de ronda.');
+assert(player.includes('rivalsUnreadAlertKeys')&&player.includes('Number(item.missing)!==1')&&player.includes('markRivalsRead()'),'RIVALES debe usar aviso no leído sólo para falta 1.');
+assert(css.includes('.generalHandle')&&css.includes('.generalDrawer')&&css.includes('left:0'),'GENERAL debe abrir desde el lado opuesto a RIVALES.');
+assert(server.includes('function championshipBroadcastRaceTarget()')&&server.includes("['secondLine','SEGUNDA LÍNEA','firstSecondLineDrawnCount']")&&server.includes("['bingo','BINGO','firstBingoDrawnCount']"),'TV debe seleccionar el próximo premio de Campeonato.');
+assert(server.includes("['quadrupleLine','CUÁDRUPLE LÍNEA','firstQuadrupleLineDrawnCount']")&&server.includes("['quintupleLine','QUINTA LÍNEA','firstQuintupleLineDrawnCount']"),'TV Campeonato 75 debe cubrir 4ª y 5ª línea.');
+assert(server.includes('const target = championshipBroadcastRaceTarget();')&&server.includes('racePrizeLabel:race.label'),'La carrera TV debe calcular todos los cartones contra un único objetivo.');
+console.log('HOTFIX 04 CAMPEONATO GENERAL/TV: OK');

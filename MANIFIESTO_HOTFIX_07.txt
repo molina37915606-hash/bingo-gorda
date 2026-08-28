@@ -1,0 +1,35 @@
+ARCHIVOS NUEVOS/MODIFICADOS
+APLICAR_HOTFIX_07.js
+ARCHIVOS_ELIMINADOS_HOTFIX_07.txt
+HOTFIX_07_SALA_MINIJUEGOS_MOVIL.md
+README.md
+SHA256SUMS_HOTFIX_07_RESPALDO.txt
+assets/voice/manifest.json
+css/platform.css
+js/player.js
+package-lock.json
+package.json
+player.html
+server.js
+tests/admin-simulation.js
+tests/claim-screen-final-2025.js
+tests/community-admin-beta.js
+tests/final-international-i18n.js
+tests/functional-ui.js
+tests/general-link-community.js
+tests/hotfix07-demo-removed.js
+tests/hotfix07-mobile-game.js
+tests/hotfix07-waiting-overlay.js
+tests/line-queue-90.js
+tests/player-ad-banner.js
+
+ARCHIVOS ELIMINADOS
+V9_3_16_DEMO_VISIBLE_2026-08-26.txt
+assets/community/demo.webp
+assets/voice/demo/demo_explicacion.mp3
+assets/voice/demo/demo_fin.mp3
+assets/voice/demo/demo_inicio.mp3
+demo.html
+tests/demo-unified.js
+tests/session-priority-wakelock.js
+tests/v9316-demo-visible.js

@@ -1,0 +1,13 @@
+const assert=require('assert');
+const fs=require('fs');const path=require('path');const root=path.join(__dirname,'..');
+const js=fs.readFileSync(path.join(root,'js/player.js'),'utf8');
+const css=fs.readFileSync(path.join(root,'css/platform.css'),'utf8');
+assert(js.includes('¿ABURRIDO MIENTRAS ESPERÁS?'),'debe existir la invitación compacta');
+assert(js.includes('waitingMiniOverlay')&&js.includes('openWaitingMinigames')&&js.includes('closeWaitingMinigames'),'los minijuegos deben abrirse como overlay dentro de la sala');
+assert(js.includes("if(d?.status&&d.status!=='waiting')this.miniOverlayOpen=false"),'el overlay debe cerrarse al empezar la partida');
+assert(js.includes("b.getAttribute('data-mini-21')"),'21 debe leer correctamente data-mini-21');
+assert(js.includes('this.mini.dealerTotal<=16')&&js.includes('setTimeout(step,550)'),'La Gorda debe pedir con 16 o menos y jugar su turno de forma visible');
+assert(js.includes('waitingSecretStage solved')&&js.includes('NÚMERO ENCONTRADO'),'Número Secreto debe tener estado final separado del rango');
+assert(js.includes('waitingMiniBall')&&js.includes('¿CUÁL FALTA?'),'Fantasma debe mostrarse como bolillas y no dentro de una carta');
+assert(css.includes('.waitingMiniOverlay{position:fixed')&&css.includes('.waiting21Board'),'faltan estilos del overlay grande');
+console.log('HOTFIX07 WAITING OVERLAY: OK');

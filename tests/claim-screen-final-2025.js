@@ -8,6 +8,5 @@ assert(js.includes('verificando-jugada'),'debe conservar el PNG de verificando')
 assert(js.includes('renderFinished(){'),'debe existir cierre dedicado');
 assert(js.includes('finalWinnerTicker'),'el cierre debe tener rotador visual');
 assert(js.includes('finalPlayAgain'),'el cierre debe tener JUGAR DE NUEVO');
-assert(js.includes("/api/player/demo/reset"),'DEMO debe poder jugar de nuevo sin tocar sala real');
 assert(css.includes('.finalWinnerTicker'),'faltan estilos del rotador final');
 console.log('claim-screen-final-2025 OK');

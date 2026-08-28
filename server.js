@@ -7833,7 +7833,7 @@ function autoResolveDemoClaimWindow(windowId) {
   if (state.status === 'paused') scheduleDemoResume();
 }
 
-function scheduleDemoClaimResolution(windowId) {
+function scheduleVirtualClaimResolution(windowId) {
   if (!virtualSoloAutomationEnabled() || !windowId) return;
   const workspace = currentWorkspace();
   const key = `claim:${windowId}`;
@@ -9436,7 +9436,7 @@ function createClaim(player, payload) {
   logEvent('claim_created', { claimId: claim.id, type, prizeNumber, playerId: player.id, cardId, officialValid: valid, receivedSequence: sequence, deltaFromFirstMs: claim.deltaFromFirstMs, simulated: claim.simulated });
   saveState();
   broadcast();
-  if (virtualSoloAutomationEnabled()) scheduleDemoClaimResolution(claim.claimWindowId);
+  if (virtualSoloAutomationEnabled()) scheduleVirtualClaimResolution(claim.claimWindowId);
   scheduleAutomaticClaimVerification(currentWorkspace());
   return claim;
 }
@@ -10532,10 +10532,6 @@ function servePlayerAccessPage(res, options = {}) {
   });
 }
 
-function serveDemoPlayerPage(res, initialState, directToken = '') {
-  return serveFile(res, path.join(ROOT, 'player.html'));
-}
-
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[char]));
 }
@@ -10560,7 +10556,6 @@ function serveFile(res, filePath) {
     path.join(ROOT, 'tv.html'),
     path.join(ROOT, 'pantalla.html'),
     path.join(ROOT, 'reglamento.html'),
-    path.join(ROOT, 'demo.html'),
     path.join(ROOT, 'comunidad.html')
   ]);
   const allowed = allowedHtml.has(normalized) || normalized.startsWith(assetRoot) || normalized.startsWith(jsRoot) || normalized.startsWith(cssRoot);
@@ -10665,16 +10660,7 @@ function clearPlayerSessionCookie(req, res) {
 function playerTokenFrom(req, url) {
   const explicit = String(req.headers['x-player-token'] || url.searchParams.get('token') || '');
   if (explicit) return explicit;
-  const demoContext = url.searchParams.get('demo') === '1';
-  if (demoContext) {
-    // Una pantalla DEMO debe permanecer aislada de cualquier sesión real que exista en el navegador.
-    // Si la DEMO venció, no hacemos fallback a una partida real: devolvemos su token y la API responderá 401.
-    const demoToken = cookieValue(req, DEMO_SESSION_COOKIE);
-    const demoWorkspace = demoToken ? findWorkspaceByPlayerToken(demoToken) : null;
-    if (demoWorkspace?.isDemo) return demoToken;
-    return demoToken || '';
-  }
-  // Fuera de DEMO preservamos la regla actual: la partida real tiene prioridad absoluta.
+  // Las sesiones de jugador reales y de Solitario usan el mismo canal de acceso.
   const playerToken = cookieValue(req, PLAYER_SESSION_COOKIE);
   if (playerToken && findWorkspaceByPlayerToken(playerToken)) return playerToken;
   const demoToken = cookieValue(req, DEMO_SESSION_COOKIE);
@@ -13045,12 +13031,7 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/community/private-room' && req.method === 'POST') return sendJson(res, 410, { error: 'Usá el creador de salas de Comunidad.' });
     if (url.pathname === '/api/community/host-login' && req.method === 'POST') return sendJson(res, 410, { error: 'El acceso de anfitrión separado no se utiliza.' });
 
-    if (url.pathname === '/api/demo/create' && req.method === 'POST') {
-      if (!consumeRate(req, 'demo-create', 40, 10 * 60 * 1000)) return sendJson(res, 429, { error: 'Se crearon muchas demostraciones desde esta conexión. Esperá unos minutos y probá de nuevo.' });
-      const created = createDemoRoom(await readJson(req));
-      setDemoSessionCookie(req, res, created.demoSessionToken);
-      return sendJson(res, 200, publicDemoCreation(created));
-    }
+
 
     if (url.pathname === '/api/admin/login' && req.method === 'POST') {
       if (!consumeRate(req, 'admin-login', 30, 15 * 60 * 1000)) return sendJson(res, 429, { error: 'Demasiados intentos. Esperá unos minutos.' });
@@ -13190,14 +13171,6 @@ async function handleApi(req, res, url) {
         if (url.pathname === '/api/player/random-cards' && req.method === 'POST') return sendJson(res, 200, chooseRandomCards(player, await readJson(req)));
         if (url.pathname === '/api/player/name' && req.method === 'POST') return sendJson(res, 200, setPlayerName(player, await readJson(req)));
         if (url.pathname === '/api/player/choose' && req.method === 'POST') return sendJson(res, 200, chooseCards(player, await readJson(req)));
-        if (url.pathname === '/api/player/demo/tutorial' && req.method === 'POST') return sendJson(res, 200, resolveDemoTutorial(player, await readJson(req)));
-        if (url.pathname === '/api/player/demo/retry' && req.method === 'POST') return sendJson(res, 200, retryDemoServerStart(player));
-        if (url.pathname === '/api/player/demo/start' && req.method === 'POST') return sendJson(res, 200, startDemoFromPlayer(player));
-        if (url.pathname === '/api/player/demo/reset' && req.method === 'POST') {
-          const restarted = restartDemoFromPlayer(player);
-          setDemoSessionCookie(req, res, restarted.demoSessionToken);
-          return sendJson(res, 200, publicDemoCreation(restarted));
-        }
         if (url.pathname === '/api/player/release' && req.method === 'POST') return sendJson(res, 200, releaseOwnSelection(player));
         if (url.pathname === '/api/player/mark' && req.method === 'POST') return sendJson(res, 200, markNumber(player, await readJson(req)));
         if (url.pathname === '/api/player/automark' && req.method === 'POST') return sendJson(res, 200, setAutoMark(player, await readJson(req)));
@@ -13536,68 +13509,6 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  if (url.pathname === '/demo/start' && req.method === 'POST') {
-    try {
-      if (!consumeRate(req, 'demo-create', 40, 10 * 60 * 1000)) {
-        res.writeHead(303, { Location: '/demo?error=rate' });
-        return res.end();
-      }
-      const form = await readForm(req);
-      const mode = Number(form.mode) === 75 ? 75 : 90;
-      const rules = mode === 75
-        ? { ambocabeza:false, line:form.prizeLine === '1', doubleLine:form.prizeDouble === '1', tripleLine:form.prizeTriple === '1', corners:form.prizeCorners === '1', bingo:form.prizeBingo === '1' }
-        : { ambocabeza:form.prizeAmbo === '1', line:form.prizeLine === '1', doubleLine:false, tripleLine:false, corners:false, bingo:form.prizeBingo === '1' };
-      const created = createDemoRoom({
-        mode,
-        rules,
-        linePrizeCount:Number(form.linePrizeCount) || 1,
-        aiCount:Number(form.aiCount) || 2,
-        aiNames:String(form.aiNames || '').split(',').map(name => name.trim()).filter(Boolean),
-        playerCardCount:Number(form.playerCardCount) || (form.markingMode === 'manual_only' ? 2 : 4),
-        markingMode:form.markingMode === 'manual_only' ? 'manual_only' : 'normal',
-        autoSeconds:Number(form.autoSeconds) || 4,
-        sound:true
-      });
-      setDemoSessionCookie(req, res, created.demoSessionToken);
-      res.writeHead(303, { Location: `/demo/jugar/${encodeURIComponent(created.demoEntryId)}`, 'Cache-Control':'no-store' });
-      return res.end();
-    } catch (error) {
-      console.error('No se pudo crear la DEMO directa:', error);
-      res.writeHead(303, { Location: '/demo?error=create', 'Cache-Control':'no-store' });
-      return res.end();
-    }
-  }
-
-  const demoPlayerMatch = url.pathname.match(/^\/demo\/jugar\/(demoentry_[a-f0-9]{24})(\/partida)?\/?$/);
-  if (demoPlayerMatch) {
-    const entryId = demoPlayerMatch[1];
-    const wantsGame = Boolean(demoPlayerMatch[2]);
-    const workspace = findWorkspaceByDemoEntryId(entryId);
-    if (!workspace) {
-      res.writeHead(303, { Location: '/demo?error=session', 'Cache-Control':'no-store' });
-      return res.end();
-    }
-    return workspaceContext.run(workspace, async () => {
-      currentWorkspace().lastActivityAt = Date.now();
-      const player = state.players.find(item => item.demoHuman && !item.virtual);
-      if (!player) {
-        res.writeHead(303, { Location: '/demo?error=session', 'Cache-Control':'no-store' });
-        return res.end();
-      }
-      if (wantsGame) {
-        if (!player.nameSet || !player.selectionConfirmed || !(player.cardIds || []).length) {
-          res.writeHead(303, { Location: `/demo/jugar/${entryId}`, 'Cache-Control':'no-store' });
-          return res.end();
-        }
-        return serveDemoPlayerPage(res, playerPayload(player), player.sessionToken);
-      }
-      if (req.method === 'GET') {
-        refreshOffersForPlayer(player);
-        return serveDemoPlayerPage(res, playerPayload(player), player.sessionToken);
-      }
-      return sendJson(res, 405, { error: 'La selección de la DEMO se realiza desde la interfaz unificada.' });
-    });
-  }
 
 
   const chatAudioMatch = url.pathname.match(/^\/chat-audio\/(voice_[a-f0-9]{24})\.(webm|ogg|mp4|mp3|aac)$/i);
@@ -13713,7 +13624,6 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/evento-transmision' || url.pathname === '/evento-transmision/') return serveFile(res, path.join(ROOT, 'evento-transmision.html'));
   if (url.pathname === '/evento-tv' || url.pathname === '/evento-tv/') return serveFile(res, path.join(ROOT, 'evento-tv.html'));
   if (url.pathname === '/admin-player-preview' || url.pathname === '/admin-player-preview/') return serveFile(res, path.join(ROOT, 'player.html'));
-  if (url.pathname === '/demo' || url.pathname === '/demo/') { res.writeHead(302, { Location:'/comunidad', 'Cache-Control':'no-store, max-age=0' }); return res.end(); }
   if (url.pathname === '/comunidad' || url.pathname === '/comunidad/' || url.pathname === '/comunidad.html') {
     // Si este navegador ya pertenece a una partida real en curso, Comunidad funciona como puerta de regreso al cartón.
     // Un destino explícito (?mesa=... / ?ver=...) se respeta para no secuestrar invitaciones a otra sala.
@@ -13735,20 +13645,6 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/tv' || url.pathname === '/tv/' || url.pathname === '/tv.html' || /^\/tv\/[^/]+\/?$/.test(url.pathname)) return serveFile(res, path.join(ROOT, 'tv.html'));
   if (url.pathname === '/cast-receiver' || url.pathname === '/cast-receiver/') return serveFile(res, path.join(ROOT, 'cast-receiver.html'));
   if (url.pathname === '/jugador' || url.pathname === '/jugador/') {
-    if (url.searchParams.get('demo') === '1') {
-      const token = cookieValue(req, DEMO_SESSION_COOKIE);
-      const workspace = findWorkspaceByPlayerToken(token);
-      const player = workspace?.state?.players?.find(item => item.sessionToken === token && item.demoHuman);
-      const entryId = workspace?.state?.demo?.entryId;
-      if (!workspace?.isDemo || !player || !entryId) {
-        clearDemoSessionCookie(req, res);
-        res.writeHead(302, { Location: '/demo?error=session' });
-        return res.end();
-      }
-      workspace.lastActivityAt = Date.now();
-      res.writeHead(303, { Location: player.selectionConfirmed && player.nameSet ? `/demo/jugar/${entryId}/partida?demo=1` : `/demo/jugar/${entryId}`, 'Cache-Control':'no-store' });
-      return res.end();
-    }
     const currentSession = String(cookieValue(req, PLAYER_SESSION_COOKIE) || '').trim();
     const recoveryToken = String(url.searchParams.get('recuperar') || '').trim();
     if (recoveryToken) {

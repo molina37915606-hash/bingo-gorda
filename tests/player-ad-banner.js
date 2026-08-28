@@ -32,7 +32,5 @@ async function json(pathname,{method='GET',body,token,cookie}={}){const r=await 
   room=await json('/api/admin/join-open',{method:'POST',token,body:{open:true}});
   const join=await fetch(base+'/jugador/entrar',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`roomCode=${encodeURIComponent(room.roomCode)}&name=Jugador+Publicidad&cardCount=1`,redirect:'manual'});assert.equal(join.status,303);const cookie=(join.headers.get('set-cookie')||'').split(';')[0];assert(cookie);
   const state=await json('/api/player/state',{cookie});assert.equal(state.playerAd.enabled,true);assert.equal(state.playerAd.durationMs,10000);assert.equal(state.playerAd.everyBalls,10);
-  const form=new URLSearchParams({mode:'90',playerCardCount:'1',aiCount:'1',autoSeconds:'60',linePrizeCount:'1',prizeLine:'1',prizeBingo:'1'});
-  const demoStart=await fetch(base+'/demo/start',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form.toString(),redirect:'manual'});assert.equal(demoStart.status,303);const demoCookie=(demoStart.headers.get('set-cookie')||'').split(';')[0];const demoState=await json('/api/player/state?demo=1',{cookie:demoCookie});assert.equal(demoState.playerAd.enabled,false,'DEMO debe permanecer sin publicidad.');
-  console.log('PRUEBA PUBLICIDAD EN CARTONES: OK · 10 s + debajo de reclamar + inicio + cada 10 bolillas + DEMO intacta');
+  console.log('PRUEBA PUBLICIDAD EN CARTONES: OK · 10 s + debajo de reclamar + inicio + cada 10 bolillas');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

@@ -1,0 +1,14 @@
+EL BINGO DE LA GORDA · HOTFIX 07 · SOLO ACTUALIZACIÓN
+
+Base requerida: HOTFIX 06.
+
+1. Hacé una copia de seguridad.
+2. Extraé este ZIP sobre la raíz del proyecto HOTFIX 06, reemplazando archivos.
+3. Desde esa misma raíz ejecutá una vez:
+
+   node APLICAR_HOTFIX_07.js
+
+Ese paso retira los archivos obsoletos de /demo que un ZIP de reemplazo no puede borrar automáticamente.
+4. Reiniciá el servidor.
+
+Versión resultante: 9.3.19-hotfix07.1

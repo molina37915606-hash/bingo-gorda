@@ -1,0 +1,15 @@
+HOTFIX 07 · ARCHIVOS OBSOLETOS A RETIRAR AL ACTUALIZAR DESDE HOTFIX 06
+
+Ejecutar una vez desde la raíz del proyecto:
+  node APLICAR_HOTFIX_07.js
+
+El script elimina:
+- demo.html
+- V9_3_16_DEMO_VISIBLE_2026-08-26.txt
+- assets/community/demo.webp
+- assets/voice/demo/
+- tests/demo-unified.js
+- tests/session-priority-wakelock.js
+- tests/v9316-demo-visible.js
+
+El respaldo completo HOTFIX 07 ya viene sin esos archivos.

@@ -670,21 +670,6 @@
       "path": "assets/voice/cierre/cierre_final.mp3",
       "text": "GRACIAS POR JUGAR AL BINGO DE LA GORDA.",
       "group": "Cierre"
-    },
-    "demo/demo_inicio": {
-      "path": "assets/voice/demo/demo_inicio.mp3",
-      "text": "Esta es una partida de demostración de El Bingo de la Gorda.",
-      "group": "Demo"
-    },
-    "demo/demo_explicacion": {
-      "path": "assets/voice/demo/demo_explicacion.mp3",
-      "text": "Podés usar esta partida para conocer cómo funciona el juego.",
-      "group": "Demo"
-    },
-    "demo/demo_fin": {
-      "path": "assets/voice/demo/demo_fin.mp3",
-      "text": "La demostración terminó.",
-      "group": "Demo"
     }
   }
 }

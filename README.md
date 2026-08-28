@@ -48,6 +48,17 @@ Esta edición congela nuevas funciones. A partir de este paquete, los cambios de
 - Se agrega una regresión específica para impedir que el error vuelva a aparecer.
 - No se modifican los otros cinco minijuegos ni ninguna modalidad de Bingo.
 
+## V9.3.19 — HOTFIX 07 · SALA LIMPIA + MINIJUEGOS OVERLAY + MÓVIL
+
+- La sala de espera deja de incrustar los seis minijuegos: muestra una tarjeta compacta y los abre en un **overlay dentro de la misma sala**, sin navegar ni desconectarse.
+- El overlay se cierra automáticamente cuando comienza la partida.
+- **21 de La Gorda** corrige sus acciones, muestra ambas manos y hace jugar a La Gorda por pasos: pide con 16 o menos y se planta con 17 o más.
+- **Número Secreto** usa rango, intentos y un estado final independiente; ya no muestra rangos finales del tipo `58–58`.
+- **Bolilla Fantasma** y **Bolilla Intrusa** usan bolillas grandes y legibles.
+- En juego móvil, **MÁS** incorpora el selector ES / PT / EN y Pantalla completa; el selector flotante se oculta durante la partida para evitar cortes.
+- El cartón de **75 bolas** se compacta en móvil conservando números grandes.
+- `/demo`, `demo.html`, sus endpoints públicos y assets exclusivos quedan retirados. El modo de prueba es **JUGAR SOLO** dentro de Comunidad con Mateo, Zoe y Owen.
+
 ## V9.3.16 — DEMO VISIBLE EN COMUNIDAD
 
 - Se recupera un acceso visible a **PROBAR DEMO** para usuarios nuevos.

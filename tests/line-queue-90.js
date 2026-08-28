@@ -62,8 +62,6 @@ async function drawSequence(numbers,ah){for(const _ of numbers)await post('/api/
 
   const adminSource=fs.readFileSync(path.join(__dirname,'..','admin.html'),'utf8');
   const adminJs=fs.readFileSync(path.join(__dirname,'..','js','admin.js'),'utf8');
-  const demoSource=fs.readFileSync(path.join(__dirname,'..','demo.html'),'utf8');
   assert(adminSource.includes('AMBOCABEZA')&&adminJs.includes('ambocabeza'),'El Admin debe ofrecer AmboCabeza en 90.');
-  assert(demoSource.includes('name="prizeAmbo"'),'La DEMO debe ofrecer AmboCabeza en 90.');
   console.log('PRUEBA 90 BOLAS: OK · AmboCabeza + cola Línea 1/Línea 2 por orden global');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

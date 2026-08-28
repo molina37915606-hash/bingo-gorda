@@ -1,0 +1,10 @@
+const assert=require('assert');const fs=require('fs');const path=require('path');const root=path.join(__dirname,'..');
+const js=fs.readFileSync(path.join(root,'js/player.js'),'utf8');const css=fs.readFileSync(path.join(root,'css/platform.css'),'utf8');const html=fs.readFileSync(path.join(root,'player.html'),'utf8');
+assert(js.includes('data-mobile-lang="es"')&&js.includes('data-mobile-lang="pt"')&&js.includes('data-mobile-lang="en"'),'Más debe ofrecer ES/PT/EN');
+assert(js.includes('window.LGI18N?.setLanguage?.'),'el selector móvil debe cambiar idioma mediante i18n');
+assert(css.includes('.playerShell.gameMobile #lgLanguageSwitcher{display:none!important}'),'el selector flotante debe ocultarse durante juego móvil');
+assert(css.includes('.playerShell.gameMobile #moreTool{display:grid!important')&&css.includes('.playerShell.gameMobile #fullscreenTool{display:none!important'),'Más debe ocupar el lugar de pantalla completa en la barra móvil');
+assert(css.includes('.mode75Game .ticket.m75 .cell{min-height:34px')&&css.includes('font-size:clamp(20px,6.2vw,25px)'),'el cartón 75 móvil debe ser más compacto sin achicar sus números');
+assert(js.includes('mode${total}Game'),'las pantallas deben marcar el modo para aplicar el ajuste sólo a 75');
+assert(html.includes('hotfix07-waiting-overlay-mobile-20260828'),'player.html debe invalidar caché del hotfix');
+console.log('HOTFIX07 MOBILE GAME: OK');

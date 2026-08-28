@@ -54,7 +54,7 @@ async function req(pathname,{method='GET',body,token}={}){const r=await fetch(ba
   assert.equal(publicState.whatsapp.groupUrl,'https://whatsapp.com/channel/ABCDEFGHIJK');
   assert.equal(publicState.whatsapp.collaborationAlias,'bingo.lagorda');
   assert.equal(publicState.whatsapp.collaborationHolder,'El Bingo de La Gorda');
-  const demo=await fetch(base+'/demo',{redirect:'manual'});assert.equal(demo.status,302);assert.equal(demo.headers.get('location'),'/comunidad','El Demo anterior debe redirigir a Comunidad.');
+  const demo=await fetch(base+'/demo',{redirect:'manual'});assert.equal(demo.status,404,'/demo debe estar eliminado; Solitario vive dentro de Comunidad.');
   const comunidad=await fetch(base+'/comunidad');const html=await comunidad.text();assert(comunidad.ok&&html.includes('js/community.js'));
   console.log('PRUEBA BETA COMUNIDAD ADMIN + MODO SOLITARIO: OK');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

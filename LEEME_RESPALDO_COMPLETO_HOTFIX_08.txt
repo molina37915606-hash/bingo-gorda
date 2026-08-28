@@ -1,0 +1,9 @@
+EL BINGO DE LA GORDA · HOTFIX 08 · RESPALDO COMPLETO
+Version: 9.3.20-hotfix08.1
+
+Este paquete contiene el proyecto completo ya actualizado.
+No requiere aplicar HOTFIX 07 antes.
+
+Cambio principal: desempate automático de Antibingo por resistencia, con animación azul de EMPATE y explicación del criterio en el resultado final.
+
+Ver HOTFIX_08_ANTIBINGO_RESISTENCIA.md.

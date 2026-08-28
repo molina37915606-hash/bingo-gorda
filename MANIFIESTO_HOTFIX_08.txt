@@ -1,0 +1,18 @@
+EL BINGO DE LA GORDA · HOTFIX 08 · ARCHIVOS NUEVOS/MODIFICADOS
+
+HOTFIX_08_ANTIBINGO_RESISTENCIA.md
+LEEME_ACTUALIZACION_HOTFIX_08.txt
+LEEME_RESPALDO_COMPLETO_HOTFIX_08.txt
+css/platform.css
+js/player.js
+js/transmision.js
+js/tv.js
+package-lock.json
+package.json
+player.html
+server.js
+tests/hotfix05-antibingo.js
+tests/hotfix07-mobile-game.js
+tests/hotfix08-antibingo-resistance.js
+transmision.html
+tv.html

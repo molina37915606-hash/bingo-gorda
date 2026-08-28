@@ -58,6 +58,7 @@ const CHAMPIONSHIP_SCORE = Object.freeze({ hit:1, line:10, firstLine:5, corners:
 const FLASH_MINIMUM_BALLS = 10;
 const FLASH_AUTO_SECONDS = 4;
 const FLASH_START_SEQUENCE_MS = Math.max(TEST_MODE ? 40 : 500, Number(process.env.BINGO_FLASH_START_SEQUENCE_MS || (TEST_MODE ? 80 : 3000)));
+const ANTIBINGO_TIE_RESOLUTION_MS = Math.max(TEST_MODE ? 90 : 1800, Number(process.env.BINGO_ANTIBINGO_TIE_RESOLUTION_MS || (TEST_MODE ? 120 : 2800)));
 const COMMUNITY_FINISH_GRACE_MS = Math.max(TEST_MODE ? 150 : 15_000, Number(process.env.BINGO_COMMUNITY_FINISH_GRACE_MS || 3 * 60 * 1000));
 const COMMUNITY_ROOM_ACCESS_COOKIE = 'bingo_community_room_access';
 const COMMUNITY_ROOM_ACCESS_TTL_MS = 30 * 60 * 1000;
@@ -552,12 +553,14 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       merged.championship.finalActaSha256 = /^[a-f0-9]{64}$/i.test(String(merged.championship.finalActaSha256 || '')) ? String(merged.championship.finalActaSha256).toLowerCase() : '';
     }
     merged.antibingo = parsed.antibingo && typeof parsed.antibingo === 'object' && parsed.antibingo.enabled ? {
-      ...parsed.antibingo, enabled:true, version:1,
-      stage:['registration','starting','playing','finished'].includes(String(parsed.antibingo.stage||'')) ? String(parsed.antibingo.stage) : 'registration',
+      ...parsed.antibingo, enabled:true, version:2,
+      stage:['registration','starting','playing','resolving_tie','finished'].includes(String(parsed.antibingo.stage||'')) ? String(parsed.antibingo.stage) : 'registration',
       eliminated:Array.isArray(parsed.antibingo.eliminated) ? parsed.antibingo.eliminated.slice(0, MAX_ACTIVE_CARDS * 2) : [],
       winnerCardIds:Array.isArray(parsed.antibingo.winnerCardIds) ? [...new Set(parsed.antibingo.winnerCardIds.map(String))].slice(0, MAX_ACTIVE_CARDS) : [],
       winnerPlayerIds:Array.isArray(parsed.antibingo.winnerPlayerIds) ? [...new Set(parsed.antibingo.winnerPlayerIds.map(String))].slice(0, MAX_PLAYERS) : [],
-      tie:Boolean(parsed.antibingo.tie), winningBall:Number(parsed.antibingo.winningBall)||null,
+      pendingWinnerCardIds:Array.isArray(parsed.antibingo.pendingWinnerCardIds) ? [...new Set(parsed.antibingo.pendingWinnerCardIds.map(String))].slice(0, MAX_ACTIVE_CARDS) : [],
+      tie:Boolean(parsed.antibingo.tie), tieOccurred:Boolean(parsed.antibingo.tieOccurred), winningBall:Number(parsed.antibingo.winningBall)||null,
+      tieResolution:parsed.antibingo.tieResolution && typeof parsed.antibingo.tieResolution === 'object' ? parsed.antibingo.tieResolution : null,
       startedAt:parsed.antibingo.startedAt||null, finishedAt:parsed.antibingo.finishedAt||null
     } : null;
     merged.flash = parsed.flash && typeof parsed.flash === 'object' && parsed.flash.enabled ? {
@@ -4613,8 +4616,8 @@ function antibingoRoomEnabled() {
 
 function createAntibingoState() {
   return {
-    enabled:true, version:1, stage:'registration', eliminated:[], winnerCardIds:[], winnerPlayerIds:[],
-    tie:false, winningBall:null, startedAt:null, finishedAt:null
+    enabled:true, version:2, stage:'registration', eliminated:[], winnerCardIds:[], winnerPlayerIds:[], pendingWinnerCardIds:[],
+    tie:false, tieOccurred:false, tieResolution:null, winningBall:null, startedAt:null, finishedAt:null
   };
 }
 
@@ -4649,6 +4652,88 @@ function antibingoParticipants() {
   return rows;
 }
 
+function antibingoResistanceProfile(item) {
+  const card = state.game?.cards?.find(entry => String(entry.id) === String(item?.cardId));
+  if (!card) return null;
+  const drawPositions = new Map((state.game?.drawn || []).map((number, index) => [Number(number), index + 1]));
+  const markTimeline = cardNumbers(card).map(number => Number(drawPositions.get(Number(number))) || 0).filter(Boolean).sort((a,b) => a-b);
+  const lineTimeline = lineDefinitions(card).map(line => {
+    const positions = (line.values || []).map(number => Number(drawPositions.get(Number(number))) || 0);
+    return positions.length && positions.every(Boolean) ? Math.max(...positions) : 0;
+  }).filter(Boolean).sort((a,b) => a-b);
+  return {
+    cardId:String(item.cardId||''), playerId:String(item.playerId||''), playerName:String(item.playerName||'Jugador'),
+    cardNumber:Number(item.cardNumber)||0, positionLabel:String(item.positionLabel||''),
+    firstLineDrawCount:Number(lineTimeline[0])||0, secondLineDrawCount:Number(lineTimeline[1])||Number(lineTimeline[0])||0,
+    lineTimeline, markTimeline,
+    penultimateMarkDrawCount:markTimeline.length > 1 ? Number(markTimeline.at(-2)) || 0 : 0
+  };
+}
+
+function antibingoPriorMarkLabel(offsetFromEnd) {
+  const offset = Math.max(2, Number(offsetFromEnd) || 2);
+  if (offset === 2) return 'penúltima marca';
+  if (offset === 3) return 'antepenúltima marca';
+  return `marca previa nº ${offset - 1}`;
+}
+
+function compareAntibingoResistanceProfiles(left, right) {
+  if (Number(left.secondLineDrawCount) !== Number(right.secondLineDrawCount)) return Number(right.secondLineDrawCount) - Number(left.secondLineDrawCount);
+  if (Number(left.firstLineDrawCount) !== Number(right.firstLineDrawCount)) return Number(right.firstLineDrawCount) - Number(left.firstLineDrawCount);
+  const maxMarks = Math.max(left.markTimeline?.length || 0, right.markTimeline?.length || 0);
+  for (let offset = 2; offset <= maxMarks; offset++) {
+    const li = Math.max(0, (left.markTimeline?.length || 0) - offset);
+    const ri = Math.max(0, (right.markTimeline?.length || 0) - offset);
+    const lv = Number(left.markTimeline?.[li]) || 0;
+    const rv = Number(right.markTimeline?.[ri]) || 0;
+    if (lv !== rv) return rv - lv;
+  }
+  if (Number(left.cardNumber) !== Number(right.cardNumber)) return Number(left.cardNumber) - Number(right.cardNumber);
+  return String(left.cardId).localeCompare(String(right.cardId));
+}
+
+function antibingoResistanceResolution(rows = [], winningBall = null) {
+  const profiles = rows.map(antibingoResistanceProfile).filter(Boolean).sort(compareAntibingoResistanceProfiles);
+  const winner = profiles[0] || null;
+  if (!winner) return null;
+  let criterion = 'card_number', criterionLabel = 'NÚMERO OFICIAL DE CARTÓN', reason = `${winner.playerName} gana por el orden oficial del cartón.`, comparison = [];
+  const runnerUp = profiles[1] || null;
+  if (runnerUp && Number(winner.secondLineDrawCount) !== Number(runnerUp.secondLineDrawCount)) {
+    criterion = 'second_line'; criterionLabel = 'SEGUNDA LÍNEA MÁS TARDÍA';
+    reason = `${winner.playerName} resistió más: completó su segunda línea en la bolilla ${winner.secondLineDrawCount}.`;
+    comparison = profiles.map(x => ({ playerName:x.playerName, cardId:x.cardId, cardNumber:x.cardNumber, positionLabel:x.positionLabel, value:x.secondLineDrawCount, label:'2ª línea' }));
+  } else if (runnerUp && Number(winner.firstLineDrawCount) !== Number(runnerUp.firstLineDrawCount)) {
+    criterion = 'first_line'; criterionLabel = 'PRIMERA LÍNEA MÁS TARDÍA';
+    reason = `${winner.playerName} resistió más: completó su primera línea en la bolilla ${winner.firstLineDrawCount}.`;
+    comparison = profiles.map(x => ({ playerName:x.playerName, cardId:x.cardId, cardNumber:x.cardNumber, positionLabel:x.positionLabel, value:x.firstLineDrawCount, label:'1ª línea' }));
+  } else {
+    const maxMarks = Math.max(...profiles.map(x => x.markTimeline?.length || 0), 0);
+    let foundOffset = 0;
+    for (let offset = 2; runnerUp && offset <= maxMarks; offset++) {
+      const wi = Math.max(0,(winner.markTimeline?.length||0)-offset), ri = Math.max(0,(runnerUp.markTimeline?.length||0)-offset);
+      const wv = Number(winner.markTimeline?.[wi]) || 0, rv = Number(runnerUp.markTimeline?.[ri]) || 0;
+      if (wv !== rv) { foundOffset = offset; break; }
+    }
+    if (foundOffset) {
+      const label = antibingoPriorMarkLabel(foundOffset);
+      criterion = 'mark_history'; criterionLabel = `${label.toUpperCase()} MÁS TARDÍA`;
+      const value = Number(winner.markTimeline?.[Math.max(0,(winner.markTimeline?.length||0)-foundOffset)]) || 0;
+      reason = `${winner.playerName} resistió más: su ${label} llegó en la bolilla ${value}.`;
+      comparison = profiles.map(x => ({ playerName:x.playerName, cardId:x.cardId, cardNumber:x.cardNumber, positionLabel:x.positionLabel, value:Number(x.markTimeline?.[Math.max(0,(x.markTimeline?.length||0)-foundOffset)])||0, label }));
+    } else {
+      comparison = profiles.map(x => ({ playerName:x.playerName, cardId:x.cardId, cardNumber:x.cardNumber, positionLabel:x.positionLabel, value:x.cardNumber, label:'Cartón oficial' }));
+      reason = `La resistencia fue idéntica en todos los criterios de juego; ${winner.playerName} gana por el número oficial de cartón más bajo (${winner.cardNumber}).`;
+    }
+  }
+  return {
+    occurred:true, stage:'resolving', triggerBall:Number(winningBall)||null, startedAt:nowIso(), resolvedAt:null,
+    candidateCardIds:profiles.map(x=>x.cardId), candidatePlayerIds:[...new Set(profiles.map(x=>x.playerId))],
+    winnerCardId:winner.cardId, winnerPlayerId:winner.playerId, winnerPlayerName:winner.playerName,
+    criterion, criterionLabel, reason, comparison,
+    profiles:profiles.map(x => ({ cardId:x.cardId, playerId:x.playerId, playerName:x.playerName, cardNumber:x.cardNumber, positionLabel:x.positionLabel, firstLineDrawCount:x.firstLineDrawCount, secondLineDrawCount:x.secondLineDrawCount, penultimateMarkDrawCount:x.penultimateMarkDrawCount }))
+  };
+}
+
 function antibingoPublicPayload(player = null) {
   if (!state.antibingo?.enabled) return null;
   const all = antibingoParticipants();
@@ -4657,10 +4742,12 @@ function antibingoPublicPayload(player = null) {
   const winnerIds = new Set((state.antibingo.winnerCardIds || []).map(String));
   const winners = all.filter(item => winnerIds.has(String(item.cardId))).map(item => ({...item, winner:true}));
   const ownCards = player ? all.filter(item => String(item.playerId) === String(player.id)).map(item => ({...item, winner:winnerIds.has(String(item.cardId))})) : [];
+  const resolution = state.antibingo.tieResolution && typeof state.antibingo.tieResolution === 'object' ? deepCopy(state.antibingo.tieResolution) : null;
   return {
-    enabled:true, version:1, stage:state.antibingo.stage, finished:state.antibingo.stage === 'finished',
+    enabled:true, version:2, stage:state.antibingo.stage, finished:state.antibingo.stage === 'finished',
     aliveCount:alive.length, totalCards:all.length, eliminatedCount:Math.max(0, all.length-alive.length),
-    tie:Boolean(state.antibingo.tie), winningBall:Number(state.antibingo.winningBall)||null,
+    tie:Boolean(state.antibingo.tie), tieOccurred:Boolean(state.antibingo.tieOccurred), winningBall:Number(state.antibingo.winningBall)||null,
+    tieResolution:resolution,
     survivors:alive.slice(0,30), recentEliminations:recent, ownCards, winners,
     winnerCardIds:[...(state.antibingo.winnerCardIds||[])], winnerPlayerIds:[...(state.antibingo.winnerPlayerIds||[])]
   };
@@ -4675,17 +4762,40 @@ function finalizeAntibingo(winnerRows = [], { tie = false, winningBall = null } 
   state.antibingo.winningBall = Number(winningBall)||null;
   state.antibingo.winnerCardIds = [...new Set(winners.map(item => String(item.cardId || '')).filter(Boolean))];
   state.antibingo.winnerPlayerIds = [...new Set(winners.map(item => String(item.playerId || '')).filter(Boolean))];
+  state.antibingo.pendingWinnerCardIds = [];
+  if (state.antibingo.tieResolution?.occurred) {
+    state.antibingo.tieOccurred = true;
+    state.antibingo.tieResolution.stage = 'resolved';
+    state.antibingo.tieResolution.resolvedAt = nowIso();
+  }
   state.antibingo.finishedAt = nowIso();
   state.status = 'finished'; state.pauseReason = null; state.endedAt = state.antibingo.finishedAt; state.transition = null; state.game.phase = 'ANTIBINGO_FINISHED';
-  logEvent('antibingo_finished', { tie:Boolean(tie), winnerCardIds:state.antibingo.winnerCardIds, winnerPlayerIds:state.antibingo.winnerPlayerIds, winningBall:state.antibingo.winningBall, balls:state.game.drawn.length });
+  logEvent('antibingo_finished', { tie:Boolean(tie), tieOccurred:Boolean(state.antibingo.tieOccurred), tieCriterion:state.antibingo.tieResolution?.criterion||null, winnerCardIds:state.antibingo.winnerCardIds, winnerPlayerIds:state.antibingo.winnerPlayerIds, winningBall:state.antibingo.winningBall, balls:state.game.drawn.length });
   archiveCurrentResults();
   syncCommunityPublicRecordFromState('finished');
   saveState(); broadcast();
   return antibingoPublicPayload(null);
 }
 
+function stageAntibingoTieResolution(tiedRows = [], winningBall = null) {
+  const resolution = antibingoResistanceResolution(tiedRows, winningBall);
+  if (!resolution) return finalizeAntibingo(tiedRows.slice(0,1), { tie:false, winningBall });
+  const winnerRow = tiedRows.find(item => String(item.cardId) === String(resolution.winnerCardId)) || tiedRows[0];
+  state.antibingo.stage = 'resolving_tie';
+  state.antibingo.tie = false;
+  state.antibingo.tieOccurred = true;
+  state.antibingo.tieResolution = resolution;
+  state.antibingo.pendingWinnerCardIds = winnerRow ? [String(winnerRow.cardId)] : [];
+  state.antibingo.winningBall = Number(winningBall)||null;
+  state.status = 'paused'; state.pauseReason = 'antibingo_tie'; state.game.phase = 'ANTIBINGO_TIE_RESOLUTION';
+  const startedAt = nowIso();
+  state.transition = { id:randomId('transition'), type:'antibingo-tie-resolution', startedAt, endsAt:new Date(Date.now()+ANTIBINGO_TIE_RESOLUTION_MS).toISOString() };
+  logEvent('antibingo_tie_detected', { winningBall:Number(winningBall)||null, candidateCardIds:resolution.candidateCardIds, winnerCardId:resolution.winnerCardId, criterion:resolution.criterion });
+  return antibingoPublicPayload(null);
+}
+
 function processAntibingoAfterDraw() {
-  if (!antibingoRoomEnabled() || state.antibingo.stage === 'finished') return null;
+  if (!antibingoRoomEnabled() || state.antibingo.stage === 'finished' || state.antibingo.stage === 'resolving_tie') return null;
   if (!['playing','starting'].includes(state.antibingo.stage)) state.antibingo.stage = 'playing';
   const before = antibingoParticipants().filter(item => !item.eliminated);
   const existing = antibingoEliminationMap();
@@ -4701,10 +4811,10 @@ function processAntibingoAfterDraw() {
   if (newly.length) logEvent('antibingo_cards_eliminated', { ball:currentBall, drawCount, cards:newly.map(item => ({ cardId:item.cardId, playerId:item.playerId, positionLabel:item.positionLabel })) });
   const after = antibingoParticipants().filter(item => !item.eliminated);
   if (before.length > 1 && after.length === 1) return finalizeAntibingo(after, { tie:false, winningBall:currentBall });
-  if (before.length > 0 && after.length === 0) {
+  if (before.length > 1 && after.length === 0) {
     const lastIds = new Set(before.map(item => String(item.cardId)));
     const tied = antibingoParticipants().filter(item => lastIds.has(String(item.cardId)));
-    return finalizeAntibingo(tied, { tie:true, winningBall:currentBall });
+    return stageAntibingoTieResolution(tied, currentBall);
   }
   return antibingoPublicPayload(null);
 }
@@ -7894,7 +8004,7 @@ function drawNextBall(source = 'manual') {
   broadcast();
   if (state.status === 'paused' && state.pauseReason === 'automatic_prize' && state.prizeAnnouncement) scheduleAutomaticPrizeAnnouncement();
   else if (state.status === 'finalizing' && state.transition?.type === 'final-balls') scheduleTransition();
-  else if (state.transition?.type === 'last-ball-claim-window') scheduleTransition();
+  else if (state.transition?.type === 'last-ball-claim-window' || state.transition?.type === 'antibingo-tie-resolution') scheduleTransition();
   else if (state.status === 'paused' && state.pauseReason === 'claim' && automaticTieClaimsEnabled()) scheduleClaimAutoResume();
   else if (state.status === 'playing') scheduleAutomaticDraw();
   return adminPayload();
@@ -8169,6 +8279,12 @@ function completeTransition() {
   clearWorkspaceTransitionTimer();
   if (!state.active || !state.transition) return;
   const type = state.transition.type;
+  if (type === 'antibingo-tie-resolution') {
+    if (!antibingoRoomEnabled() || state.antibingo?.stage !== 'resolving_tie') return;
+    const winnerIds = new Set((state.antibingo.pendingWinnerCardIds || []).map(String));
+    const winners = antibingoParticipants().filter(item => winnerIds.has(String(item.cardId)));
+    return finalizeAntibingo(winners, { tie:false, winningBall:state.antibingo.winningBall });
+  }
   if (type === 'last-ball-claim-window') {
     if (state.claims.some(claim => claim.status === 'pending')) return;
     state.status = 'finished';

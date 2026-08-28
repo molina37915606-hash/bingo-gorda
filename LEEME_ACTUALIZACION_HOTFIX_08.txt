@@ -1,0 +1,19 @@
+EL BINGO DE LA GORDA · HOTFIX 08 · SOLO ACTUALIZACION
+Version: 9.3.20-hotfix08.1
+
+BASE REQUERIDA:
+- HOTFIX 07
+
+INSTALACION:
+1. Detener el servidor.
+2. Hacer una copia de seguridad.
+3. Descomprimir este ZIP sobre la raiz del proyecto HOTFIX 07.
+4. Permitir reemplazar los archivos existentes.
+5. Iniciar normalmente con npm start / node server.js.
+
+NO HAY ARCHIVOS PARA BORRAR EN ESTE HOTFIX.
+
+CAMBIO PRINCIPAL:
+Antibingo resuelve los últimos cartones empatados por resistencia y siempre entrega un ganador único.
+
+Ver HOTFIX_08_ANTIBINGO_RESISTENCIA.md para detalle técnico.

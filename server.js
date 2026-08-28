@@ -54,6 +54,7 @@ const CHAMPIONSHIP_PERSISTED_ROUNDS = CHAMPIONSHIP_ROUND_OPTIONS;
 const CHAMPIONSHIP_DEFAULT_ROUNDS = 5;
 const CHAMPIONSHIP_AUTO_SECONDS = 3;
 const CHAMPIONSHIP_START_SEQUENCE_MS = Math.max(TEST_MODE ? 40 : 500, Number(process.env.BINGO_CHAMPIONSHIP_START_SEQUENCE_MS || (TEST_MODE ? 80 : 3000)));
+const CHAMPIONSHIP_FINAL_CLAIM_WINDOW_MS = TEST_MODE ? Math.max(5, Number(process.env.BINGO_CHAMPIONSHIP_FINAL_CLAIM_WINDOW_MS || 10)) : Math.max(3000, Number(process.env.BINGO_CHAMPIONSHIP_FINAL_CLAIM_WINDOW_MS || 5000));
 const CHAMPIONSHIP_SCORE = Object.freeze({ hit:1, line:10, firstLine:5, corners:15, firstCorners:5, secondLine:20, firstSecondLine:5, tripleLine:30, firstTripleLine:5, quadrupleLine:40, firstQuadrupleLine:5, quintupleLine:50, firstQuintupleLine:5, bingo:60, firstBingo:15, tiebreakMinimumBalls:10 });
 const FLASH_MINIMUM_BALLS = 10;
 const FLASH_AUTO_SECONDS = 4;
@@ -5203,9 +5204,12 @@ function championshipPublicPayload(player = null) {
   const own = player ? all.filter(item => item.playerId === player.id).map(item => {
     const position = (champ.positions || []).find(pos => pos.id === item.positionId);
     const entry = championshipCurrentEntry(position);
+    const roundStanding = roundTop.find(x => String(x.positionId) === String(item.positionId)) || null;
     const tie = champ.stage === 'tiebreak' ? (champ.tiebreak?.contenders || []).find(x => x.positionId === item.positionId) : null;
     return {
       ...item,
+      roundRank: Number(roundStanding?.rank) || null,
+      roundTied: Boolean(roundStanding?.tied),
       ...(tie ? { cardId:tie.cardId, cardNumber:tie.cardNumber, roundPoints:0, tiebreakHits:Math.max(0,Number(tie.hits)||0), tiebreakActive:(champ.tiebreak?.activePositionIds||[]).includes(item.positionId) } : {}),
       linePoints: Math.max(0, Number(entry?.linePoints) || 0),
       cornersPoints: Math.max(0, Number(entry?.cornersPoints) || 0),
@@ -5252,6 +5256,8 @@ function championshipPublicPayload(player = null) {
     firstBingoDrawnCount:firstBingo,
     closingDrawnCount:closing,
     finalBallsRemaining:closing ? Math.max(0, closing - drawnCount) : null,
+    closingClaims:state.transition?.type === 'championship-round-closing',
+    closingClaimRemainingMs:state.transition?.type === 'championship-round-closing' ? Math.max(0, new Date(state.transition.endsAt || 0).getTime() - Date.now()) : 0,
     betweenRounds:champ.stage === 'results',
     inTiebreak:champ.stage === 'tiebreak',
     finished:champ.stage === 'finished',
@@ -5682,12 +5688,37 @@ function processChampionshipAfterDraw() {
     logEvent('championship_first_bingo', { round:champ.currentRound, ballOrder:drawCount, ballNumber:state.game.drawn.at(-1), closingDrawnCount:champ.closingDrawnCount, bonus:CHAMPIONSHIP_SCORE.firstBingo, simultaneous:newBingoEntries.length });
   }
   if (champ.closingDrawnCount && drawCount >= champ.closingDrawnCount) {
-    finishChampionshipRound();
+    openChampionshipClosingClaimWindow();
     return championshipPublicPayload();
   }
   if (champ.stage === 'prepared') champ.stage = 'playing';
   champ.updatedAt = nowIso();
   return championshipPublicPayload();
+}
+
+function openChampionshipClosingClaimWindow() {
+  if (!championshipRoomEnabled() || !state.championship || !state.game) return false;
+  if (state.transition?.type === 'championship-round-closing') return true;
+  clearAutomaticDrawTimer();
+  clearWorkspaceTransitionTimer();
+  const startedAt = nowIso();
+  state.status = 'playing';
+  state.pauseReason = null;
+  state.game.phase = 'CHAMPIONSHIP_CLAIM_WINDOW';
+  state.transition = {
+    id: randomId('transition'),
+    type: 'championship-round-closing',
+    startedAt,
+    endsAt: new Date(Date.now() + CHAMPIONSHIP_FINAL_CLAIM_WINDOW_MS).toISOString(),
+    round: Number(state.championship.currentRound) || 1,
+    closingDrawnCount: Number(state.championship.closingDrawnCount) || state.game.drawn.length
+  };
+  logEvent('championship_final_claim_window_opened', {
+    round: Number(state.championship.currentRound) || 1,
+    balls: state.game.drawn.length,
+    graceMs: CHAMPIONSHIP_FINAL_CLAIM_WINDOW_MS
+  });
+  return true;
 }
 
 function createChampionshipClaim(player, payload = {}) {
@@ -7961,6 +7992,7 @@ function scheduleVirtualClaimResolution(windowId) {
 
 function drawNextBall(source = 'manual') {
   if (!state.active || !state.game) throw new Error('No hay una sala abierta.');
+  if (state.transition?.type === 'championship-round-closing') throw new Error('La última bolilla ya salió. Esperá a que termine la ventana para cantar Bingo.');
   if (state.status !== 'playing') throw new Error('La partida no está habilitada para extraer una bolilla.');
   if (state.claims.some(claim => claim.status === 'pending')) throw new Error('Hay reclamos pendientes de resolución.');
   clearAutomaticDrawTimer();
@@ -8004,7 +8036,7 @@ function drawNextBall(source = 'manual') {
   broadcast();
   if (state.status === 'paused' && state.pauseReason === 'automatic_prize' && state.prizeAnnouncement) scheduleAutomaticPrizeAnnouncement();
   else if (state.status === 'finalizing' && state.transition?.type === 'final-balls') scheduleTransition();
-  else if (state.transition?.type === 'last-ball-claim-window' || state.transition?.type === 'antibingo-tie-resolution') scheduleTransition();
+  else if (['last-ball-claim-window','antibingo-tie-resolution','championship-round-closing'].includes(state.transition?.type)) scheduleTransition();
   else if (state.status === 'paused' && state.pauseReason === 'claim' && automaticTieClaimsEnabled()) scheduleClaimAutoResume();
   else if (state.status === 'playing') scheduleAutomaticDraw();
   return adminPayload();
@@ -8279,6 +8311,11 @@ function completeTransition() {
   clearWorkspaceTransitionTimer();
   if (!state.active || !state.transition) return;
   const type = state.transition.type;
+  if (type === 'championship-round-closing') {
+    if (!championshipRoomEnabled() || !state.championship || !state.game) return;
+    if (state.game.drawn.length < Number(state.championship.closingDrawnCount || 0)) return;
+    return finishChampionshipRound();
+  }
   if (type === 'antibingo-tie-resolution') {
     if (!antibingoRoomEnabled() || state.antibingo?.stage !== 'resolving_tie') return;
     const winnerIds = new Set((state.antibingo.pendingWinnerCardIds || []).map(String));

@@ -164,6 +164,10 @@ const cardSignature = card => JSON.stringify(card?.grid || []);
       const draw = await raw('/api/admin/draw', { method: 'POST', token: admin, body: { source: 'championship-test' } });
       if (!draw.response.ok) break;
       anaState = await ok('/api/player/state', { playerToken: ana.token });
+      if (anaState.championship.closingClaims) {
+        await wait(35);
+        anaState = await ok('/api/player/state', { playerToken: ana.token });
+      }
       if (anaState.championship.betweenRounds) {
         closedRoundState = anaState;
         break;

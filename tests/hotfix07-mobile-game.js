@@ -6,5 +6,5 @@ assert(css.includes('.playerShell.gameMobile #lgLanguageSwitcher{display:none!im
 assert(css.includes('.playerShell.gameMobile #moreTool{display:grid!important')&&css.includes('.playerShell.gameMobile #fullscreenTool{display:none!important'),'Más debe ocupar el lugar de pantalla completa en la barra móvil');
 assert(css.includes('.mode75Game .ticket.m75 .cell{min-height:34px')&&css.includes('font-size:clamp(20px,6.2vw,25px)'),'el cartón 75 móvil debe ser más compacto sin achicar sus números');
 assert(js.includes('mode${total}Game'),'las pantallas deben marcar el modo para aplicar el ajuste sólo a 75');
-assert(/hotfix0[78]-/.test(html)&&html.includes('antibingo-resistance-20260828'),'player.html debe invalidar caché con la versión vigente');
+assert(/hotfix0[789]-/.test(html)&&html.includes('20260828'),'player.html debe invalidar caché con la versión vigente');
 console.log('HOTFIX07 MOBILE GAME: OK');

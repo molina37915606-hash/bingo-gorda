@@ -1,0 +1,15 @@
+EL BINGO DE LA GORDA · HOTFIX 09 · SOLO ACTUALIZACION
+Version: 9.3.21-hotfix09.1
+Base requerida: HOTFIX 08
+Fecha: 2026-08-28
+
+1. Hacer copia de seguridad del HOTFIX 08.
+2. Descomprimir este ZIP sobre la raiz del proyecto HOTFIX 08.
+3. Permitir reemplazar los archivos existentes.
+4. Reiniciar Node / el servicio de la plataforma.
+
+No hay archivos que borrar ni script adicional que ejecutar.
+
+Incluye ventana final de reclamo de Campeonato, animacion de posicion sobre el carton y celebracion del Campeon con corona + confeti.
+
+Ver HOTFIX_09_CAMPEONATO_CIERRE.md y MANIFIESTO_HOTFIX_09.txt.

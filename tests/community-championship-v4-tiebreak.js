@@ -39,7 +39,7 @@ function cornersCompletionBall(card,sequence){
 function bonusDiff(cardA,cardB,sequence){
   const aa=lineCompletionBalls(cardA,sequence),bb=lineCompletionBalls(cardB,sequence);
   const cmp=(a,b)=>a===b?0:(a<b?5:-5);
-  return cmp(aa[0],bb[0])+cmp(cornersCompletionBall(cardA,sequence),cornersCompletionBall(cardB,sequence))+cmp(aa[1],bb[1])+cmp(aa[2],bb[2]);
+  return cmp(aa[0],bb[0])+cmp(cornersCompletionBall(cardA,sequence),cornersCompletionBall(cardB,sequence))+cmp(aa[1],bb[1])+cmp(aa[2],bb[2])+cmp(aa[3],bb[3])+cmp(aa[4],bb[4]);
 }
 function shuffled(values){const out=[...values];for(let i=out.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[out[i],out[j]]=[out[j],out[i]]}return out}
 function equalBonusSequence(cardA,cardB){
@@ -64,9 +64,10 @@ async function forceEqualRound(admin,aToken,bToken){
     if(readyState.status==='playing')break;
     await sleep(20);
   }
-  for(let i=0;i<80;i++){
+  for(let i=0;i<100;i++){
     const before=await ok('/api/player/state',{playerToken:aToken});
     if(before.championship?.betweenRounds||before.championship?.inTiebreak||before.status==='finished')return before;
+    if(before.championship?.closingClaims){await sleep(190);continue}
     await ok('/api/admin/draw',{method:'POST',token:admin,body:{source:'v4-tiebreak-test'}});
   }
   throw new Error('La ronda controlada no cerró');

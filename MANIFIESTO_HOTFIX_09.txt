@@ -1,0 +1,16 @@
+EL BINGO DE LA GORDA · HOTFIX 09 · ARCHIVOS NUEVOS/MODIFICADOS
+
+HOTFIX_09_CAMPEONATO_CIERRE.md
+LEEME_ACTUALIZACION_HOTFIX_09.txt
+LEEME_RESPALDO_COMPLETO_HOTFIX_09.txt
+css/platform.css
+js/player.js
+package-lock.json
+package.json
+player.html
+server.js
+tests/community-championship-final-acta.js
+tests/community-championship-v4-tiebreak.js
+tests/community-championship.js
+tests/hotfix07-mobile-game.js
+tests/hotfix09-championship-close.js

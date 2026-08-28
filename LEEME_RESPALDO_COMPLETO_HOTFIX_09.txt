@@ -1,0 +1,10 @@
+EL BINGO DE LA GORDA · HOTFIX 09 · RESPALDO COMPLETO
+Version: 9.3.21-hotfix09.1
+Fecha: 2026-08-28
+
+Este paquete contiene el proyecto completo ya actualizado.
+No requiere aplicar HOTFIX anteriores ni ejecutar scripts de borrado.
+
+Cambio principal: cierre progresivo de Campeonato, ventana final para cantar Bingo en la quinta bolilla extra y animación de posición/campeón.
+
+Detalle técnico: HOTFIX_09_CAMPEONATO_CIERRE.md

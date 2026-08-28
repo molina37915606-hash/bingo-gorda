@@ -1,0 +1,14 @@
+EL BINGO DE LA GORDA · HOTFIX 10
+Versión 9.3.22-hotfix10.1
+
+OBJETIVO
+Hacer más visible el botón JUGAR SOLO en Comunidad sin alterar su tamaño, texto, posición ni funcionamiento.
+
+CAMBIO
+- Fondo violeta con mayor contraste.
+- Borde visible.
+- Sombra sutil.
+- Se corrige una regla CSS que quitaba el borde en móvil.
+
+La actualización puede aplicarse directamente sobre HOTFIX 09.
+No requiere borrar archivos ni ejecutar scripts adicionales.

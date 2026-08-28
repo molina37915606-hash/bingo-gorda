@@ -1,0 +1,17 @@
+HOTFIX 10 · BOTÓN JUGAR SOLO MÁS VISIBLE
+Versión: 9.3.22-hotfix10.1
+Base requerida para SOLO ACTUALIZACION: HOTFIX 09
+
+ARCHIVOS FUNCIONALES MODIFICADOS
+- comunidad.html
+
+METADATOS / DOCUMENTACIÓN / PRUEBA
+- package.json
+- package-lock.json
+- HOTFIX_10_BOTON_JUGAR_SOLO.md
+- LEEME_ACTUALIZACION_HOTFIX_10.txt
+- MANIFIESTO_HOTFIX_10.txt
+- tests/hotfix10-solo-button-contrast.js
+
+No hay archivos que borrar.
+No requiere script posterior.

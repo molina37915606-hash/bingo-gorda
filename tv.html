@@ -22,6 +22,10 @@
 
 .championshipHistory{display:none;min-height:0}.race.champHistoryActive{grid-template-columns:minmax(0,1fr) 285px;grid-template-rows:38px minmax(0,1fr)}.race.champHistoryActive .raceHead{grid-column:1/-1}.race.champHistoryActive .raceGrid{grid-column:1;grid-row:2}.race.champHistoryActive .championshipHistory{grid-column:2;grid-row:2;display:grid;grid-template-rows:auto minmax(0,1fr);gap:6px;min-height:0;padding:8px;border-radius:11px;background:#171326;border:1px solid #ffc92c35;overflow:hidden}.champHistoryHead{display:flex;justify-content:space-between;align-items:baseline;gap:7px}.champHistoryHead b{color:var(--gold);font-size:11px;letter-spacing:.07em}.champHistoryHead span{color:var(--muted);font-size:8px;font-weight:900}.champHistoryList{display:grid;align-content:start;gap:5px;overflow:hidden}.champHistoryRow{display:grid;grid-template-columns:23px minmax(0,1fr) auto;gap:6px;align-items:center;padding:5px 6px;border-radius:7px;background:#ffffff08;border:1px solid #ffffff0c}.champHistoryRow.first{border-color:#ffc92c55;background:#ffc92c10}.champHistoryRow.latest{box-shadow:inset 3px 0 var(--gold)}.champHistoryOrder{width:21px;height:21px;border-radius:6px;display:grid;place-items:center;background:#ffffff0b;color:#ffe078;font-size:8px;font-weight:1000}.champHistoryText{min-width:0}.champHistoryText b{display:block;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.champHistoryText small{display:block;margin-top:1px;color:var(--muted);font-size:7.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.champHistoryPts{font-size:8px;font-weight:1000;color:#ffe078;white-space:nowrap}@media(max-width:1150px){.race.champHistoryActive{grid-template-columns:minmax(0,1fr) 235px}.champHistoryRow{padding:4px}.champHistoryText small{display:none}}
 </style>
+
+<style id="hotfix05-antibingo-tv">
+.antibingoRaceCard{border-color:#ef587155!important;background:linear-gradient(145deg,#24131c,#14182a)!important}.antibingoRaceCard .antibingoMissing{color:#ff9aaa}.antibingoTvFinal h2{color:#ff8799}.antibingoTvWinnerList{margin-top:18px;display:grid;gap:8px}.antibingoTvWinner{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;background:#35131b;border:1px solid #ef587155}.antibingoTvWinner b{color:#ff8799}.antibingoTvWinner span{font-size:18px;font-weight:1000}.antibingoTvWinner strong{font-size:13px;color:#ffd7de}.antibingoTvSkull{display:grid;place-items:center;align-content:center;gap:16px;font-size:clamp(130px,18vw,260px);line-height:.8;color:#ff7187;text-shadow:0 0 50px #ef587155}.antibingoTvSkull small{font-size:18px;line-height:1.25;text-align:center;color:#e8d9df;font-weight:1000;letter-spacing:.08em}@media(max-height:760px){.antibingoTvSkull{font-size:125px}.antibingoTvWinner{padding:6px 8px}.antibingoTvWinner span{font-size:14px}}
+</style>
 </head>
 <body>
 <section id="entry" class="entry hidden">
@@ -54,6 +58,6 @@
 <div id="closingOverlay" class="closingOverlay"><section class="closingCard"><small>CIERRE DE PARTIDA</small><h2>Extracción final</h2><p id="closingText">Completando bolillas para el acta.</p><div id="closingBall" class="closingBall">—</div><div id="closingStats"></div><div class="closingProgress"><i id="closingProgressBar"></i></div></section></div>
 <div id="finalOverlay" class="finalOverlay"><section id="winnerBox" class="winnerBox"></section></div>
 <script src="/js/bingo-voice.js?v=final-internacional-voice-20260827-2"></script>
-<script src="/js/tv.js?v=v9-3-2-tv-simple-20260825"></script>
-<script src="/js/i18n.js?v=final-internacional-hotfix-20260827-2"></script></body>
+<script src="/js/tv.js?v=hotfix05-antibingo-20260828"></script>
+<script src="/js/i18n.js?v=final-internacional-hotfix05-antibingo-20260828"></script></body>
 </html>

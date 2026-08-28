@@ -376,6 +376,7 @@ function blankState() {
     communityRematch: null,
     championship: null,
     flash: null,
+    antibingo: null,
     createdAt: null,
     startedAt: null,
     endedAt: null,
@@ -546,6 +547,15 @@ function loadState(stateFile = OWNER_STATE_FILE) {
       merged.championship.firstBingoDrawnCount = Math.max(0, Number(merged.championship.firstBingoDrawnCount) || 0) || null;
       merged.championship.finalActaSha256 = /^[a-f0-9]{64}$/i.test(String(merged.championship.finalActaSha256 || '')) ? String(merged.championship.finalActaSha256).toLowerCase() : '';
     }
+    merged.antibingo = parsed.antibingo && typeof parsed.antibingo === 'object' && parsed.antibingo.enabled ? {
+      ...parsed.antibingo, enabled:true, version:1,
+      stage:['registration','starting','playing','finished'].includes(String(parsed.antibingo.stage||'')) ? String(parsed.antibingo.stage) : 'registration',
+      eliminated:Array.isArray(parsed.antibingo.eliminated) ? parsed.antibingo.eliminated.slice(0, MAX_ACTIVE_CARDS * 2) : [],
+      winnerCardIds:Array.isArray(parsed.antibingo.winnerCardIds) ? [...new Set(parsed.antibingo.winnerCardIds.map(String))].slice(0, MAX_ACTIVE_CARDS) : [],
+      winnerPlayerIds:Array.isArray(parsed.antibingo.winnerPlayerIds) ? [...new Set(parsed.antibingo.winnerPlayerIds.map(String))].slice(0, MAX_PLAYERS) : [],
+      tie:Boolean(parsed.antibingo.tie), winningBall:Number(parsed.antibingo.winningBall)||null,
+      startedAt:parsed.antibingo.startedAt||null, finishedAt:parsed.antibingo.finishedAt||null
+    } : null;
     merged.flash = parsed.flash && typeof parsed.flash === 'object' && parsed.flash.enabled ? {
       ...parsed.flash, enabled:true, version:1, minimumBalls:FLASH_MINIMUM_BALLS,
       stage:['registration','starting','playing','sudden_death','finished'].includes(String(parsed.flash.stage||'')) ? String(parsed.flash.stage) : 'registration',
@@ -582,7 +592,7 @@ function loadState(stateFile = OWNER_STATE_FILE) {
     merged.roomSettings.communityPublicId = String(merged.roomSettings.communityPublicId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
     merged.roomSettings.communityStartMode = ['manual','scheduled'].includes(String(merged.roomSettings.communityStartMode || '')) ? String(merged.roomSettings.communityStartMode) : '';
     merged.roomSettings.communityAccessType = merged.roomSettings.communityAccessType === 'private' ? 'private' : 'public';
-    merged.roomSettings.communityGameKind = ['championship','flash'].includes(merged.roomSettings.communityGameKind) ? merged.roomSettings.communityGameKind : 'normal';
+    merged.roomSettings.communityGameKind = ['championship','flash','antibingo'].includes(merged.roomSettings.communityGameKind) ? merged.roomSettings.communityGameKind : 'normal';
     merged.roomSettings.championshipRounds = CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(merged.roomSettings.championshipRounds)) ? Number(merged.roomSettings.championshipRounds) : 0;
     delete merged.roomSettings.championshipReactionBonus;
     merged.roomSettings.communityScheduleId = String(merged.roomSettings.communityScheduleId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
@@ -747,14 +757,14 @@ function normalizeCommunityPublicRoom(raw = {}) {
   const startsIso = startsAt && Number.isFinite(startsAt.getTime()) ? startsAt.toISOString() : '';
   const mode = Number(raw.mode) === 75 ? 75 : 90;
   const maxPlayers = Math.max(2, Math.min(30, Math.round(Number(raw.maxPlayers) || 20)));
-  const gameKind = ['championship','flash'].includes(raw.gameKind) ? raw.gameKind : 'normal';
+  const gameKind = ['championship','flash','antibingo'].includes(raw.gameKind) ? raw.gameKind : 'normal';
   const maxCardsPerPlayer = gameKind === 'flash' ? 1 : Math.max(1, Math.min(4, Math.round(Number(raw.maxCardsPerPlayer) || 2)));
   const championshipRounds = gameKind === 'championship' && CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(raw.championshipRounds)) ? Number(raw.championshipRounds) : 0;
   const linePrizeCount = gameKind === 'championship' && mode === 90 ? 2 : (mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(raw.linePrizeCount) || 1))) : 1);
   const requestedRules = raw.rules && typeof raw.rules === 'object' ? raw.rules : {};
   const rules = gameKind === 'championship'
     ? championshipRulesFor(mode)
-    : gameKind === 'flash'
+    : ['flash','antibingo'].includes(gameKind)
       ? roomRulesFor(mode, { ambocabeza:false, line:false, doubleLine:false, tripleLine:false, corners:false, bingo:false })
     : (mode === 90
       ? roomRulesFor(90, { ambocabeza:Boolean(requestedRules.ambocabeza), line:requestedRules.line !== false, bingo:true })
@@ -2161,7 +2171,7 @@ function broadcastPayload() {
   return {
     active: true, version: APP_PUBLIC_VERSION, status: state.status, pauseReason: state.pauseReason || null, roomCode: state.roomCode, round: state.round, demo: Boolean(currentWorkspace().isDemo || state.demo),
     playersTotal: state.players.length, playersReady: state.players.filter(player => player.selectionConfirmed).length, playersConnected: connectedPlayerIds().size,
-    roomSettings: state.roomSettings, transition: state.transition, prizeAnnouncement: automaticPrizeAnnouncementPayload(), prizeLabels: activePrizeLabelsFor(), publicClaims: publicClaimsPayload(), markingPolicy: markingPolicyPayload(), championship: championshipPublicPayload(null), flash: flashPublicPayload(null),
+    roomSettings: state.roomSettings, transition: state.transition, prizeAnnouncement: automaticPrizeAnnouncementPayload(), prizeLabels: activePrizeLabelsFor(), publicClaims: publicClaimsPayload(), markingPolicy: markingPolicyPayload(), championship: championshipPublicPayload(null), flash: flashPublicPayload(null), antibingo: antibingoPublicPayload(null),
     adminPresence: adminPresencePayload(), integrity: publicIntegrityPayload(),
     chat: { enabled: state.chat?.enabled !== false, locked: Boolean(state.chat?.locked), messages: (state.chat?.messages || []).slice(-CHAT_MAX_MESSAGES), audioMaxSeconds:CHAT_AUDIO_PRIVILEGED_MAX_SECONDS },
     game: { id: state.game.id, number: state.game.number, mode: state.game.mode, presenter: PRESENTER_ID, rules: state.game.rules, drawn: state.game.drawn, lastBall: state.game.drawn.at(-1) ?? null, drawTimestamps: state.game.drawTimestamps || {}, lastDrawnAt: state.game.lastDrawnAt || null, total: state.game.mode },
@@ -2331,6 +2341,7 @@ function playerPayload(player) {
     roomSettings: state.roomSettings,
     championship: championshipPublicPayload(player),
     flash: flashPublicPayload(player),
+    antibingo: antibingoPublicPayload(player),
     playerAd: currentWorkspace().isDemo ? { enabled:false, imageUrl:'', durationMs:10000, everyBalls:10 } : playerAdPublicPayload(),
     waitingGame: waitingGamePayload(),
     markingPolicy: markingPolicyPayload(),
@@ -2423,7 +2434,7 @@ function playerPayload(player) {
       marks: player.marks || {},
       autoMark: Boolean(player.autoMark),
       markingModeChosen: Boolean(player.markingModeChosen),
-      autoMarkForced: false,
+      autoMarkForced: antibingoRoomEnabled(),
       demoHuman: Boolean(player.demoHuman),
       notices: (player.notices || []).slice(-10)
     }
@@ -4575,6 +4586,121 @@ function ensureCurrentChampionshipRules() {
   }
 }
 
+function antibingoRoomEnabled() {
+  return Boolean(state?.active && state.roomSettings?.roomOrigin === 'community' && state.roomSettings?.communityGameKind === 'antibingo' && state.antibingo?.enabled);
+}
+
+function createAntibingoState() {
+  return {
+    enabled:true, version:1, stage:'registration', eliminated:[], winnerCardIds:[], winnerPlayerIds:[],
+    tie:false, winningBall:null, startedAt:null, finishedAt:null
+  };
+}
+
+function antibingoCardSlot(player, cardId) {
+  const index = Math.max(0, (player?.cardIds || []).findIndex(id => String(id) === String(cardId)));
+  return `C${index + 1}`;
+}
+
+function antibingoEliminationMap() {
+  return new Map((state.antibingo?.eliminated || []).map(item => [String(item.cardId || ''), item]));
+}
+
+function antibingoParticipants() {
+  if (!state.antibingo?.enabled || !state.game) return [];
+  const eliminated = antibingoEliminationMap();
+  const rows = [];
+  for (const player of (state.players || []).filter(item => item?.nameSet && !item.virtual && item.selectionConfirmed && !item.excludedFromRound)) {
+    for (const cardId of player.cardIds || []) {
+      const card = state.game.cards.find(item => String(item.id) === String(cardId));
+      if (!card) continue;
+      const analysis = analyzeCard(card, state.game.drawn || [], []);
+      const dead = eliminated.get(String(card.id)) || null;
+      rows.push({
+        playerId:String(player.id || ''), playerName:playerDisplayName(player), cardId:String(card.id),
+        cardNumber:Number(card.eventCardNumber)||card.number, positionLabel:antibingoCardSlot(player, card.id),
+        missing:Math.max(0, Number(analysis.bingoMissing) || 0), eliminated:Boolean(dead),
+        eliminatedAt:dead?.eliminatedAt || null, eliminatedDrawCount:Math.max(0, Number(dead?.eliminatedDrawCount)||0),
+        eliminatedBall:Number(dead?.eliminatedBall)||null
+      });
+    }
+  }
+  return rows;
+}
+
+function antibingoPublicPayload(player = null) {
+  if (!state.antibingo?.enabled) return null;
+  const all = antibingoParticipants();
+  const alive = all.filter(item => !item.eliminated).sort((a,b) => a.missing-b.missing || String(a.playerName).localeCompare(String(b.playerName),'es') || String(a.positionLabel).localeCompare(String(b.positionLabel)));
+  const recent = all.filter(item => item.eliminated).sort((a,b) => new Date(b.eliminatedAt||0)-new Date(a.eliminatedAt||0)).slice(0,5);
+  const winnerIds = new Set((state.antibingo.winnerCardIds || []).map(String));
+  const winners = all.filter(item => winnerIds.has(String(item.cardId))).map(item => ({...item, winner:true}));
+  const ownCards = player ? all.filter(item => String(item.playerId) === String(player.id)).map(item => ({...item, winner:winnerIds.has(String(item.cardId))})) : [];
+  return {
+    enabled:true, version:1, stage:state.antibingo.stage, finished:state.antibingo.stage === 'finished',
+    aliveCount:alive.length, totalCards:all.length, eliminatedCount:Math.max(0, all.length-alive.length),
+    tie:Boolean(state.antibingo.tie), winningBall:Number(state.antibingo.winningBall)||null,
+    survivors:alive.slice(0,30), recentEliminations:recent, ownCards, winners,
+    winnerCardIds:[...(state.antibingo.winnerCardIds||[])], winnerPlayerIds:[...(state.antibingo.winnerPlayerIds||[])]
+  };
+}
+
+function finalizeAntibingo(winnerRows = [], { tie = false, winningBall = null } = {}) {
+  if (!state.antibingo?.enabled || state.antibingo.stage === 'finished') return antibingoPublicPayload(null);
+  clearAutomaticDrawTimer(); clearWorkspaceTransitionTimer(); clearAutomaticPrizeAnnouncementTimer();
+  const winners = (winnerRows || []).filter(Boolean);
+  state.antibingo.stage = 'finished';
+  state.antibingo.tie = Boolean(tie);
+  state.antibingo.winningBall = Number(winningBall)||null;
+  state.antibingo.winnerCardIds = [...new Set(winners.map(item => String(item.cardId || '')).filter(Boolean))];
+  state.antibingo.winnerPlayerIds = [...new Set(winners.map(item => String(item.playerId || '')).filter(Boolean))];
+  state.antibingo.finishedAt = nowIso();
+  state.status = 'finished'; state.pauseReason = null; state.endedAt = state.antibingo.finishedAt; state.transition = null; state.game.phase = 'ANTIBINGO_FINISHED';
+  logEvent('antibingo_finished', { tie:Boolean(tie), winnerCardIds:state.antibingo.winnerCardIds, winnerPlayerIds:state.antibingo.winnerPlayerIds, winningBall:state.antibingo.winningBall, balls:state.game.drawn.length });
+  archiveCurrentResults();
+  syncCommunityPublicRecordFromState('finished');
+  saveState(); broadcast();
+  return antibingoPublicPayload(null);
+}
+
+function processAntibingoAfterDraw() {
+  if (!antibingoRoomEnabled() || state.antibingo.stage === 'finished') return null;
+  if (!['playing','starting'].includes(state.antibingo.stage)) state.antibingo.stage = 'playing';
+  const before = antibingoParticipants().filter(item => !item.eliminated);
+  const existing = antibingoEliminationMap();
+  const currentBall = Number(state.game.drawn.at(-1)) || null;
+  const drawCount = state.game.drawn.length;
+  const now = nowIso();
+  const newly = [];
+  for (const item of before) {
+    if (item.missing !== 0 || existing.has(String(item.cardId))) continue;
+    const record = { cardId:item.cardId, playerId:item.playerId, playerName:item.playerName, cardNumber:item.cardNumber, positionLabel:item.positionLabel, eliminatedAt:now, eliminatedDrawCount:drawCount, eliminatedBall:currentBall };
+    state.antibingo.eliminated.push(record); newly.push(record);
+  }
+  if (newly.length) logEvent('antibingo_cards_eliminated', { ball:currentBall, drawCount, cards:newly.map(item => ({ cardId:item.cardId, playerId:item.playerId, positionLabel:item.positionLabel })) });
+  const after = antibingoParticipants().filter(item => !item.eliminated);
+  if (before.length > 1 && after.length === 1) return finalizeAntibingo(after, { tie:false, winningBall:currentBall });
+  if (before.length > 0 && after.length === 0) {
+    const lastIds = new Set(before.map(item => String(item.cardId)));
+    const tied = antibingoParticipants().filter(item => lastIds.has(String(item.cardId)));
+    return finalizeAntibingo(tied, { tie:true, winningBall:currentBall });
+  }
+  return antibingoPublicPayload(null);
+}
+
+function rivalsAntibingoPayload(viewer) {
+  const payload = antibingoPublicPayload(viewer);
+  if (!payload) return { enabled:false, mode:'antibingo', alertCount:0, items:[], recentEliminations:[] };
+  const viewerId = String(viewer?.id || '');
+  const decorate = item => ({ ...item, own:String(item.playerId||'') === viewerId, alert:Number(item.missing) === 1 });
+  return {
+    enabled:true, mode:'antibingo', aliveCount:payload.aliveCount, totalCards:payload.totalCards, eliminatedCount:payload.eliminatedCount,
+    alertCount:payload.survivors.filter(item => Number(item.missing) === 1).length,
+    updatedDrawCount:(state.game?.drawn||[]).length, items:payload.survivors.map(decorate).slice(0,30),
+    recentEliminations:payload.recentEliminations.map(decorate)
+  };
+}
+
 function flashRoomEnabled() {
   return Boolean(state?.active && state.roomSettings?.roomOrigin === 'community' && state.roomSettings?.communityGameKind === 'flash' && state.flash?.enabled);
 }
@@ -5887,7 +6013,7 @@ function createSimpleRoom(payload = {}) {
   const communitySchedule = communityScheduleId ? communityScheduledGames().find(item => item.id === communityScheduleId) : null;
   if (communityScheduleId && !communitySchedule) throw new Error('La partida programada ya no existe. Volvé a abrir la Agenda.');
   // Final: 4 cartones por defecto. Solo Manual fuerza máximo 2.
-  const communityGameKind = payload.roomOrigin === 'community' && ['championship','flash'].includes(payload.communityGameKind) ? payload.communityGameKind : 'normal';
+  const communityGameKind = payload.roomOrigin === 'community' && ['championship','flash','antibingo'].includes(payload.communityGameKind) ? payload.communityGameKind : 'normal';
   const roomMaxCards = communityGameKind === 'flash' ? 1 : (markingMode === 'manual_only'
     ? 2
     : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Number(payload.maxCardsPerPlayer) || 4)));
@@ -5926,7 +6052,8 @@ function createSimpleRoom(payload = {}) {
     drawOrder: createSecureDrawOrder(game.mode), game, players: [], cardReservations: {}, claims: [], eventLog: [],
     chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} },
     championship: communityGameKind === 'championship' ? createChampionshipState(payload, game.mode) : null,
-    flash: communityGameKind === 'flash' ? createFlashState() : null
+    flash: communityGameKind === 'flash' ? createFlashState() : null,
+    antibingo: communityGameKind === 'antibingo' ? createAntibingoState() : null
   });
   if (communitySchedule) {
     communitySchedule.mode = Number(game.mode) === 75 ? 75 : 90;
@@ -6358,6 +6485,18 @@ function championshipBroadcastRaceForCard(card, analysis, target) {
 function highlightedBroadcastCards() {
   if (!state.game || state.roomSettings?.transmission?.showCards === false) return [];
   const connected = connectedPlayerIds();
+  if (antibingoRoomEnabled()) {
+    const drawn = new Set((state.game.drawn || []).map(Number));
+    return antibingoParticipants().filter(item => !item.eliminated).sort((a,b) => a.missing-b.missing || String(a.playerName).localeCompare(String(b.playerName),'es')).slice(0,6).map((item,index) => {
+      const card = state.game.cards.find(candidate => String(candidate.id) === String(item.cardId));
+      return card ? {
+        playerId:item.playerId, playerName:item.playerName, connected:connected.has(item.playerId), cardId:item.cardId,
+        cardNumber:item.cardNumber, positionLabel:item.positionLabel, grid:card.grid, mode:card.mode, rank:index+1, score:item.missing,
+        antibingo:true, racePrizeType:'antibingo', racePrizeNumber:1, racePrizeLabel:'QUEDAR AFUERA', raceMissing:item.missing,
+        lineMissing:0, bingoMissing:item.missing, marked:cardNumbers(card).filter(number => drawn.has(Number(number)))
+      } : null;
+    }).filter(Boolean);
+  }
   if (flashRoomEnabled()) {
     const board = flashLeaderboard();
     const drawn = new Set((state.game.drawn || []).map(Number));
@@ -6518,6 +6657,7 @@ function rivalsFlashPayload(viewer) {
 function rivalsPayloadFor(viewer) {
   if (!state.active || !state.game || !viewer || !['starting','playing','paused','verifying','resuming','finalizing','finished'].includes(state.status)) return { enabled:false, mode:'', alertCount:0, items:[] };
   const cacheKey = `${currentWorkspace().id}:${Number(state.revision)||0}:${state.game.id}:${state.status}`;
+  if (antibingoRoomEnabled()) return rivalsAntibingoPayload(viewer);
   if (rivalsPayloadFor.cacheKey !== cacheKey) {
     let mode = 'normal', items = [];
     if (state.flash?.enabled) { mode = 'flash'; items = rivalsFlashPayload(null); }
@@ -7704,12 +7844,13 @@ function drawNextBall(source = 'manual') {
   let automaticAwards = [];
   if (championshipRoomEnabled()) processChampionshipAfterDraw();
   else if (flashRoomEnabled()) processFlashAfterDraw();
+  else if (antibingoRoomEnabled()) processAntibingoAfterDraw();
   else {
     automaticAwards = processAutomaticClaimsForCurrentBall();
     if (!automaticAwards.length) scheduleVirtualPlayerClaims();
   }
   scheduleSimulatedAiChat();
-  if (!championshipRoomEnabled() && !flashRoomEnabled() && state.game.drawn.length >= state.game.mode && state.status === 'playing') {
+  if (!championshipRoomEnabled() && !flashRoomEnabled() && !antibingoRoomEnabled() && state.game.drawn.length >= state.game.mode && state.status === 'playing') {
     const graceMs = currentWorkspace().isDemo
       ? Math.max(CLAIM_QUEUE_WINDOW_MS, DEMO_CLAIM_WINDOW_MS + 600)
       : FINAL_CLAIM_GRACE_MS;
@@ -7739,10 +7880,11 @@ function setTestDrawOrder(payload = {}) {
   const demoBeforeFirstBall = currentWorkspace().isDemo && state.status === 'starting' && beforeFirstBall;
   const championshipBeforeFirstBall = championshipRoomEnabled() && ['starting','playing'].includes(state.status) && beforeFirstBall;
   const flashBeforeFirstBall = flashRoomEnabled() && ['starting','playing'].includes(state.status) && beforeFirstBall;
-  if (!state.active || !state.game || (state.status !== 'waiting' && !demoBeforeFirstBall && !championshipBeforeFirstBall && !flashBeforeFirstBall)) throw new Error('El orden de prueba solo puede fijarse antes de la primera bolilla.');
+  const antibingoBeforeFirstBall = antibingoRoomEnabled() && ['starting','playing'].includes(state.status) && beforeFirstBall;
+  if (!state.active || !state.game || (state.status !== 'waiting' && !demoBeforeFirstBall && !championshipBeforeFirstBall && !flashBeforeFirstBall && !antibingoBeforeFirstBall)) throw new Error('El orden de prueba solo puede fijarse antes de la primera bolilla.');
   const prefix = uniqueNumbers(payload.sequence || []).filter(number => number >= 1 && number <= state.game.mode);
   state.drawOrder = createSecureDrawOrder(state.game.mode, prefix);
-  if ((championshipBeforeFirstBall || flashBeforeFirstBall) && state.game?.integrity) state.game.integrity.drawOrderCommitment = crypto.createHash('sha256').update(state.drawOrder.join(',')).digest('hex');
+  if ((championshipBeforeFirstBall || flashBeforeFirstBall || antibingoBeforeFirstBall) && state.game?.integrity) state.game.integrity.drawOrderCommitment = crypto.createHash('sha256').update(state.drawOrder.join(',')).digest('hex');
   state.testDrawOrderFixed = true;
   logEvent('test_draw_order_set', { prefix });
   saveState();
@@ -8048,6 +8190,11 @@ function completeTransition() {
       state.championship.roundStartedAt ||= nowIso();
       state.championship.updatedAt = nowIso();
     }
+    if (antibingoRoomEnabled()) {
+      state.antibingo.stage = 'playing';
+      state.antibingo.startedAt ||= nowIso();
+      state.game.phase = state.game.drawMode === 'automatic' ? 'ANTIBINGO_DRAWING' : 'ANTIBINGO_READY';
+    }
     if (flashRoomEnabled()) {
       state.flash.stage = 'playing';
       state.flash.startedAt ||= nowIso();
@@ -8090,8 +8237,8 @@ function startRoom(payload = {}) {
     const eligible = playerEligibleForRound(player);
     player.excludedFromRound = !eligible;
     if (!eligible) continue;
-    // Flash siempre usa marcado oficial del servidor. En los demás modos se respeta la elección del jugador.
-    if (flashRoomEnabled()) {
+    // Flash y Antibingo siempre usan marcado oficial del servidor. En los demás modos se respeta la elección del jugador.
+    if (flashRoomEnabled() || antibingoRoomEnabled()) {
       player.markingModeChosen = true;
       player.autoMark = true;
     } else if (!player.markingModeChosen) {
@@ -8114,6 +8261,7 @@ function startRoom(payload = {}) {
   };
   state.game.integrity = { lockedAt: nowIso(), configurationSha256: crypto.createHash('sha256').update(JSON.stringify(lockedConfiguration)).digest('hex'), drawOrderCommitment: crypto.createHash('sha256').update(state.drawOrder.join(',')).digest('hex') };
   if (championshipRoomEnabled()) { lockChampionshipRoundIntegrity(); state.championship.stage = 'starting'; state.championship.roundStartedAt ||= nowIso(); }
+  if (antibingoRoomEnabled()) { state.antibingo.stage = 'starting'; state.antibingo.startedAt ||= nowIso(); }
   state.cardReservations = {}; for (const player of state.players) player.reservedCardIds = [];
   state.assignmentTimer = { ...(state.assignmentTimer || blankState().assignmentTimer), status: 'completed', endsAt: null, remainingMs: 0, completedAt: state.assignmentTimer?.completedAt || nowIso() };
   const startedAt = nowIso(); const largeRoomNotice = !championshipRoomEnabled() && !flashRoomEnabled() && !forcedSimulationStart && state.players.length > LARGE_ROOM_NOTICE_THRESHOLD; const largeRoomNoticeMs = largeRoomNotice ? (TEST_MODE ? 30 : LARGE_ROOM_NOTICE_MS) : 0;
@@ -8285,8 +8433,9 @@ function archiveCurrentResults() {
     round: state.round,
     mode: state.game.mode,
     claimMode: state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
-    gameKind: ['championship','flash'].includes(state.roomSettings?.communityGameKind) ? state.roomSettings.communityGameKind : 'normal',
+    gameKind: ['championship','flash','antibingo'].includes(state.roomSettings?.communityGameKind) ? state.roomSettings.communityGameKind : 'normal',
     flash: state.flash?.enabled ? { winnerPlayerId:String(state.flash.winnerPlayerId||''), winningBall:Number(state.flash.winningBall)||null, leaderboard:deepCopy(flashLeaderboard()) } : null,
+    antibingo: state.antibingo?.enabled ? deepCopy(antibingoPublicPayload(null)) : null,
     createdAt: state.createdAt,
     startedAt: state.startedAt,
     endedAt: state.endedAt,
@@ -9511,6 +9660,7 @@ function actaPayload() {
     championship: state.championship?.enabled ? deepCopy({ ...state.championship, leaderboard:championshipLeaderboard(), roundLeaderboard:championshipRoundLeaderboard() }) : null,
     championshipReport: state.championship?.enabled ? championshipReportPayload() : null,
     flash: state.flash?.enabled ? deepCopy(flashPublicPayload(null)) : null,
+    antibingo: state.antibingo?.enabled ? deepCopy(antibingoPublicPayload(null)) : null,
     categories: Object.fromEntries(Object.entries(categories).map(([key, category]) => [key, { ...category, status: !category.enabled ? 'not_drawn' : category.winners.length ? 'confirmed' : 'no_confirmed_winner' }]))
   };
 }
@@ -10846,6 +10996,7 @@ function publicRoomPayload(record) {
   const broadcastAlias = room ? normalizeBroadcastAlias(room.roomSettings?.broadcastAlias) : '';
   const championship = room?.championship?.enabled && workspace ? workspaceContext.run(workspace, () => championshipPublicPayload(null)) : null;
   const flash = room?.flash?.enabled && workspace ? workspaceContext.run(workspace, () => flashPublicPayload(null)) : null;
+  const antibingo = room?.antibingo?.enabled && workspace ? workspaceContext.run(workspace, () => antibingoPublicPayload(null)) : null;
   // Comunidad muestra inscriptos, no conexiones activas. Una desconexión SSE, cambio de app
   // o pestaña cerrada no altera este número; solo un abandono explícito elimina al jugador
   // antes de comenzar. Usamos el mismo resumen de inscripción que ve el creador.
@@ -10858,17 +11009,18 @@ function publicRoomPayload(record) {
     name: record.name,
     creatorName: record.creatorName,
     mode: record.mode,
-    gameKind: ['championship','flash'].includes(record.gameKind) ? record.gameKind : 'normal',
+    gameKind: ['championship','flash','antibingo'].includes(record.gameKind) ? record.gameKind : 'normal',
     championshipRounds: record.gameKind === 'championship' ? (CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(record.championshipRounds)) ? Number(record.championshipRounds) : CHAMPIONSHIP_DEFAULT_ROUNDS) : 0,
     championship,
     flash,
+    antibingo,
     maxPlayers: record.maxPlayers,
     maxCardsPerPlayer: record.maxCardsPerPlayer,
     autoSeconds: record.autoSeconds,
     claimMode: record.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
     linePrizeCount: record.linePrizeCount,
     rules: record.rules,
-    prizeLabels: activePrizeLabelsFor(record.mode, record.rules, record.linePrizeCount),
+    prizeLabels: record.gameKind === 'antibingo' ? [] : activePrizeLabelsFor(record.mode, record.rules, record.linePrizeCount),
     startMode: record.startMode,
     startsAt: record.startsAt || '',
     opensAt: record.startMode === 'scheduled' && record.startsAt ? new Date(new Date(record.startsAt).getTime() - COMMUNITY_PUBLIC_OPEN_MS).toISOString() : '',
@@ -10994,7 +11146,7 @@ function openCommunityPublicRoom(record, { autoJoinCreator = false, deviceId = '
       hostName: record.creatorName,
       roomName: record.name,
       communityPublicId: record.id,
-      communityGameKind: ['championship','flash'].includes(record.gameKind) ? record.gameKind : 'normal',
+      communityGameKind: ['championship','flash','antibingo'].includes(record.gameKind) ? record.gameKind : 'normal',
       championshipRounds: record.gameKind === 'championship' ? record.championshipRounds : 0,
         communityStartMode: record.startMode,
       communityAccessType: record.accessType,
@@ -11033,7 +11185,7 @@ function createCommunityPublicRoom(payload = {}) {
   const roomName = normalizeCommunityRoomName(payload.roomName, creatorName);
   const mode = Number(payload.mode) === 75 ? 75 : 90;
   const maxPlayers = Math.max(2, Math.min(availability.maxPlayers, Math.round(Number(payload.maxPlayers) || Math.min(20, availability.maxPlayers))));
-  const requestedGameKind = ['championship','flash'].includes(payload.gameKind) ? payload.gameKind : 'normal';
+  const requestedGameKind = ['championship','flash','antibingo'].includes(payload.gameKind) ? payload.gameKind : 'normal';
   const maxCardsPerPlayer = requestedGameKind === 'flash' ? 1 : Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
   const gameKind = requestedGameKind;
   const autoSeconds = gameKind === 'championship' ? CHAMPIONSHIP_AUTO_SECONDS : gameKind === 'flash' ? FLASH_AUTO_SECONDS : Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
@@ -11043,9 +11195,9 @@ function createCommunityPublicRoom(payload = {}) {
     if (!CHAMPIONSHIP_ROUND_OPTIONS.includes(requestedRounds)) throw new Error('Elegí 3, 5 o 7 rondas para el Campeonato.');
     championshipRounds = requestedRounds;
   }
-  const linePrizeCount = gameKind === 'championship' && mode === 90 ? 2 : (gameKind === 'flash' ? 1 : (mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1));
+  const linePrizeCount = gameKind === 'championship' && mode === 90 ? 2 : (['flash','antibingo'].includes(gameKind) ? 1 : (mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1));
   const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};
-  const rules = gameKind === 'championship' ? championshipRulesFor(mode) : gameKind === 'flash' ? roomRulesFor(mode, { ambocabeza:false, line:false, doubleLine:false, tripleLine:false, corners:false, bingo:false }) : (mode === 90
+  const rules = gameKind === 'championship' ? championshipRulesFor(mode) : ['flash','antibingo'].includes(gameKind) ? roomRulesFor(mode, { ambocabeza:false, line:false, doubleLine:false, tripleLine:false, corners:false, bingo:false }) : (mode === 90
     ? roomRulesFor(90, { ambocabeza:Boolean(requestedRules.ambocabeza), line:requestedRules.line !== false, bingo:true })
     : roomRulesFor(75, { line:requestedRules.line !== false, corners:Boolean(requestedRules.corners), doubleLine:Boolean(requestedRules.doubleLine), tripleLine:Boolean(requestedRules.tripleLine), bingo:true }));
   const accessType = payload.accessType === 'private' ? 'private' : 'public';
@@ -11067,7 +11219,7 @@ function createCommunityPublicRoom(payload = {}) {
   const record = normalizeCommunityPublicRoom({
     id: randomId('public'), name:roomName, creatorName, creatorCodeHash, creatorCodeAdmin:creatorCode, accessType, accessKeyHash, accessKeyAdmin:accessKey, inviteToken:randomId('invite'), startMode, startsAt,
     mode, gameKind, championshipRounds, maxPlayers, maxCardsPerPlayer, autoSeconds,
-    claimMode: ['championship','flash'].includes(gameKind) ? 'manual' : (payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual'), linePrizeCount, rules,
+    claimMode: ['championship','flash','antibingo'].includes(gameKind) ? 'manual' : (payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual'), linePrizeCount, rules,
     status:'scheduled', createdAt:nowIso(), updatedAt:nowIso()
   });
   communityPublicRooms().push(record);
@@ -11290,7 +11442,7 @@ function recoverCommunityCreator(payload = {}) {
       }));
     return {
       token:'', organizer:true, roomCode:state.roomCode, publicId:record.id, status:state.status,
-      name:record.name, mode:record.mode, gameKind:record.gameKind||'normal', championshipRounds:Number(record.championshipRounds)||0, championship:championshipPublicPayload(null), flash:flashPublicPayload(null), claimMode:state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
+      name:record.name, mode:record.mode, gameKind:record.gameKind||'normal', championshipRounds:Number(record.championshipRounds)||0, championship:championshipPublicPayload(null), flash:flashPublicPayload(null), antibingo:antibingoPublicPayload(null), claimMode:state.roomSettings?.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual', maxPlayers:record.maxPlayers, startMode:record.startMode, startsAt:record.startsAt || '',
       playerCount:summary.registeredPlayers, cardCount:summary.playingCards,
       pendingSelectionPlayers:players.filter(item => !item.ready).length, players,
       enterUrl:communityCreatorShareUrl(record), shareUrl:communityCreatorShareUrl(record),
@@ -11612,7 +11764,7 @@ function restartCommunityRoomForRematch(creatorPlayer) {
   createSimpleRoom({
     mode:record.mode, cardCount:normalizedGeneratedCount(Math.max(25, Math.min(100, record.maxPlayers * record.maxCardsPerPlayer + 20))),
     autoSeconds:record.autoSeconds, rules:record.rules, linePrizeCount:record.linePrizeCount, claimMode:record.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
-    markingMode:'normal', maxCardsPerPlayer:record.gameKind==='flash'?1:record.maxCardsPerPlayer, roomOrigin:'community', communityGameKind:['championship','flash'].includes(record.gameKind)?record.gameKind:'normal',
+    markingMode:'normal', maxCardsPerPlayer:record.gameKind==='flash'?1:record.maxCardsPerPlayer, roomOrigin:'community', communityGameKind:['championship','flash','antibingo'].includes(record.gameKind)?record.gameKind:'normal',
     hostName:record.creatorName, roomName:record.name, communityPublicId:record.id, communityStartMode:'manual', communityAccessType:record.accessType,
     maxOpenPlayers:record.maxPlayers
   });
@@ -11690,14 +11842,16 @@ function createCommunityPrivateRoom(payload = {}) {
   const hostName = normalizeCommunityName(payload.name);
   const mode = Number(payload.mode) === 75 ? 75 : 90;
   const maxPlayers = Math.max(2, Math.min(availability.maxPlayers, Math.round(Number(payload.maxPlayers) || Math.min(20, availability.maxPlayers))));
-  const requestedGameKind = ['championship','flash'].includes(payload.gameKind) ? payload.gameKind : 'normal';
+  const requestedGameKind = ['championship','flash','antibingo'].includes(payload.gameKind) ? payload.gameKind : 'normal';
   const maxCardsPerPlayer = requestedGameKind === 'flash' ? 1 : Math.max(1, Math.min(availability.maxCardsPerPlayer, Math.round(Number(payload.maxCardsPerPlayer) || availability.maxCardsPerPlayer)));
   const autoSeconds = requestedGameKind === 'championship' ? CHAMPIONSHIP_AUTO_SECONDS : requestedGameKind === 'flash' ? FLASH_AUTO_SECONDS : Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
   const linePrizeCount = mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1;
   const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};
-  const rules = mode === 90
-    ? roomRulesFor(90, { ambocabeza: Boolean(requestedRules.ambocabeza), line: requestedRules.line !== false, bingo: true })
-    : roomRulesFor(75, { line: requestedRules.line !== false, corners: Boolean(requestedRules.corners), doubleLine: Boolean(requestedRules.doubleLine), tripleLine: Boolean(requestedRules.tripleLine), bingo: true });
+  const rules = requestedGameKind === 'antibingo' || requestedGameKind === 'flash'
+    ? roomRulesFor(mode, { ambocabeza:false, line:false, doubleLine:false, tripleLine:false, corners:false, bingo:false })
+    : mode === 90
+      ? roomRulesFor(90, { ambocabeza: Boolean(requestedRules.ambocabeza), line: requestedRules.line !== false, bingo: true })
+      : roomRulesFor(75, { line: requestedRules.line !== false, corners: Boolean(requestedRules.corners), doubleLine: Boolean(requestedRules.doubleLine), tripleLine: Boolean(requestedRules.tripleLine), bingo: true });
   const cardCount = normalizedGeneratedCount(Math.max(25, Math.min(100, maxPlayers * maxCardsPerPlayer + 20)));
   const workspace = freeOperationalWorkspace();
   if (!workspace) throw new Error('No hay una sala disponible.');
@@ -11709,10 +11863,11 @@ function createCommunityPrivateRoom(payload = {}) {
       autoSeconds,
       rules,
       linePrizeCount,
-      claimMode: payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual',
-      markingMode: 'normal',
+      claimMode: requestedGameKind === 'antibingo' || requestedGameKind === 'flash' ? 'manual' : (payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual'),
+      markingMode: requestedGameKind === 'antibingo' || requestedGameKind === 'flash' ? 'server_auto' : 'normal',
       maxCardsPerPlayer,
       roomOrigin: 'community',
+      communityGameKind: requestedGameKind,
       hostName,
       maxOpenPlayers: maxPlayers
     });

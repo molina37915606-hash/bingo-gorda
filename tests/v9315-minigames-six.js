@@ -18,7 +18,7 @@ assert(html.includes('.gamesRow{grid-template-columns:repeat(3,minmax(0,1fr))}')
 assert(html.includes('@media(max-width:720px){.gamesRow{display:grid!important;grid-template-columns:1fr!important'),'Móvil debe apilar los minijuegos.');
 assert(community.includes('function play21(')&&community.includes('function startGhostRound(')&&community.includes('function playSecret(')&&community.includes('function startIntruderRound('),'Falta lógica de algún minijuego nuevo.');
 assert(server.includes("const COMMUNITY_MINIGAME_TYPES = ['red_black','higher_lower','gorda_21','ghost_ball','secret_number','intruder_ball']"),'Servidor debe reconocer los seis rankings.');
-assert(/\/js\/community\.js\?v=(?:v9-3-(?:15-seis-minijuegos|17-hotfix-21)-20260826|final-minijuegos-20260826)/.test(html),'Community debe conservar una versión de caché compatible con los seis minijuegos.');
+assert(html.includes('/js/community.js?v=solo-community-20260828'),'Community debe conservar una versión de caché compatible con los seis minijuegos.');
 
 const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'gorda-v9315-'));
 const port=19500+Math.floor(Math.random()*300);

@@ -608,3 +608,15 @@ html[data-theme=day] .creatorRoster{background:#f5f3fa}.creatorRosterRow{border-
 html[data-theme="day"] .antibingoBar{background:linear-gradient(135deg,#fff1f3,#fff 62%,#f7f0ff)}html[data-theme="day"] .antibingoBar b{color:#1d1420}html[data-theme="day"] .antibingoBar span{color:#5f5360}html[data-theme="day"] .antibingoObjective{background:#f3f6fa}html[data-theme="day"] .antibingoSurvivorSummary{background:#f1f4f9}
 @media(max-width:720px){.antibingoBar{padding:8px 9px;grid-template-columns:minmax(0,1fr) 88px;margin-bottom:5px}.antibingoBar b{font-size:16px}.antibingoBar span{font-size:7px}.antibingoLiveCount{min-width:0;padding:7px}.antibingoLiveCount strong{font-size:18px}.antibingoObjective{padding:7px 8px;display:block}.antibingoObjective span{display:block;margin-top:3px;text-align:left}.antibingoEliminatedBanner{font-size:24px;padding:7px 13px}.antibingoSkullFx span{width:92px;height:92px;font-size:50px}.antibingoTabs .antibingoTab{min-width:59px;padding-inline:7px}}
 @media(prefers-reduced-motion:reduce){.antibingoSkullFx.play{animation:none;bottom:37%;opacity:1;transform:translateX(-50%) scale(1)}.antibingoFinalHit{animation:none!important}}
+
+/* === HOTFIX 06 · MODO SOLITARIO + 6 MINIJUEGOS ============================= */
+.miniTabs.six{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.miniTabs.six button{min-width:0;padding:8px 7px;font-size:8px;line-height:1.15;white-space:normal}
+.miniCard.numberMini{font-size:clamp(28px,7vw,54px);font-weight:1000;letter-spacing:-.035em;color:#ffe17a;background:radial-gradient(circle at 50% 32%,#293149,#101525 68%);border-color:#ffffff22}
+.waitingSecretForm{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;width:min(300px,100%)}
+.waitingSecretForm input{min-width:0;border:1px solid var(--line);border-radius:10px;background:#090f1f;color:var(--text);padding:9px 10px;font:inherit;font-weight:900;outline:none}
+.waitingSecretForm input:focus{border-color:#8c45cf;box-shadow:0 0 0 3px #8c45cf22}
+.waitingSecretForm button,.miniChoices [data-mini-ghost],.miniChoices [data-mini-intruder]{min-width:52px}
+html[data-theme="day"] .miniCard.numberMini{background:radial-gradient(circle at 50% 32%,#fff,#e8edf5 70%);color:#6e3aaa}
+html[data-theme="day"] .waitingSecretForm input{background:#fff;color:#1c2430}
+@media(max-width:620px){.miniTabs.six{grid-template-columns:repeat(2,minmax(0,1fr))}.miniTabs.six button{font-size:7px}.waitingSecretForm{grid-template-columns:1fr}.miniChoices [data-mini-ghost],.miniChoices [data-mini-intruder]{min-width:46px;padding-inline:8px}}

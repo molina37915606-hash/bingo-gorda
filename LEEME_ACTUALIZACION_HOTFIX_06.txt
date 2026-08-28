@@ -1,0 +1,25 @@
+EL BINGO DE LA GORDA · HOTFIX 06
+MODO SOLITARIO + 6 MINIJUEGOS
+
+TIPO DE PAQUETE: ACTUALIZACION SOLAMENTE
+BASE ESPERADA: HOTFIX 05 ANTIBINGO COMPLETO
+VERSION RESULTANTE: 9.3.18-solo-community.1
+
+INSTALACION
+1. Hacer una copia de seguridad de la instalacion actual.
+2. Descomprimir este ZIP directamente sobre la carpeta raiz del proyecto HOTFIX 05.
+3. Aceptar reemplazar los archivos existentes.
+4. Ejecutar npm install si corresponde al entorno de despliegue (package.json/package-lock.json cambiaron de version).
+5. Reiniciar el servidor.
+
+Este paquete NO contiene el proyecto completo. Solo contiene archivos nuevos o modificados respecto del respaldo HOTFIX 05 usado como base.
+
+Cambios principales:
+- Modo Solitario desde Comunidad.
+- Mateo, Zoe y Owen como IA fijas y obligatorias.
+- Tradicional, Flash, Antibingo y Campeonato compatibles con Solitario.
+- 75/90 bolas y rondas configurables donde corresponda.
+- 6 minijuegos en las salas de espera.
+- /demo redirige a /comunidad.
+
+Ver HOTFIX_06_MODO_SOLITARIO.md para el detalle tecnico.

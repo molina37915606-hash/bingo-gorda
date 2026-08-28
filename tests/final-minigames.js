@@ -3,7 +3,7 @@ const root=path.join(__dirname,'..');
 const html=fs.readFileSync(path.join(root,'comunidad.html'),'utf8');
 const js=fs.readFileSync(path.join(root,'js','community.js'),'utf8');
 function ok(v,m){if(!v)throw new Error(m)}
-ok(html.includes('/js/community.js?v=final-minijuegos-20260826'),'FINAL debe invalidar caché de community.js.');
+ok(html.includes('/js/community.js?v=solo-community-20260828'),'La versión actual debe invalidar caché de community.js.');
 ok(js.includes('dealerHand:[]'),'21 debe guardar la mano de La Gorda.');
 ok(js.includes("mini.hand=[draw21Ball(),draw21Ball()]")&&js.includes("mini.dealerHand=[draw21Ball(),draw21Ball()]"),'21 debe repartir dos bolillas iniciales a ambos.');
 ok(js.includes("if(mini.dealerTotal<=16)")&&js.includes("mini.dealerTotal>=17?'SE PLANTA CON 17+'"),'La Gorda debe pedir con 16 o menos y plantarse con 17 o más.');

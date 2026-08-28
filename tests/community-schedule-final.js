@@ -14,9 +14,9 @@ for(const id of ['communityScheduleAt','communityScheduleMode','communitySchedul
 assert(adminJs.includes("action:'create-room'"),'Agenda debe crear una sala directamente con su configuración guardada.');
 assert(adminJs.includes('communitySchedulePrizeLabel'),'Agenda debe mostrar las jugadas configuradas.');
 assert(!adminJs.includes('data-community-schedule-prepare'),'Agenda no debe depender del paso PREPARAR.');
-assert(communityHtml.includes('quickTile quickTileArt demo')&&communityHtml.includes('quickTile quickTileArt whatsapp')&&communityHtml.includes('quickTile transmission'),'Demo, WhatsApp y Transmisión deben mantener accesos compactos.');
-for(const asset of ['assets/community/demo.webp','assets/community/crear-sala.webp','assets/community/whatsapp.webp']){assert(fs.existsSync(path.join(root,asset)),`Falta ícono Comunidad: ${asset}`);assert(fs.statSync(path.join(root,asset)).size<180000,`Ícono Comunidad demasiado pesado: ${asset}`)}
-assert(communityHtml.includes('/assets/community/demo.webp')&&communityHtml.includes('/assets/community/crear-sala.webp')&&communityHtml.includes('/assets/community/whatsapp.webp'),'Comunidad debe usar los tres íconos propios de EL BINGO DE LA GORDA.');
+assert(communityHtml.includes('quickTile quickTileArt solo')&&communityHtml.includes('quickTile quickTileArt whatsapp')&&communityHtml.includes('quickTile transmission'),'Solitario, WhatsApp y Transmisión deben mantener accesos compactos.');
+for(const asset of ['assets/community/solo.webp','assets/community/crear-sala.webp','assets/community/whatsapp.webp']){assert(fs.existsSync(path.join(root,asset)),`Falta ícono Comunidad: ${asset}`);assert(fs.statSync(path.join(root,asset)).size<180000,`Ícono Comunidad demasiado pesado: ${asset}`)}
+assert(communityHtml.includes('/assets/community/solo.webp')&&communityHtml.includes('/assets/community/crear-sala.webp')&&communityHtml.includes('/assets/community/whatsapp.webp'),'Comunidad debe usar los tres íconos propios de EL BINGO DE LA GORDA.');
 assert(communityHtml.includes('grid-template-columns:repeat(3,minmax(0,1fr))'),'Accesos principales móviles deben quedar en una fila compacta de tres cuando no hay Transmisión visible.');
 assert(communityHtml.includes('grid-template-columns:repeat(3,1fr)'),'Navegación móvil debe quedar simple, con tres accesos.');
 assert(communityHtml.includes('height:min(72dvh,620px)'),'Chat móvil debe ser panel inferior y no pantalla completa.');

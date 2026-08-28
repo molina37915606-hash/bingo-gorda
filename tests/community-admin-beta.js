@@ -18,8 +18,8 @@ for(const id of ['communityWhatsappNumber','communityWhatsappGroup','communityCo
 assert(adminJs.includes("this.req('/api/admin/community')"),'Admin debe leer la configuración de Comunidad con su sesión actual.');
 assert(adminJs.includes("'/api/admin/community/settings'"),'Admin debe poder guardar la Comunidad.');
 assert(adminJs.includes("'/api/admin/community/moderate'"),'Admin debe poder moderar la Comunidad.');
-assert(communityHtml.includes('href="/demo"'),'Comunidad debe ofrecer acceso permanente al DEMO.');
-assert(communityHtml.includes('<strong>DEMO</strong>')&&communityHtml.includes('Probá el bingo'),'El acceso DEMO debe ser claro y conservar su ayuda breve.');
+assert(communityHtml.includes('data-solo-play'),'Comunidad debe ofrecer acceso permanente al Modo Solitario.');
+assert(communityHtml.includes('JUGAR SOLO')&&communityHtml.includes('Mateo, Zoe y Owen'),'El acceso Solitario debe mostrar sus tres rivales fijos.');
 assert(serverSrc.includes("url.pathname === '/api/admin/community'"),'Servidor debe exponer Comunidad al admin principal.');
 
 const port=53800+Math.floor(Math.random()*100);
@@ -54,7 +54,7 @@ async function req(pathname,{method='GET',body,token}={}){const r=await fetch(ba
   assert.equal(publicState.whatsapp.groupUrl,'https://whatsapp.com/channel/ABCDEFGHIJK');
   assert.equal(publicState.whatsapp.collaborationAlias,'bingo.lagorda');
   assert.equal(publicState.whatsapp.collaborationHolder,'El Bingo de La Gorda');
-  const demo=await fetch(base+'/demo');assert(demo.ok,'/demo debe seguir disponible.');
+  const demo=await fetch(base+'/demo',{redirect:'manual'});assert.equal(demo.status,302);assert.equal(demo.headers.get('location'),'/comunidad','El Demo anterior debe redirigir a Comunidad.');
   const comunidad=await fetch(base+'/comunidad');const html=await comunidad.text();assert(comunidad.ok&&html.includes('js/community.js'));
-  console.log('PRUEBA BETA COMUNIDAD ADMIN + ACCESO DEMO: OK');
+  console.log('PRUEBA BETA COMUNIDAD ADMIN + MODO SOLITARIO: OK');
 }catch(e){console.error(e);process.exitCode=1}finally{child.kill('SIGTERM');fs.rmSync(dataDir,{recursive:true,force:true})}})();

@@ -143,6 +143,10 @@ const PLAYER_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 const PLAYER_RECOVERY_TTL_MS = 15 * 60 * 1000;
 const INVITATION_ACTIVATION_TTL_MS = 2 * 60 * 1000;
 const DEMO_IDLE_TTL_MS = 15 * 60 * 1000;
+const SOLO_TTL_MS = 4 * 60 * 60 * 1000;
+const SOLO_IDLE_TTL_MS = 45 * 60 * 1000;
+const SOLO_AI_NAMES = Object.freeze(['Mateo', 'Zoe', 'Owen']);
+const WAITING_MINIGAME_TYPES = Object.freeze(['red_black', 'higher_lower', 'gorda_21', 'ghost_ball', 'secret_number', 'intruder_ball']);
 const DEMO_CLAIM_WINDOW_MS = 1600;
 const DEMO_START_SEQUENCE_MS = 1200;
 const DEMO_READY_COUNTDOWN_MS = Math.max(100, Number(process.env.BINGO_DEMO_READY_COUNTDOWN_MS || (TEST_MODE ? 180 : 5000)));
@@ -1231,7 +1235,8 @@ function ensureWorkspace(id = 'owner', operatorId = null, label = 'Administrador
     sseClients: new Set(),
     lastResultMeta: loadLastResultMeta(paths.resultMetaFile, paths.resultPdfFile),
     isDemo: safe.startsWith('demo_'),
-    expiresAt: safe.startsWith('demo_') ? Date.now() + DEMO_TTL_MS : null,
+    isSolo: safe.startsWith('solo_'),
+    expiresAt: safe.startsWith('demo_') ? Date.now() + DEMO_TTL_MS : (safe.startsWith('solo_') ? Date.now() + SOLO_TTL_MS : null),
     lastActivityAt: Date.now()
   };
   workspaces.set(safe, workspace);
@@ -1695,7 +1700,7 @@ function playerSelectionComplete(player) {
 }
 
 function registrationSummaryPayload() {
-  const registered = state.players.filter(player => player?.nameSet && !player.virtual);
+  const registered = state.players.filter(player => competitiveCommunityPlayer(player));
   const requestedCards = registered.reduce((sum, player) => sum + Math.max(1, Number(player.requestedCardCount) || Number(player.allowedCardCount) || 1), 0);
   if (championshipRoomEnabled() && state.championship?.stage === 'registration') {
     const confirmedCards = registered.reduce((sum, player) => sum + (player.selectionConfirmed ? Math.max(1, Number(player.requestedCardCount) || Number(player.allowedCardCount) || 1) : 0), 0);
@@ -2310,10 +2315,11 @@ function communityCreatorPlayersPayload(viewer) {
   if (state.roomSettings?.roomOrigin !== 'community') return null;
   if (String(state.communityCreatorPlayerId || '') !== String(viewer?.id || '')) return null;
   return (state.players || [])
-    .filter(item => item?.nameSet && !item.virtual)
+    .filter(item => competitiveCommunityPlayer(item))
     .map(item => ({
       playerId: String(item.id || ''),
       name: playerDisplayName(item),
+      virtual: Boolean(item.virtual),
       audioMuted: (state.chat?.audioMutedPlayerIds || []).includes(String(item.id || '')),
       cardCount: championshipRoomEnabled() && state.championship?.stage === 'registration' ? Math.max(1, Number(item.requestedCardCount)||Number(item.allowedCardCount)||1) : (item.selectionConfirmed ? (item.cardIds || []).length : 0),
       expectedCardCount: authorizedCardCount(item),
@@ -2370,15 +2376,18 @@ function playerPayload(player) {
     communityRoom: state.roomSettings?.roomOrigin === 'community' ? {
       publicId: state.roomSettings?.communityPublicId || '',
       name: state.roomSettings?.roomName || `Sala ${state.roomCode}`,
-      kind: state.roomSettings?.communityAccessType === 'private' ? 'private' : 'public',
+      kind: soloCommunityRoomEnabled() ? 'solo' : (state.roomSettings?.communityAccessType === 'private' ? 'private' : 'public'),
+      isSolo: soloCommunityRoomEnabled(),
+      playMode: state.roomSettings?.communityPlayMode || 'room',
       creatorName: state.roomSettings?.hostName || '',
       isCreator: String(state.communityCreatorPlayerId || '') === String(player.id || ''),
       startMode: state.roomSettings?.communityStartMode || 'manual',
       startsAt: state.roomSettings?.scheduledAt || communityRecord?.startsAt || '',
-      shareUrl: state.roomSettings?.communityPublicId ? communityPublicShareUrl(state.roomSettings.communityPublicId) : `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode)}&directo=1`,
+      shareUrl: soloCommunityRoomEnabled() ? '' : (state.roomSettings?.communityPublicId ? communityPublicShareUrl(state.roomSettings.communityPublicId) : `${PUBLIC_URL || `http://localhost:${PORT}`}/jugador?sala=${encodeURIComponent(state.roomCode)}&directo=1`),
       playerCount: registrationSummaryPayload().registeredPlayers,
       cardCount: registrationSummaryPayload().playingCards,
       maxPlayers: Math.max(2, Number(state.roomSettings?.maxOpenPlayers) || MAX_PLAYERS),
+      participants: soloCommunityRoomEnabled() ? state.players.filter(item => competitiveCommunityPlayer(item)).map(item => ({ name:playerDisplayName(item), virtual:Boolean(item.virtual), ready:Boolean(item.selectionConfirmed), cardCount:championshipRoomEnabled() && state.championship?.stage === 'registration' ? Math.max(1, Number(item.requestedCardCount)||Number(item.allowedCardCount)||1) : (item.cardIds || []).length })) : null,
       prizeLabels: activePrizeLabelsFor(),
       creatorPlayers: communityCreatorPlayersPayload(player),
       pendingSelectionPlayers: state.players.filter(item => item?.nameSet && !item.virtual && !item.selectionConfirmed).length,
@@ -4512,6 +4521,18 @@ function championshipRoomEnabled() {
   return Boolean(state?.active && state.roomSettings?.roomOrigin === 'community' && state.roomSettings?.communityGameKind === 'championship' && state.championship?.enabled);
 }
 
+function soloCommunityRoomEnabled() {
+  return Boolean(state?.active && state.roomSettings?.roomOrigin === 'community' && state.roomSettings?.communityPlayMode === 'solo');
+}
+
+function competitiveCommunityPlayer(player) {
+  return Boolean(player?.nameSet && (!player.virtual || soloCommunityRoomEnabled()));
+}
+
+function virtualSoloAutomationEnabled() {
+  return Boolean(currentWorkspace().isDemo || soloCommunityRoomEnabled());
+}
+
 function earliestChampionshipCompletionBall(card, drawn, predicate) {
   if (!card || !Array.isArray(drawn) || !drawn.length || typeof predicate !== 'function') return null;
   for (let count = 1; count <= drawn.length; count++) {
@@ -4610,7 +4631,7 @@ function antibingoParticipants() {
   if (!state.antibingo?.enabled || !state.game) return [];
   const eliminated = antibingoEliminationMap();
   const rows = [];
-  for (const player of (state.players || []).filter(item => item?.nameSet && !item.virtual && item.selectionConfirmed && !item.excludedFromRound)) {
+  for (const player of (state.players || []).filter(item => competitiveCommunityPlayer(item) && item.selectionConfirmed && !item.excludedFromRound)) {
     for (const cardId of player.cardIds || []) {
       const card = state.game.cards.find(item => String(item.id) === String(cardId));
       if (!card) continue;
@@ -4728,7 +4749,7 @@ function flashInitialScore(player) {
 function flashLeaderboard() {
   if (!state.flash?.enabled) return [];
   const contenders = new Set((state.flash.contenderPlayerIds || []).map(String));
-  return (state.players || []).filter(player => player?.nameSet && !player.virtual && player.selectionConfirmed && flashPlayerCard(player)).map(player => {
+  return (state.players || []).filter(player => competitiveCommunityPlayer(player) && player.selectionConfirmed && flashPlayerCard(player)).map(player => {
     const card = flashPlayerCard(player);
     const hasLockedScore = Object.prototype.hasOwnProperty.call(state.flash.initialScores || {}, player.id);
     const score = hasLockedScore
@@ -4776,7 +4797,7 @@ function finalizeFlash(winnerPlayerId, winningBall = null) {
 function resetFlashSuddenDeathSeries() {
   if (!flashRoomEnabled()) return null;
   const contenderIds = new Set((state.flash?.contenderPlayerIds || []).map(String));
-  const contenders = (state.players || []).filter(player => contenderIds.has(String(player.id)) && player?.nameSet && !player.virtual);
+  const contenders = (state.players || []).filter(player => contenderIds.has(String(player.id)) && competitiveCommunityPlayer(player));
   if (contenders.length < 2) return contenders[0] ? finalizeFlash(contenders[0].id, null) : null;
   const usedCardIds = new Set();
   for (const player of contenders) {
@@ -5182,7 +5203,7 @@ function ensureChampionshipPositions() {
   if (!champ?.enabled) return [];
   if (Array.isArray(champ.positions) && champ.positions.length) return champ.positions;
   champ.positions = [];
-  for (const player of state.players.filter(player => player?.nameSet && !player.virtual)) {
+  for (const player of state.players.filter(player => competitiveCommunityPlayer(player))) {
     const count = Math.max(1, Math.min(Number(state.roomSettings?.maxCardsPerPlayer)||4, Number(player.requestedCardCount)||Number(player.allowedCardCount)||1));
     player.requestedCardCount = count;
     player.allowedCardCount = count;
@@ -5984,18 +6005,22 @@ function waitingGamePayload() {
     .sort((a,b) => Number(b.bestScore || 0) - Number(a.bestScore || 0) || String(a.name || '').localeCompare(String(b.name || ''), 'es'))
     .slice(0, 10);
   const legacy = Array.isArray(game.leaderboard) ? game.leaderboard : [];
-  const redBlack = sortBoard(game.leaderboards?.red_black || (game.type === 'red_black' ? legacy : []));
-  const higherLower = sortBoard(game.leaderboards?.higher_lower || (game.type === 'higher_lower' ? legacy : []));
+  const leaderboards = {};
+  for (const type of WAITING_MINIGAME_TYPES) {
+    leaderboards[type] = sortBoard(game.leaderboards?.[type] || (game.type === type ? legacy : []));
+  }
   const aggregateByPlayer = new Map();
-  for (const entry of [...redBlack, ...higherLower]) {
-    const key = String(entry.playerId || entry.name || '');
-    const current = aggregateByPlayer.get(key);
-    if (!current || Number(entry.bestScore || 0) > Number(current.bestScore || 0)) aggregateByPlayer.set(key, { ...entry });
+  for (const type of WAITING_MINIGAME_TYPES) {
+    for (const entry of leaderboards[type]) {
+      const key = String(entry.playerId || entry.name || '');
+      const current = aggregateByPlayer.get(key);
+      if (!current || Number(entry.bestScore || 0) > Number(current.bestScore || 0)) aggregateByPlayer.set(key, { ...entry });
+    }
   }
   return {
-    type: 'both',
-    activeTypes: ['red_black', 'higher_lower'],
-    leaderboards: { red_black: redBlack, higher_lower: higherLower },
+    type: 'all',
+    activeTypes: [...WAITING_MINIGAME_TYPES],
+    leaderboards,
     leaderboard: sortBoard([...aggregateByPlayer.values()])
   };
 }
@@ -6032,6 +6057,7 @@ function createSimpleRoom(payload = {}) {
       communityStartMode: payload.roomOrigin === 'community' && payload.communityStartMode === 'scheduled' ? 'scheduled' : (payload.roomOrigin === 'community' ? 'manual' : ''),
       communityAccessType: payload.roomOrigin === 'community' && payload.communityAccessType === 'private' ? 'private' : 'public',
       communityGameKind,
+      communityPlayMode: payload.roomOrigin === 'community' && payload.communityPlayMode === 'solo' ? 'solo' : 'room',
       championshipRounds: payload.roomOrigin === 'community' && payload.communityGameKind === 'championship' && CHAMPIONSHIP_PERSISTED_ROUNDS.includes(Number(payload.championshipRounds)) ? Number(payload.championshipRounds) : 0,
       // El acceso normal es exclusivamente mediante invitaciones privadas por jugador.
       joinOpen: false,
@@ -6048,7 +6074,7 @@ function createSimpleRoom(payload = {}) {
       broadcastToken: randomId('live'), broadcastAlias: freshBroadcastAlias(currentWorkspace().id),
       transmission: normalizeTransmissionSettings()
     },
-    waitingGame: { type: 'both', leaderboard: [], leaderboards: { red_black: [], higher_lower: [] } },
+    waitingGame: { type: 'all', leaderboard: [], leaderboards: Object.fromEntries(WAITING_MINIGAME_TYPES.map(type => [type, []])) },
     drawOrder: createSecureDrawOrder(game.mode), game, players: [], cardReservations: {}, claims: [], eventLog: [],
     chat: { enabled: true, locked: false, messages: [], mutedPlayerIds: [], lastSentAt: {} },
     championship: communityGameKind === 'championship' ? createChampionshipState(payload, game.mode) : null,
@@ -6347,11 +6373,11 @@ function updateJoinOpen(payload = {}) {
 
 function submitWaitingGameScore(player, payload = {}) {
   if (!state.active || state.status !== 'waiting') throw new Error('El minijuego solo está disponible en la sala de espera.');
-  const gameType = ['red_black','higher_lower'].includes(payload.gameType) ? payload.gameType : 'red_black';
+  const gameType = WAITING_MINIGAME_TYPES.includes(payload.gameType) ? payload.gameType : 'red_black';
   const score = Math.max(0, Math.min(9999, Math.floor(Number(payload.score) || 0)));
-  state.waitingGame ||= { type: 'both', leaderboard: [], leaderboards: { red_black: [], higher_lower: [] } };
-  state.waitingGame.type = 'both';
-  state.waitingGame.leaderboards ||= { red_black: [], higher_lower: [] };
+  state.waitingGame ||= { type: 'all', leaderboard: [], leaderboards: Object.fromEntries(WAITING_MINIGAME_TYPES.map(type => [type, []])) };
+  state.waitingGame.type = 'all';
+  state.waitingGame.leaderboards ||= Object.fromEntries(WAITING_MINIGAME_TYPES.map(type => [type, []]));
   state.waitingGame.leaderboards[gameType] ||= [];
   const board = state.waitingGame.leaderboards[gameType];
   const entry = board.find(item => item.playerId === player.id);
@@ -6568,7 +6594,7 @@ function rivalsNormalPayload(viewer) {
   const connected = connectedPlayerIds();
   const prizes = prizeStatusPayload();
   const rows = [];
-  for (const player of (state.players || []).filter(item => item?.nameSet && !item.virtual && item.selectionConfirmed && String(item.id) !== String(viewer?.id || ''))) {
+  for (const player of (state.players || []).filter(item => competitiveCommunityPlayer(item) && item.selectionConfirmed && String(item.id) !== String(viewer?.id || ''))) {
     let best = null;
     for (const cardId of player.cardIds || []) {
       const card = state.game.cards.find(item => item.id === cardId);
@@ -7682,7 +7708,7 @@ function virtualClaimDelay() {
 }
 
 function virtualPlayersAreActive() {
-  return Boolean(currentWorkspace().isDemo || state.roomSettings?.adminSimulation);
+  return Boolean(virtualSoloAutomationEnabled() || state.roomSettings?.adminSimulation);
 }
 
 const SIMULATED_CHAT_TEXTS = [
@@ -7693,9 +7719,9 @@ const SIMULATED_CHAT_TEXTS = [
 const SIMULATED_CHAT_STICKERS = ['gorda-risa','gorda-festejo','gorda-ay-no','corazon','aplausos','suerte','ira','explosion'];
 
 function scheduleSimulatedAiChat() {
-  if (!(currentWorkspace().isDemo || state.roomSettings?.adminSimulation) || !state.roomSettings?.simulatedChat || state.chat?.enabled === false || state.chat?.locked) return 0;
+  if (!(virtualSoloAutomationEnabled() || state.roomSettings?.adminSimulation) || !state.roomSettings?.simulatedChat || state.chat?.enabled === false || state.chat?.locked) return 0;
   const workspace = currentWorkspace();
-  if (currentWorkspace().isDemo && !TEST_MODE) {
+  if (virtualSoloAutomationEnabled() && !TEST_MODE) {
     const now = Date.now();
     if (workspace.lastDemoChatAt && now - workspace.lastDemoChatAt < 9000) return 0;
     if (crypto.randomInt(0, 100) >= 18) return 0;
@@ -7704,7 +7730,7 @@ function scheduleSimulatedAiChat() {
   const connected = connectedPlayerIds();
   const players = state.players.filter(player => player.virtual && !connected.has(player.id));
   if (!players.length) return 0;
-  const maxBurst = currentWorkspace().isDemo ? 1 : Math.min(4, Math.max(1, Math.ceil(players.length / 20)));
+  const maxBurst = virtualSoloAutomationEnabled() ? 1 : Math.min(4, Math.max(1, Math.ceil(players.length / 20)));
   const messageCount = 1 + crypto.randomInt(0, maxBurst);
   const chosen = [];
   const pool = [...players];
@@ -7714,7 +7740,7 @@ function scheduleSimulatedAiChat() {
     const timer = setTimeout(() => workspaceContext.run(workspace, () => {
       forgetDemoTimer(workspace, timer);
       try {
-        if (!state.active || !(currentWorkspace().isDemo || state.roomSettings?.adminSimulation) || !state.roomSettings?.simulatedChat || state.chat?.enabled === false || state.chat?.locked) return;
+        if (!state.active || !(virtualSoloAutomationEnabled() || state.roomSettings?.adminSimulation) || !state.roomSettings?.simulatedChat || state.chat?.enabled === false || state.chat?.locked) return;
         if (crypto.randomInt(0, 100) < 24) {
           const stickerId = SIMULATED_CHAT_STICKERS[crypto.randomInt(0, SIMULATED_CHAT_STICKERS.length)];
           appendChatMessage({ role: 'player', player, stickerId });
@@ -7777,12 +7803,12 @@ function scheduleVirtualPlayerClaims() {
 }
 
 function scheduleDemoResume() {
-  if (!currentWorkspace().isDemo || state.status !== 'paused' || state.game?.phase !== 'PAUSED') return;
+  if (!virtualSoloAutomationEnabled() || state.status !== 'paused' || state.game?.phase !== 'PAUSED') return;
   const workspace = currentWorkspace();
   const timer = setTimeout(() => workspaceContext.run(workspace, () => {
     forgetDemoTimer(workspace, timer);
     try {
-      if (workspace.isDemo && state.active && state.status === 'paused' && state.game && !prizeStatusPayload().bingo.closed) resumeRoom({ mode: 'automatic' });
+      if ((workspace.isDemo || soloCommunityRoomEnabled()) && state.active && state.status === 'paused' && state.game && !prizeStatusPayload().bingo.closed) resumeRoom({ mode: 'automatic' });
     } catch (error) {
       console.error(`No se pudo reanudar la demostración ${workspace.id}:`, error.message);
     }
@@ -7791,7 +7817,7 @@ function scheduleDemoResume() {
 }
 
 function autoResolveDemoClaimWindow(windowId) {
-  if (!currentWorkspace().isDemo || !windowId || state.claimWindow?.id !== windowId) return;
+  if (!virtualSoloAutomationEnabled() || !windowId || state.claimWindow?.id !== windowId) return;
   try {
     while (true) {
       const pending = state.claims
@@ -7799,7 +7825,7 @@ function autoResolveDemoClaimWindow(windowId) {
         .sort((a, b) => Number(a.receivedSequence || 0) - Number(b.receivedSequence || 0));
       if (!pending.length) break;
       const next = pending[0];
-      resolveClaim({ claimId: next.id, resolution: next.officialValid ? 'confirmed' : 'rejected', note: next.officialValid ? 'Validación automática de demostración.' : 'Reclamo inválido en la demostración.' });
+      resolveClaim({ claimId: next.id, resolution: next.officialValid ? 'confirmed' : 'rejected', note: next.officialValid ? 'Validación automática de IA.' : 'Reclamo inválido.' });
     }
   } catch (error) {
     console.error(`No se pudo resolver automáticamente la demostración:`, error.message);
@@ -7808,7 +7834,7 @@ function autoResolveDemoClaimWindow(windowId) {
 }
 
 function scheduleDemoClaimResolution(windowId) {
-  if (!currentWorkspace().isDemo || !windowId) return;
+  if (!virtualSoloAutomationEnabled() || !windowId) return;
   const workspace = currentWorkspace();
   const key = `claim:${windowId}`;
   workspace.demoScheduled ||= new Set();
@@ -7851,7 +7877,7 @@ function drawNextBall(source = 'manual') {
   }
   scheduleSimulatedAiChat();
   if (!championshipRoomEnabled() && !flashRoomEnabled() && !antibingoRoomEnabled() && state.game.drawn.length >= state.game.mode && state.status === 'playing') {
-    const graceMs = currentWorkspace().isDemo
+    const graceMs = virtualSoloAutomationEnabled()
       ? Math.max(CLAIM_QUEUE_WINDOW_MS, DEMO_CLAIM_WINDOW_MS + 600)
       : FINAL_CLAIM_GRACE_MS;
     const startedAt = nowIso();
@@ -8424,7 +8450,7 @@ function archiveCurrentResults() {
     status: 'finished',
     roomCode: state.roomCode,
     roomOrigin: state.roomSettings?.roomOrigin === 'community' ? 'community' : 'official',
-    roomType: state.roomSettings?.roomOrigin === 'community' ? (state.roomSettings?.communityAccessType === 'private' ? 'private' : 'public') : 'official',
+    roomType: state.roomSettings?.roomOrigin === 'community' ? (soloCommunityRoomEnabled() ? 'solo' : (state.roomSettings?.communityAccessType === 'private' ? 'private' : 'public')) : 'official',
     roomName: state.roomSettings?.roomName || (state.roomSettings?.roomOrigin === 'community' ? '' : 'EL BINGO DE LA GORDA'),
     communityPublicId: state.roomSettings?.communityPublicId || '',
     hostName: state.roomSettings?.hostName || '',
@@ -8503,7 +8529,7 @@ function archiveCancelledRoom() {
     status: 'cancelled',
     roomCode: state.roomCode,
     roomOrigin: state.roomSettings?.roomOrigin === 'community' ? 'community' : 'official',
-    roomType: state.roomSettings?.roomOrigin === 'community' ? (state.roomSettings?.communityAccessType === 'private' ? 'private' : 'public') : 'official',
+    roomType: state.roomSettings?.roomOrigin === 'community' ? (soloCommunityRoomEnabled() ? 'solo' : (state.roomSettings?.communityAccessType === 'private' ? 'private' : 'public')) : 'official',
     roomName: state.roomSettings?.roomName || (state.roomSettings?.roomOrigin === 'community' ? '' : 'EL BINGO DE LA GORDA'),
     communityPublicId: state.roomSettings?.communityPublicId || '',
     hostName: state.roomSettings?.hostName || '',
@@ -9362,7 +9388,7 @@ function createClaim(player, payload) {
       types: [type],
       openedAt: nowIso(),
       openedAtMs: nowMs,
-      expiresAtMs: nowMs + (currentWorkspace().isDemo ? (TEST_MODE ? CLAIM_QUEUE_WINDOW_MS : DEMO_CLAIM_WINDOW_MS) : CLAIM_QUEUE_WINDOW_MS),
+      expiresAtMs: nowMs + (virtualSoloAutomationEnabled() ? (TEST_MODE ? CLAIM_QUEUE_WINDOW_MS : DEMO_CLAIM_WINDOW_MS) : CLAIM_QUEUE_WINDOW_MS),
       drawnCount: state.game.drawn.length,
       lastBall: state.game.drawn.at(-1) ?? null
     };
@@ -9410,7 +9436,7 @@ function createClaim(player, payload) {
   logEvent('claim_created', { claimId: claim.id, type, prizeNumber, playerId: player.id, cardId, officialValid: valid, receivedSequence: sequence, deltaFromFirstMs: claim.deltaFromFirstMs, simulated: claim.simulated });
   saveState();
   broadcast();
-  if (currentWorkspace().isDemo) scheduleDemoClaimResolution(claim.claimWindowId);
+  if (virtualSoloAutomationEnabled()) scheduleDemoClaimResolution(claim.claimWindowId);
   scheduleAutomaticClaimVerification(currentWorkspace());
   return claim;
 }
@@ -11250,6 +11276,119 @@ function createCommunityPublicRoom(payload = {}) {
   };
 }
 
+function createCommunitySoloRoom(payload = {}) {
+  const hostName = normalizeCommunityName(payload.name);
+  if (SOLO_AI_NAMES.some(aiName => aiName.localeCompare(hostName, 'es', { sensitivity:'base' }) === 0)) {
+    throw new Error('Ese nombre está reservado para uno de tus rivales del Modo Solitario.');
+  }
+  const mode = Number(payload.mode) === 75 ? 75 : 90;
+  const gameKind = ['championship','flash','antibingo'].includes(payload.gameKind) ? payload.gameKind : 'normal';
+  const maxCardsPerPlayer = gameKind === 'flash' ? 1 : Math.max(1, Math.min(MAX_CARDS_PER_PLAYER, Math.round(Number(payload.maxCardsPerPlayer) || 2)));
+  const autoSeconds = gameKind === 'championship' ? CHAMPIONSHIP_AUTO_SECONDS : gameKind === 'flash' ? FLASH_AUTO_SECONDS : Math.max(4, Math.min(20, Math.round(Number(payload.autoSeconds) || 8)));
+  let championshipRounds = 0;
+  if (gameKind === 'championship') {
+    const requestedRounds = Math.round(Number(payload.championshipRounds) || CHAMPIONSHIP_DEFAULT_ROUNDS);
+    if (!CHAMPIONSHIP_ROUND_OPTIONS.includes(requestedRounds)) throw new Error('Elegí 3, 5 o 7 rondas para el Campeonato.');
+    championshipRounds = requestedRounds;
+  }
+  const linePrizeCount = gameKind === 'championship' && mode === 90 ? 2 : (['flash','antibingo'].includes(gameKind) ? 1 : (mode === 90 ? Math.max(1, Math.min(2, Math.round(Number(payload.linePrizeCount) || 1))) : 1));
+  const requestedRules = payload.rules && typeof payload.rules === 'object' ? payload.rules : {};
+  const rules = gameKind === 'championship'
+    ? championshipRulesFor(mode)
+    : ['flash','antibingo'].includes(gameKind)
+      ? roomRulesFor(mode, { ambocabeza:false, line:false, doubleLine:false, tripleLine:false, corners:false, bingo:false })
+      : mode === 90
+        ? roomRulesFor(90, { ambocabeza:Boolean(requestedRules.ambocabeza), line:requestedRules.line !== false, bingo:true })
+        : roomRulesFor(75, { line:requestedRules.line !== false, corners:Boolean(requestedRules.corners), doubleLine:Boolean(requestedRules.doubleLine), tripleLine:Boolean(requestedRules.tripleLine), bingo:true });
+  const claimMode = ['championship','flash','antibingo'].includes(gameKind) ? 'manual' : (payload.claimMode === 'automatic_ties' ? 'automatic_ties' : 'manual');
+  const cardCount = normalizedGeneratedCount(Math.max(25, Math.min(gameKind === 'championship' ? 250 : 100, 4 * maxCardsPerPlayer + 20)));
+  const workspace = ensureWorkspace(`solo_${randomId('room')}`, null, `Solitario · ${hostName}`);
+  let playerSessionToken = '';
+  let humanPlayerId = '';
+  workspaceContext.run(workspace, () => {
+    createSimpleRoom({
+      mode,
+      cardCount,
+      autoSeconds,
+      claimMode,
+      rules,
+      linePrizeCount,
+      markingMode:'normal',
+      maxCardsPerPlayer,
+      roomOrigin:'community',
+      communityPlayMode:'solo',
+      hostName,
+      roomName:`Solitario de ${hostName}`,
+      communityGameKind:gameKind,
+      championshipRounds,
+      communityStartMode:'manual',
+      communityAccessType:'private',
+      maxOpenPlayers:4
+    });
+    state.roomSettings.gameType = 'solo';
+    state.roomSettings.joinOpen = true;
+    state.roomSettings.simulatedChat = true;
+
+    const human = openJoinPlayer({
+      name:hostName,
+      cardCount:maxCardsPerPlayer,
+      deviceId:String(payload.visitorId || randomId('device')).slice(0,120),
+      communityAccessGranted:true
+    });
+    playerSessionToken = human.token;
+    const humanPlayer = state.players.find(item => item.sessionToken === playerSessionToken);
+    if (!humanPlayer) throw new Error('No se pudo crear tu jugador solitario.');
+    humanPlayerId = humanPlayer.id;
+    state.communityCreatorPlayerId = humanPlayer.id;
+
+    for (const aiName of SOLO_AI_NAMES) {
+      state.roomSettings.joinOpen = true;
+      const joined = openJoinPlayer({
+        name:aiName,
+        cardCount:maxCardsPerPlayer,
+        deviceId:`solo-ai-${aiName.toLowerCase()}`,
+        communityAccessGranted:true
+      });
+      const ai = state.players.find(item => item.sessionToken === joined.token);
+      if (!ai) throw new Error(`No se pudo crear a ${aiName}.`);
+      ai.virtual = true;
+      ai.sessionToken = null;
+      ai.sessionDeviceId = '';
+      ai.openJoinDeviceId = '';
+      ai.autoMark = true;
+      ai.markingModeChosen = true;
+      ai.requestedCardCount = maxCardsPerPlayer;
+      ai.allowedCardCount = maxCardsPerPlayer;
+      if (!championshipRoomEnabled()) {
+        releaseReservationsForPlayer(ai);
+        const chosen = chooseDiverseCardsForPlayer(maxCardsPerPlayer, mode);
+        ai.cardIds = chosen.map(card => card.id);
+        ai.selectedCardIds = [...ai.cardIds];
+        ai.reservedCardIds = [];
+        ai.offeredCardIds = [];
+        ai.selectionConfirmed = true;
+        ai.marks = Object.fromEntries(ai.cardIds.map(cardId => [cardId, []]));
+        syncAutoMarksForPlayer(ai);
+      }
+    }
+    state.roomSettings.joinOpen = false;
+    updateCardDisplayNames();
+    enforceAutoMarkPolicy();
+    logEvent('community_solo_created', { hostName, gameKind, mode, championshipRounds, maxCardsPerPlayer, rivals:[...SOLO_AI_NAMES] });
+    saveState(); broadcast();
+  });
+  return {
+    ok:true,
+    enterUrl:'/jugar',
+    workspaceId:TEST_MODE ? workspace.id : undefined,
+    playerId:TEST_MODE ? humanPlayerId : undefined,
+    playerSessionToken,
+    gameKind,
+    mode,
+    rivals:[...SOLO_AI_NAMES]
+  };
+}
+
 function verifyCommunityCreatorCode(record, creatorCode) {
   if (!record || !record.creatorCodeHash) throw new Error('No se encontró esa sala.');
   const code = normalizeAccessKey(creatorCode || '');
@@ -11723,6 +11862,7 @@ function startNextChampionshipRoundFromCreator(payload = {}) {
 
 function prepareCommunityRematchWindow() {
   if (state.roomSettings?.roomOrigin !== 'community' || state.status !== 'finished') return null;
+  if (soloCommunityRoomEnabled()) { state.communityRematch = { disabled:true, reason:'solo', expiresAt:new Date(Date.now() + COMMUNITY_FINISH_GRACE_MS).toISOString(), createdAt:nowIso() }; return state.communityRematch; }
   if (championshipRoomEnabled()) { state.communityRematch = { disabled:true, reason:'championship', expiresAt:new Date(Date.now() + CHAMPIONSHIP_RESULTS_VISIBILITY_MS).toISOString(), createdAt:nowIso() }; return state.communityRematch; }
   // El flujo histórico de revancha depende de que el creador sea jugador.
   // Si el creador organizó sin entrar como jugador, no ofrecemos revancha,
@@ -12851,6 +12991,13 @@ async function handleApi(req, res, url) {
       if (!lot) return sendJson(res, 404, { error: 'No encontramos ese lote de cartones.' });
       return sendBuffer(res, 200, buildCardLotPdf(lot), 'application/pdf', cardLotPdfFilename(lot));
     }
+    if (url.pathname === '/api/community/solo' && req.method === 'POST') {
+      if (!consumeRate(req, 'community-solo-room', 30, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Se iniciaron demasiadas partidas solitarias desde esta conexión. Probá más tarde.' });
+      const created = createCommunitySoloRoom(await readJson(req));
+      setPlayerSessionCookie(req, res, created.playerSessionToken);
+      const { playerSessionToken, ...safeCreated } = created;
+      return sendJson(res, 200, safeCreated);
+    }
     if (url.pathname === '/api/community/public-room' && req.method === 'POST') {
       if (!consumeRate(req, 'community-public-room', 15, 60 * 60 * 1000)) return sendJson(res, 429, { error: 'Se crearon demasiadas salas desde esta conexión. Probá más tarde.' });
       const created = createCommunityPublicRoom(await readJson(req));
@@ -13566,7 +13713,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/evento-transmision' || url.pathname === '/evento-transmision/') return serveFile(res, path.join(ROOT, 'evento-transmision.html'));
   if (url.pathname === '/evento-tv' || url.pathname === '/evento-tv/') return serveFile(res, path.join(ROOT, 'evento-tv.html'));
   if (url.pathname === '/admin-player-preview' || url.pathname === '/admin-player-preview/') return serveFile(res, path.join(ROOT, 'player.html'));
-  if (url.pathname === '/demo' || url.pathname === '/demo/') return serveFile(res, path.join(ROOT, 'demo.html'));
+  if (url.pathname === '/demo' || url.pathname === '/demo/') { res.writeHead(302, { Location:'/comunidad', 'Cache-Control':'no-store, max-age=0' }); return res.end(); }
   if (url.pathname === '/comunidad' || url.pathname === '/comunidad/' || url.pathname === '/comunidad.html') {
     // Si este navegador ya pertenece a una partida real en curso, Comunidad funciona como puerta de regreso al cartón.
     // Un destino explícito (?mesa=... / ?ver=...) se respeta para no secuestrar invitaciones a otra sala.
@@ -13698,7 +13845,8 @@ setInterval(() => {
   for (const [token, session] of adminSessions) if (!session || session.expiresAt <= now) adminSessions.delete(token);
   for (const [token, expiresAt] of masterSessions) if (expiresAt <= now) masterSessions.delete(token);
   for (const workspace of [...workspaces.values()]) {
-    if (workspace.isDemo && ((workspace.expiresAt && workspace.expiresAt <= now) || (workspace.lastActivityAt && now - workspace.lastActivityAt > DEMO_IDLE_TTL_MS))) {
+    const ephemeralIdleTtl = workspace.isDemo ? DEMO_IDLE_TTL_MS : (workspace.isSolo ? SOLO_IDLE_TTL_MS : 0);
+    if ((workspace.isDemo || workspace.isSolo) && ((workspace.expiresAt && workspace.expiresAt <= now) || (workspace.lastActivityAt && ephemeralIdleTtl && now - workspace.lastActivityAt > ephemeralIdleTtl))) {
       clearAutomaticDrawTimer(workspace); clearWorkspaceTransitionTimer(workspace); clearAutomaticPrizeAnnouncementTimer(workspace); clearClaimAutoResume(workspace); clearDemoAutomationTimers(workspace); clearDemoStartTimer(workspace); workspaces.delete(workspace.id);
       try { fs.rmSync(path.dirname(workspace.stateFile), { recursive: true, force: true }); } catch {}
       continue;

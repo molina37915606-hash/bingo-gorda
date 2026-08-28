@@ -14,5 +14,5 @@ assert(/@media\(max-width:720px\)[\s\S]*?\.presence\{display:none!important\}/.t
 const createButtons=(html.match(/<button[^>]*data-lobby-create[^>]*>/g)||[]).length;
 assert(createButtons===2,'Deben quedar solo dos botones data-lobby-create: JUGAR móvil y CREAR MESA principal de escritorio.');
 assert(!/<button class="lobbyCreateSmall"[^>]*data-lobby-create/.test(html),'Escritorio: debe eliminarse el CREAR MESA duplicado de Mesas disponibles.');
-assert(/\/js\/community\.js\?v=(?:v9-3-\d+-|final-)/.test(html),'Debe mantenerse invalidación de caché versionada de community.js.');
+assert(html.includes('/js/community.js?v=solo-community-20260828'),'Debe mantenerse invalidación de caché versionada de community.js.');
 console.log('OK v939 lobby JUGAR / UNIRSE');

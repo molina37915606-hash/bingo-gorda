@@ -1,0 +1,11 @@
+ACTUALIZACION UX HOME - 2026-09-14
+
+- Nueva portada “¿Qué querés hacer?”.
+- Jugar al Bingo y Bolillero son accesos principales.
+- Crear Cartones y Jugar Solo quedan visibles y claros.
+- “MESAS” pasa a llamarse “JUGAR”.
+- Se ocultan hero, accesos repetidos y guía lateral anterior.
+- Sin mesas disponibles, se ocultan buscador y filtros.
+- Se conserva la lógica existente de mesas, cartones, bolillero y modo solitario.
+
+ARCHIVO MODIFICADO: comunidad.html

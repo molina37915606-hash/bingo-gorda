@@ -1,0 +1,10 @@
+LA GORDA - ACTUALIZACION UX HOME MOVIL - 2026-09-14
+
+Cambios:
+- En celular, Jugar al Bingo y Bolillero ocupan todo el ancho y quedan como acciones principales.
+- Crear Cartones y Jugar Solo se muestran juntos en dos tarjetas compactas.
+- Espaciado y tipografia ajustados para pantallas pequenas.
+- Se conserva la UX de escritorio implementada anteriormente.
+
+Archivo modificado:
+- comunidad.html

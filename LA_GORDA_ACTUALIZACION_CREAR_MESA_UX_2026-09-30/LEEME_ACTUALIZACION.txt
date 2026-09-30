@@ -1,0 +1,14 @@
+LA GORDA - Actualización UX Crear Mesa
+
+Archivos a reemplazar/agregar respetando las rutas:
+- comunidad.html
+- js/community.js
+- assets/community/bolillero-color.svg
+- assets/community/cartones-color.svg
+
+Cambios:
+- La acción principal ahora es CREAR MESA y abre el creador existente.
+- Las mesas disponibles permanecen abajo para entrar desde Comunidad.
+- Cuando no hay mesas, aparece un botón CREAR MESA funcional.
+- Se reemplazaron los iconos simples de la portada por arte visual más colorido.
+- No se modificaron server.js, endpoints ni la lógica de creación de mesas.

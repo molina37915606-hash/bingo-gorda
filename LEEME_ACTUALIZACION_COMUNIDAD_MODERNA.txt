@@ -1,0 +1,19 @@
+LA GORDA - ACTUALIZACION COMUNIDAD MODERNA
+Fecha: 2026-09-30
+
+Cambios:
+- La accion principal ahora es CREAR MESA.
+- CREAR MESA abre directamente el creador real existente desde community.js.
+- Ya no depende de simular un click sobre una tarjeta oculta.
+- El estado sin mesas incluye un boton CREAR MESA conectado al mismo creador.
+- Nueva presentacion visual moderna y colorida para Crear Mesa, Bolillero, Cartones y Jugar Solo.
+- Las mesas disponibles siguen debajo para entrar a partidas existentes.
+- Se mantiene la logica existente de servidor, salas, premios y endpoints.
+
+Archivos a reemplazar/agregar respetando rutas:
+comunidad.html
+js/community.js
+assets/community/action-crear-mesa.svg
+assets/community/action-bolillero.svg
+assets/community/action-cartones.svg
+assets/community/action-solo.svg

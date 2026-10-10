@@ -1,2 +1,0 @@
-﻿Esta carpeta será completada automáticamente por GENERAR_AUDIOS_ELEVENLABS.cmd.
-Bolillero Modo Libre excluido.

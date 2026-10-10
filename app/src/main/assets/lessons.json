@@ -1,0 +1,1554 @@
+{
+  "ja": [
+    {
+      "id": 0,
+      "title": "Saludos",
+      "subtitle": "Empezá una conversación",
+      "items": [
+        {
+          "text": "こんにちは",
+          "reading": "konnichiwa",
+          "es": "Hola (de día)",
+          "note": "Saludo habitual durante el día."
+        },
+        {
+          "text": "おはようございます",
+          "reading": "ohayō gozaimasu",
+          "es": "Buenos días",
+          "note": "Forma educada."
+        },
+        {
+          "text": "こんばんは",
+          "reading": "konbanwa",
+          "es": "Buenas noches (saludo)",
+          "note": "Se utiliza al saludar de noche."
+        },
+        {
+          "text": "さようなら",
+          "reading": "sayōnara",
+          "es": "Adiós",
+          "note": "Despedida general."
+        },
+        {
+          "text": "またね",
+          "reading": "mata ne",
+          "es": "Hasta luego",
+          "note": "Informal, con personas cercanas."
+        },
+        {
+          "text": "おやすみなさい",
+          "reading": "oyasuminasai",
+          "es": "Buenas noches (al dormir)",
+          "note": "Antes de ir a dormir."
+        },
+        {
+          "text": "もしもし",
+          "reading": "moshi moshi",
+          "es": "Hola (por teléfono)",
+          "note": "Para iniciar una llamada."
+        },
+        {
+          "text": "はじめまして",
+          "reading": "hajimemashite",
+          "es": "Mucho gusto",
+          "note": "Cuando conocés a alguien."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "こんにちは。",
+          "reading": "konnichiwa",
+          "es": "Hola."
+        },
+        {
+          "speaker": "B",
+          "text": "こんにちは。",
+          "reading": "konnichiwa",
+          "es": "Hola."
+        },
+        {
+          "speaker": "A",
+          "text": "はじめまして。",
+          "reading": "hajimemashite",
+          "es": "Mucho gusto."
+        },
+        {
+          "speaker": "B",
+          "text": "はじめまして。",
+          "reading": "hajimemashite",
+          "es": "Mucho gusto."
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "title": "Cortesía",
+      "subtitle": "Palabras amables",
+      "items": [
+        {
+          "text": "ありがとうございます",
+          "reading": "arigatō gozaimasu",
+          "es": "Muchas gracias",
+          "note": "Educado."
+        },
+        {
+          "text": "ありがとう",
+          "reading": "arigatō",
+          "es": "Gracias",
+          "note": "Entre conocidos."
+        },
+        {
+          "text": "どういたしまして",
+          "reading": "dō itashimashite",
+          "es": "De nada",
+          "note": "Respuesta a gracias."
+        },
+        {
+          "text": "すみません",
+          "reading": "sumimasen",
+          "es": "Disculpe / Permiso",
+          "note": "Para llamar la atención o disculparse."
+        },
+        {
+          "text": "ごめんなさい",
+          "reading": "gomen nasai",
+          "es": "Lo siento",
+          "note": "Disculpa."
+        },
+        {
+          "text": "お願いします",
+          "reading": "onegaishimasu",
+          "es": "Por favor",
+          "note": "Al pedir algo."
+        },
+        {
+          "text": "どうぞ",
+          "reading": "dōzo",
+          "es": "Adelante / Tome",
+          "note": "Al ofrecer algo."
+        },
+        {
+          "text": "大丈夫です",
+          "reading": "daijōbu desu",
+          "es": "Está bien / No pasa nada",
+          "note": "Depende del contexto."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "すみません。",
+          "reading": "sumimasen",
+          "es": "Disculpe."
+        },
+        {
+          "speaker": "B",
+          "text": "はい。",
+          "reading": "hai",
+          "es": "Sí."
+        },
+        {
+          "speaker": "A",
+          "text": "ありがとうございます。",
+          "reading": "arigatō gozaimasu",
+          "es": "Muchas gracias."
+        },
+        {
+          "speaker": "B",
+          "text": "どういたしまして。",
+          "reading": "dō itashimashite",
+          "es": "De nada."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Sí y no",
+      "subtitle": "Respuestas sencillas",
+      "items": [
+        {
+          "text": "はい",
+          "reading": "hai",
+          "es": "Sí",
+          "note": "Respuesta afirmativa."
+        },
+        {
+          "text": "いいえ",
+          "reading": "iie",
+          "es": "No",
+          "note": "Respuesta negativa."
+        },
+        {
+          "text": "わかります",
+          "reading": "wakarimasu",
+          "es": "Entiendo",
+          "note": "Cuando comprendés."
+        },
+        {
+          "text": "わかりません",
+          "reading": "wakarimasen",
+          "es": "No entiendo",
+          "note": "Cuando no comprendés."
+        },
+        {
+          "text": "そうです",
+          "reading": "sō desu",
+          "es": "Así es",
+          "note": "Confirmación."
+        },
+        {
+          "text": "ちがいます",
+          "reading": "chigaimasu",
+          "es": "No es así",
+          "note": "Para corregir."
+        },
+        {
+          "text": "もちろん",
+          "reading": "mochiron",
+          "es": "Por supuesto",
+          "note": "Respuesta afirmativa."
+        },
+        {
+          "text": "たぶん",
+          "reading": "tabun",
+          "es": "Quizás",
+          "note": "Expresa posibilidad."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "わかりますか。",
+          "reading": "wakarimasu ka",
+          "es": "¿Entendés?"
+        },
+        {
+          "speaker": "B",
+          "text": "いいえ、わかりません。",
+          "reading": "iie, wakarimasen",
+          "es": "No, no entiendo."
+        },
+        {
+          "speaker": "A",
+          "text": "大丈夫です。",
+          "reading": "daijōbu desu",
+          "es": "Está bien."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Presentarse",
+      "subtitle": "Conocer a alguien",
+      "items": [
+        {
+          "text": "わたしはアナです",
+          "reading": "watashi wa Ana desu",
+          "es": "Soy Ana",
+          "note": "Presentación con nombre."
+        },
+        {
+          "text": "お名前は何ですか",
+          "reading": "onamae wa nan desu ka",
+          "es": "¿Cómo te llamás?",
+          "note": "Pregunta educada."
+        },
+        {
+          "text": "お元気ですか",
+          "reading": "ogenki desu ka",
+          "es": "¿Cómo estás?",
+          "note": "Pregunta por el estado de alguien."
+        },
+        {
+          "text": "元気です",
+          "reading": "genki desu",
+          "es": "Estoy bien",
+          "note": "Respuesta habitual."
+        },
+        {
+          "text": "アルゼンチン出身です",
+          "reading": "Aruzenchin shusshin desu",
+          "es": "Soy de Argentina",
+          "note": "Para decir tu origen."
+        },
+        {
+          "text": "よろしくお願いします",
+          "reading": "yoroshiku onegaishimasu",
+          "es": "Encantado/a",
+          "note": "Fórmula al presentarse."
+        },
+        {
+          "text": "あなたは",
+          "reading": "anata wa",
+          "es": "¿Y vos?",
+          "note": "El contexto es importante."
+        },
+        {
+          "text": "また会いましょう",
+          "reading": "mata aimashō",
+          "es": "Nos vemos de nuevo",
+          "note": "Despedida cordial."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "お名前は何ですか。",
+          "reading": "onamae wa nan desu ka",
+          "es": "¿Cómo te llamás?"
+        },
+        {
+          "speaker": "B",
+          "text": "わたしはアナです。",
+          "reading": "watashi wa Ana desu",
+          "es": "Soy Ana."
+        },
+        {
+          "speaker": "A",
+          "text": "よろしくお願いします。",
+          "reading": "yoroshiku onegaishimasu",
+          "es": "Encantado/a."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Números",
+      "subtitle": "Contá del uno al diez",
+      "items": [
+        {
+          "text": "一",
+          "reading": "ichi",
+          "es": "Uno",
+          "note": "Número básico."
+        },
+        {
+          "text": "二",
+          "reading": "ni",
+          "es": "Dos",
+          "note": "Número básico."
+        },
+        {
+          "text": "三",
+          "reading": "san",
+          "es": "Tres",
+          "note": "Número básico."
+        },
+        {
+          "text": "四",
+          "reading": "yon",
+          "es": "Cuatro",
+          "note": "Número básico."
+        },
+        {
+          "text": "五",
+          "reading": "go",
+          "es": "Cinco",
+          "note": "Número básico."
+        },
+        {
+          "text": "六",
+          "reading": "roku",
+          "es": "Seis",
+          "note": "Número básico."
+        },
+        {
+          "text": "七",
+          "reading": "nana",
+          "es": "Siete",
+          "note": "Número básico."
+        },
+        {
+          "text": "八",
+          "reading": "hachi",
+          "es": "Ocho",
+          "note": "Número básico."
+        },
+        {
+          "text": "九",
+          "reading": "kyū",
+          "es": "Nueve",
+          "note": "Número básico."
+        },
+        {
+          "text": "十",
+          "reading": "jū",
+          "es": "Diez",
+          "note": "Número básico."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "一、二、三。",
+          "reading": "ichi, ni, san",
+          "es": "Uno, dos, tres."
+        },
+        {
+          "speaker": "B",
+          "text": "四、五、六。",
+          "reading": "yon, go, roku",
+          "es": "Cuatro, cinco, seis."
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Familia",
+      "subtitle": "Personas cercanas",
+      "items": [
+        {
+          "text": "家族",
+          "reading": "kazoku",
+          "es": "Familia",
+          "note": "Palabra general."
+        },
+        {
+          "text": "母",
+          "reading": "haha",
+          "es": "Mi madre",
+          "note": "Al hablar de tu propia madre."
+        },
+        {
+          "text": "父",
+          "reading": "chichi",
+          "es": "Mi padre",
+          "note": "Al hablar de tu propio padre."
+        },
+        {
+          "text": "お母さん",
+          "reading": "okāsan",
+          "es": "Mamá / Madre",
+          "note": "Tratamiento familiar o respetuoso."
+        },
+        {
+          "text": "お父さん",
+          "reading": "otōsan",
+          "es": "Papá / Padre",
+          "note": "Tratamiento familiar o respetuoso."
+        },
+        {
+          "text": "友達",
+          "reading": "tomodachi",
+          "es": "Amigo/a",
+          "note": "Amistad."
+        },
+        {
+          "text": "兄",
+          "reading": "ani",
+          "es": "Hermano mayor (propio)",
+          "note": "Al hablar de tu propio hermano mayor."
+        },
+        {
+          "text": "妹",
+          "reading": "imōto",
+          "es": "Hermana menor",
+          "note": "Al hablar de tu hermana menor."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "家族ですか。",
+          "reading": "kazoku desu ka",
+          "es": "¿Es tu familia?"
+        },
+        {
+          "speaker": "B",
+          "text": "はい、家族です。",
+          "reading": "hai, kazoku desu",
+          "es": "Sí, es mi familia."
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Comida y bebida",
+      "subtitle": "Pedir algo sencillo",
+      "items": [
+        {
+          "text": "水",
+          "reading": "mizu",
+          "es": "Agua",
+          "note": "Bebida."
+        },
+        {
+          "text": "お茶",
+          "reading": "ocha",
+          "es": "Té",
+          "note": "Bebida."
+        },
+        {
+          "text": "ご飯",
+          "reading": "gohan",
+          "es": "Arroz / Comida",
+          "note": "Según el contexto."
+        },
+        {
+          "text": "パン",
+          "reading": "pan",
+          "es": "Pan",
+          "note": "Comida."
+        },
+        {
+          "text": "コーヒー",
+          "reading": "kōhī",
+          "es": "Café",
+          "note": "Bebida."
+        },
+        {
+          "text": "おいしいです",
+          "reading": "oishii desu",
+          "es": "Está rico",
+          "note": "Para una comida."
+        },
+        {
+          "text": "いただきます",
+          "reading": "itadakimasu",
+          "es": "Expresión antes de comer",
+          "note": "No es una traducción literal de buen provecho."
+        },
+        {
+          "text": "お水をください",
+          "reading": "omizu o kudasai",
+          "es": "Agua, por favor",
+          "note": "Para pedir agua."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "お水をください。",
+          "reading": "omizu o kudasai",
+          "es": "Agua, por favor."
+        },
+        {
+          "speaker": "B",
+          "text": "どうぞ。",
+          "reading": "dōzo",
+          "es": "Aquí tiene."
+        },
+        {
+          "speaker": "A",
+          "text": "ありがとうございます。",
+          "reading": "arigatō gozaimasu",
+          "es": "Gracias."
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Lugares",
+      "subtitle": "Ubicarse en la ciudad",
+      "items": [
+        {
+          "text": "ここ",
+          "reading": "koko",
+          "es": "Aquí",
+          "note": "Cerca de quien habla."
+        },
+        {
+          "text": "そこ",
+          "reading": "soko",
+          "es": "Ahí",
+          "note": "Cerca de quien escucha."
+        },
+        {
+          "text": "あそこ",
+          "reading": "asoko",
+          "es": "Allá",
+          "note": "Lejos de ambos."
+        },
+        {
+          "text": "駅",
+          "reading": "eki",
+          "es": "Estación",
+          "note": "Estación de tren."
+        },
+        {
+          "text": "学校",
+          "reading": "gakkō",
+          "es": "Escuela",
+          "note": "Lugar."
+        },
+        {
+          "text": "家",
+          "reading": "ie",
+          "es": "Casa",
+          "note": "Lugar."
+        },
+        {
+          "text": "トイレ",
+          "reading": "toire",
+          "es": "Baño",
+          "note": "Servicio sanitario."
+        },
+        {
+          "text": "トイレはどこですか",
+          "reading": "toire wa doko desu ka",
+          "es": "¿Dónde está el baño?",
+          "note": "Pregunta útil."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "トイレはどこですか。",
+          "reading": "toire wa doko desu ka",
+          "es": "¿Dónde está el baño?"
+        },
+        {
+          "speaker": "B",
+          "text": "あそこです。",
+          "reading": "asoko desu",
+          "es": "Está allá."
+        },
+        {
+          "speaker": "A",
+          "text": "ありがとうございます。",
+          "reading": "arigatō gozaimasu",
+          "es": "Gracias."
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Preguntas",
+      "subtitle": "Entender qué te preguntan",
+      "items": [
+        {
+          "text": "何ですか",
+          "reading": "nan desu ka",
+          "es": "¿Qué es?",
+          "note": "Pregunta por una cosa."
+        },
+        {
+          "text": "だれですか",
+          "reading": "dare desu ka",
+          "es": "¿Quién es?",
+          "note": "Pregunta por una persona."
+        },
+        {
+          "text": "どこですか",
+          "reading": "doko desu ka",
+          "es": "¿Dónde está?",
+          "note": "Pregunta de ubicación."
+        },
+        {
+          "text": "いつですか",
+          "reading": "itsu desu ka",
+          "es": "¿Cuándo es?",
+          "note": "Pregunta temporal."
+        },
+        {
+          "text": "いくらですか",
+          "reading": "ikura desu ka",
+          "es": "¿Cuánto cuesta?",
+          "note": "Para preguntar un precio."
+        },
+        {
+          "text": "もう一度お願いします",
+          "reading": "mō ichido onegaishimasu",
+          "es": "Una vez más, por favor",
+          "note": "Para pedir repetición."
+        },
+        {
+          "text": "ゆっくり話してください",
+          "reading": "yukkuri hanashite kudasai",
+          "es": "Hable más despacio, por favor",
+          "note": "Para pedir que hablen lento."
+        },
+        {
+          "text": "日本語を勉強しています",
+          "reading": "nihongo o benkyō shite imasu",
+          "es": "Estoy estudiando japonés",
+          "note": "Para explicar tu nivel."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "いくらですか。",
+          "reading": "ikura desu ka",
+          "es": "¿Cuánto cuesta?"
+        },
+        {
+          "speaker": "B",
+          "text": "千円です。",
+          "reading": "sen en desu",
+          "es": "Mil yenes."
+        },
+        {
+          "speaker": "A",
+          "text": "ありがとうございます。",
+          "reading": "arigatō gozaimasu",
+          "es": "Gracias."
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Primer diálogo",
+      "subtitle": "Conversar un poquito",
+      "items": [
+        {
+          "text": "今日はいい天気ですね",
+          "reading": "kyō wa ii tenki desu ne",
+          "es": "Hoy hace lindo tiempo",
+          "note": "Comentario cotidiano."
+        },
+        {
+          "text": "そうですね",
+          "reading": "sō desu ne",
+          "es": "Sí, es verdad",
+          "note": "Para estar de acuerdo."
+        },
+        {
+          "text": "元気ですか",
+          "reading": "genki desu ka",
+          "es": "¿Estás bien?",
+          "note": "Pregunta por el estado."
+        },
+        {
+          "text": "元気です、ありがとう",
+          "reading": "genki desu, arigatō",
+          "es": "Estoy bien, gracias",
+          "note": "Respuesta informal."
+        },
+        {
+          "text": "今日は何をしますか",
+          "reading": "kyō wa nani o shimasu ka",
+          "es": "¿Qué vas a hacer hoy?",
+          "note": "Pregunta por planes."
+        },
+        {
+          "text": "勉強します",
+          "reading": "benkyō shimasu",
+          "es": "Voy a estudiar",
+          "note": "Respuesta habitual."
+        },
+        {
+          "text": "また明日",
+          "reading": "mata ashita",
+          "es": "Hasta mañana",
+          "note": "Despedida."
+        },
+        {
+          "text": "楽しかったです",
+          "reading": "tanoshikatta desu",
+          "es": "Fue divertido",
+          "note": "Para comentar una experiencia."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "こんにちは。お元気ですか。",
+          "reading": "konnichiwa. ogenki desu ka",
+          "es": "Hola, ¿cómo estás?"
+        },
+        {
+          "speaker": "B",
+          "text": "元気です、ありがとう。",
+          "reading": "genki desu, arigatō",
+          "es": "Estoy bien, gracias."
+        },
+        {
+          "speaker": "A",
+          "text": "今日は何をしますか。",
+          "reading": "kyō wa nani o shimasu ka",
+          "es": "¿Qué vas a hacer hoy?"
+        },
+        {
+          "speaker": "B",
+          "text": "勉強します。",
+          "reading": "benkyō shimasu",
+          "es": "Voy a estudiar."
+        },
+        {
+          "speaker": "A",
+          "text": "また明日。",
+          "reading": "mata ashita",
+          "es": "Hasta mañana."
+        }
+      ]
+    }
+  ],
+  "ko": [
+    {
+      "id": 0,
+      "title": "Saludos",
+      "subtitle": "Empezá una conversación",
+      "items": [
+        {
+          "text": "안녕하세요",
+          "reading": "annyeonghaseyo",
+          "es": "Hola (formal)",
+          "note": "Saludo educado."
+        },
+        {
+          "text": "안녕",
+          "reading": "annyeong",
+          "es": "Hola / Chau (informal)",
+          "note": "Entre personas cercanas."
+        },
+        {
+          "text": "좋은 아침이에요",
+          "reading": "joeun achimieyo",
+          "es": "Buenos días",
+          "note": "Expresión de buenos días."
+        },
+        {
+          "text": "안녕히 가세요",
+          "reading": "annyeonghi gaseyo",
+          "es": "Adiós (al que se va)",
+          "note": "Cuando vos permanecés."
+        },
+        {
+          "text": "안녕히 계세요",
+          "reading": "annyeonghi gyeseyo",
+          "es": "Adiós (al que se queda)",
+          "note": "Cuando vos te vas."
+        },
+        {
+          "text": "잘 자요",
+          "reading": "jal jayo",
+          "es": "Buenas noches (al dormir)",
+          "note": "Antes de dormir."
+        },
+        {
+          "text": "또 봐요",
+          "reading": "tto bwayo",
+          "es": "Nos vemos",
+          "note": "Despedida cotidiana."
+        },
+        {
+          "text": "만나서 반가워요",
+          "reading": "mannaseo bangawoyo",
+          "es": "Mucho gusto",
+          "note": "Al conocer a alguien."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "안녕하세요.",
+          "reading": "annyeonghaseyo",
+          "es": "Hola."
+        },
+        {
+          "speaker": "B",
+          "text": "안녕하세요.",
+          "reading": "annyeonghaseyo",
+          "es": "Hola."
+        },
+        {
+          "speaker": "A",
+          "text": "만나서 반가워요.",
+          "reading": "mannaseo bangawoyo",
+          "es": "Mucho gusto."
+        },
+        {
+          "speaker": "B",
+          "text": "저도 반가워요.",
+          "reading": "jeodo bangawoyo",
+          "es": "Para mí también es un gusto."
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "title": "Cortesía",
+      "subtitle": "Palabras amables",
+      "items": [
+        {
+          "text": "감사합니다",
+          "reading": "gamsahamnida",
+          "es": "Muchas gracias",
+          "note": "Forma formal."
+        },
+        {
+          "text": "고마워요",
+          "reading": "gomawoyo",
+          "es": "Gracias",
+          "note": "Forma educada cotidiana."
+        },
+        {
+          "text": "천만에요",
+          "reading": "cheonmaneyo",
+          "es": "De nada",
+          "note": "Respuesta formal; menos frecuente en el habla."
+        },
+        {
+          "text": "죄송합니다",
+          "reading": "joesonghamnida",
+          "es": "Lo siento / Disculpe",
+          "note": "Disculpa formal."
+        },
+        {
+          "text": "미안해요",
+          "reading": "mianhaeyo",
+          "es": "Perdón",
+          "note": "Disculpa educada."
+        },
+        {
+          "text": "주세요",
+          "reading": "juseyo",
+          "es": "Por favor, deme...",
+          "note": "Se usa al pedir algo."
+        },
+        {
+          "text": "괜찮아요",
+          "reading": "gwaenchanayo",
+          "es": "Está bien / No pasa nada",
+          "note": "Según contexto."
+        },
+        {
+          "text": "실례합니다",
+          "reading": "sillyehamnida",
+          "es": "Con permiso",
+          "note": "Para interrumpir educadamente."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "실례합니다.",
+          "reading": "sillyehamnida",
+          "es": "Con permiso."
+        },
+        {
+          "speaker": "B",
+          "text": "네.",
+          "reading": "ne",
+          "es": "Sí."
+        },
+        {
+          "speaker": "A",
+          "text": "감사합니다.",
+          "reading": "gamsahamnida",
+          "es": "Gracias."
+        },
+        {
+          "speaker": "B",
+          "text": "괜찮아요.",
+          "reading": "gwaenchanayo",
+          "es": "No pasa nada."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Sí y no",
+      "subtitle": "Respuestas sencillas",
+      "items": [
+        {
+          "text": "네",
+          "reading": "ne",
+          "es": "Sí",
+          "note": "Respuesta afirmativa."
+        },
+        {
+          "text": "아니요",
+          "reading": "aniyo",
+          "es": "No",
+          "note": "Respuesta negativa."
+        },
+        {
+          "text": "알겠어요",
+          "reading": "algesseoyo",
+          "es": "Entendido",
+          "note": "Cuando comprendés."
+        },
+        {
+          "text": "모르겠어요",
+          "reading": "moreugesseoyo",
+          "es": "No sé / No entiendo",
+          "note": "Cuando no sabés."
+        },
+        {
+          "text": "맞아요",
+          "reading": "majayo",
+          "es": "Correcto",
+          "note": "Confirmación."
+        },
+        {
+          "text": "아니에요",
+          "reading": "anieyo",
+          "es": "No es así",
+          "note": "Para corregir."
+        },
+        {
+          "text": "물론이죠",
+          "reading": "mullonijyo",
+          "es": "Por supuesto",
+          "note": "Respuesta afirmativa."
+        },
+        {
+          "text": "아마도",
+          "reading": "amado",
+          "es": "Quizás",
+          "note": "Posibilidad."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "알겠어요?",
+          "reading": "algesseoyo?",
+          "es": "¿Entendiste?"
+        },
+        {
+          "speaker": "B",
+          "text": "아니요, 모르겠어요.",
+          "reading": "aniyo, moreugesseoyo",
+          "es": "No, no entiendo."
+        },
+        {
+          "speaker": "A",
+          "text": "괜찮아요.",
+          "reading": "gwaenchanayo",
+          "es": "Está bien."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Presentarse",
+      "subtitle": "Conocer a alguien",
+      "items": [
+        {
+          "text": "저는 아나예요",
+          "reading": "jeoneun anayeyo",
+          "es": "Soy Ana",
+          "note": "Presentación."
+        },
+        {
+          "text": "이름이 뭐예요?",
+          "reading": "ireumi mwoyeyo?",
+          "es": "¿Cómo te llamás?",
+          "note": "Pregunta educada."
+        },
+        {
+          "text": "잘 지내세요?",
+          "reading": "jal jinaeseyo?",
+          "es": "¿Cómo estás?",
+          "note": "Pregunta por el estado."
+        },
+        {
+          "text": "잘 지내요",
+          "reading": "jal jinaeyo",
+          "es": "Estoy bien",
+          "note": "Respuesta."
+        },
+        {
+          "text": "아르헨티나에서 왔어요",
+          "reading": "areuhentinaeseo wasseoyo",
+          "es": "Soy de Argentina",
+          "note": "Para explicar tu origen."
+        },
+        {
+          "text": "만나서 반가워요",
+          "reading": "mannaseo bangawoyo",
+          "es": "Encantado/a",
+          "note": "Al presentarse."
+        },
+        {
+          "text": "저도요",
+          "reading": "jeodoyo",
+          "es": "Yo también",
+          "note": "Coincidencia."
+        },
+        {
+          "text": "다음에 또 봐요",
+          "reading": "daeume tto bwayo",
+          "es": "Nos vemos la próxima",
+          "note": "Despedida."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "이름이 뭐예요?",
+          "reading": "ireumi mwoyeyo?",
+          "es": "¿Cómo te llamás?"
+        },
+        {
+          "speaker": "B",
+          "text": "저는 아나예요.",
+          "reading": "jeoneun anayeyo",
+          "es": "Soy Ana."
+        },
+        {
+          "speaker": "A",
+          "text": "만나서 반가워요.",
+          "reading": "mannaseo bangawoyo",
+          "es": "Mucho gusto."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Números",
+      "subtitle": "Contá del uno al diez",
+      "items": [
+        {
+          "text": "일",
+          "reading": "il",
+          "es": "Uno",
+          "note": "Sistema sino-coreano: útil para fechas, dinero y más."
+        },
+        {
+          "text": "이",
+          "reading": "i",
+          "es": "Dos",
+          "note": "Sistema sino-coreano: útil para fechas, dinero y más."
+        },
+        {
+          "text": "삼",
+          "reading": "sam",
+          "es": "Tres",
+          "note": "Sistema sino-coreano: útil para fechas, dinero y más."
+        },
+        {
+          "text": "사",
+          "reading": "sa",
+          "es": "Cuatro",
+          "note": "Sistema sino-coreano: útil para fechas, dinero y más."
+        },
+        {
+          "text": "오",
+          "reading": "o",
+          "es": "Cinco",
+          "note": "Sistema sino-coreano: útil para fechas, dinero y más."
+        },
+        {
+          "text": "육",
+          "reading": "yuk",
+          "es": "Seis",
+          "note": "Sistema sino-coreano: útil para fechas, dinero y más."
+        },
+        {
+          "text": "칠",
+          "reading": "chil",
+          "es": "Siete",
+          "note": "Sistema sino-coreano: útil para fechas, dinero y más."
+        },
+        {
+          "text": "팔",
+          "reading": "pal",
+          "es": "Ocho",
+          "note": "Sistema sino-coreano: útil para fechas, dinero y más."
+        },
+        {
+          "text": "구",
+          "reading": "gu",
+          "es": "Nueve",
+          "note": "Sistema sino-coreano: útil para fechas, dinero y más."
+        },
+        {
+          "text": "십",
+          "reading": "sip",
+          "es": "Diez",
+          "note": "Sistema sino-coreano: útil para fechas, dinero y más."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "일, 이, 삼.",
+          "reading": "il, i, sam",
+          "es": "Uno, dos, tres."
+        },
+        {
+          "speaker": "B",
+          "text": "사, 오, 육.",
+          "reading": "sa, o, yuk",
+          "es": "Cuatro, cinco, seis."
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Familia",
+      "subtitle": "Personas cercanas",
+      "items": [
+        {
+          "text": "가족",
+          "reading": "gajok",
+          "es": "Familia",
+          "note": "Palabra general."
+        },
+        {
+          "text": "엄마",
+          "reading": "eomma",
+          "es": "Mamá",
+          "note": "Familiar."
+        },
+        {
+          "text": "아빠",
+          "reading": "appa",
+          "es": "Papá",
+          "note": "Familiar."
+        },
+        {
+          "text": "어머니",
+          "reading": "eomeoni",
+          "es": "Madre",
+          "note": "Más formal."
+        },
+        {
+          "text": "아버지",
+          "reading": "abeoji",
+          "es": "Padre",
+          "note": "Más formal."
+        },
+        {
+          "text": "친구",
+          "reading": "chingu",
+          "es": "Amigo/a",
+          "note": "Amistad."
+        },
+        {
+          "text": "언니",
+          "reading": "eonni",
+          "es": "Hermana mayor (habla mujer)",
+          "note": "Para una hablante mujer."
+        },
+        {
+          "text": "동생",
+          "reading": "dongsaeng",
+          "es": "Hermano/a menor",
+          "note": "Sin especificar género."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "가족이에요?",
+          "reading": "gajogieyo?",
+          "es": "¿Es tu familia?"
+        },
+        {
+          "speaker": "B",
+          "text": "네, 가족이에요.",
+          "reading": "ne, gajogieyo",
+          "es": "Sí, es mi familia."
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Comida y bebida",
+      "subtitle": "Pedir algo sencillo",
+      "items": [
+        {
+          "text": "물",
+          "reading": "mul",
+          "es": "Agua",
+          "note": "Bebida."
+        },
+        {
+          "text": "차",
+          "reading": "cha",
+          "es": "Té",
+          "note": "Bebida."
+        },
+        {
+          "text": "밥",
+          "reading": "bap",
+          "es": "Arroz / Comida",
+          "note": "Según contexto."
+        },
+        {
+          "text": "빵",
+          "reading": "ppang",
+          "es": "Pan",
+          "note": "Comida."
+        },
+        {
+          "text": "커피",
+          "reading": "keopi",
+          "es": "Café",
+          "note": "Bebida."
+        },
+        {
+          "text": "맛있어요",
+          "reading": "masisseoyo",
+          "es": "Está rico",
+          "note": "Para una comida."
+        },
+        {
+          "text": "잘 먹겠습니다",
+          "reading": "jal meokgetseumnida",
+          "es": "Expresión antes de comer",
+          "note": "Fórmula de agradecimiento antes de comer."
+        },
+        {
+          "text": "물 주세요",
+          "reading": "mul juseyo",
+          "es": "Agua, por favor",
+          "note": "Para pedir agua."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "물 주세요.",
+          "reading": "mul juseyo",
+          "es": "Agua, por favor."
+        },
+        {
+          "speaker": "B",
+          "text": "여기 있어요.",
+          "reading": "yeogi isseoyo",
+          "es": "Aquí tiene."
+        },
+        {
+          "speaker": "A",
+          "text": "감사합니다.",
+          "reading": "gamsahamnida",
+          "es": "Gracias."
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Lugares",
+      "subtitle": "Ubicarse en la ciudad",
+      "items": [
+        {
+          "text": "여기",
+          "reading": "yeogi",
+          "es": "Aquí",
+          "note": "Cerca de quien habla."
+        },
+        {
+          "text": "거기",
+          "reading": "geogi",
+          "es": "Ahí",
+          "note": "Cerca de quien escucha."
+        },
+        {
+          "text": "저기",
+          "reading": "jeogi",
+          "es": "Allá",
+          "note": "Lejos de ambos."
+        },
+        {
+          "text": "역",
+          "reading": "yeok",
+          "es": "Estación",
+          "note": "Transporte."
+        },
+        {
+          "text": "학교",
+          "reading": "hakgyo",
+          "es": "Escuela",
+          "note": "Lugar."
+        },
+        {
+          "text": "집",
+          "reading": "jip",
+          "es": "Casa",
+          "note": "Lugar."
+        },
+        {
+          "text": "화장실",
+          "reading": "hwajangsil",
+          "es": "Baño",
+          "note": "Servicio sanitario."
+        },
+        {
+          "text": "화장실이 어디예요?",
+          "reading": "hwajangsiri eodiyeyo?",
+          "es": "¿Dónde está el baño?",
+          "note": "Pregunta útil."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "화장실이 어디예요?",
+          "reading": "hwajangsiri eodiyeyo?",
+          "es": "¿Dónde está el baño?"
+        },
+        {
+          "speaker": "B",
+          "text": "저기예요.",
+          "reading": "jeogiyeyo",
+          "es": "Está allá."
+        },
+        {
+          "speaker": "A",
+          "text": "감사합니다.",
+          "reading": "gamsahamnida",
+          "es": "Gracias."
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Preguntas",
+      "subtitle": "Entender qué te preguntan",
+      "items": [
+        {
+          "text": "뭐예요?",
+          "reading": "mwoyeyo?",
+          "es": "¿Qué es?",
+          "note": "Pregunta por una cosa."
+        },
+        {
+          "text": "누구예요?",
+          "reading": "nuguyeyo?",
+          "es": "¿Quién es?",
+          "note": "Pregunta por una persona."
+        },
+        {
+          "text": "어디예요?",
+          "reading": "eodiyeyo?",
+          "es": "¿Dónde está?",
+          "note": "Pregunta de ubicación."
+        },
+        {
+          "text": "언제예요?",
+          "reading": "eonjeyeyo?",
+          "es": "¿Cuándo es?",
+          "note": "Pregunta temporal."
+        },
+        {
+          "text": "얼마예요?",
+          "reading": "eolmayeyo?",
+          "es": "¿Cuánto cuesta?",
+          "note": "Para un precio."
+        },
+        {
+          "text": "다시 말해 주세요",
+          "reading": "dasi malhae juseyo",
+          "es": "Repítalo, por favor",
+          "note": "Para pedir repetición."
+        },
+        {
+          "text": "천천히 말해 주세요",
+          "reading": "cheoncheonhi malhae juseyo",
+          "es": "Hable más despacio, por favor",
+          "note": "Para pedir que hablen lento."
+        },
+        {
+          "text": "한국어를 공부해요",
+          "reading": "hangugeoreul gongbuhaeyo",
+          "es": "Estudio coreano",
+          "note": "Para explicar tu nivel."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "얼마예요?",
+          "reading": "eolmayeyo?",
+          "es": "¿Cuánto cuesta?"
+        },
+        {
+          "speaker": "B",
+          "text": "천 원이에요.",
+          "reading": "cheon wonieyo",
+          "es": "Mil wones."
+        },
+        {
+          "speaker": "A",
+          "text": "감사합니다.",
+          "reading": "gamsahamnida",
+          "es": "Gracias."
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Primer diálogo",
+      "subtitle": "Conversar un poquito",
+      "items": [
+        {
+          "text": "오늘 날씨가 좋아요",
+          "reading": "oneul nalssiga joayo",
+          "es": "Hoy hace lindo tiempo",
+          "note": "Comentario cotidiano."
+        },
+        {
+          "text": "그러네요",
+          "reading": "geureoneyo",
+          "es": "Sí, es verdad",
+          "note": "Para estar de acuerdo."
+        },
+        {
+          "text": "잘 지내세요?",
+          "reading": "jal jinaeseyo?",
+          "es": "¿Cómo estás?",
+          "note": "Pregunta por el estado."
+        },
+        {
+          "text": "잘 지내요, 고마워요",
+          "reading": "jal jinaeyo, gomawoyo",
+          "es": "Estoy bien, gracias",
+          "note": "Respuesta."
+        },
+        {
+          "text": "오늘 뭐 해요?",
+          "reading": "oneul mwo haeyo?",
+          "es": "¿Qué hacés hoy?",
+          "note": "Pregunta por planes."
+        },
+        {
+          "text": "공부해요",
+          "reading": "gongbuhaeyo",
+          "es": "Estudio",
+          "note": "Respuesta."
+        },
+        {
+          "text": "내일 봐요",
+          "reading": "naeil bwayo",
+          "es": "Hasta mañana",
+          "note": "Despedida."
+        },
+        {
+          "text": "재미있었어요",
+          "reading": "jaemiisseosseoyo",
+          "es": "Fue divertido",
+          "note": "Para una experiencia."
+        }
+      ],
+      "dialogue": [
+        {
+          "speaker": "A",
+          "text": "안녕하세요. 잘 지내세요?",
+          "reading": "annyeonghaseyo. jal jinaeseyo?",
+          "es": "Hola, ¿cómo estás?"
+        },
+        {
+          "speaker": "B",
+          "text": "잘 지내요, 고마워요.",
+          "reading": "jal jinaeyo, gomawoyo",
+          "es": "Estoy bien, gracias."
+        },
+        {
+          "speaker": "A",
+          "text": "오늘 뭐 해요?",
+          "reading": "oneul mwo haeyo?",
+          "es": "¿Qué hacés hoy?"
+        },
+        {
+          "speaker": "B",
+          "text": "공부해요.",
+          "reading": "gongbuhaeyo",
+          "es": "Estudio."
+        },
+        {
+          "speaker": "A",
+          "text": "내일 봐요.",
+          "reading": "naeil bwayo",
+          "es": "Hasta mañana."
+        }
+      ]
+    }
+  ]
+}

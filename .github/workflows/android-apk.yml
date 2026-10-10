@@ -1,8 +1,7 @@
 name: HanaLingua 2.0 APK
 on:
   push:
-    branches:
-      - hanalingua-v2-build
+    branches: [hanalingua-v2-build]
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,12 +15,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Instalar componentes Android
+        run: |
+          SM=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)
+          "$SM" 'platforms;android-35' 'build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build debug APK
+      - name: Build APK
         run: gradle --no-daemon assembleDebug
       - name: Upload APK
         uses: actions/upload-artifact@v4
